@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuth } from '../AuthContext';
+import { getUsers, createUser, updateUser, deleteUser, type User as ApiUser, type CreateUserData, type UpdateUserData } from '../services/usuario.service';
 
 interface User {
   id: number;
@@ -8,18 +9,17 @@ interface User {
   email: string;
   role: string;
   status: 'activo' | 'inactivo';
-  area: 'ventas' | 'soporte' | 'administracion';
+  area: 'comercial' | 'soporte' | 'administracion';
+  telefono?: string;
+  dni?: string;
+  cargo?: string;
 }
-
-const mockUsers: User[] = [
-  { id: 1, name: 'Juan Pérez', email: 'juan@example.com', role: 'VENTAS', status: 'activo', area: 'ventas' },
-  { id: 2, name: 'María García', email: 'maria@example.com', role: 'SOPORTE', status: 'activo', area: 'soporte' },
-  { id: 3, name: 'Carlos López', email: 'carlos@example.com', role: 'ADMIN', status: 'inactivo', area: 'administracion' },
-];
 
 export default function Usuarios() {
   const { user } = useAuth();
-  const [users, setUsers] = useState<User[]>(mockUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [openModal, setOpenModal] = useState(false);
   const [modoEdicion, setModoEdicion] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -33,10 +33,72 @@ export default function Usuarios() {
     email: '',
     role: 'VENTAS',
     status: 'activo' as 'activo' | 'inactivo',
-    area: 'ventas' as 'ventas' | 'soporte' | 'administracion',
+    area: 'comercial' as 'comercial' | 'soporte' | 'administracion',
+    telefono: '',
+    dni: '',
+    cargo: '',
+    password: '',
+    password_confirmation: '',
   });
 
   const [usuarioAEliminar, setUsuarioAEliminar] = useState<User | null>(null);
+
+  // Cargar usuarios al montar el componente
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      const apiUsers = await getUsers();
+      const formattedUsers: User[] = apiUsers.map((apiUser: ApiUser) => ({
+        id: apiUser.id,
+        name: `${apiUser.nombres} ${apiUser.apellidos}`,
+        email: apiUser.email,
+        role: apiUser.roles && apiUser.roles.length > 0 ? apiUser.roles[0].name.toUpperCase() : 'VENTAS',
+        status: apiUser.activo ? 'activo' : 'inactivo',
+        area: getAreaFromRole(apiUser.roles && apiUser.roles.length > 0 ? apiUser.roles[0].name : 'VENTAS'),
+        telefono: apiUser.profile?.telefono || '',
+        dni: apiUser.profile?.dni || '',
+        cargo: apiUser.profile?.cargo || '',
+      }));
+      setUsers(formattedUsers);
+    } catch (error) {
+      console.error('Error al cargar usuarios:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getAreaFromRole = (role: string): 'comercial' | 'soporte' | 'administracion' => {
+    switch (role.toUpperCase()) {
+      case 'VENTAS':
+        return 'comercial';
+      case 'SOPORTE':
+        return 'soporte';
+      case 'ADMIN':
+      case 'SUPERADMIN':
+        return 'administracion';
+      default:
+        return 'comercial';
+    }
+  };
+
+  const getRoleIdFromName = (roleName: string): number => {
+    switch (roleName.toUpperCase()) {
+      case 'SUPERADMIN':
+        return 1;
+      case 'ADMIN':
+        return 2;
+      case 'VENTAS':
+        return 3;
+      case 'SOPORTE':
+        return 4;
+      default:
+        return 3;
+    }
+  };
 
   // Filtrar usuarios por búsqueda y área
   const usuariosFiltrados = users.filter((u) => {
@@ -54,10 +116,16 @@ export default function Usuarios() {
   const totalPages = Math.ceil(usuariosFiltrados.length / itemsPerPage);
   const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
 
-  // Resetear página al buscar
+  // Actualizar área automáticamente cuando cambia el rol
   useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, filterEstado]);
+    if (usuarioSeleccionado.role) {
+      const nuevaArea = getAreaFromRole(usuarioSeleccionado.role);
+      setUsuarioSeleccionado(prev => ({
+        ...prev,
+        area: nuevaArea
+      }));
+    }
+  }, [usuarioSeleccionado.role]);
 
   const handleNuevo = () => {
     if (user?.role !== 'SUPERADMIN') return;
@@ -67,7 +135,12 @@ export default function Usuarios() {
       email: '',
       role: 'VENTAS',
       status: 'activo',
-      area: 'ventas',
+      area: 'comercial', // Área por defecto
+      telefono: '',
+      dni: '',
+      cargo: '',
+      password: '',
+      password_confirmation: '',
     });
     setModoEdicion(false);
     setOpenModal(true);
@@ -75,7 +148,20 @@ export default function Usuarios() {
 
   const handleEditar = (usuario: User) => {
     if (user?.role !== 'SUPERADMIN') return;
-    setUsuarioSeleccionado({ ...usuario });
+
+    setUsuarioSeleccionado({
+      id: usuario.id,
+      name: usuario.name,
+      email: usuario.email,
+      role: usuario.role,
+      status: usuario.status,
+      area: usuario.area,
+      telefono: usuario.telefono || '',
+      dni: usuario.dni || '',
+      cargo: usuario.cargo || '',
+      password: '',
+      password_confirmation: '',
+    });
     setModoEdicion(true);
     setOpenModal(true);
   };
@@ -85,29 +171,75 @@ export default function Usuarios() {
     setUsuarioAEliminar(usuario);
   };
 
-  const confirmarEliminar = () => {
-    if (usuarioAEliminar) {
-      setUsers(users.filter(u => u.id !== usuarioAEliminar.id));
+  const confirmarEliminar = async () => {
+    if (!usuarioAEliminar) return;
+
+    try {
+      setSaving(true);
+      await deleteUser(usuarioAEliminar.id);
+      await loadUsers(); // Recargar la lista
       setUsuarioAEliminar(null);
+    } catch (error) {
+      console.error('Error al eliminar usuario:', error);
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleGuardar = () => {
+  const handleGuardar = async () => {
     if (!usuarioSeleccionado.name || !usuarioSeleccionado.email) return;
 
-    if (modoEdicion && usuarioSeleccionado.id) {
-      setUsers(
-        users.map((u) =>
-          u.id === usuarioSeleccionado.id ? usuarioSeleccionado as User : u
-        )
-      );
-    } else {
-      const nuevoId = Math.max(...users.map(u => u.id)) + 1;
-      const nuevoUsuario: User = { ...usuarioSeleccionado, id: nuevoId };
-      setUsers([nuevoUsuario, ...users]);
-    }
+    try {
+      setSaving(true);
 
-    setOpenModal(false);
+      const [nombres, ...apellidosArr] = usuarioSeleccionado.name.split(' ');
+      const apellidos = apellidosArr.join(' ');
+
+      if (modoEdicion && usuarioSeleccionado.id) {
+        // Actualizar usuario existente
+        const updateData: UpdateUserData = {
+          nombres,
+          apellidos,
+          email: usuarioSeleccionado.email,
+          telefono: usuarioSeleccionado.telefono,
+          dni: usuarioSeleccionado.dni,
+          cargo: usuarioSeleccionado.cargo,
+          role: usuarioSeleccionado.role.toLowerCase(), // Enviar nombre del rol en minúsculas
+          activo: usuarioSeleccionado.status === 'activo',
+        };
+
+        await updateUser(usuarioSeleccionado.id, updateData);
+      } else {
+        // Crear nuevo usuario
+        if (!usuarioSeleccionado.password) {
+          alert('La contraseña es requerida para nuevos usuarios');
+          setSaving(false);
+          return;
+        }
+
+        const createData: CreateUserData = {
+          nombres,
+          apellidos,
+          email: usuarioSeleccionado.email,
+          password: usuarioSeleccionado.password,
+          password_confirmation: usuarioSeleccionado.password_confirmation,
+          role: getRoleIdFromName(usuarioSeleccionado.role), // Cambiado de role_id a role
+          telefono: usuarioSeleccionado.telefono,
+          dni: usuarioSeleccionado.dni,
+          cargo: usuarioSeleccionado.cargo,
+        };
+
+        await createUser(createData);
+      }
+
+      await loadUsers(); // Recargar la lista
+      setOpenModal(false);
+    } catch (error) {
+      console.error('Error al guardar usuario:', error);
+      alert('Error al guardar el usuario. Verifica los datos e intenta nuevamente.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -170,69 +302,77 @@ export default function Usuarios() {
 
       {/* TABLA */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">Usuario</th>
-              <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">Rol</th>
-              <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">Estado</th>
-              <th className="text-center px-6 py-4 text-sm font-semibold text-gray-600">Acciones</th>
-            </tr>
-          </thead>
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 size={32} className="animate-spin text-blue-600" />
+            <span className="ml-3 text-gray-600">Cargando usuarios...</span>
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">Usuario</th>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">Rol</th>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">Estado</th>
+                <th className="text-center px-6 py-4 text-sm font-semibold text-gray-600">Acciones</th>
+              </tr>
+            </thead>
 
-          <tbody>
-            {currentItems.length > 0 ? (
-              currentItems.map((u) => (
-                <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50 transition-all duration-200">
-                  <td className="px-6 py-5">
-                    <h3 className="font-semibold text-gray-800">{u.name}</h3>
-                    <p className="text-sm text-gray-500">{u.email}</p>
-                  </td>
+            <tbody>
+              {currentItems.length > 0 ? (
+                currentItems.map((u) => (
+                  <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50 transition-all duration-200">
+                    <td className="px-6 py-5">
+                      <h3 className="font-semibold text-gray-800">{u.name}</h3>
+                      <p className="text-sm text-gray-500">{u.email}</p>
+                      {u.cargo && <p className="text-xs text-gray-400">{u.cargo}</p>}
+                    </td>
 
-                  <td className="px-6 py-5 text-gray-600">{u.role}</td>
+                    <td className="px-6 py-5 text-gray-600">{u.role}</td>
 
-                  <td className="px-6 py-5">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      u.status === 'activo'
-                        ? 'bg-green-100 text-green-700 border border-green-200'
-                        : 'bg-red-100 text-red-700 border border-red-200'
-                    }`}>
-                      {u.status}
-                    </span>
-                  </td>
+                    <td className="px-6 py-5">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        u.status === 'activo'
+                          ? 'bg-green-100 text-green-700 border border-green-200'
+                          : 'bg-red-100 text-red-700 border border-red-200'
+                      }`}>
+                        {u.status}
+                      </span>
+                    </td>
 
-                  <td className="px-6 py-5">
-                    {canAddUser && (
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => handleEditar(u)}
-                          className="w-11 h-11 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
-                          title="Editar"
-                        >
-                          <Pencil size={18} />
-                        </button>
+                    <td className="px-6 py-5">
+                      {canAddUser && (
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleEditar(u)}
+                            className="w-11 h-11 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                            title="Editar"
+                          >
+                            <Pencil size={18} />
+                          </button>
 
-                        <button
-                          onClick={() => handleEliminar(u)}
-                          className="w-11 h-11 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
-                          title="Eliminar"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    )}
+                          <button
+                            onClick={() => handleEliminar(u)}
+                            className="w-11 h-11 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                            title="Eliminar"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={4} className="px-6 py-12 text-center text-gray-500">
+                    {searchTerm || filterEstado ? 'No se encontraron usuarios' : 'No hay usuarios'}
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={4} className="px-6 py-12 text-center text-gray-500">
-                  {searchTerm || filterEstado ? 'No se encontraron usuarios' : 'No hay usuarios'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        )}
 
         {/* PAGINACION */}
         {totalPages > 1 && (
@@ -296,15 +436,24 @@ export default function Usuarios() {
             <div className="flex gap-3 pt-6 border-t border-gray-200">
               <button
                 onClick={() => setUsuarioAEliminar(null)}
-                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 px-6 rounded-2xl transition-all duration-200 font-medium"
+                disabled={saving}
+                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 px-6 rounded-2xl transition-all duration-200 font-medium disabled:opacity-50"
               >
                 Cancelar
               </button>
               <button
                 onClick={confirmarEliminar}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 px-6 rounded-2xl transition-all duration-200 font-medium shadow-sm hover:shadow-md"
+                disabled={saving}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 px-6 rounded-2xl transition-all duration-200 font-medium shadow-sm hover:shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                Eliminar
+                {saving ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Eliminando...
+                  </>
+                ) : (
+                  'Eliminar'
+                )}
               </button>
             </div>
           </div>
@@ -377,7 +526,7 @@ export default function Usuarios() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* ROL */}
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700">Rol</label>
@@ -401,66 +550,152 @@ export default function Usuarios() {
                 {/* AREA */}
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700">Área</label>
-                  <select
+                  <input
+                    type="text"
                     value={usuarioSeleccionado.area}
+                    readOnly
+                    className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed"
+                    placeholder="Se determina automáticamente por el rol"
+                  />
+                </div>
+
+                {/* ESTADO - Solo en edición */}
+                {modoEdicion && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700">Estado</label>
+                    <select
+                      value={usuarioSeleccionado.status}
+                      onChange={(e) =>
+                        setUsuarioSeleccionado({
+                          ...usuarioSeleccionado,
+                          status: e.target.value as 'activo' | 'inactivo',
+                        })
+                      }
+                      className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                    >
+                      <option value="activo">Activo</option>
+                      <option value="inactivo">Inactivo</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* TELEFONO */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">Teléfono</label>
+                  <input
+                    type="tel"
+                    value={usuarioSeleccionado.telefono}
                     onChange={(e) =>
                       setUsuarioSeleccionado({
                         ...usuarioSeleccionado,
-                        area: e.target.value as 'ventas' | 'soporte' | 'administracion',
+                        telefono: e.target.value,
                       })
                     }
                     className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
-                  >
-                    <option value="ventas">Ventas</option>
-                    <option value="soporte">Soporte</option>
-                    <option value="administracion">Administración</option>
-                  </select>
+                    placeholder="942834089"
+                  />
+                </div>
+
+                {/* DNI */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">DNI</label>
+                  <input
+                    value={usuarioSeleccionado.dni}
+                    onChange={(e) =>
+                      setUsuarioSeleccionado({
+                        ...usuarioSeleccionado,
+                        dni: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                    placeholder="41962526"
+                  />
                 </div>
               </div>
 
-              {/* ESTADO */}
+              {/* CARGO */}
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">Estado</label>
-                <div className="flex gap-3 pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="status"
-                      value="activo"
-                      checked={usuarioSeleccionado.status === 'activo'}
-                      onChange={() => setUsuarioSeleccionado({ ...usuarioSeleccionado, status: 'activo' })}
-                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
-                    />
-                    <span className="text-sm font-medium text-gray-700">Activo</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="status"
-                      value="inactivo"
-                      checked={usuarioSeleccionado.status === 'inactivo'}
-                      onChange={() => setUsuarioSeleccionado({ ...usuarioSeleccionado, status: 'inactivo' })}
-                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
-                    />
-                    <span className="text-sm font-medium text-gray-700">Inactivo</span>
-                  </label>
-                </div>
+                <label className="text-sm font-semibold text-gray-700">Cargo</label>
+                <input
+                  value={usuarioSeleccionado.cargo}
+                  onChange={(e) =>
+                    setUsuarioSeleccionado({
+                      ...usuarioSeleccionado,
+                      cargo: e.target.value,
+                    })
+                  }
+                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                  placeholder="Gerente General"
+                />
               </div>
+
+              {/* CONTRASEÑA - Solo para nuevos usuarios */}
+              {!modoEdicion && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                      Contraseña
+                    </label>
+                    <input
+                      type="password"
+                      value={usuarioSeleccionado.password}
+                      onChange={(e) =>
+                        setUsuarioSeleccionado({
+                          ...usuarioSeleccionado,
+                          password: e.target.value,
+                        })
+                      }
+                      className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                      placeholder="••••••••"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                      Confirmar Contraseña
+                    </label>
+                    <input
+                      type="password"
+                      value={usuarioSeleccionado.password_confirmation}
+                      onChange={(e) =>
+                        setUsuarioSeleccionado({
+                          ...usuarioSeleccionado,
+                          password_confirmation: e.target.value,
+                        })
+                      }
+                      className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* BOTONES */}
               <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-gray-200">
                 <button
                   onClick={() => setOpenModal(false)}
-                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-4 px-6 rounded-2xl transition-all duration-200 font-semibold shadow-sm hover:shadow-md"
+                  disabled={saving}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-4 px-6 rounded-2xl transition-all duration-200 font-semibold shadow-sm hover:shadow-md disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={handleGuardar}
-                  disabled={!usuarioSeleccionado.name || !usuarioSeleccionado.email}
-                  className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-4 px-6 rounded-2xl transition-all duration-200 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm"
+                  disabled={saving || !usuarioSeleccionado.name || !usuarioSeleccionado.email}
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-4 px-6 rounded-2xl transition-all duration-200 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm flex items-center justify-center gap-2"
                 >
-                  {modoEdicion ? 'Actualizar Usuario' : 'Crear Usuario'}
+                  {saving ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      {modoEdicion ? 'Actualizando...' : 'Creando...'}
+                    </>
+                  ) : (
+                    modoEdicion ? 'Actualizar Usuario' : 'Crear Usuario'
+                  )}
                 </button>
               </div>
             </div>

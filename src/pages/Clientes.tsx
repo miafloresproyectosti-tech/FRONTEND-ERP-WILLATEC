@@ -9,109 +9,54 @@ import {
   Phone,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 
-// Tipos TypeScript
-interface Cliente {
-  id: number;
-  nombreEmpresa: string;
-  nombreCliente: string;
+import { getClientes, createCliente, updateCliente, deleteCliente, type Cliente} from "../services/cliente.service";
+import { useNotifications } from "../NotificationContext";
+
+// Formulario vacío tipado según la API
+interface ClienteForm {
+  nombre: string;
   ruc: string;
+  correo: string;
   telefono: string;
-  email: string;
-  estado: "Activo" | "Inactivo";
+  estado: 'activo' | 'inactivo';
+  tipo_cliente_id?: number;
+  moneda_id?: number;
 }
 
-const clientesIniciales: Cliente[] = [
-  {
-    id: 1,
-    nombreEmpresa: "Tech Solutions SAC",
-    nombreCliente: "Juan Pérez",
-    ruc: "20123456789",
-    telefono: "987654321",
-    email: "contacto@techsolutions.com",
-    estado: "Activo",
-  },
-  {
-    id: 2,
-    nombreEmpresa: "Comercial Lima SRL",
-    nombreCliente: "María González",
-    ruc: "20234567890",
-    telefono: "999888777",
-    email: "ventas@comerciallima.com",
-    estado: "Activo",
-  },
-  {
-    id: 3,
-    nombreEmpresa: "Importadora Perú",
-    nombreCliente: "Carlos Rodríguez",
-    ruc: "20345678901",
-    telefono: "955444222",
-    email: "info@importadoraperu.com",
-    estado: "Inactivo",
-  },
-  {
-    id: 4,
-    nombreEmpresa: "Digital Marketing SAC",
-    nombreCliente: "Ana López",
-    ruc: "20456789012",
-    telefono: "911223344",
-    email: "marketing@digital.com",
-    estado: "Activo",
-  },
-  {
-    id: 5,
-    nombreEmpresa: "Construcciones Modernas",
-    nombreCliente: "Pedro Sánchez",
-    ruc: "20567890123",
-    telefono: "966778899",
-    email: "info@construcciones.com",
-    estado: "Inactivo",
-  },
-  {
-    id: 6,
-    nombreEmpresa: "Software House Perú",
-    nombreCliente: "Laura Martínez",
-    ruc: "20678901234",
-    telefono: "944556677",
-    email: "contacto@softwarehouse.pe",
-    estado: "Activo",
-  },
-  {
-    id: 7,
-    nombreEmpresa: "Logística Express",
-    nombreCliente: "Roberto Díaz",
-    ruc: "20789012345",
-    telefono: "933445566",
-    email: "logistica@express.com",
-    estado: "Activo",
-  },
-  {
-    id: 8,
-    nombreEmpresa: "Consultoría Estratégica",
-    nombreCliente: "Sofia Ramírez",
-    ruc: "20890123456",
-    telefono: "922334455",
-    email: "consultoria@estrategica.com",
-    estado: "Inactivo",
-  },
-];
+const FORM_VACIO: ClienteForm = {
+  nombre: '',
+  ruc: '',
+  correo: '',
+  telefono: '',
+  estado: 'activo',
+  tipo_cliente_id: undefined,
+  moneda_id: undefined,
+};
+
+const ITEMS_PER_PAGE = 5;
 
 export default function Clientes() {
-  const [clientesData, setClientesData] = useState<Cliente[]>(clientesIniciales);
-  const [openModal, setOpenModal] = useState(false);
-  const [modoEdicion, setModoEdicion] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(5);
-  const [searchTerm, setSearchTerm] = useState("");
+  const { addNotification } = useNotifications();
+
+  const [clientesData, setClientesData] = useState<Cliente[]>([]);
+  const [loading, setLoading]               = useState(true);
+  const [saving, setSaving]                 = useState(false);
+  const [openModal, setOpenModal]           = useState(false);
+  const [modoEdicion, setModoEdicion]       = useState(false);
+  const [editandoId, setEditandoId]         = useState<number | null>(null);
+  const [form, setForm]                     = useState<ClienteForm>(FORM_VACIO);
+  const [searchTerm, setSearchTerm]         = useState('');
+  const [currentPage, setCurrentPage]       = useState(1);
 
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Partial<Cliente>>({
-    nombreEmpresa: "",
-    nombreCliente: "",
+    nombre: "",
     ruc: "",
-    email: "",
+    correo: "",
     telefono: "",
-    estado: "Activo",
+    estado: "activo",
   });
 
   const [clienteAEliminar, setClienteAEliminar] = useState<Cliente | null>(null);
@@ -119,18 +64,15 @@ export default function Clientes() {
   // Filtrar clientes por búsqueda
   const clientesFiltrados = clientesData.filter(
     (cliente) =>
-      cliente.nombreEmpresa.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cliente.nombreCliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cliente.ruc.includes(searchTerm) ||
-      cliente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cliente.telefono.includes(searchTerm)
+      cliente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      cliente.ruc.includes(searchTerm)
   );
 
   // PAGINACION
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const indexOfLastItem = currentPage * ITEMS_PER_PAGE;
+  const indexOfFirstItem = indexOfLastItem - ITEMS_PER_PAGE;
   const currentItems = clientesFiltrados.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(clientesFiltrados.length / itemsPerPage);
+  const totalPages = Math.ceil(clientesFiltrados.length / ITEMS_PER_PAGE);
   const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
 
   // Resetear página al buscar
@@ -140,12 +82,11 @@ export default function Clientes() {
 
   const handleNuevo = () => {
     setClienteSeleccionado({
-      nombreEmpresa: "",
-      nombreCliente: "",
+      nombre: "",
       ruc: "",
       telefono: "",
-      email: "",
-      estado: "Activo",
+      correo: "",
+      estado: "activo",
     });
     setModoEdicion(false);
     setOpenModal(true);
@@ -169,7 +110,7 @@ export default function Clientes() {
   };
 
   const handleGuardar = () => {
-    if (!clienteSeleccionado.nombreEmpresa || !clienteSeleccionado.nombreCliente || !clienteSeleccionado.email) return;
+    if (!clienteSeleccionado.nombre || !clienteSeleccionado.correo) return;
 
     if (modoEdicion && 'id' in clienteSeleccionado) {
       // Editar
@@ -183,12 +124,13 @@ export default function Clientes() {
       const nuevoId = Math.max(...clientesData.map(c => c.id)) + 1;
       const nuevoCliente: Cliente = {
         id: nuevoId,
-        nombreEmpresa: clienteSeleccionado.nombreEmpresa!,
-        nombreCliente: clienteSeleccionado.nombreCliente!,
+        nombre: clienteSeleccionado.nombre!,
         ruc: clienteSeleccionado.ruc || "",
         telefono: clienteSeleccionado.telefono || "",
-        email: clienteSeleccionado.email!,
-        estado: clienteSeleccionado.estado || "Activo",
+        correo: clienteSeleccionado.correo!,
+        estado: clienteSeleccionado.estado || "activo",
+        tipo_cliente_id: clienteSeleccionado.tipo_cliente_id || 1,
+        moneda_id: clienteSeleccionado.moneda_id || 1,
       };
       setClientesData([nuevoCliente, ...clientesData]);
     }
@@ -251,13 +193,10 @@ export default function Clientes() {
                 Empresa
               </th>
               <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                Cliente
-              </th>
-              <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                 RUC
               </th>
               <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                Email
+                Correo
               </th>
               <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                 Teléfono
@@ -281,14 +220,7 @@ export default function Clientes() {
                   <td className="px-6 py-5">
                     <div>
                       <h3 className="font-semibold text-gray-800">
-                        {cliente.nombreEmpresa}
-                      </h3>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5">
-                    <div>
-                      <h3 className="font-semibold text-gray-800">
-                        {cliente.nombreCliente}
+                        {cliente.nombre}
                       </h3>
                     </div>
                   </td>
@@ -301,7 +233,7 @@ export default function Clientes() {
                   <td className="px-6 py-5">
                     <div className="flex items-center gap-2 text-gray-600">
                       <Mail size={16} />
-                      <span className="truncate max-w-[200px]">{cliente.email}</span>
+                      <span className="truncate max-w-[200px]">{cliente.correo}</span>
                     </div>
                   </td>
 
@@ -317,7 +249,7 @@ export default function Clientes() {
                       className={`
                         px-3 py-1 rounded-full text-xs font-medium
                         ${
-                          cliente.estado === "Activo"
+                          cliente.estado === "activo"
                             ? "bg-green-100 text-green-700 border border-green-200"
                             : "bg-red-100 text-red-700 border border-red-200"
                         }
@@ -338,7 +270,7 @@ export default function Clientes() {
                       </button>
 
                       <button 
-                        onClick={() => handleEliminar(cliente)}
+                        onClick={() => setClienteAEliminar(cliente)}
                         className="w-11 h-11 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
                         title="Eliminar"
                       >
@@ -414,7 +346,7 @@ export default function Clientes() {
                 ¿Eliminar cliente?
               </h3>
               <p className="text-gray-600">
-                ¿Estás seguro de que deseas eliminar <strong>"{clienteAEliminar.nombreEmpresa}"</strong>?
+                ¿Estás seguro de que deseas eliminar <strong>"{clienteAEliminar.nombre}"</strong>?
               </p>
             </div>
             <div className="flex gap-3 pt-6 border-t border-gray-200">
@@ -469,25 +401,10 @@ export default function Clientes() {
                   </label>
                   <input
                     type="text"
-                    value={clienteSeleccionado.nombreEmpresa || ""}
-                    onChange={(e) => handleInputChange('nombreEmpresa', e.target.value)}
+                    value={clienteSeleccionado.nombre || ""}
+                    onChange={(e) => handleInputChange('nombre', e.target.value)}
                     className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
                     placeholder="Ej: Tech Solutions SAC"
-                  />
-                </div>
-
-                {/* NOMBRE CLIENTE */}
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                    <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                    Nombre del cliente
-                  </label>
-                  <input
-                    type="text"
-                    value={clienteSeleccionado.nombreCliente || ""}
-                    onChange={(e) => handleInputChange('nombreCliente', e.target.value)}
-                    className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
-                    placeholder="Ej: Juan Pérez"
                   />
                 </div>
               </div>
@@ -516,8 +433,8 @@ export default function Clientes() {
                   </label>
                   <input
                     type="email"
-                    value={clienteSeleccionado.email || ""}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    value={clienteSeleccionado.correo || ""}
+                    onChange={(e) => handleInputChange('correo', e.target.value)}
                     className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
                     placeholder="cliente@empresa.com"
                   />
@@ -549,7 +466,7 @@ export default function Clientes() {
                         type="radio"
                         name="estado"
                         value="Activo"
-                        checked={clienteSeleccionado.estado === "Activo"}
+                        checked={clienteSeleccionado.estado === "activo"}
                         onChange={() => handleInputChange('estado', "Activo")}
                         className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500 rounded-full"
                       />
@@ -562,7 +479,7 @@ export default function Clientes() {
                         type="radio"
                         name="estado"
                         value="Inactivo"
-                        checked={clienteSeleccionado.estado === "Inactivo"}
+                        checked={clienteSeleccionado.estado === "inactivo"}
                         onChange={() => handleInputChange('estado', "Inactivo")}
                         className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500 rounded-full"
                       />
@@ -584,7 +501,7 @@ export default function Clientes() {
                 </button>
                 <button
                   onClick={handleGuardar}
-                  disabled={!clienteSeleccionado.nombreEmpresa || !clienteSeleccionado.nombreCliente || !clienteSeleccionado.email}
+                  disabled={!clienteSeleccionado.nombre || !clienteSeleccionado.correo}
                   className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-4 px-6 rounded-2xl transition-all duration-200 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm"
                 >
                   {modoEdicion ? "Actualizar Cliente" : "Crear Cliente"}

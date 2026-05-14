@@ -19,7 +19,7 @@ const productosDisponibles = [
 
 const TASA_CAMBIO = 3.75;
 
-export function CotizacionDetail({ cotizacionId, mode = 'edit' }: { cotizacionId?: string; mode?: 'view' | 'edit' }) {
+export function CotizacionDetail({ cotizacionId, mode = 'new' }: { cotizacionId?: string; mode?: 'view' | 'edit' | 'new' }) {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -465,7 +465,7 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
           </button>
           <h1 className="text-2xl font-bold flex items-center gap-2">
              {estado === 'aprobada' && <CheckCircle className="text-green-500 w-6 h-6" />}
-             Cotización Detalle ({mode})
+             Cotización - {mode}
           </h1>
           {productoSeleccionadoInfo}
         </div>
