@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Mail, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
-import { useAuth } from '../AuthContext';
+import { useAuth } from '../../AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { loginRequest } from '../../services/auth.service';
 
 export default function LoginComponent() {
 
@@ -18,7 +19,7 @@ export default function LoginComponent() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -39,15 +40,11 @@ export default function LoginComponent() {
 
     setLoading(true);
 
-    // Simular login
-    setTimeout(() => {
-      let role = 'VENTAS';
-      if (email.includes('super')) role = 'SUPERADMIN';
-      else if (email.includes('admin')) role = 'ADMIN';
-      else if (email.includes('soporte')) role = 'SOPORTE';
-
+    try {
+      const { role } = await loginRequest(email, password);
       login(email, role);
       setLoading(false);
+
       const targetRoute =
         role === 'SUPERADMIN'
           ? '/'
@@ -58,9 +55,11 @@ export default function LoginComponent() {
           : role === 'SOPORTE'
           ? '/productos'
           : '/login';
-
       navigate(targetRoute);
-    }, 1500);
+    } catch (err:any) {
+      setError(err instanceof Error ? err.message : 'Error al iniciar sesión');
+      setLoading(false);
+    }
   };
 
   return (
@@ -69,7 +68,7 @@ export default function LoginComponent() {
       <div className="hidden lg:flex lg:w-1/2 items-center justify-center p-12">
         <div className="max-w-md text-white">
           <h1 className="text-5xl font-black mb-6 bg-gradient-to-r from-white to-blue-100 bg-clip-text">
-            ERP Empresarial
+            ERP WILLATEC S.A.C
           </h1>
           <p className="text-xl text-blue-100 mb-8 leading-relaxed">
             Sistema integral de gestión. Cotizaciones, clientes, inventario y reportes en tiempo real.
@@ -81,7 +80,7 @@ export default function LoginComponent() {
               </div>
               <div>
                 <h3 className="text-lg font-bold mb-1">Cotizaciones Rápidas</h3>
-                <p className="text-blue-100 text-sm">Plantillas en dólares y soles</p>
+                <p className="text-blue-100 text-sm">Atiende a los cliente de manera continua y rápida</p>
               </div>
             </div>
             <div className="flex items-start gap-3 p-4 bg-white/10 backdrop-blur-sm rounded-2xl">
@@ -89,8 +88,8 @@ export default function LoginComponent() {
                 <span className="text-lg font-bold">✓</span>
               </div>
               <div>
-                <h3 className="text-lg font-bold mb-1">Roles y Permisos</h3>
-                <p className="text-blue-100 text-sm">Control total de accesos</p>
+                <h3 className="text-lg font-bold mb-1">Gestión Empresarial</h3>
+                <p className="text-blue-100 text-sm">Control total de los procesos de la empresa</p>
               </div>
             </div>
           </div>
@@ -103,9 +102,9 @@ export default function LoginComponent() {
           <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/50">
             <div className="text-center mb-10">
               <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl">
-                <span className="text-white text-3xl font-black">ERP</span>
+                <span className="text-white text-3xl font-black">W</span>
               </div>
-              <h2 className="text-4xl font-black text-gray-900 mb-2">Bienvenido</h2>
+              <h2 className="text-4xl font-black text-gray-900 mb-2">Bienvenido(a)</h2>
               <p className="text-gray-600 text-lg">Inicia sesión para continuar</p>
             </div>
 
@@ -126,7 +125,7 @@ export default function LoginComponent() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full pl-12 pr-4 py-4 border-2 border-gray-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-lg placeholder-gray-400"
-                    placeholder="super@empresa.com"
+                    placeholder="xxxxxx@willatec.com"
                     disabled={loading}
                   />
                 </div>
@@ -171,7 +170,7 @@ export default function LoginComponent() {
               </button>
             </form>
 
-            {/* Usuarios Demo */}
+            {/* Usuarios Demo
             <div className="mt-10 pt-8 border-t-2 border-gray-100">
               <p className="text-sm font-semibold text-gray-700 text-center mb-6">👥 Usuarios de Prueba</p>
               <div className="grid grid-cols-2 gap-3 text-xs">
@@ -193,7 +192,7 @@ export default function LoginComponent() {
                 </div>
               </div>
               <p className="text-xs text-gray-500 text-center mt-4 font-mono">Contraseña: cualquiera (6+ chars)</p>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>

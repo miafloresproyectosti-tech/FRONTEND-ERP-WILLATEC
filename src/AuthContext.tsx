@@ -8,6 +8,7 @@ import {
 
 import type { UserRole } from "./types/roles";
 import { rolePermissions } from "./utils/permissions";
+import { logoutRequest } from "./services/auth.service";
 
 interface User {
   email: string;
@@ -18,7 +19,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   login: (email: string, role: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
   loading: boolean;
 }
@@ -48,9 +49,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // LOGOUT
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem("user");
+  const logout = async () => {
+    try {
+      await logoutRequest();
+    } catch (error) {
+      console.error("Error en logout:", error);
+    } finally {
+      setUser(null);
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+    }
   };
 
   // PERMISOS
