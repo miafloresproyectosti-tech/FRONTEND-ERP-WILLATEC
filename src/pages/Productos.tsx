@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Search,
   Plus,
@@ -7,49 +7,106 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 
-import { useProductos } from "../context/ProductosContext";
+import { getProductos, createProducto, updateProducto, deleteProducto, type Producto, type ProductoPayload } from "../services/producto.service";
+import { useNotifications } from "../NotificationContext";
+
+const categoriaOptions = [
+  { id: 1, label: "Tecnologia" },
+  { id: 2, label: "Hogar" },
+  { id: 3, label: "Deportes" },
+  { id: 4, label: "Salud" },
+  { id: 5, label: "Alimentos y Bebidas" },
+  { id: 6, label: "Estanterías/Racks" },
+  { id: 7, label: "Repuestos impresoras" },
+  { id: 8, label: "Otros" },
+];
+
+const unidadMedidaOptions = [
+  { value: "unidad", label: "Unidad" },
+  { value: "kg", label: "Kg" },
+  { value: "m", label: "Metro" },
+  { value: "l", label: "Litro" },
+];
 
 interface ProductoForm {
-  id: number | null;
+  id?: number;
   codigo: string;
   nombre: string;
-  categoria: string;
+  marca: string;
+  modelo: string;
+  categoria_id: number;
   stock: string;
-  precio: string;
-  garantia: string;
-  estado: string;
+  precio_referencial: string;
+  descripcion: string;
+  activo: "Activo" | "Inactivo";
+  unidad_medida: string;
 }
 
-export default function Productos() {
-  const {
-    productos,
-    agregarProducto,
-    actualizarProducto,
-    eliminarProducto,
-  } = useProductos();
+type ProductoUI = ProductoForm & {
+  id: number;
+  categoria_label: string;
+  precio_referencial: string;
+  activo: "Activo" | "Inactivo";
+};
 
+const mapProducto = (producto: Producto): ProductoUI => ({
+  id: producto.id,
+  codigo: producto.codigo,
+  nombre: producto.nombre,
+  marca: producto.marca ?? "",
+  modelo: producto.modelo ?? "",
+  categoria_id: producto.categoria_id,
+  categoria_label:
+    categoriaOptions.find((option) => option.id === producto.categoria_id)
+      ?.label ?? String(producto.categoria_id),
+  stock: String(producto.stock),
+  precio_referencial: String(producto.precio_referencial),
+  descripcion: producto.descripcion ?? "",
+  activo: producto.activo ? "Activo" : "Inactivo",
+  unidad_medida: producto.unidad_medida ?? "unidad",
+});
+
+export default function Productos() {
+  const { addNotification } = useNotifications();
+
+  const [productos, setProductos] = useState<ProductoUI[]>([]);
   const [openModal, setOpenModal] = useState(false);
   const [modoEdicion, setModoEdicion] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const nextCodigo = useMemo(() => {
+    const maxCodigo = productos.reduce((max, producto) => {
+      const value = parseInt(producto.codigo ?? "", 10);
+      return Number.isFinite(value) ? Math.max(max, value) : max;
+    }, 0);
+
+    return productos.length > 0 ? maxCodigo + 1 : 1;
+  }, [productos]);
+
+  const nextCodigoStr = String(nextCodigo).padStart(4, "0");
 
   const [productoSeleccionado, setProductoSeleccionado] =
     useState<ProductoForm>({
-      id: null,
       codigo: "",
       nombre: "",
-      categoria: "",
+      categoria_id: 1,
       stock: "",
-      precio: "",
-      garantia: "",
-      estado: "Stock",
+      precio_referencial: "",
+      descripcion: "",
+      activo: "Activo",
+      marca: "",
+      modelo: "",
+      unidad_medida: "unidad",
     });
 
   const [productoAEliminar, setProductoAEliminar] =
-    useState<any>(null);
+    useState<ProductoUI | null>(null);
 
   // FILTRAR PRODUCTOS
   const productosFiltrados = productos.filter(
@@ -60,7 +117,7 @@ export default function Productos() {
       producto.codigo
         .toLowerCase()
         .includes(searchTerm.toLowerCase()) ||
-      producto.categoria
+      producto.categoria_label
         .toLowerCase()
         .includes(searchTerm.toLowerCase())
   );
@@ -89,17 +146,43 @@ export default function Productos() {
     setCurrentPage(1);
   }, [searchTerm]);
 
+  useEffect(() => {
+    const fetchProductos = async () => {
+      try {
+        setLoading(true);
+        const productos = await getProductos();
+        setProductos(productos.map(mapProducto));
+      } catch (error) {
+        console.error(error);
+        addNotification({
+          title: "Error al cargar productos",
+          description: "No se pudo obtener la lista de productos.",
+          type: "warning",
+          icon: "MessageCircle",
+          route: "/productos",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProductos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // NUEVO
   const handleNuevo = () => {
     setProductoSeleccionado({
-      id: null,
-      codigo: "",
+      codigo: nextCodigoStr,
       nombre: "",
-      categoria: "",
+      categoria_id: 1,
       stock: "",
-      precio: "",
-      garantia: "",
-      estado: "Stock",
+      precio_referencial: "",
+      descripcion: "",
+      activo: "Activo",
+      marca: "",
+      modelo: "",
+      unidad_medida: "unidad",
     });
 
     setModoEdicion(false);
@@ -112,11 +195,14 @@ export default function Productos() {
       id: producto.id,
       codigo: producto.codigo || "",
       nombre: producto.nombre || "",
-      categoria: producto.categoria || "",
+      categoria_id: producto.categoria_id || 1,
       stock: String(producto.stock || ""),
-      precio: String(producto.precio || ""),
-      garantia: producto.garantia || "",
-      estado: producto.estado || "Stock",
+      precio_referencial: String(producto.precio_referencial || ""),
+      descripcion: producto.descripcion || "",
+      activo: producto.activo ? "Activo" : "Inactivo",
+      marca: producto.marca || "",
+      modelo: producto.modelo || "",
+      unidad_medida: producto.unidad_medida || "unidad",
     });
 
     setModoEdicion(true);
@@ -129,50 +215,113 @@ export default function Productos() {
   };
 
   // CONFIRMAR ELIMINAR
-  const confirmarEliminar = () => {
-    if (productoAEliminar) {
-      eliminarProducto(productoAEliminar.id);
+  const confirmarEliminar = async () => {
+    if (!productoAEliminar) return;
+
+    try {
+      setSaving(true);
+      await deleteProducto(productoAEliminar.id);
+      setProductos((prev) =>
+        prev.filter((p) => p.id !== productoAEliminar.id)
+      );
+      addNotification({
+        title: "Producto eliminado",
+        description: `El producto ${productoAEliminar.nombre} se eliminó correctamente.`,
+        type: "success",
+        icon: "CheckCircle",
+        route: "/productos",
+      });
+    } catch (error) {
+      console.error(error);
+      addNotification({
+        title: "Error al eliminar producto",
+        description: "No se pudo eliminar el producto.",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/productos",
+      });
+    } finally {
+      setSaving(false);
       setProductoAEliminar(null);
     }
   };
 
   // GUARDAR
-  const handleGuardar = () => {
-    const stockNum = parseInt(
-      productoSeleccionado.stock
-    );
+  const handleGuardar = async () => {
+    const stockNum = parseInt(productoSeleccionado.stock, 10);
+    const precioNum = parseFloat(productoSeleccionado.precio_referencial);
 
-    const precioNum = parseFloat(
-      productoSeleccionado.precio
-    );
-
-    const productoValido = {
-      ...productoSeleccionado,
+    const payload: ProductoPayload = {
+      nombre: productoSeleccionado.nombre,
+      marca: productoSeleccionado.marca,
+      modelo: productoSeleccionado.modelo,
+      codigo: productoSeleccionado.codigo,
+      descripcion: productoSeleccionado.descripcion || "",
+      precio_referencial: isNaN(precioNum) ? 0 : precioNum,
+      unidad_medida:
+        productoSeleccionado.unidad_medida || "unidad",
+      activo: productoSeleccionado.activo === "Activo",
       stock: isNaN(stockNum) ? 0 : stockNum,
-      precio: isNaN(precioNum) ? 0 : precioNum,
-      garantia:
-        productoSeleccionado.garantia || "Sin garantía",
+      categoria_id: productoSeleccionado.categoria_id,
     };
 
-    if (modoEdicion && productoSeleccionado.id) {
-      actualizarProducto(productoValido as any);
-    } else {
-      const nuevoProducto = {
-        ...productoValido,
-        id: Date.now(),
-      };
+    try {
+      setSaving(true);
 
-      agregarProducto(nuevoProducto as any);
+      if (modoEdicion && productoSeleccionado.id) {
+        const updated = await updateProducto(
+          productoSeleccionado.id,
+          payload
+        );
+        setProductos((prev) =>
+          prev.map((p) =>
+            p.id === updated.id
+              ? mapProducto(updated)
+              : p
+          )
+        );
+        addNotification({
+          title: "Producto actualizado",
+          description: `El producto ${updated.nombre} se actualizó correctamente.`,
+          type: "success",
+          icon: "CheckCircle",
+          route: "/productos",
+        });
+      } else {
+        const created = await createProducto(payload);
+        setProductos((prev) => [mapProducto(created), ...prev]);
+        addNotification({
+          title: "Producto creado",
+          description: `El producto ${created.nombre} se creó correctamente.`,
+          type: "success",
+          icon: "CheckCircle",
+          route: "/productos",
+        });
+      }
+
+      setOpenModal(false);
+    } catch (error) {
+      console.error(error);
+      addNotification({
+        title: modoEdicion
+          ? "Error al actualizar producto"
+          : "Error al crear producto",
+        description:
+          "Hubo un problema al guardar el producto.",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/productos",
+      });
+    } finally {
+      setSaving(false);
     }
-
-    setOpenModal(false);
   };
 
   // ESTADO
-  const handleEstadoChange = (estado: string) => {
+  const handleEstadoChange = (activo: string) => {
     setProductoSeleccionado({
       ...productoSeleccionado,
-      estado,
+      activo: 'Activo' === activo ? "Activo" : "Inactivo",
     });
   };
 
@@ -247,7 +396,7 @@ export default function Productos() {
               </th>
 
               <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                Garantía
+                Descripción
               </th>
 
               <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
@@ -261,7 +410,16 @@ export default function Productos() {
           </thead>
 
           <tbody>
-            {currentItems.length > 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                  <div className="flex items-center justify-center gap-3">
+                    <Loader2 className="animate-spin" size={18} />
+                    Cargando productos...
+                  </div>
+                </td>
+              </tr>
+            ) : currentItems.length > 0 ? (
               currentItems.map((producto: any) => (
                 <tr
                   key={producto.id}
@@ -278,7 +436,7 @@ export default function Productos() {
                   </td>
 
                   <td className="px-6 py-5 text-gray-600">
-                    {producto.categoria}
+                    {producto.categoria_label}
                   </td>
 
                   <td className="px-6 py-5 text-gray-600 font-medium">
@@ -286,26 +444,22 @@ export default function Productos() {
                   </td>
 
                   <td className="px-6 py-5 font-semibold text-gray-800">
-                    S/.{" "}
-                    {Number(
-                      producto.precio
-                    ).toLocaleString()}
+                    S/. {Number(producto.precio_referencial || "0").toLocaleString()}
                   </td>
 
                   <td className="px-6 py-5 text-gray-600">
-                    {producto.garantia ||
-                      "Sin garantía"}
+                    {producto.descripcion || "Sin descripción"}
                   </td>
 
                   <td className="px-6 py-5">
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        producto.estado === "Stock"
+                        producto.activo === "Activo"
                           ? "bg-green-100 text-green-700 border border-green-200"
                           : "bg-red-100 text-red-700 border border-red-200"
                       }`}
                     >
-                      {producto.estado}
+                      {producto.activo}
                     </span>
                   </td>
 
@@ -483,98 +637,178 @@ export default function Productos() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <input
-                value={productoSeleccionado.codigo}
-                onChange={(e) =>
-                  setProductoSeleccionado({
-                    ...productoSeleccionado,
-                    codigo:
-                      e.target.value.toUpperCase(),
-                  })
-                }
-                placeholder="Código"
-                className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-              />
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700">
+                  Código
+                </label>
+                <input
+                  value={productoSeleccionado.codigo}
+                  disabled
+                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed"
+                />
+              </div>
 
-              <input
-                value={productoSeleccionado.nombre}
-                onChange={(e) =>
-                  setProductoSeleccionado({
-                    ...productoSeleccionado,
-                    nombre: e.target.value,
-                  })
-                }
-                placeholder="Nombre"
-                className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-              />
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700">
+                  Nombre
+                </label>
+                <input
+                  value={productoSeleccionado.nombre}
+                  onChange={(e) =>
+                    setProductoSeleccionado({
+                      ...productoSeleccionado,
+                      nombre: e.target.value,
+                    })
+                  }
+                  placeholder="Nombre"
+                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
+                />
+              </div>
 
-              <input
-                value={productoSeleccionado.categoria}
-                onChange={(e) =>
-                  setProductoSeleccionado({
-                    ...productoSeleccionado,
-                    categoria: e.target.value,
-                  })
-                }
-                placeholder="Categoría"
-                className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-              />
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700">
+                  Categoría
+                </label>
+                <select
+                  value={productoSeleccionado.categoria_id}
+                  onChange={(e) =>
+                    setProductoSeleccionado({
+                      ...productoSeleccionado,
+                      categoria_id: Number(e.target.value),
+                    })
+                  }
+                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
+                >
+                  {categoriaOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-              <input
-                type="number"
-                value={productoSeleccionado.stock}
-                onChange={(e) =>
-                  setProductoSeleccionado({
-                    ...productoSeleccionado,
-                    stock: e.target.value,
-                  })
-                }
-                placeholder="Stock"
-                className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-              />
-
-              <input
-                type="number"
-                value={productoSeleccionado.precio}
-                onChange={(e) =>
-                  setProductoSeleccionado({
-                    ...productoSeleccionado,
-                    precio: e.target.value,
-                  })
-                }
-                placeholder="Precio"
-                className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-              />
-
-              <input
-                value={productoSeleccionado.garantia}
-                onChange={(e) =>
-                  setProductoSeleccionado({
-                    ...productoSeleccionado,
-                    garantia: e.target.value,
-                  })
-                }
-                placeholder="Garantía (Ej: 12 meses)"
-                className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-              />
-
-              <select
-                value={productoSeleccionado.estado}
-                onChange={(e) =>
-                  handleEstadoChange(
-                    e.target.value
-                  )
-                }
-                className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-              >
-                <option value="Stock">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700">
                   Stock
-                </option>
+                </label>
+                <input
+                  type="number"
+                  value={productoSeleccionado.stock}
+                  onChange={(e) =>
+                    setProductoSeleccionado({
+                      ...productoSeleccionado,
+                      stock: e.target.value,
+                    })
+                  }
+                  placeholder="Stock"
+                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
+                />
+              </div>
 
-                <option value="Sin Stock">
-                  Sin Stock
-                </option>
-              </select>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700">
+                  Precio referencial
+                </label>
+                <input
+                  type="number"
+                  value={productoSeleccionado.precio_referencial}
+                  onChange={(e) =>
+                    setProductoSeleccionado({
+                      ...productoSeleccionado,
+                      precio_referencial: e.target.value,
+                    })
+                  }
+                  placeholder="Precio"
+                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700">
+                  Marca
+                </label>
+                <input
+                  value={productoSeleccionado.marca}
+                  onChange={(e) =>
+                    setProductoSeleccionado({
+                      ...productoSeleccionado,
+                      marca: e.target.value,
+                    })
+                  }
+                  placeholder="Marca"
+                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700">
+                  Modelo
+                </label>
+                <input
+                  value={productoSeleccionado.modelo}
+                  onChange={(e) =>
+                    setProductoSeleccionado({
+                      ...productoSeleccionado,
+                      modelo: e.target.value,
+                    })
+                  }
+                  placeholder="Modelo"
+                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700">
+                  Unidad de medida
+                </label>
+                <select
+                  value={productoSeleccionado.unidad_medida}
+                  onChange={(e) =>
+                    setProductoSeleccionado({
+                      ...productoSeleccionado,
+                      unidad_medida: e.target.value,
+                    })
+                  }
+                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
+                >
+                  {unidadMedidaOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700">
+                  Descripción
+                </label>
+                <input
+                  value={productoSeleccionado.descripcion}
+                  onChange={(e) =>
+                    setProductoSeleccionado({
+                      ...productoSeleccionado,
+                      descripcion: e.target.value,
+                    })
+                  }
+                  placeholder="Descripción"
+                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700">
+                  Estado
+                </label>
+                <select
+                  value={productoSeleccionado.activo}
+                  onChange={(e) => handleEstadoChange(e.target.value)}
+                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
+                >
+                  <option value="Activo">Activo</option>
+                  <option value="Inactivo">Inactivo</option>
+                </select>
+              </div>
             </div>
 
             <div className="flex gap-3 mt-8">

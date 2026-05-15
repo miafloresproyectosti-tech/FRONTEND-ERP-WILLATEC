@@ -21,10 +21,10 @@ export interface ClientePayload {
   moneda_id?: number;
 }
 
-// Tu backend devuelve array directo (no paginado)
+// Tu backend devuelve respuesta paginada con array en data
 export const getClientes = async (): Promise<Cliente[]> => {
   const res = await api.get("/clientes");
-  return res.data;
+  return res.data?.data ?? [];
 };
 
 export const getCliente = async (id: number): Promise<Cliente> => {

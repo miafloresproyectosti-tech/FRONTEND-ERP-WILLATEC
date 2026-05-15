@@ -1,20 +1,29 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
-export type EstadoCotizacion =
-  | 'borrador'
-  | 'enviada'
-  | 'aprobada'
-  | 'rechazada'
-  | 'parcialmente_aprobada';
-
 export interface Cotizacion {
   id: string;
-  cliente: string;
+  numero: string;
   fecha: string;
-  validezOferta: number;
-  tipoPlantilla: 'DOLARES' | 'SOLES' | 'SOLES-EST';
-  tipoMoneda: 'USD' | 'PEN';
-  estado: EstadoCotizacion;
+  validez_dias: number;
+  modo_distribucion: 'POR_ITEM' | 'POR_CANTIDAD';
+  tipo_cambio: number;
+  titulo: string;
+  subtotal: number;
+  igv: number;
+  total: number;
+  ganancia?: number;
+  total_gasto?: number;
+  cliente_nombre: string;
+  cliente_ruc: string;
+  cliente_contacto: string;
+  cliente_telefono: string;
+  cliente_correo: string;
+  cliente_id: number;
+  plantilla_id: number;
+  estado_cotizacion_id: number;
+  plataforma_id: number;
+  user_id: number;
+  moneda_id: number;
   items: ItemCotizacion[];
   costosAdicionales: CostosAdicionales;
 
@@ -27,14 +36,26 @@ export interface Cotizacion {
 
 export interface ItemCotizacion {
   id: number;
-  producto: string;
+  descripcion: string;
   cantidad: number;
-  cantidadAprobada?: number;
-  estadoItem?: 'pendiente' | 'aprobado' | 'rechazado';
-  precioVenta: number;
-  costoCompra: number;
-  costoMoneda: 'USD' | 'PEN';
+  codigo: string;
+  unidad_medida: string;
+  costo_unitario: number;
+  precio_venta: number;
   margen: number;
+  marca?: string;
+  costo_base: number;
+  costo_total: number;
+  ganancia: number;
+  subtotal: number;
+  imagen?: string;
+  orden: number;
+  cotizacion_id: string;
+  producto_id?: number;
+  estado_cotizacion_id: number;
+  garantia_meses?: number;
+  disponibilidad_tipo: 'stock' | 'importacion';
+  disponibilidad_dias: number;
   tipo: 'catalogo' | 'externo';
 }
 
@@ -84,7 +105,7 @@ export function CotizacionesProvider({ children }: { children: ReactNode }) {
     const newCot: Cotizacion = {
       ...c,
       id: Date.now().toString(),
-      estado: 'borrador',
+      estado_cotizacion_id: 1,
     };
     setCotizaciones((prev) => [newCot, ...prev]);
   };
@@ -106,14 +127,14 @@ export function CotizacionesProvider({ children }: { children: ReactNode }) {
   // 🔥 ENVIAR A APROBACIÓN
   const enviarCotizacion = (id: string) => {
     updateCotizacion(id, {
-      estado: 'enviada',
+      estado_cotizacion_id: 2,
     });
   };
 
   // 🔥 APROBAR
   const aprobarCotizacion = (id: string, user: string) => {
     updateCotizacion(id, {
-      estado: 'aprobada',
+      estado_cotizacion_id: 3,
       aprobadoPor: user,
       fechaAprobacion: new Date().toISOString(),
     });
@@ -122,7 +143,7 @@ export function CotizacionesProvider({ children }: { children: ReactNode }) {
   // 🔥 RECHAZAR
   const rechazarCotizacion = (id: string, user: string, motivo: string) => {
     updateCotizacion(id, {
-      estado: 'rechazada',
+      estado_cotizacion_id: 4,
       rechazadoPor: user,
       motivoRechazo: motivo,
     });

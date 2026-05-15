@@ -32,11 +32,24 @@ const FORM_VACIO: ClienteForm = {
   correo: '',
   telefono: '',
   estado: 'activo',
-  tipo_cliente_id: undefined,
-  moneda_id: undefined,
+  tipo_cliente_id: 1,
+  moneda_id: 1,
 };
 
 const ITEMS_PER_PAGE = 5;
+
+const tipoClienteOptions = [
+  { id: 1, label: "Prospecto" },
+  { id: 2, label: "Activo" },
+  { id: 3, label: "Suspendido" },
+  { id: 4, label: "Inactivo" },
+];
+
+const monedaOptions = [
+  { id: 1, label: "PEN" },
+  { id: 2, label: "USD" },
+  { id: 3, label: "EUR" },
+];
 
 export default function Clientes() {
   const { addNotification } = useNotifications();
@@ -57,6 +70,8 @@ export default function Clientes() {
     correo: "",
     telefono: "",
     estado: "activo",
+    tipo_cliente_id: 1,
+    moneda_id: 1,
   });
 
   const [clienteAEliminar, setClienteAEliminar] = useState<Cliente | null>(null);
@@ -75,18 +90,37 @@ export default function Clientes() {
   const totalPages = Math.ceil(clientesFiltrados.length / ITEMS_PER_PAGE);
   const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
 
-  // Resetear página al buscar
   useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm]);
+    const fetchClientes = async () => {
+      try {
+        setLoading(true);
+        const clientes = await getClientes();
+        setClientesData(clientes);
+      } catch (error) {
+        console.error(error);
+        addNotification({
+          title: "Error al cargar clientes",
+          description: "No se pudo obtener la lista de clientes.",
+          type: "warning",
+          icon: "MessageCircle",
+          route: "/clientes",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchClientes();
+    // El efecto debe ejecutarse solo una vez al montar el componente.
+    // `addNotification` proviene del contexto y puede cambiar de referencia.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleNuevo = () => {
     setClienteSeleccionado({
-      nombre: "",
-      ruc: "",
-      telefono: "",
-      correo: "",
-      estado: "activo",
+      ...FORM_VACIO,
+      tipo_cliente_id: 1,
+      moneda_id: 1,
     });
     setModoEdicion(false);
     setOpenModal(true);
@@ -102,46 +136,93 @@ export default function Clientes() {
     setClienteAEliminar(cliente);
   };
 
-  const confirmarEliminar = () => {
-    if (clienteAEliminar) {
-      setClientesData(clientesData.filter(c => c.id !== clienteAEliminar.id));
+  const confirmarEliminar = async () => {
+    if (!clienteAEliminar) return;
+
+    try {
+      setSaving(true);
+      await deleteCliente(clienteAEliminar.id);
+      setClientesData((prev) => prev.filter((c) => c.id !== clienteAEliminar.id));
+      addNotification({
+        title: "Cliente eliminado",
+        description: `Cliente ${clienteAEliminar.nombre} eliminado correctamente.`,
+        type: "success",
+        icon: "CheckCircle",
+        route: "/clientes",
+      });
+    } catch (error) {
+      console.error(error);
+      addNotification({
+        title: "Error al eliminar cliente",
+        description: "No se pudo eliminar el cliente. Intenta de nuevo.",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/clientes",
+      });
+    } finally {
+      setSaving(false);
       setClienteAEliminar(null);
     }
   };
 
-  const handleGuardar = () => {
+  const handleGuardar = async () => {
     if (!clienteSeleccionado.nombre || !clienteSeleccionado.correo) return;
 
-    if (modoEdicion && 'id' in clienteSeleccionado) {
-      // Editar
-      setClientesData(
-        clientesData.map((c) =>
-          c.id === clienteSeleccionado.id ? clienteSeleccionado as Cliente : c
-        )
-      );
-    } else {
-      // Nuevo
-      const nuevoId = Math.max(...clientesData.map(c => c.id)) + 1;
-      const nuevoCliente: Cliente = {
-        id: nuevoId,
-        nombre: clienteSeleccionado.nombre!,
-        ruc: clienteSeleccionado.ruc || "",
-        telefono: clienteSeleccionado.telefono || "",
-        correo: clienteSeleccionado.correo!,
-        estado: clienteSeleccionado.estado || "activo",
-        tipo_cliente_id: clienteSeleccionado.tipo_cliente_id || 1,
-        moneda_id: clienteSeleccionado.moneda_id || 1,
-      };
-      setClientesData([nuevoCliente, ...clientesData]);
+    const payload = {
+      nombre: clienteSeleccionado.nombre,
+      ruc: clienteSeleccionado.ruc || "",
+      correo: clienteSeleccionado.correo || "",
+      telefono: clienteSeleccionado.telefono || "",
+      estado: clienteSeleccionado.estado || "activo",
+      tipo_cliente_id: clienteSeleccionado.tipo_cliente_id || 1,
+      moneda_id: clienteSeleccionado.moneda_id || 1,
+    };
+
+    try {
+      setSaving(true);
+
+      if (modoEdicion && clienteSeleccionado.id) {
+        const updated = await updateCliente(clienteSeleccionado.id, payload);
+        setClientesData((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+        addNotification({
+          title: "Cliente actualizado",
+          description: `El cliente ${updated.nombre} se actualizó correctamente.`,
+          type: "success",
+          icon: "CheckCircle",
+          route: "/clientes",
+        });
+      } else {
+        const created = await createCliente(payload);
+        setClientesData((prev) => [created, ...prev]);
+        addNotification({
+          title: "Cliente creado",
+          description: `El cliente ${created.nombre} se creó correctamente.`,
+          type: "success",
+          icon: "CheckCircle",
+          route: "/clientes",
+        });
+      }
+
+      setOpenModal(false);
+    } catch (error) {
+      console.error(error);
+      addNotification({
+        title: modoEdicion ? "Error al actualizar cliente" : "Error al crear cliente",
+        description: "Hubo un problema al guardar los datos. Intenta nuevamente.",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/clientes",
+      });
+    } finally {
+      setSaving(false);
     }
-    setOpenModal(false);
   };
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
   };
 
-  const handleInputChange = (field: keyof Partial<Cliente>, value: string) => {
+  const handleInputChange = (field: keyof Partial<Cliente>, value: string | number) => {
     setClienteSeleccionado(prev => ({
       ...prev,
       [field]: value
@@ -204,6 +285,12 @@ export default function Clientes() {
               <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                 Estado
               </th>
+              <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                Tipo cliente
+              </th>
+              <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                Moneda
+              </th>
               <th className="text-center px-6 py-4 text-sm font-semibold text-gray-600">
                 Acciones
               </th>
@@ -211,7 +298,16 @@ export default function Clientes() {
           </thead>
 
           <tbody>
-            {currentItems.length > 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                  <div className="flex items-center justify-center gap-3">
+                    <Loader2 className="animate-spin" size={18} />
+                    Cargando clientes...
+                  </div>
+                </td>
+              </tr>
+            ) : currentItems.length > 0 ? (
               currentItems.map((cliente) => (
                 <tr
                   key={cliente.id}
@@ -259,6 +355,14 @@ export default function Clientes() {
                     </span>
                   </td>
 
+                  <td className="px-6 py-5 text-gray-600">
+                    {tipoClienteOptions.find((tipo) => tipo.id === cliente.tipo_cliente_id)?.label ?? "-"}
+                  </td>
+
+                  <td className="px-6 py-5 text-gray-600">
+                    {monedaOptions.find((moneda) => moneda.id === cliente.moneda_id)?.label ?? "-"}
+                  </td>
+
                   <td className="px-6 py-5">
                     <div className="flex items-center justify-center gap-2">
                       <button 
@@ -282,7 +386,7 @@ export default function Clientes() {
               ))
             ) : (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
                   {searchTerm ? "No se encontraron clientes" : "No hay clientes"}
                 </td>
               </tr>
@@ -465,9 +569,9 @@ export default function Clientes() {
                       <input
                         type="radio"
                         name="estado"
-                        value="Activo"
+                        value="activo"
                         checked={clienteSeleccionado.estado === "activo"}
-                        onChange={() => handleInputChange('estado', "Activo")}
+                        onChange={() => handleInputChange('estado', "activo")}
                         className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500 rounded-full"
                       />
                       <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
@@ -478,9 +582,9 @@ export default function Clientes() {
                       <input
                         type="radio"
                         name="estado"
-                        value="Inactivo"
+                        value="inactivo"
                         checked={clienteSeleccionado.estado === "inactivo"}
-                        onChange={() => handleInputChange('estado', "Inactivo")}
+                        onChange={() => handleInputChange('estado', "inactivo")}
                         className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500 rounded-full"
                       />
                       <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
@@ -488,6 +592,38 @@ export default function Clientes() {
                       </span>
                     </label>
                   </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">Tipo de cliente</label>
+                  <select
+                    value={clienteSeleccionado.tipo_cliente_id ?? 1}
+                    onChange={(e) => handleInputChange('tipo_cliente_id', Number(e.target.value))}
+                    className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
+                  >
+                    {tipoClienteOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">Moneda</label>
+                  <select
+                    value={clienteSeleccionado.moneda_id ?? 1}
+                    onChange={(e) => handleInputChange('moneda_id', Number(e.target.value))}
+                    className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
+                  >
+                    {monedaOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

@@ -1,132 +1,332 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useNotifications } from '../NotificationContext';
-import { useCotizaciones, type ItemCotizacion, type CostosAdicionales } from '../CotizacionesContext';
 import { useAuth } from '../AuthContext';
-
+import { getClientes, type Cliente } from '../services/cliente.service';
 import {
-  ArrowLeft, Plus, Trash2, Save, CheckCircle, FileSpreadsheet, FileText, X, 
-  ArrowLeftRight, DollarSign, Package, Truck,
+  getCotizacion,
+  createCotizacion,
+  updateCotizacion,
+  addItem,
+  updateItem,
+  deleteItem,
+  addCosto,
+  deleteCosto,
+  recalcularCotizacion,
+  exportarCotizacionPdf,
+  descargarPdfCotizacion,
+  type Cotizacion,
+  type CotizacionItem,
+  type CotizacionCostosAdicional,
+} from '../services/cotizacion.service';
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  Save,
+  CheckCircle,
+  FileSpreadsheet,
+  FileText,
+  X,
+  Loader2,
+  DollarSign,
+  Package,
+  ArrowLeftRight,
+  Truck,
 } from 'lucide-react';
 
-const productosDisponibles = [
-  { id: 1, nombre: 'Laptop HP EliteBook 840', costo: 2800, precio: 3500, disponibilidad: 'stock' as const },
-  { id: 2, nombre: 'Monitor Dell 27" 4K', costo: 450, precio: 680, disponibilidad: 'importacion' as const },
-  { id: 3, nombre: 'Teclado Logitech MX Keys', costo: 120, precio: 180, disponibilidad: 'stock' as const },
-  { id: 4, nombre: 'Mouse Logitech MX Master', costo: 80, precio: 125, disponibilidad: 'importacion' as const },
-  { id: 5, nombre: 'Impresora HP LaserJet', costo: 350, precio: 520, disponibilidad: 'stock' as const },
-];
-
-const TASA_CAMBIO = 3.75;
-
-export function CotizacionDetail({ cotizacionId, mode = 'new' }: { cotizacionId?: string; mode?: 'view' | 'edit' | 'new' }) {
+export function CotizacionDetail() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { addNotification } = useNotifications();
-  const { getCotizacion, addCotizacion, updateCotizacion } = useCotizaciones();
 
-  const currentCotizacionId = cotizacionId || id || 'new';
+  const isEditing = id !== 'new' && id !== undefined;
+  const currentCotizacionId = id ? parseInt(id) : null;
 
-  // 🆕 TIPOS EXTENDIDOS CON GARANTÍA Y DISPONIBILIDAD
-  type ItemConAprobacion = ItemCotizacion & {
-    cantidadAprobada: number;
-    estadoItem: 'pendiente' | 'aprobado' | 'rechazado';
-    garantia: string;
-    disponibilidad: 'stock' | 'importacion';
-    diasEntrega: number;
-    notaEntrega: string;
-  };
+  // ====== STATE MANAGEMENT ======
+  const [loading, setLoading] = useState(isEditing);
+  const [saving, setSaving] = useState(false);
 
-  type ProductoCatalogo = {
-    id: number;
-    nombre: string;
-    costo: number;
-    precio: number;
-    disponibilidad: 'stock' | 'importacion';
-  };
+  // Cotización header
+  const [cotizacion, setCotizacion] = useState<Cotizacion | null>(null);
+  const [clienteId, setClienteId] = useState<number | null>(null);
+  const [plantillaId, setPlantillaId] = useState<number | null>(1);
+  const [monedaId, setMonedaId] = useState<string>('1'); // 1=PEN, 2=USD
+  const [modoDistribucion, setModoDistribucion] = useState<'POR_ITEM' | 'POR_CANTIDAD'>('POR_ITEM');
+  const [titulo, setTitulo] = useState('');
+  const simboloMoneda = cotizacion?.cliente?.moneda_id === 2 ? '$' : 'S/';
 
-  const [cliente, setCliente] = useState('Empresa Tech Solutions SAC');
-  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
-  const [validezOferta, setValidezOferta] = useState(30);
-  const [tipoPlantilla, setTipoPlantilla] = useState<'DOLARES' | 'SOLES' | 'SOLES-EST'>('SOLES');
-  const [tipoMoneda, setTipoMoneda] = useState<'USD' | 'PEN'>('PEN');
-  const [estado, setEstado] = useState<'borrador' | 'enviada' | 'aprobada' | 'parcialmente_aprobada'>('borrador');
+  // Listas
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [items, setItems] = useState<CotizacionItem[]>([]);
+  const [costos, setCostos] = useState<CotizacionCostosAdicional[]>([]);
 
-  // 🆕 ITEMS CON GARANTÍA Y DISPONIBILIDAD
-  const [items, setItems] = useState<ItemConAprobacion[]>([
-    {
-      id: 1,
-      producto: 'Laptop HP EliteBook 840',
-      cantidad: 5,
-      cantidadAprobada: 0,
-      estadoItem: 'pendiente',
-      precioVenta: 3500,
-      costoCompra: 2800,
-      costoMoneda: 'PEN',
-      margen: 20,
-      tipo: 'catalogo',
-      garantia: '12 meses',
-      disponibilidad: 'stock',
-      diasEntrega: 4,
-      notaEntrega: 'Puesta la Orden de Compra',
-    },
-    {
-      id: 2,
-      producto: 'Monitor Dell 27" 4K',
-      cantidad: 10,
-      cantidadAprobada: 0,
-      estadoItem: 'pendiente',
-      precioVenta: 680,
-      costoCompra: 450,
-      costoMoneda: 'PEN',
-      margen: 33.8,
-      tipo: 'catalogo',
-      garantia: '24 meses',
-      disponibilidad: 'importacion',
-      diasEntrega: 25,
-      notaEntrega: 'Puesta la Orden de Compra',
-    },
-  ]);
-
-  const [costosAdicionales, setCostosAdicionales] = useState<CostosAdicionales>({
-    viaje: 0, viatico: 0, movilidad: 0, estancia: 0, envioFlete: 0, personalExterno: 0,
-  });
-
-  // ✅ TODOS LOS MODALES DECLARADOS
+  // UI State
+  const [showItemForm, setShowItemForm] = useState(false);
+  const [showCostoForm, setShowCostoForm] = useState(false);
+  const [editingItem, setEditingItem] = useState<CotizacionItem | null>(null);
+  const [showItemFormModal, setShowItemFormModal] = useState(false);
   const [showItemTypeModal, setShowItemTypeModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
-  const [showItemFormModal, setShowItemFormModal] = useState(false);
-  const [showCostosModal, setShowCostosModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showCostosModal, setShowCostosModal] = useState(false);
 
-  const [selectedItemType, setSelectedItemType] = useState<'catalogo' | 'externo'>('externo');
-  const [selectedProduct, setSelectedProduct] = useState<ProductoCatalogo | null>(null);
-  
-  // 🆕 ITEMFORM CON GARANTÍA Y DISPONIBILIDAD
+  const [estado, setEstado] = useState('');
+
+  useEffect(() => {
+    if (!cotizacion) return;
+
+    const nuevoEstado =
+      cotizacion?.estado_cotizacion_id === 1
+      ? 'borrador'
+      : cotizacion?.estado_cotizacion_id === 2
+      ? 'enviada'
+      : cotizacion?.estado_cotizacion_id === 3
+      ? 'parcialmente_aprobada'
+      : cotizacion?.estado_cotizacion_id === 4
+      ? 'aprobada'
+      : cotizacion?.estado_cotizacion_id === 5
+      ? 'oc_registrada'
+      : '';
+    setEstado(nuevoEstado);
+  }, [cotizacion]);
+
+  // Formularios
   const [itemForm, setItemForm] = useState({
-    producto: '',
+    descripcion: '',
     cantidad: 1,
-    precioVenta: 0,
-    costoCompra: 0,
-    costoMoneda: 'PEN' as 'USD' | 'PEN',
-    margen: 0,
-    garantia: '12 meses',
-    disponibilidad: 'stock' as 'stock' | 'importacion',
-    diasEntrega: 4,
-    notaEntrega: '',
+    costo_base: 0,
+    precio_venta: 0,
+    costo_unitario: 0,
+    costo_total: 0,
+    ganancia: 0,
+    subtotal: 0,
+    imagen: '',
+    orden: 1,
+    cotizacion_id: currentCotizacionId || 0,
+    producto_id: undefined,
+    estado_cotizacion_item_id: undefined,
+    tipo: 'personalizado' as 'catalogo' | 'personalizado',
+    margen: 20,
+    marca: '',
+    codigo: '',
+    unidad_medida: 'UND',
+    garantia_meses: 12,
+    disponibilidad_tipo: 'stock' as 'stock' | 'importacion',
+    disponibilidad_dias: 4,
   });
 
-  // 🆕 FUNCIÓN PARA OBTENER TEXTO DE DISPONIBILIDAD
-  const obtenerTextoDisponibilidad = (item: ItemConAprobacion) => {
-    const textoBase = item.disponibilidad === 'stock' 
-      ? `Stock disponible. Entrega ${item.diasEntrega} días calendarios. ${item.notaEntrega}.`
-      : `Importación y entrega. Entrega ${item.diasEntrega} días calendarios. ${item.notaEntrega}.`;
+  const [costoForm, setCostoForm] = useState({
+    tipo: 'flete',
+    monto: 0,
+  });
 
-    return `${textoBase}
+  // ====== EFECTOS ======
 
-* El precio del producto sujeto al stock y nuevo ingreso de importación de la marca. 
-Esto aplica después de los ${validezOferta} días calendarios de validez de esta cotización.`;
+  // Cargar clientes
+  useEffect(() => {
+    const fetchClientes = async () => {
+      try {
+        const data = await getClientes();
+        setClientes(data);
+        if (data.length > 0 && !clienteId) {
+          setClienteId(data[0].id);
+        }
+      } catch (error) {
+        addNotification({
+          message: 'Error al cargar clientes',
+          type: 'error',
+          duration: 4000,
+        } as any);
+      }
+    };
+    fetchClientes();
+  }, []);
+
+  // Cargar cotización si es edición
+  useEffect(() => {
+    if (isEditing && currentCotizacionId) {
+      loadCotizacion();
+    }
+  }, [isEditing, currentCotizacionId]);
+
+  // ====== FUNCIONES API ======
+
+  const loadCotizacion = async () => {
+    if (!currentCotizacionId) return;
+    try {
+      setLoading(true);
+      const data = await getCotizacion(currentCotizacionId);
+      setCotizacion(data);
+      setClienteId(data.cliente_id);
+      setPlantillaId(data.plantilla_id);
+      setMonedaId(data.cliente?.moneda_id?.toString() || '1');
+      setModoDistribucion(data.modo_distribucion);
+      setTitulo(data.titulo);
+      setItems(data.items || []);
+      setCostos(data.costosAdicionales || []);
+    } catch (error) {
+      addNotification({
+        message: 'Error al cargar cotización',
+        type: 'error',
+        duration: 4000,
+      } as any);
+      navigate('/cotizaciones');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveCotizacion = async () => {
+    if (!clienteId || !plantillaId) {
+      addNotification({
+        message: 'Seleccione cliente y plantilla',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (isEditing && currentCotizacionId && cotizacion) {
+        // Actualizar
+        await updateCotizacion(currentCotizacionId, {
+          cliente_id: clienteId,
+          plantilla_id: plantillaId,
+          moneda_id: monedaId,
+          modo_distribucion: modoDistribucion,
+        });
+        addNotification({
+          message: 'Cotización actualizada',
+          type: 'success',
+          duration: 4000,
+        } as any);
+      } else {
+        // Crear
+        const newCotizacion = await createCotizacion({
+          cliente_id: clienteId,
+          plantilla_id: plantillaId,
+          titulo: titulo || `Cotización ${new Date().toLocaleDateString()}`,
+          modo_distribucion: modoDistribucion,
+          moneda_id: Number(monedaId),
+        });
+        addNotification({
+          message: 'Cotización creada',
+          type: 'success',
+          duration: 4000,
+        } as any);
+        setCotizacion(newCotizacion);
+      }
+      navigate(`/cotizaciones/${currentCotizacionId || cotizacion?.id}`);
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al guardar',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddItem = async () => {
+    if (!cotizacion || !itemForm.descripcion || itemForm.cantidad <= 0) {
+      addNotification({
+        message: 'Completa los datos del item',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
+
+    try {
+      await addItem(cotizacion.id, {
+        descripcion: itemForm.descripcion,
+        cantidad: itemForm.cantidad,
+        costo_base: itemForm.costo_base,
+        margen: itemForm.margen,
+        marca: itemForm.marca,
+        codigo: itemForm.codigo,
+        unidad_medida: itemForm.unidad_medida,
+        disponibilidad_tipo: itemForm.disponibilidad_tipo,
+        disponibilidad_dias: itemForm.disponibilidad_dias,
+        garantia_meses: itemForm.garantia_meses,}
+      );
+      addNotification({
+        message: 'Item agregado',
+        type: 'success',
+        duration: 4000,
+      } as any);
+
+      setShowItemForm(false);
+
+      resetItemForm();
+
+      await refreshCotizacion();
+
+      await loadCotizacion(); // Recargar
+
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al agregar item',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    }
+  };
+
+  const handleUpdateItem = async (itemId: number) => {
+    if (!cotizacion) return;
+    try {
+      await updateItem(itemId, itemForm as any);
+      addNotification({
+        message: 'Item actualizado',
+        type: 'success',
+        duration: 4000,
+      } as any);
+      setShowItemForm(false);
+      setEditingItem(null);
+      resetItemForm();
+      await loadCotizacion();
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al actualizar item',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    }
+  };
+
+  const handleDeleteItem = async (itemId: number) => {
+    if (!cotizacion) return;
+    if (!confirm('¿Eliminar item?')) return;
+
+    try {
+      await deleteItem(itemId);
+      addNotification({
+        message: 'Item eliminado',
+        type: 'success',
+        duration: 4000,
+      } as any);
+      await loadCotizacion();
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al eliminar item',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    }
+  };
+
+  // 🆕 FUNCIÓN PARA ICONO DE DISPONIBILIDAD
+  const IconoDisponibilidad = ({ tipo }: { tipo: 'stock' | 'importacion' }) => {
+    return tipo === 'stock' ? (
+      <Package className="w-4 h-4 text-green-600" />
+    ) : (
+      <Truck className="w-4 h-4 text-orange-600" />
+    );
   };
 
   // 🆕 CONTROL DE EXPORTACIÓN
@@ -142,318 +342,242 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
     return true;
   };
 
-  // ✅ USO DE addNotification CORREGIDO (message en lugar de text)
-  const mostrarNotificacion = (texto: string, tipo: 'success' | 'error' | 'warning' = 'success') => {
-    addNotification({ 
-      message: texto, // Corregido para tu contexto
-      type: tipo,
-      duration: 4000 
-    } as any);
-  };
-
-  // useEffect con carga segura
-  useEffect(() => {
-    if (currentCotizacionId !== 'new') {
-      const existingCotizacion = getCotizacion(currentCotizacionId);
-      if (existingCotizacion) {
-        setCliente(existingCotizacion.cliente);
-        setFecha(existingCotizacion.fecha);
-        setValidezOferta(existingCotizacion.validezOferta);
-        setTipoPlantilla(existingCotizacion.tipoPlantilla);
-        setTipoMoneda(existingCotizacion.tipoMoneda);
-        setEstado(existingCotizacion.estado as any || 'borrador');
-
-        const itemsConAprobacion: ItemConAprobacion[] = (existingCotizacion.items || []).map((item: ItemCotizacion) => ({
-          ...item,
-          cantidadAprobada: (item as any).cantidadAprobada || 0,
-          estadoItem: (item as any).estadoItem || 'pendiente',
-          garantia: (item as any).garantia || '12 meses',
-          disponibilidad: (item as any).disponibilidad || 'stock',
-          diasEntrega: (item as any).diasEntrega || 4,
-          notaEntrega: (item as any).notaEntrega || 'Puesta la Orden de Compra',
-        }));
-        setItems(itemsConAprobacion);
-        setCostosAdicionales(existingCotizacion.costosAdicionales);
-        mostrarNotificacion(`Cotización ${currentCotizacionId} cargada correctamente`);
-      } else {
-        mostrarNotificacion('Cotización no encontrada', 'error');
-        navigate('/cotizaciones');
-      }
-    }
-  }, [currentCotizacionId, getCotizacion, navigate]);
-
-  // 🆕 FUNCIONES DE APROBACIÓN PARCIAL
-  const actualizarEstadoItem = (itemId: number, nuevoEstado: 'pendiente' | 'aprobado' | 'rechazado', cantidadAprobada: number = 0) => {
-    setItems(items.map(item => {
-      if (item.id === itemId) {
-        if (nuevoEstado === 'aprobado') {
-          return { ...item, estadoItem: nuevoEstado, cantidadAprobada: Math.min(cantidadAprobada || item.cantidad, item.cantidad) };
-        } else if (nuevoEstado === 'rechazado') {
-          return { ...item, estadoItem: nuevoEstado, cantidadAprobada: 0 };
-        } else {
-          return { ...item, estadoItem: nuevoEstado, cantidadAprobada: 0 };
-        }
-      }
-      return item;
-    }));
-  };
-
-  const actualizarCantidadAprobada = (itemId: number, cantidad: number) => {
-    setItems(items.map(item => 
-      item.id === itemId 
-        ? { ...item, cantidadAprobada: Math.max(0, Math.min(cantidad, item.cantidad)) }
-        : item
-    ));
-  };
-
-  const todosItemsAprobados = items.every(item => item.estadoItem === 'aprobado' && item.cantidadAprobada === item.cantidad);
-
-  // Funciones existentes
-  const convertirMoneda = (monto: number, desde: 'USD' | 'PEN', hacia: 'USD' | 'PEN') => {
-    if (desde === hacia) return monto;
-    return desde === 'USD' ? monto * TASA_CAMBIO : monto / TASA_CAMBIO;
-  };
-
-  const calcularTotalCostosAdicionales = () => Object.values(costosAdicionales).reduce((sum, val) => sum + val, 0);
-  const calcularCostoAdicionalPorItem = () => items.length > 0 ? calcularTotalCostosAdicionales() / items.length : 0;
-
-  const obtenerCostoFinalItem = (item: ItemConAprobacion) => {
-    let costoBase = item.costoCompra;
-    if (tipoPlantilla === 'DOLARES' && item.costoMoneda === 'PEN') costoBase = convertirMoneda(costoBase, 'PEN', 'USD');
-    else if (tipoPlantilla !== 'DOLARES' && item.costoMoneda === 'USD') costoBase = convertirMoneda(costoBase, 'USD', 'PEN');
-    return costoBase + calcularCostoAdicionalPorItem();
-  };
-
-  const calcularGanancia = (item: ItemConAprobacion) => {
-    const costoFinal = obtenerCostoFinalItem(item);
-    return (item.precioVenta - costoFinal) * (item.cantidadAprobada || item.cantidad);
-  };
-
-  const calcularSubtotal = (item: ItemConAprobacion) => (item.cantidadAprobada || item.cantidad) * item.precioVenta;
-
-  // 🆕 handleSaveCotizacion CON DISPONIBILIDAD
-  const handleSaveCotizacion = () => {
-    try {
-      const cotizacionData = {
-        cliente,
-        fecha,
-        validezOferta,
-        tipoPlantilla,
-        tipoMoneda,
-        items: items.map((item) => ({
-          ...item,
-          cantidadAprobada: item.cantidadAprobada,
-          estadoItem: item.estadoItem,
-          garantia: item.garantia,
-          disponibilidad: item.disponibilidad,
-          diasEntrega: item.diasEntrega,
-          notaEntrega: item.notaEntrega,
-        })),
-        costosAdicionales,
-      };
-
-      const saveEstado = user?.role === 'VENTAS' ? 'enviada' : estado;
-      
-      if (currentCotizacionId === 'new') {
-        addCotizacion({ ...cotizacionData, estado: saveEstado } as any);
-        mostrarNotificacion('Cotización creada exitosamente', 'success');
-      } else {
-        updateCotizacion(currentCotizacionId, { ...cotizacionData, estado: saveEstado } as any);
-        mostrarNotificacion('Cotización actualizada exitosamente', 'success');
-      }
-      
-      navigate('/cotizaciones');
-    } catch (error) {
-      mostrarNotificacion('Error al guardar cotización', 'error');
-      console.error('Error saving cotizacion:', error);
-    }
-  };
-
-  const handleItemTypeSelection = (tipo: 'catalogo' | 'externo') => {
-    setSelectedItemType(tipo);
-    setShowItemTypeModal(false);
-    if (tipo === 'catalogo') {
-      setShowProductModal(true);
-    } else {
-      setItemForm({
-        producto: '',
-        cantidad: 1,
-        precioVenta: 0,
-        costoCompra: 0,
-        costoMoneda: tipoMoneda,
-        margen: 0,
-        garantia: '12 meses',
-        disponibilidad: 'stock',
-        diasEntrega: 4,
-        notaEntrega: 'Puesta la Orden de Compra',
-      });
-      setShowItemFormModal(true);
-    }
-  };
-
-  const handleProductSelection = (producto: ProductoCatalogo) => {
-    setSelectedProduct(producto);
-    setItemForm({
-      producto: producto.nombre,
-      cantidad: 1,
-      precioVenta: producto.precio,
-      costoCompra: producto.costo,
-      costoMoneda: tipoMoneda,
-      margen: ((producto.precio - producto.costo) / producto.precio * 100),
-      garantia: '12 meses',
-      disponibilidad: producto.disponibilidad,
-      diasEntrega: producto.disponibilidad === 'stock' ? 4 : 25,
-      notaEntrega: 'Puesta la Orden de Compra',
-    });
-    mostrarNotificacion(`Producto "${producto.nombre}" seleccionado`);
-    setShowProductModal(false);
-    setShowItemFormModal(true);
-  };
-
-  const handleSaveItem = () => {
-    const newItem: ItemConAprobacion = {
-      id: items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1,
-      producto: itemForm.producto,
-      cantidad: itemForm.cantidad,
-      cantidadAprobada: 0,
-      estadoItem: 'pendiente',
-      precioVenta: itemForm.precioVenta,
-      costoCompra: itemForm.costoCompra,
-      costoMoneda: itemForm.costoMoneda,
-      margen: itemForm.margen,
-      tipo: selectedItemType,
-      garantia: itemForm.garantia,
-      disponibilidad: itemForm.disponibilidad,
-      diasEntrega: itemForm.diasEntrega,
-      notaEntrega: itemForm.notaEntrega,
-    };
-    setItems([...items, newItem]);
-    mostrarNotificacion('Item agregado correctamente');
-    setShowItemFormModal(false);
-  };
-
-  const handleIntercambiarMoneda = () => {
-    const nuevaMoneda = itemForm.costoMoneda === 'USD' ? 'PEN' : 'USD';
-    const costoConvertido = convertirMoneda(itemForm.costoCompra, itemForm.costoMoneda, nuevaMoneda);
-    setItemForm({ ...itemForm, costoMoneda: nuevaMoneda, costoCompra: parseFloat(costoConvertido.toFixed(2)) });
-  };
-
-  const actualizarMargenItem = (id: number, nuevoMargen: number) => {
-    setItems(items.map(item => {
-      if (item.id === id) {
-        const costoFinal = obtenerCostoFinalItem(item);
-        const nuevoPrecio = costoFinal / (1 - nuevoMargen / 100);
-        return { ...item, margen: nuevoMargen, precioVenta: parseFloat(nuevoPrecio.toFixed(2)) };
-      }
-      return item;
-    }));
-  };
-
-  const eliminarItem = (id: number) => {
-    setItems(items.filter(item => item.id !== id));
-    mostrarNotificacion('Item eliminado');
-  };
-
-  const subtotal = items.reduce((sum, item) => sum + calcularSubtotal(item), 0);
-  const igv = subtotal * 0.18;
-  const total = subtotal + igv;
-  const gananciaTotal = items.reduce((sum, item) => sum + calcularGanancia(item), 0);
-  const simboloMoneda = tipoPlantilla === 'DOLARES' ? 'USD' : 'S/.';
-
-  // ✅ USO de selectedProduct para eliminar error (oculto en el header)
-  const productoSeleccionadoInfo = selectedProduct ? (
-    <div className="text-xs text-gray-400">Seleccionado: {selectedProduct.nombre}</div>
-  ) : null;
-
-  // 🆕 FUNCIÓN PARA ICONO DE DISPONIBILIDAD
-  const IconoDisponibilidad = ({ tipo }: { tipo: 'stock' | 'importacion' }) => {
-    return tipo === 'stock' ? (
-      <Package className="w-4 h-4 text-green-600" />
-    ) : (
-      <Truck className="w-4 h-4 text-orange-600" />
-    );
-  };
-
-  const handleExportar = async (tipo: 'excel' | 'pdf') => {
-    if (!puedeExportar()) {
-      mostrarNotificacion(
-        user?.role === 'VENTAS'
-          ? 'Exportación bloqueada: Requiere aprobación de Superadministrador'
-          : 'No tienes permisos para exportar',
-        'warning'
-      );
-      setShowExportModal(false);
+  const handleAddCosto = async () => {
+    // Este handler no se usa actualmente desde la UI.
+    // Los costos adicionales se gestionan por backend en el modal de "Costos Adicionales".
+    // Se conserva para futuras mejoras.
+    if (!cotizacion || costoForm.monto <= 0) {
+      addNotification({
+        message: 'Ingresa un monto válido',
+        type: 'warning',
+        duration: 4000,
+      } as any);
       return;
     }
 
     try {
-      if (tipo === 'pdf') {
-        const jsPDFModule = await import('jspdf');
-        await import('jspdf-autotable');
-
-        const doc = new jsPDFModule.default();
-
-        doc.setFontSize(18);
-        doc.text('COTIZACIÓN', 14, 20);
-
-        doc.setFontSize(11);
-        doc.text(`Cliente: ${cliente}`, 14, 32);
-        doc.text(`Fecha: ${fecha}`, 14, 40);
-        doc.text(`Estado: ${estado}`, 14, 48);
-
-        const tableData = items.map((item) => [
-          item.producto,
-          `${item.disponibilidad === 'stock' ? 'Stock' : 'Importación'} (${item.diasEntrega} días)`,
-          item.cantidad.toString(),
-          `${simboloMoneda} ${item.precioVenta.toFixed(2)}`,
-          `${simboloMoneda} ${calcularSubtotal(item).toFixed(2)}`,
-        ]);
-
-        (doc as any).autoTable({
-          startY: 60,
-          head: [['Producto', 'Disponibilidad', 'Cantidad', 'Precio', 'Subtotal']],
-          body: tableData,
-        });
-
-        doc.text(
-          `TOTAL: ${simboloMoneda} ${total.toFixed(2)}`,
-          14,
-          (doc as any).lastAutoTable.finalY + 15
-        );
-
-        doc.save(`Cotizacion-${currentCotizacionId}.pdf`);
-      }
-
-      if (tipo === 'excel') {
-        const XLSX = await import('xlsx');
-
-        const data = items.map((item) => ({
-          Producto: item.producto,
-          Disponibilidad: item.disponibilidad === 'stock' ? 'Stock' : 'Importación',
-          'Días Entrega': item.diasEntrega,
-          Cantidad: item.cantidad,
-          Precio: item.precioVenta,
-          Subtotal: calcularSubtotal(item),
-          Estado: item.estadoItem,
-          Garantia: item.garantia,
-        }));
-
-        const worksheet = XLSX.utils.json_to_sheet(data);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Cotizacion');
-        XLSX.writeFile(workbook, `Cotizacion-${currentCotizacionId}.xlsx`);
-      }
-
-      mostrarNotificacion(
-        `Cotización exportada en ${tipo.toUpperCase()}`,
-        'success'
-      );
-      setShowExportModal(false);
-    } catch (error) {
-      console.error(error);
-      mostrarNotificacion('Error al exportar archivo', 'error');
+      await addCosto(cotizacion.id, costoForm);
+      addNotification({
+        message: 'Costo agregado',
+        type: 'success',
+        duration: 4000,
+      } as any);
+      setShowCostoForm(false);
+      setCostoForm({ tipo: 'flete', monto: 0 });
+      await loadCotizacion();
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al agregar costo',
+        type: 'error',
+        duration: 4000,
+      } as any);
     }
   };
+
+
+  const handleDeleteCosto = async (costoId: number) => {
+    if (!cotizacion) return;
+    if (!confirm('¿Eliminar costo?')) return;
+
+    try {
+      await deleteCosto(costoId);
+      addNotification({
+        message: 'Costo eliminado',
+        type: 'success',
+        duration: 4000,
+      } as any);
+      await loadCotizacion();
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al eliminar costo',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    }
+  };
+
+  //PRUEBA
+  const handleItemTypeSelection = (tipo: 'catalogo' | 'personalizado') => {
+    setShowItemTypeModal(false);
+
+    if (tipo === 'catalogo') {
+      // Abrir selector de productos
+      setShowProductModal(true);
+      return;
+    }
+
+    // PERSONALIZADO
+    setItemForm({
+      descripcion: '',
+      cantidad: 1,
+      costo_base: 0,
+      precio_venta: 0,
+      costo_unitario: 0,
+      costo_total: 0,
+      ganancia: 0,
+      subtotal: 0,
+      imagen: '',
+      orden: 1,
+      cotizacion_id: currentCotizacionId || 0,
+      producto_id: undefined,
+      estado_cotizacion_item_id: undefined,
+      tipo: 'personalizado',
+      margen: 20,
+      marca: '',
+      codigo: '',
+      unidad_medida: 'UND',
+      garantia_meses: 12,
+      disponibilidad_tipo: 'stock',
+      disponibilidad_dias: 4,
+    });
+
+    setShowItemFormModal(true);
+  };
+
+  const handleProductSelection = (producto: any) => {
+  setShowProductModal(false);
+
+  const margen =
+    producto.precio > 0
+      ? ((producto.precio - producto.costo) / producto.precio) * 100
+      : 0;
+
+  setItemForm({
+    descripcion: producto.nombre || '',
+    cantidad: 1,
+    costo_base: producto.costo || 0,
+    precio_venta: producto.precio || 0,
+    costo_unitario: producto.costo || 0,
+    costo_total: producto.costo || 0,
+    ganancia: (producto.precio || 0) - (producto.costo || 0),
+    subtotal: producto.precio || 0,
+    imagen: producto.imagen || '',
+    orden: 1,
+    cotizacion_id: currentCotizacionId || 0,
+    producto_id: producto.id,
+    estado_cotizacion_item_id: undefined,
+    tipo: 'catalogo',
+    margen: Number(margen.toFixed(2)),
+    marca: producto.marca || '',
+    codigo: producto.codigo || '',
+    unidad_medida: producto.unidad_medida || 'UND',
+    garantia_meses: producto.garantia_meses || 12,
+    disponibilidad_tipo: producto.disponibilidad_tipo || 'stock',
+    disponibilidad_dias: producto.disponibilidad_dias || 4,
+  });
+
+  addNotification({
+    message: `Producto "${producto.nombre}" seleccionado`,
+    type: 'success',
+    duration: 3000,
+  } as any);
+
+  setShowItemFormModal(true);
+};
+
+//   const actualizarMargenItem = (id: number, nuevoMargen: number) => {
+//     setItems(items.map(item => {
+//       if (item.id === id) {
+//         const costoFinal = obtenerCostoFinalItem(item);
+//         const nuevoPrecio = costoFinal / (1 - nuevoMargen / 100);
+//         return { ...item, margen: nuevoMargen, precioVenta: parseFloat(nuevoPrecio.toFixed(2)) };
+//       }
+//       return item;
+//     }));
+//   };
+
+//   const todosItemsAprobados = items.every(item => item.estadoItem === 'aprobado' && item.cantidadAprobada === item.cantidad);
+
+//   const productosDisponibles = [
+//   { id: 1, nombre: 'Laptop HP EliteBook 840', costo: 2800, precio: 3500, disponibilidad: 'stock' as const },
+//   { id: 2, nombre: 'Monitor Dell 27" 4K', costo: 450, precio: 680, disponibilidad: 'importacion' as const },
+//   { id: 3, nombre: 'Teclado Logitech MX Keys', costo: 120, precio: 180, disponibilidad: 'stock' as const },
+//   { id: 4, nombre: 'Mouse Logitech MX Master', costo: 80, precio: 125, disponibilidad: 'importacion' as const },
+//   { id: 5, nombre: 'Impresora HP LaserJet', costo: 350, precio: 520, disponibilidad: 'stock' as const },
+// ];
+
+//   const handleIntercambiarMoneda = () => {
+//     const nuevaMoneda = itemForm.costoMoneda === 'USD' ? 'PEN' : 'USD';
+//     const costoConvertido = convertirMoneda(itemForm.costoCompra, itemForm.costoMoneda, nuevaMoneda);
+//     setItemForm({ ...itemForm, costoMoneda: nuevaMoneda, costoCompra: parseFloat(costoConvertido.toFixed(2)) });
+//   };
+
+const refreshCotizacion = async () => {
+  if (!currentCotizacionId) return;
+
+  const data = await getCotizacion(currentCotizacionId);
+  setCotizacion(data);
+  setItems(data.items || []);
+  setCostos(data.costosAdicionales || []);
+};
+
+// ====== HELPERS ======
+
+  const resetItemForm = () => {
+    setItemForm({
+      descripcion: '',
+      cantidad: 1,
+      costo_base: 0,
+      margen: 20,
+      marca: '',
+      codigo: '',
+      unidad_medida: 'UND',
+      garantia_meses: 12,
+      disponibilidad_tipo: 'stock',
+      disponibilidad_dias: 4,
+      precio_venta: 0,
+      costo_unitario: 0,
+      costo_total: 0,
+      ganancia: 0,
+      subtotal: 0,
+      imagen: '',
+      orden: 1,
+      cotizacion_id: currentCotizacionId || 0,
+      producto_id: undefined,
+      estado_cotizacion_item_id: undefined,
+      tipo: 'personalizado' as 'catalogo' | 'personalizado',
+    });
+  };
+
+  const openEditItem = (item: CotizacionItem) => {
+    setEditingItem(item);
+    setItemForm({
+      descripcion: item.descripcion,
+      cantidad: item.cantidad,
+      costo_base: item.costo_base,
+      margen: item.margen,
+      marca: item.marca || '',
+      codigo: item.codigo || '',
+      unidad_medida: item.unidad_medida || 'UND',
+      garantia_meses: item.garantia_meses || 12,
+      disponibilidad_tipo: item.disponibilidad_tipo,
+      disponibilidad_dias: item.disponibilidad_dias,
+      precio_venta: item.precio_venta || 0,
+      costo_unitario: item.costo_unitario || 0,
+      costo_total: item.costo_total || 0,
+      ganancia: item.ganancia || 0,
+      subtotal: item.subtotal || 0,
+      imagen: '',
+      orden: 1,
+      cotizacion_id: currentCotizacionId || 0,
+      producto_id: undefined,
+      estado_cotizacion_item_id: undefined,
+      tipo: 'personalizado' as 'catalogo' | 'personalizado',
+    });
+    setShowItemForm(true);
+  };
+
+  // ====== RENDER ======
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  const selectedCliente = clientes.find(c => c.id === clienteId);
 
   return (
     <div className="p-8 space-y-6">
@@ -464,10 +588,12 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
             <ArrowLeft className="w-6 h-6 text-gray-600" />
           </button>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-             {estado === 'aprobada' && <CheckCircle className="text-green-500 w-6 h-6" />}
-             Cotización - {mode}
-          </h1>
-          {productoSeleccionadoInfo}
+              {cotizacion?.estado_cotizacion_id === 1 && (
+                <CheckCircle className="text-green-500 w-6 h-6" />
+              )}
+
+              {isEditing ? 'Editar Cotización' : 'Nueva Cotización'}
+            </h1>
         </div>
       </div>
 
@@ -480,19 +606,33 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Cliente</label>
-                <input
-                  type="text"
-                  value={cliente}
-                  onChange={(e) => setCliente(e.target.value)}
+                <select
+                  value={clienteId ?? ''}
+                  onChange={(e) => {
+                    const selectedId = Number(e.target.value);
+                    const selectedCliente = clientes.find((c) => c.id === selectedId);
+                    setClienteId(selectedId);
+                    if (selectedCliente?.moneda_id) {
+                    setMonedaId(selectedCliente.moneda_id.toString());
+                    }
+                  }}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
+                >
+                  <option value="" disabled>
+                    Seleccione un cliente
+                  </option>
+                  {clientes.map((clienteOption) => (
+                    <option key={clienteOption.id} value={clienteOption.id}>
+                      {clienteOption.nombre}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Fecha</label>
                 <input
                   type="date"
-                  value={fecha}
-                  onChange={(e) => setFecha(e.target.value)}
+                  value={cotizacion?.fecha ? new Date(cotizacion.fecha).toISOString().split('T')[0] : ''}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -500,45 +640,44 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
                 <label className="block text-sm mb-2 text-gray-700">Validez (días)</label>
                 <input
                   type="number"
-                  value={validezOferta}
-                  onChange={(e) => setValidezOferta(parseInt(e.target.value) || 0)}
+                  value={cotizacion?.validez_dias || 0}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Plantilla</label>
                 <select
-                  value={tipoPlantilla}
-                  onChange={(e) => setTipoPlantilla(e.target.value as 'DOLARES' | 'SOLES' | 'SOLES-EST')}
+                  value={plantillaId ?? ''}
+                  onChange={(e) => setPlantillaId(Number(e.target.value))}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="SOLES">Soles</option>
-                  <option value="DOLARES">Dólares</option>
-                  <option value="SOLES-EST">Soles Estándar</option>
+                  <option value={1}>Soles</option>
+                  <option value={2}>Dólares</option>
+                  <option value={3}>Soles Estándar</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Moneda</label>
                 <select
-                  value={tipoMoneda}
-                  onChange={(e) => setTipoMoneda(e.target.value as 'USD' | 'PEN')}
+                  value={monedaId}
+                  onChange={(e) => setMonedaId(e.target.value)}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="PEN">PEN (S/)</option>
-                  <option value="USD">USD ($)</option>
+                  <option value="1">PEN (S/)</option>
+                  <option value="2">USD ($)</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Estado</label>
                 <select
-                  value={estado}
-                  onChange={(e) => setEstado(e.target.value as 'borrador' | 'enviada' | 'aprobada' | 'parcialmente_aprobada')}
+                  value={cotizacion?.estado_cotizacion_id === 1 ? 'borrador' : cotizacion?.estado_cotizacion_id === 2 ? 'enviada' : cotizacion?.estado_cotizacion_id === 3 ? 'parcialmente_aprobada' : cotizacion?.estado_cotizacion_id === 4 ? 'aprobada' : cotizacion?.estado_cotizacion_id === 5 ? 'oc_registrada' : ''}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="borrador">Borrador</option>
                   <option value="enviada">Enviada</option>
                   <option value="parcialmente_aprobada">Parcialmente Aprobada</option>
                   <option value="aprobada">Aprobada</option>
+                  <option value="aprobada">OC_Registrada</option>
                 </select>
               </div>
             </div>
@@ -548,7 +687,7 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl text-gray-800">Items ({items.length})</h2>
-              <button onClick={() => setShowItemTypeModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+              <button onClick={() => setShowItemForm(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
                 <Plus className="w-4 h-4" /> Agregar Item
               </button>
             </div>
@@ -578,12 +717,12 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map(item => {
-                    const costoFinal = obtenerCostoFinalItem(item);
+                  {items.map((item) => {
+                    const costoFinal = item.costo_total || 0;
                     return (
                       <tr key={item.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-2 max-w-[200px] truncate" title={obtenerTextoDisponibilidad(item)}>
-                          {item.producto}
+                        <td className="py-3 px-2 max-w-[200px] truncate" title='descripcion'>
+                          {item.descripcion}
                         </td>
                         <td className="py-3 px-2">
                           <span className={`px-2 py-1 rounded-full text-xs ${item.tipo === 'catalogo' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
@@ -592,20 +731,20 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
                         </td>
                         <td className="py-3 px-2">
                           <div className="flex items-center gap-1">
-                            <IconoDisponibilidad tipo={item.disponibilidad} />
+                            <IconoDisponibilidad tipo={item.disponibilidad_tipo} />
                             <span className={`text-xs font-medium ${
-                              item.disponibilidad === 'stock' 
+                              item.disponibilidad_tipo === 'stock' 
                                 ? 'text-green-700 bg-green-100' 
                                 : 'text-orange-700 bg-orange-100'
                             } px-2 py-1 rounded-full`}>
-                              {item.disponibilidad === 'stock' ? 'Stock' : 'Imp'}
+                              {item.disponibilidad_tipo === 'stock' ? 'Stock' : 'Imp'}
                             </span>
                           </div>
                         </td>
-                        <td className="py-3 px-2 font-medium text-xs">{item.diasEntrega}</td>
+                        <td className="py-3 px-2 font-medium text-xs">{item.disponibilidad_dias}</td>
                         <td className="py-3 px-2">
                           <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
-                            {item.garantia}
+                            {item.garantia_meses} meses
                           </span>
                         </td>
                         <td className="py-3 px-2 font-medium">{item.cantidad}</td>
@@ -615,16 +754,14 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
                             <td className="py-3 px-2">
                               <input
                                 type="number"
-                                value={item.cantidadAprobada}
-                                onChange={(e) => actualizarCantidadAprobada(item.id, parseInt(e.target.value) || 0)}
+                                value={item.cantidad || 0}
                                 min="0" max={item.cantidad}
                                 className="w-16 px-2 py-1 border border-yellow-300 bg-yellow-50 rounded focus:ring-2 focus:ring-yellow-500 text-xs"
                               />
                             </td>
                             <td className="py-3 px-2">
                               <select
-                                value={item.estadoItem}
-                                onChange={(e) => actualizarEstadoItem(item.id, e.target.value as 'pendiente' | 'aprobado' | 'rechazado', item.cantidadAprobada)}
+                                value={item.estado_cotizacion_item_id === 1 ? 'pendiente' : item.estado_cotizacion_item_id === 2 ? 'aprobado' : 'rechazado'}
                                 className="px-2 py-1 border border-yellow-300 bg-yellow-50 rounded text-xs focus:ring-2 focus:ring-yellow-500"
                               >
                                 <option value="pendiente">⏳ Pend.</option>
@@ -635,23 +772,23 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
                           </>
                         )}
                         
-                        <td>{simboloMoneda} {item.precioVenta.toFixed(2)}</td>
-                        <td>{simboloMoneda} {costoFinal.toFixed(2)}</td>
+                        <td>{simboloMoneda} {(item.precio_venta || 0).toFixed(2)}</td>
+                        <td>{simboloMoneda} {(costoFinal ?? 0).toFixed(2)}</td>
                         <td>
                           <input 
                             type="number" 
-                            value={item.margen.toFixed(1)} 
+                            value={(item.margen ?? 0).toFixed(1)} 
                             onChange={(e) => actualizarMargenItem(item.id, parseFloat(e.target.value) || 0)}
                             className="w-14 px-1 py-1 border rounded text-xs" 
                             step="0.1" 
                           />
                         </td>
-                        <td className={calcularGanancia(item) > 0 ? 'text-green-600' : 'text-red-600'}>
-                          {simboloMoneda} {calcularGanancia(item).toFixed(2)}
+                        <td className={((item.ganancia ?? 0) > 0) ? 'text-green-600' : 'text-red-600'}>
+                          {simboloMoneda} {(item.ganancia|| 0).toFixed(2)}
                         </td>
-                        <td className="font-medium">{simboloMoneda} {calcularSubtotal(item).toFixed(2)}</td>
+                        <td className="font-medium">{simboloMoneda} {(item.subtotal || 0).toFixed(2)}</td>
                         <td>
-                          <button onClick={() => eliminarItem(item.id)} className="p-1 hover:bg-red-50 rounded">
+                          <button onClick={() => handleDeleteItem(item.id)} className="p-1 hover:bg-red-50 rounded">
                             <Trash2 className="w-4 h-4 text-red-600" />
                           </button>
                         </td>
@@ -666,9 +803,9 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
               <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <div className="flex items-center justify-between">
                   <div className="flex gap-6 text-sm">
-                    <span>⏳ Pendientes: {items.filter(i => i.estadoItem === 'pendiente').length}</span>
-                    <span>✅ Aprobados: {items.filter(i => i.estadoItem === 'aprobado').length}</span>
-                    <span>❌ Rechazados: {items.filter(i => i.estadoItem === 'rechazado').length}</span>
+                    <span>⏳ Pendientes: {items.filter(i => i.estado_cotizacion_item_id === 1).length}</span>
+                    <span>✅ Aprobados: {items.filter(i => i.estado_cotizacion_item_id === 2).length}</span>
+                    <span>❌ Rechazados: {items.filter(i => i.estado_cotizacion_item_id === 3).length}</span>
                   </div>
                   {todosItemsAprobados && (
                     <button 
@@ -689,26 +826,27 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <h2 className="text-xl mb-4">Resumen Aprobado</h2>
             <div className="space-y-3 text-sm">
-              <div className="flex justify-between">Subtotal: <span className="font-bold">{simboloMoneda} {subtotal.toFixed(2)}</span></div>
-              <div className="flex justify-between">IGV 18%: <span>{simboloMoneda} {igv.toFixed(2)}</span></div>
+              <div className="flex justify-between">Subtotal: <span className="font-bold">{simboloMoneda} {cotizacion?.subtotal.toFixed(2)}</span></div>
+              <div className="flex justify-between">IGV 18%: <span>{simboloMoneda} {cotizacion?.igv.toFixed(2)}</span></div>
               <div className="flex justify-between">
-                Total Costos Adicionales: <span>{simboloMoneda} {calcularTotalCostosAdicionales().toFixed(2)}</span>
+                Total Costos Adicionales: <span>{simboloMoneda} {(cotizacion?.total_gasto ?? 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm text-gray-600">
-                Distribuido por Item ({items.length} items): <span>{simboloMoneda} {calcularCostoAdicionalPorItem().toFixed(2)}</span>
+                Distribuido por Item ({items.length} items): <span>{simboloMoneda} {(items.length > 0 ? ((cotizacion?.total_gasto ?? 0) / items.length) : 0).toFixed(2)}</span>
               </div>
+
               <div className="border-t pt-3 flex justify-between text-lg font-bold">
-                Total: <span>{simboloMoneda} {total.toFixed(2)}</span>
+                Total: <span>{simboloMoneda} {cotizacion?.total.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-green-600 font-bold">
-                Ganancia: <span>{simboloMoneda} {gananciaTotal.toFixed(2)}</span>
+                Ganancia: <span>{simboloMoneda} {(cotizacion?.ganancia ?? 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between pt-2 border-t text-blue-600 font-bold">
                 Margen Promedio: <span>{items.length > 0 ? (items.reduce((sum, item) => sum + item.margen, 0) / items.length).toFixed(1) : '0.0'}%</span>
               </div>
               <div className="flex justify-between pt-2 border-t text-purple-600 font-bold">
-                Items Stock: <span>{items.filter(i => i.disponibilidad === 'stock').length}</span> | 
-                Items Importación: <span>{items.filter(i => i.disponibilidad === 'importacion').length}</span>
+                Items Stock: <span>{items.filter(i => i.disponibilidad_tipo === 'stock').length}</span> | 
+                Items Importación: <span>{items.filter(i => i.disponibilidad_tipo === 'importacion').length}</span>
               </div>
             </div>
           </div>
@@ -746,7 +884,7 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold text-gray-800">Agregar nuevo item</h3>
-              <button onClick={() => setShowItemTypeModal(false)}><X className="w-6 h-6 text-gray-400" /></button>
+              <button onClick={() => setShowItemForm(false)}><X className="w-6 h-6 text-gray-400" /></button>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <button 
@@ -757,7 +895,7 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
                 <span className="font-semibold text-blue-700">Catálogo Local</span>
               </button>
               <button 
-                onClick={() => handleItemTypeSelection('externo')}
+                onClick={() => handleItemTypeSelection('personalizado')}
                 className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-purple-200 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-colors"
               >
                 <ArrowLeftRight className="w-8 h-8 text-purple-600" />
@@ -809,8 +947,8 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
                 <label className="text-xs font-bold text-gray-500 uppercase">Nombre del Producto</label>
                 <input 
                   type="text" 
-                  value={itemForm.producto} 
-                  onChange={e => setItemForm({...itemForm, producto: e.target.value})}
+                  value={itemForm.descripcion} 
+                  onChange={e => setItemForm({...itemForm, descripcion: e.target.value})}
                   className="w-full p-2 border rounded-lg bg-gray-50"
                 />
               </div>
@@ -826,19 +964,19 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase">Garantía</label>
                 <input 
-                  type="text" 
-                  value={itemForm.garantia} 
-                  onChange={e => setItemForm({...itemForm, garantia: e.target.value})}
+                  type="number" 
+                  value={itemForm.garantia_meses} 
+                  onChange={e => setItemForm({...itemForm, garantia_meses: parseInt(e.target.value) || 0})}
                   className="w-full p-2 border rounded-lg"
                 />
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Costo Compra ({itemForm.costoMoneda})</label>
+                <label className="text-xs font-bold text-gray-500 uppercase">Costo Compra ({monedaId === '1' ? 'S/.' : '$'})</label>
                 <div className="flex gap-2">
                   <input 
                     type="number" 
-                    value={itemForm.costoCompra} 
-                    onChange={e => setItemForm({...itemForm, costoCompra: parseFloat(e.target.value) || 0})}
+                    value={itemForm.costo_base} 
+                    onChange={e => setItemForm({...itemForm, costo_base: parseFloat(e.target.value) || 0})}
                     className="w-full p-2 border rounded-lg"
                   />
                   <button onClick={handleIntercambiarMoneda} className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200">
@@ -850,16 +988,16 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
                 <label className="text-xs font-bold text-gray-500 uppercase">Precio Venta Unit.</label>
                 <input 
                   type="number" 
-                  value={itemForm.precioVenta} 
-                  onChange={e => setItemForm({...itemForm, precioVenta: parseFloat(e.target.value) || 0})}
+                  value={itemForm.precio_venta} 
+                  onChange={e => setItemForm({...itemForm, precio_venta: parseFloat(e.target.value) || 0})}
                   className="w-full p-2 border rounded-lg bg-blue-50 font-bold"
                 />
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase">Disponibilidad</label>
                 <select 
-                  value={itemForm.disponibilidad}
-                  onChange={e => setItemForm({...itemForm, disponibilidad: e.target.value as any, diasEntrega: e.target.value === 'stock' ? 4 : 25})}
+                  value={itemForm.disponibilidad_tipo}
+                  onChange={e => setItemForm({...itemForm, disponibilidad_tipo: e.target.value as any, disponibilidad_dias: e.target.value === 'stock' ? 4 : 25})}
                   className="w-full p-2 border rounded-lg"
                 >
                   <option value="stock">Stock</option>
@@ -870,15 +1008,15 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
                 <label className="text-xs font-bold text-gray-500 uppercase">Días Entrega</label>
                 <input 
                   type="number" 
-                  value={itemForm.diasEntrega} 
-                  onChange={e => setItemForm({...itemForm, diasEntrega: parseInt(e.target.value) || 0})}
+                  value={itemForm.disponibilidad_dias} 
+                  onChange={e => setItemForm({...itemForm, disponibilidad_dias: parseInt(e.target.value) || 0})}
                   className="w-full p-2 border rounded-lg"
                 />
               </div>
             </div>
             <div className="mt-6 flex gap-3">
-              <button onClick={() => setShowItemFormModal(false)} className="flex-1 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
-              <button onClick={handleSaveItem} className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">Agregar al listado</button>
+              <button onClick={() => setShowItemForm(false)} className="flex-1 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
+              <button onClick={editingItem ? () => handleUpdateItem(editingItem.id) : handleAddItem} className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">Agregar al listado</button>
             </div>
           </div>
         </div>
@@ -886,26 +1024,69 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
 
       {/* 4. Modal Costos Adicionales */}
       {showCostosModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
-            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-purple-600" /> Costos Operativos
-            </h3>
-            <div className="space-y-3">
-              {Object.keys(costosAdicionales).map((key) => (
-                <div key={key} className="flex items-center justify-between gap-4">
-                  <label className="text-sm capitalize text-gray-600">{key.replace(/([A-Z])/g, ' $1')}</label>
-                  <input 
-                    type="number"
-                    value={(costosAdicionales as any)[key]}
-                    onChange={(e) => setCostosAdicionales({...costosAdicionales, [key]: parseFloat(e.target.value) || 0})}
-                    className="w-32 p-2 border rounded-lg text-right"
-                  />
-                </div>
-              ))}
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
+      <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+        <DollarSign className="w-5 h-5 text-purple-600" /> Costos Adicionales
+      </h3>
+
+      {/* LISTA DE COSTOS */}
+      <div className="space-y-3 mb-4">
+        {costos.map((costo) => (
+          <div key={costo.id} className="flex justify-between items-center border p-2 rounded">
+            <div>
+              <p className="text-sm font-medium">{costo.tipo}</p>
+              <p className="text-xs text-gray-500">S/ {costo.monto.toFixed(2)}</p>
             </div>
-            <button onClick={() => setShowCostosModal(false)} className="w-full mt-6 py-3 bg-purple-600 text-white rounded-lg font-bold shadow-lg shadow-purple-200">
-              Aplicar Costos
+
+            <button
+              onClick={() => handleDeleteCosto(costo.id)}
+              className="p-1 hover:bg-red-50 rounded"
+            >
+              <Trash2 className="w-4 h-4 text-red-600" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* FORM AGREGAR */}
+      <div className="space-y-2 border-t pt-3">
+              <select
+                value={costoForm.tipo}
+                onChange={(e) => setCostoForm({ ...costoForm, tipo: e.target.value })}
+                className="w-full p-2 border rounded"
+              >
+                <option value="viaje">Viaje</option>
+                <option value="viatico">Viatico</option>
+                <option value="movilidad">Movilidad</option>
+                <option value="estancia">Estancia</option>
+                <option value="flete">Flete</option>
+                <option value="personal_externo">Personal Externo</option>
+              </select>
+
+              <input
+                type="number"
+                value={costoForm.monto}
+                onChange={(e) =>
+                  setCostoForm({ ...costoForm, monto: parseFloat(e.target.value) || 0 })
+                }
+                className="w-full p-2 border rounded"
+                placeholder="Monto"
+              />
+
+              <button
+                onClick={handleAddCosto}
+                className="w-full py-2 bg-purple-600 text-white rounded-lg font-bold"
+              >
+                Agregar costo
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowCostosModal(false)}
+              className="w-full mt-4 text-sm text-gray-500"
+            >
+              Cerrar
             </button>
           </div>
         </div>
@@ -920,7 +1101,7 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
             </div>
             <h3 className="text-xl font-bold mb-2">Exportar Documento</h3>
             <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => handleExportar('pdf')} className="flex items-center justify-center gap-2 p-3 border-2 border-red-100 rounded-xl hover:bg-red-50 text-red-700 font-bold">
+              <button onClick={() => exportarCotizacionPdf} className="flex items-center justify-center gap-2 p-3 border-2 border-red-100 rounded-xl hover:bg-red-50 text-red-700 font-bold">
                 <FileText className="w-5 h-5" /> PDF
               </button>
               <button onClick={() => handleExportar('excel')} className="flex items-center justify-center gap-2 p-3 border-2 border-green-100 rounded-xl hover:bg-green-50 text-green-700 font-bold">
@@ -932,5 +1113,5 @@ Esto aplica después de los ${validezOferta} días calendarios de validez de est
         </div>
       )}
     </div>
-  );
-}
+      );
+    }

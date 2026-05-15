@@ -30,9 +30,11 @@ export interface CotizacionItem {
   subtotal?: number;
   costo_total?: number;
   ganancia?: number;
+  producto_id?: number;
   estado_cotizacion_item_id?: number;
   created_at?: string;
   updated_at?: string;
+  tipo?: "catalogo" | "personalizado"; // Para diferenciar items de catálogo vs personalizados
 }
 
 export interface CotizacionCostosAdicional {
@@ -51,6 +53,8 @@ export interface Cliente {
   contacto: string;
   telefono: string;
   correo: string;
+  tipo_cliente_id: number;
+  moneda_id: number;
 }
 
 export interface Cotizacion {
@@ -62,7 +66,7 @@ export interface Cotizacion {
   validez_dias: number;
   cliente_id: number;
   plantilla_id: number;
-  usuario_id: number;
+  user_id: number;
   modo_distribucion: "POR_ITEM" | "POR_CANTIDAD";
   subtotal: number;
   igv: number;
@@ -89,6 +93,7 @@ export interface CreateCotizacionData {
   plantilla_id: number;
   titulo: string;
   modo_distribucion?: "POR_ITEM" | "POR_CANTIDAD";
+  moneda_id: number;
 }
 
 export interface UpdateCotizacionData {
@@ -107,7 +112,7 @@ export interface CreateItemData {
   codigo?: string;
   unidad_medida?: string;
   disponibilidad?: string;
-  garantia_meses?: number | null;
+  garantia_meses?: number;
   disponibilidad_tipo: "stock" | "importacion";
   disponibilidad_dias: number;
 }

@@ -39,6 +39,7 @@ export default function AppRoutes() {
           <Route path="/productos" element={<Productos />} />
           <Route path="/clientes" element={<Clientes />} />
           <Route path="/cotizaciones" element={<Cotizaciones />} />
+          <Route path="/cotizaciones/new" element={<CotizacionDetail />} />
           <Route path="/cotizaciones/:id" element={<CotizacionDetail />} />
 
           {/* ÓRDENES DE COMPRA */}
