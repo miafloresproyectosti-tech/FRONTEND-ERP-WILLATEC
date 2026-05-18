@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useNotifications } from '../NotificationContext';
 import { useAuth } from '../AuthContext';
-import { getClientes, type Cliente } from '../services/cliente.service';
+import { getClientes, type Cliente } from '../services/cliente.service';;
+import { getProductos, type Producto} from "../services/producto.service";
 import {
   getCotizacion,
   createCotizacion,
@@ -43,6 +44,7 @@ export function CotizacionDetail() {
 
   const isEditing = id !== 'new' && id !== undefined;
   const currentCotizacionId = id ? parseInt(id) : null;
+  const [exportandoPdf, setExportandoPdf] = useState(false);
 
   // ====== STATE MANAGEMENT ======
   const [loading, setLoading] = useState(isEditing);
@@ -61,6 +63,7 @@ export function CotizacionDetail() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [items, setItems] = useState<CotizacionItem[]>([]);
   const [costos, setCostos] = useState<CotizacionCostosAdicional[]>([]);
+  const [productos, setProductos] = useState<Producto[]>([]);
 
   // UI State
   const [showItemForm, setShowItemForm] = useState(false);
@@ -73,6 +76,9 @@ export function CotizacionDetail() {
   const [showCostosModal, setShowCostosModal] = useState(false);
 
   const [estado, setEstado] = useState('');
+
+  const TIPO_CAMBIO_DOLAR = 3.6; // Ejemplo, en un caso real se debería obtener dinámicamente DE DOLAR A SOLES
+  const TIPO_CAMBIO_SOLES = 3.3; // Ejemplo, en un caso real se debería obtener dinámicamente DE SOLES A DOLAR
 
   useEffect(() => {
     if (!cotizacion) return;
@@ -117,6 +123,29 @@ export function CotizacionDetail() {
     disponibilidad_dias: 4,
   });
 
+  useEffect(() => {
+  const precioVenta =
+    itemForm.costo_base / (1 - itemForm.margen / 100);
+
+  const subtotal =
+    precioVenta * itemForm.cantidad;
+
+  const ganancia =
+    (precioVenta - itemForm.costo_base) *
+    itemForm.cantidad;
+
+  setItemForm(prev => ({
+    ...prev,
+    precio_venta: Number(precioVenta.toFixed(2)),
+    subtotal: Number(subtotal.toFixed(2)),
+    ganancia: Number(ganancia.toFixed(2)),
+  }));
+}, [
+  itemForm.costo_base,
+  itemForm.margen,
+  itemForm.cantidad,
+]);
+
   const [costoForm, setCostoForm] = useState({
     tipo: 'flete',
     monto: 0,
@@ -142,6 +171,23 @@ export function CotizacionDetail() {
       }
     };
     fetchClientes();
+  }, []);
+
+  //Cargar Productos:
+  useEffect(() => {
+    const fetchProductos = async () => {
+      try {
+        const data = await getProductos();
+        setProductos(data);
+      } catch (error) {
+        addNotification({
+          message: 'Error al cargar productos',
+          type: 'error',
+          duration: 4000,
+        } as any);
+      }
+    };
+    fetchProductos();
   }, []);
 
   // Cargar cotización si es edición
@@ -475,32 +521,86 @@ export function CotizacionDetail() {
   setShowItemFormModal(true);
 };
 
-//   const actualizarMargenItem = (id: number, nuevoMargen: number) => {
-//     setItems(items.map(item => {
-//       if (item.id === id) {
-//         const costoFinal = obtenerCostoFinalItem(item);
-//         const nuevoPrecio = costoFinal / (1 - nuevoMargen / 100);
-//         return { ...item, margen: nuevoMargen, precioVenta: parseFloat(nuevoPrecio.toFixed(2)) };
-//       }
-//       return item;
-//     }));
-//   };
+const actualizarMargenItem = (
+  id: number,
+  nuevoMargen: number
+) => {
+  setItems(prev =>
+    prev.map(item => {
+      if (item.id !== id) return item;
 
-//   const todosItemsAprobados = items.every(item => item.estadoItem === 'aprobado' && item.cantidadAprobada === item.cantidad);
+      const costo = item.costo_total || 0;
 
-//   const productosDisponibles = [
-//   { id: 1, nombre: 'Laptop HP EliteBook 840', costo: 2800, precio: 3500, disponibilidad: 'stock' as const },
-//   { id: 2, nombre: 'Monitor Dell 27" 4K', costo: 450, precio: 680, disponibilidad: 'importacion' as const },
-//   { id: 3, nombre: 'Teclado Logitech MX Keys', costo: 120, precio: 180, disponibilidad: 'stock' as const },
-//   { id: 4, nombre: 'Mouse Logitech MX Master', costo: 80, precio: 125, disponibilidad: 'importacion' as const },
-//   { id: 5, nombre: 'Impresora HP LaserJet', costo: 350, precio: 520, disponibilidad: 'stock' as const },
-// ];
+      const nuevoPrecio =
+        costo / (1 - nuevoMargen / 100);
 
-//   const handleIntercambiarMoneda = () => {
-//     const nuevaMoneda = itemForm.costoMoneda === 'USD' ? 'PEN' : 'USD';
-//     const costoConvertido = convertirMoneda(itemForm.costoCompra, itemForm.costoMoneda, nuevaMoneda);
-//     setItemForm({ ...itemForm, costoMoneda: nuevaMoneda, costoCompra: parseFloat(costoConvertido.toFixed(2)) });
-//   };
+      const subtotal =
+        nuevoPrecio * item.cantidad;
+
+      const ganancia =
+        (nuevoPrecio - costo) * item.cantidad;
+
+      return {
+        ...item,
+        margen: nuevoMargen,
+        precio_venta: Number(nuevoPrecio.toFixed(2)),
+        subtotal: Number(subtotal.toFixed(2)),
+        ganancia: Number(ganancia.toFixed(2)),
+      };
+    })
+  );
+};
+
+const todosItemsAprobados =   items.every(item => 
+    item.estado_cotizacion_item_id === 2 //  = aprobado
+);
+
+const handleIntercambiarMoneda = () => {
+  const esSoles = monedaId === '1';
+
+  const nuevoCosto = esSoles
+    ? itemForm.costo_base / TIPO_CAMBIO_SOLES
+    : itemForm.costo_base * TIPO_CAMBIO_DOLAR;
+
+  setItemForm(prev => ({
+    ...prev,
+    costo_base: Number(nuevoCosto.toFixed(2)),
+  }));
+};
+
+const handleExportarPdf = async () => {
+  if (!cotizacion?.id) return;
+
+  setExportandoPdf(true);
+
+  try {
+    const blob = await exportarCotizacionPdf(cotizacion.id);
+
+  descargarPdfCotizacion(
+    cotizacion.numero || cotizacion.id.toString(),
+    blob
+  );
+
+  addNotification({
+    message: 'PDF exportado correctamente',
+    type: 'success',
+    duration: 3000,
+  } as any);
+
+  setShowExportModal(false);
+
+  } catch (error: any) {
+    addNotification({
+      message: 'Error al exportar PDF',
+      type: 'error',
+      duration: 4000,
+  } as any);
+
+  console.error(error);
+  }finally {
+    setExportandoPdf(false);
+  }
+};
 
 const refreshCotizacion = async () => {
   if (!currentCotizacionId) return;
@@ -509,6 +609,28 @@ const refreshCotizacion = async () => {
   setCotizacion(data);
   setItems(data.items || []);
   setCostos(data.costosAdicionales || []);
+  // 🔥 sincronizar header
+  setClienteId(data.cliente_id);
+  setPlantillaId(data.plantilla_id);
+  setMonedaId(data.cliente?.moneda_id?.toString() || '1');
+  setModoDistribucion(data.modo_distribucion);
+  setTitulo(data.titulo);
+
+  // 🔥 sincronizar estado UI
+  const nuevoEstado =
+    data.estado_cotizacion_id === 1
+      ? 'borrador'
+      : data.estado_cotizacion_id === 2
+      ? 'enviada'
+      : data.estado_cotizacion_id === 3
+      ? 'parcialmente_aprobada'
+      : data.estado_cotizacion_id === 4
+      ? 'aprobada'
+      : data.estado_cotizacion_id === 5
+      ? 'oc_registrada'
+      : '';
+
+  setEstado(nuevoEstado);
 };
 
 // ====== HELPERS ======
@@ -564,7 +686,7 @@ const refreshCotizacion = async () => {
       estado_cotizacion_item_id: undefined,
       tipo: 'personalizado' as 'catalogo' | 'personalizado',
     });
-    setShowItemForm(true);
+    setShowItemFormModal(true);
   };
 
   // ====== RENDER ======
@@ -687,7 +809,7 @@ const refreshCotizacion = async () => {
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl text-gray-800">Items ({items.length})</h2>
-              <button onClick={() => setShowItemForm(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+              <button onClick={() => setShowItemTypeModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
                 <Plus className="w-4 h-4" /> Agregar Item
               </button>
             </div>
@@ -863,14 +985,14 @@ const refreshCotizacion = async () => {
             </button>
             <button 
               onClick={() => setShowExportModal(true)} 
-              disabled={!puedeExportar()}
+              disabled={!puedeExportar() || items.length === 0}
               className={`w-full flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${
                 puedeExportar() 
                   ? 'bg-blue-600 text-white hover:bg-blue-700' 
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
             >
-               <FileSpreadsheet className="w-5 h-5" /> Exportar Documento
+              <FileSpreadsheet className="w-5 h-5" /> Exportar Documento
             </button>
           </div>
         </div>
@@ -884,7 +1006,7 @@ const refreshCotizacion = async () => {
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold text-gray-800">Agregar nuevo item</h3>
-              <button onClick={() => setShowItemForm(false)}><X className="w-6 h-6 text-gray-400" /></button>
+              <button onClick={() => setShowItemFormModal(false)}><X className="w-6 h-6 text-gray-400" /></button>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <button 
@@ -916,7 +1038,7 @@ const refreshCotizacion = async () => {
             </div>
             <div className="p-4 overflow-y-auto">
               <div className="space-y-2">
-                {productosDisponibles.map(p => (
+                {productos.map(p => (
                   <div 
                     key={p.id} 
                     onClick={() => handleProductSelection(p)}
@@ -924,10 +1046,10 @@ const refreshCotizacion = async () => {
                   >
                     <div>
                       <p className="font-bold text-gray-800 group-hover:text-blue-700">{p.nombre}</p>
-                      <p className="text-xs text-gray-500">Costo Base: {simboloMoneda} {p.costo} | Sugerido: {simboloMoneda} {p.precio}</p>
+                      <p className="text-xs text-gray-500">Sugerido: {simboloMoneda} {p.precio_referencial}</p>
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded-full ${p.disponibilidad === 'stock' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                      {p.disponibilidad.toUpperCase()}
+                    <span className={`text-xs px-2 py-1 rounded-full ${p.stock === 0 ? 'bg-red-100 text-red-700' : p.stock > 10 ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                      {p.stock === 0 ? 'Agotado' : p.stock > 10 ? 'En Stock' : `Pocas Unidades (${p.stock})`}
                     </span>
                   </div>
                 ))}
@@ -1015,7 +1137,29 @@ const refreshCotizacion = async () => {
               </div>
             </div>
             <div className="mt-6 flex gap-3">
-              <button onClick={() => setShowItemForm(false)} className="flex-1 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
+              <button onClick={() => setShowItemFormModal(false)} className="flex-1 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span>Precio Venta:</span>
+                  <span className="font-bold">
+                    {simboloMoneda} {itemForm.precio_venta.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between text-green-600">
+                  <span>Ganancia:</span>
+                  <span className="font-bold">
+                    {simboloMoneda} {itemForm.ganancia.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between font-bold border-t pt-2">
+                  <span>Subtotal:</span>
+                  <span>
+                    {simboloMoneda} {itemForm.subtotal.toFixed(2)}
+                  </span>
+                </div>
+              </div>
               <button onClick={editingItem ? () => handleUpdateItem(editingItem.id) : handleAddItem} className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">Agregar al listado</button>
             </div>
           </div>
@@ -1101,12 +1245,18 @@ const refreshCotizacion = async () => {
             </div>
             <h3 className="text-xl font-bold mb-2">Exportar Documento</h3>
             <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => exportarCotizacionPdf} className="flex items-center justify-center gap-2 p-3 border-2 border-red-100 rounded-xl hover:bg-red-50 text-red-700 font-bold">
-                <FileText className="w-5 h-5" /> PDF
+              <button onClick={handleExportarPdf} className="flex items-center justify-center gap-2 p-3 border-2 border-red-100 rounded-xl hover:bg-red-50 text-red-700 font-bold">
+                {exportandoPdf ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <FileText className="w-5 h-5" />
+                )}
+
+                  {exportandoPdf ? 'Exportando...' : 'PDF'}
               </button>
-              <button onClick={() => handleExportar('excel')} className="flex items-center justify-center gap-2 p-3 border-2 border-green-100 rounded-xl hover:bg-green-50 text-green-700 font-bold">
+              {/* <button onClick={() => handleExportarPdf('excel')} className="flex items-center justify-center gap-2 p-3 border-2 border-green-100 rounded-xl hover:bg-green-50 text-green-700 font-bold">
                 <FileSpreadsheet className="w-5 h-5" /> Excel
-              </button>
+              </button> */}
             </div>
             <button onClick={() => setShowExportModal(false)} className="mt-4 text-sm text-gray-400 hover:underline">Cerrar</button>
           </div>
