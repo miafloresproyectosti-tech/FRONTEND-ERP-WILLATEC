@@ -18,7 +18,6 @@ export interface CotizacionItem {
   disponibilidad_tipo: "stock" | "importacion";
   disponibilidad_dias: number;
   orden: number;
-  activo: boolean;
   costo_unitario?: number;
   precio_venta?: number;
   subtotal?: number;
@@ -33,11 +32,32 @@ export interface CotizacionItem {
   link_proveedor?: string; // Nuevo campo para link del proveedor
 }
 
+export interface ItemFormState {
+  descripcion: string;
+  cantidad: number;
+  costo_base: number;
+  orden: number;
+  cotizacion_id: number;
+  producto_id?: number;
+  estado_cotizacion_item_id?: number;
+  tipo: 'catalogo' | 'personalizado';
+  margen: number;
+  marca: string;
+  codigo: string;
+  unidad_medida: string;
+  garantia_meses: number;
+  disponibilidad_tipo: 'stock' | 'importacion';
+  disponibilidad_dias: number;
+  proveedor?: string;
+  link_proveedor?: string;
+}
+
 export interface CotizacionCostosAdicional {
   id: number;
   cotizacion_id: number;
   tipo: string;
   monto: number;
+  descripcion: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -110,9 +130,6 @@ export interface CreateItemData {
   descripcion: string;
   cantidad: number;
   costo_base: number;
-  precio_venta: number;
-  subtotal: number;
-  ganancia: number;
   margen: number;
   marca?: string;
   codigo?: string;
@@ -121,6 +138,8 @@ export interface CreateItemData {
   garantia_meses?: number;
   disponibilidad_tipo: "stock" | "importacion";
   disponibilidad_dias: number;
+  proveedor: string;
+  link_proveedor: string;
 }
 
 export interface UpdateItemData extends CreateItemData {}
@@ -184,6 +203,19 @@ export async function createCotizacion(
     throw error;
   }
 }
+
+/**
+ * Crear una nueva cotización Completa
+ */
+export const createCotizacionCompleta = async (data: any) => {
+
+  const response = await api.post(
+    '/cotizaciones/completa',
+    data
+  );
+
+  return response.data.cotizacion;
+};
 
 /**
  * Actualizar una cotización existente
@@ -354,6 +386,6 @@ export function descargarPdfCotizacion(
 // ========================
 
 export const getPlantillas = async (): Promise<Plantilla[]> => {
-  const res = await api.get("/plantillas");
+  const res = await api.get("/cotizaciones/plantillas");
   return res.data?.data ?? [];
 };

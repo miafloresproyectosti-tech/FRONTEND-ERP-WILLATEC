@@ -12,6 +12,10 @@ export interface Producto {
     activo: boolean;
     stock: number;
     categoria_id: number;
+    costo_base: number;
+    garantia_meses: number;
+    disponibilidad_tipo: "stock" | "importacion";
+     disponibilidad_dias: number;
 }
 
 export interface ProductoPayload {

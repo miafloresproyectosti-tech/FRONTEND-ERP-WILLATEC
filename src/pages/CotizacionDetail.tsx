@@ -6,21 +6,21 @@ import { getClientes, type Cliente } from '../services/cliente.service';;
 import { getProductos, type Producto} from "../services/producto.service";
 import {
   getCotizacion,
-  createCotizacion,
-  updateCotizacion,
-  addItem,
-  updateItem,
-  deleteItem,
-  addCosto,
-  deleteCosto,
-  recalcularCotizacion,
+  // createCotizacion,
+  // updateCotizacion,
+  // updateItem,
+  // deleteItem,
+  // deleteCosto,
   exportarCotizacionPdf,
   descargarPdfCotizacion,
+  createCotizacionCompleta,
   getPlantillas,
   type Cotizacion,
   type CotizacionItem,
   type CotizacionCostosAdicional,
   type Plantilla,
+  type ItemFormState,
+
 } from '../services/cotizacion.service';
 import {
   ArrowLeft,
@@ -37,6 +37,7 @@ import {
   ArrowLeftRight,
   Truck,
 } from 'lucide-react';
+import type { ItemCotizacion } from '../CotizacionesContext';
 
 export function CotizacionDetail() {
   const navigate = useNavigate();
@@ -62,14 +63,14 @@ export function CotizacionDetail() {
   const [validezDias, setValidezDias] = useState(30);
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [estadoCotizacionId, setEstadoCotizacionId] = useState<number>(1);
-  const simboloMoneda = cotizacion?.cliente?.moneda_id === 2 ? '$' : 'S/';
+  const simboloMoneda = monedaId === '2' ? '$' : 'S/';
 
   // Listas
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [items, setItems] = useState<CotizacionItem[]>([]);
   const [costos, setCostos] = useState<CotizacionCostosAdicional[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
-  const [plantilla, setPlantillas] = useState<Plantilla[]>([]);
+  const [plantillas, setPlantillas] = useState<Plantilla[]>([]);
 
   // UI State
   const [showItemForm, setShowItemForm] = useState(false);
@@ -102,14 +103,14 @@ export function CotizacionDetail() {
   }, [cotizacion]);
 
   // Formularios
-  const [itemForm, setItemForm] = useState({
+  const [itemForm, setItemForm] = useState<ItemFormState>({
     descripcion: '',
     cantidad: 1,
     costo_base: 0,
     // imagen: '',
     orden: 1,
     cotizacion_id: currentCotizacionId || 0,
-    producto_id: undefined,
+    producto_id: 0 || undefined,
     estado_cotizacion_item_id: undefined,
     tipo: 'personalizado' as 'catalogo' | 'personalizado',
     margen: 20,
@@ -151,6 +152,21 @@ const calculosItem = useMemo(() => {
     monto: 0,
     cotizacion_id: currentCotizacionId,
   });
+
+const resumen = useMemo(() => {
+  const subtotal = items.reduce((acc, i) => acc + (i.subtotal || 0), 0);
+  const costosTotal = costos.reduce((acc, c) => acc + (c.monto || 0), 0);
+  const igv = subtotal * 0.18;
+  const ganancia = items.reduce((acc, i) => acc + (i.ganancia || 0), 0);
+
+  return {
+    subtotal,
+    costosTotal,
+    igv,
+    ganancia,
+    total: subtotal + igv + costosTotal,
+  };
+}, [items, costos]);
 
   // ====== EFECTOS ======
 
@@ -221,7 +237,57 @@ const calculosItem = useMemo(() => {
     }
   }, [isEditing, currentCotizacionId]);
 
-  
+  //GUARDA BACKUP AUTOMATICAMENTE
+  useEffect(() => {
+
+  const draft = {
+    clienteId,
+    plantillaId,
+    monedaId,
+    items,
+    costos,
+    titulo,
+    fecha,
+    validezDias,
+    estadoCotizacionId,
+  };
+
+  localStorage.setItem(
+    'cotizacion_draft',
+    JSON.stringify(draft)
+  );
+
+}, [
+  clienteId,
+  plantillaId,
+  monedaId,
+  items,
+  costos,
+  titulo,
+  fecha,
+  validezDias,
+  estadoCotizacionId,
+]);
+
+  //RECUPERA BORRADOR
+  useEffect(() => {
+    if (isEditing) return;
+
+    const saved = localStorage.getItem('cotizacion_draft');
+
+    if (!saved) return;
+
+    const draft = JSON.parse(saved);
+
+    setClienteId(draft.clienteId);
+    setPlantillaId(draft.plantillaId);
+    setMonedaId(draft.monedaId);
+    setItems(draft.items || []);
+    setCostos(draft.costos || []);
+    setTitulo(draft.titulo || '');
+    setFecha(draft.fecha || '');
+    setValidezDias(draft.validezDias || 30);
+  }, [isEditing]);
 
   // ====== FUNCIONES API ======
 
@@ -254,199 +320,200 @@ const calculosItem = useMemo(() => {
 
   const handleSaveCotizacion = async () => {
     if (!clienteId || !plantillaId) {
-      addNotification({
-        message: 'Seleccione cliente y plantilla',
-        type: 'warning',
-        duration: 4000,
-      } as any);
-      return;
-    }
-
-    setSaving(true);
-    try {
-      if (isEditing && currentCotizacionId && cotizacion) {
-        // Actualizar
-        await updateCotizacion(currentCotizacionId, {
-          cliente_id: clienteId,
-          plantilla_id: plantillaId,
-          moneda_id: monedaId,
-          modo_distribucion: modoDistribucion,
-          estado_cotizacion_id: estadoCotizacionId,
-          fecha: fecha,
-          validez_dias: validezDias,
-          titulo: titulo,
-        });
-        addNotification({
-          message: 'Cotización actualizada',
-          type: 'success',
-          duration: 4000,
-        } as any);
-      } else {
-        // Crear
-        const newCotizacion = await createCotizacion({
-          cliente_id: clienteId,
-          plantilla_id: plantillaId,
-          titulo: titulo || `Cotización ${new Date().toLocaleDateString()}`,
-          modo_distribucion: modoDistribucion,
-          moneda_id: Number(monedaId),
-          validez_dias: validezDias,
-          estado_cotizacion_id: 1, // Borrador
-          fecha: fecha,
-        });
-        addNotification({
-          message: 'Cotización creada',
-          type: 'success',
-          duration: 4000,
-        } as any);
-        setCotizacion(newCotizacion);
-      }
-      // navigate(`/cotizaciones/${currentCotizacionId || cotizacion?.id}`);
-    } catch (error: any) {
-      addNotification({
-        message: error?.response?.data?.message || 'Error al guardar',
-        type: 'error',
-        duration: 4000,
-      } as any);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleAddItem = async () => {
-  try {
-
-    let cotizacionActual = cotizacion;
-
-    // ===== CREAR COTIZACION SI NO EXISTE =====
-    if (!cotizacionActual) {
-
-      if (!clienteId || !plantillaId) {
-        addNotification({
-          message: 'Seleccione cliente y plantilla',
-          type: 'warning',
-          duration: 4000,
-        } as any);
-
-        return;
-      }
-
-      const nuevaCotizacion = await createCotizacion({
-        cliente_id: clienteId,
-        plantilla_id: plantillaId,
-        titulo: titulo || `Cotización ${new Date().toLocaleDateString()}`,
-        modo_distribucion: modoDistribucion,
-        moneda_id: Number(monedaId),
-        validez_dias: validezDias,
-        estado_cotizacion_id: 1,
-        fecha: new Date().toISOString(),
-      });
-
-      setCotizacion(nuevaCotizacion);
-
-      cotizacionActual = nuevaCotizacion;
-
-      addNotification({
-        message: 'Cotización creada automáticamente',
-        type: 'success',
-        duration: 3000,
-      } as any);
-    }
-
-    // ===== VALIDAR ITEM =====
-    if (!itemForm.descripcion || itemForm.cantidad <= 0) {
-      addNotification({
-        message: 'Completa los datos del item',
-        type: 'warning',
-        duration: 4000,
-      } as any);
-
-      return;
-    }
-
-    // ===== AGREGAR ITEM =====
-    await addItem(cotizacionActual.id, {
-      descripcion: itemForm.descripcion,
-      cantidad: itemForm.cantidad,
-      costo_base: itemForm.costo_base,
-      precio_venta: calculosItem.precioVenta,
-      subtotal: calculosItem.subtotal,
-      ganancia: calculosItem.ganancia,
-      margen: itemForm.margen,
-      marca: itemForm.marca,
-      codigo: nextCodigoStr,
-      unidad_medida: itemForm.unidad_medida,
-      disponibilidad_tipo: itemForm.disponibilidad_tipo,
-      disponibilidad_dias: itemForm.disponibilidad_dias,
-      garantia_meses: itemForm.garantia_meses,
-    });
-
     addNotification({
-      message: 'Item agregado correctamente',
-      type: 'success',
-      duration: 3000,
+      message: 'Seleccione cliente y plantilla',
+      type: 'warning',
+      duration: 4000,
     } as any);
 
-    setShowItemFormModal(false);
+    return;
+  }
 
-    resetItemForm();
+  if (items.length === 0) {
+    addNotification({
+      message: 'Debe agregar al menos un item',
+      type: 'warning',
+      duration: 4000,
+    } as any);
 
-    await refreshCotizacion();
+    return;
+  }
+
+  setSaving(true);
+
+  try {
+
+    const payload = {
+      cliente_id: clienteId,
+      plantilla_id: plantillaId,
+      titulo: titulo || `Cotización ${new Date().toLocaleDateString()}`,
+      modo_distribucion: modoDistribucion,
+      moneda_id: Number(monedaId || 1),
+      validez_dias: validezDias,
+      fecha: fecha,
+      estado_cotizacion_id: estadoCotizacionId,
+
+      items: items.map((item) => ({
+        descripcion: item.descripcion,
+        cantidad: item.cantidad,
+        costo_base: item.costo_base,
+        margen: item.margen,
+
+        marca: item.marca,
+        codigo: item.codigo,
+        unidad_medida: item.unidad_medida,
+
+        garantia_meses: item.garantia_meses,
+
+        disponibilidad_tipo: item.disponibilidad_tipo,
+        disponibilidad_dias: item.disponibilidad_dias,
+
+        proveedor: item.proveedor,
+        link_proveedor: item.link_proveedor,
+
+        producto_id: item.producto_id,
+        tipo: item.tipo,
+      })),
+
+      costos: costos.map((costo) => ({
+        tipo: costo.tipo,
+        monto: costo.monto,
+      })),
+    };
+
+    const response = await createCotizacionCompleta(payload);
+
+    addNotification({
+      message: 'Cotización creada correctamente',
+      type: 'success',
+      duration: 4000,
+    } as any);
+
+    navigate(`/cotizaciones/${response.cotizacion.id}`);
+    localStorage.removeItem('cotizacion_draft');
 
   } catch (error: any) {
 
     addNotification({
       message:
         error?.response?.data?.message ||
-        'Error al guardar item',
+        'Error al guardar cotización',
       type: 'error',
       duration: 4000,
     } as any);
 
-    console.error(error);
+  } finally {
+    setSaving(false);
   }
-};
-
-  const handleUpdateItem = async (itemId: number) => {
-    if (!cotizacion) return;
-    try {
-      await updateItem(itemId, itemForm as any);
-      addNotification({
-        message: 'Item actualizado',
-        type: 'success',
-        duration: 4000,
-      } as any);
-      setShowItemForm(false);
-      setEditingItem(null);
-      resetItemForm();
-      await loadCotizacion();
-    } catch (error: any) {
-      addNotification({
-        message: error?.response?.data?.message || 'Error al actualizar item',
-        type: 'error',
-        duration: 4000,
-      } as any);
-    }
   };
 
-  const handleDeleteItem = async (itemId: number) => {
-    if (!cotizacion) return;
-    if (!confirm('¿Eliminar item?')) return;
+  const handleAddItem = () => {
 
-    try {
-      await deleteItem(itemId);
-      addNotification({
-        message: 'Item eliminado',
-        type: 'success',
-        duration: 4000,
-      } as any);
-      await loadCotizacion();
-    } catch (error: any) {
-      addNotification({
-        message: error?.response?.data?.message || 'Error al eliminar item',
-        type: 'error',
-        duration: 4000,
-      } as any);
-    }
+    const nuevoItem: CotizacionItem = {
+      id: Date.now(),
+
+      descripcion: itemForm.descripcion,
+      cantidad: itemForm.cantidad,
+
+      costo_base: itemForm.costo_base,
+      costo_total: itemForm.costo_base,
+
+      margen: itemForm.margen,
+
+      precio_venta: calculosItem.precioVenta,
+      subtotal: calculosItem.subtotal,
+      ganancia: calculosItem.ganancia,
+
+      marca: itemForm.marca,
+
+      codigo: nextCodigoStr,
+
+      unidad_medida: itemForm.unidad_medida,
+
+      disponibilidad_tipo: itemForm.disponibilidad_tipo,
+      disponibilidad_dias: itemForm.disponibilidad_dias,
+
+      garantia_meses: itemForm.garantia_meses,
+
+      producto_id: itemForm.producto_id,
+
+      estado_cotizacion_item_id: 1,
+
+      tipo: itemForm.tipo,
+
+      proveedor: itemForm.proveedor,
+
+      link_proveedor: itemForm.link_proveedor,
+
+      cotizacion_id: currentCotizacionId || 0,
+
+      orden: itemForm.orden,
+    };
+
+  setItems(prev => [...prev, nuevoItem])
+
+  setShowItemFormModal(false)
+
+  resetItemForm()
+  }
+
+  const handleUpdateItem = (itemId: number) => {
+    setItems(prev =>
+    prev.map(item => {
+
+      if (item.id !== itemId) return item;
+
+      return {
+        ...item,
+
+        descripcion: itemForm.descripcion,
+        cantidad: itemForm.cantidad,
+        costo_base: itemForm.costo_base,
+        costo_total: itemForm.costo_base,
+
+        margen: itemForm.margen,
+
+        precio_venta: calculosItem.precioVenta,
+        subtotal: calculosItem.subtotal,
+        ganancia: calculosItem.ganancia,
+
+        marca: itemForm.marca,
+        codigo: itemForm.codigo,
+        unidad_medida: itemForm.unidad_medida,
+
+        garantia_meses: itemForm.garantia_meses,
+
+        disponibilidad_tipo: itemForm.disponibilidad_tipo,
+        disponibilidad_dias: itemForm.disponibilidad_dias,
+
+        proveedor: itemForm.proveedor,
+        link_proveedor: itemForm.link_proveedor,
+      };
+    })
+  );
+
+  addNotification({
+    message: 'Item actualizado',
+    type: 'success',
+    duration: 3000,
+  } as any);
+
+  setShowItemFormModal(false);
+  setEditingItem(null);
+
+  resetItemForm();
+  };
+
+  const handleDeleteItem = (itemId: number) => {
+    setItems(prev =>
+    prev.filter(item => item.id !== itemId)
+  );
+
+  addNotification({
+    message: 'Item eliminado',
+    type: 'success',
+    duration: 3000,
+  } as any);
   };
 
   // 🆕 FUNCIÓN PARA ICONO DE DISPONIBILIDAD
@@ -475,7 +542,7 @@ const calculosItem = useMemo(() => {
   // COSTOS ADICIONALES
   // ==========
   const handleAddCosto = async () => {
-    if (!cotizacion || costoForm.monto <= 0) {
+    if (costoForm.monto <= 0) {
       addNotification({
         message: 'Ingresa un monto válido',
         type: 'warning',
@@ -484,8 +551,20 @@ const calculosItem = useMemo(() => {
       return;
     }
 
+const nuevoCosto: CotizacionCostosAdicional = {
+  id: Date.now(),
+
+  tipo: costoForm.tipo,
+
+  descripcion: costoForm.descripcion,
+
+  monto: costoForm.monto,
+
+  cotizacion_id: currentCotizacionId || 0,
+};
+
     try {
-      await addCosto(cotizacion.id, costoForm);
+      setCostos(prev => [...prev, nuevoCosto])
       addNotification({
         message: 'Costo agregado',
         type: 'success',
@@ -497,7 +576,7 @@ const calculosItem = useMemo(() => {
         monto: 0, 
         descripcion: '', 
         cotizacion_id: currentCotizacionId });
-      await loadCotizacion();
+      // await loadCotizacion();
     } catch (error: any) {
       addNotification({
         message: error?.response?.data?.message || 'Error al agregar costo',
@@ -508,25 +587,16 @@ const calculosItem = useMemo(() => {
   };
 
 
-  const handleDeleteCosto = async (costoId: number) => {
-    if (!cotizacion) return;
-    if (!confirm('¿Eliminar costo?')) return;
+  const handleDeleteCosto = (costoId: number) => {
+      setCostos(prev =>
+    prev.filter(costo => costo.id !== costoId)
+  );
 
-    try {
-      await deleteCosto(costoId);
-      addNotification({
-        message: 'Costo eliminado',
-        type: 'success',
-        duration: 4000,
-      } as any);
-      await loadCotizacion();
-    } catch (error: any) {
-      addNotification({
-        message: error?.response?.data?.message || 'Error al eliminar costo',
-        type: 'error',
-        duration: 4000,
-      } as any);
-    }
+  addNotification({
+    message: 'Costo eliminado',
+    type: 'success',
+    duration: 3000,
+  } as any);
   };
 
   //PRUEBA
@@ -552,7 +622,7 @@ const calculosItem = useMemo(() => {
       tipo: 'personalizado',
       margen: 20,
       marca: '',
-      codigo: '',
+      codigo: nextCodigoStr,
       unidad_medida: 'UND',
       garantia_meses: 12,
       disponibilidad_tipo: 'stock',
@@ -564,18 +634,18 @@ const calculosItem = useMemo(() => {
     setShowItemFormModal(true);
   };
 
-  const handleProductSelection = (producto: any) => {
+  const handleProductSelection = (producto: Producto) => {
   setShowProductModal(false);
 
   const margen =
-    producto.precio > 0
-      ? ((producto.precio - producto.costo) / producto.precio) * 100
+    producto.precio_referencial > 0
+      ? ((producto.precio_referencial - producto.costo_base) / producto.precio_referencial) * 100
       : 0;
 
   setItemForm({
     descripcion: producto.nombre || '',
     cantidad: 1,
-    costo_base: producto.costo || 0,
+    costo_base: producto.costo_base || 0,
     // imagen: producto.imagen || '',
     orden: 1,
     cotizacion_id: currentCotizacionId || 0,
@@ -589,8 +659,6 @@ const calculosItem = useMemo(() => {
     garantia_meses: producto.garantia_meses || 12,
     disponibilidad_tipo: producto.disponibilidad_tipo || 'stock',
     disponibilidad_dias: producto.disponibilidad_dias || 4,
-    proveedor: '',
-    link_proveedor: '',
   });
 
   addNotification({
@@ -632,8 +700,10 @@ const actualizarMargenItem = (
   );
 };
 
-const todosItemsAprobados =   items.every(item => 
-    item.estado_cotizacion_item_id === 2 //  = aprobado
+const todosItemsAprobados =   
+    items.length > 0 &&
+    items.every(
+      item => item.estado_cotizacion_item_id === 2 //  = aprobado
 );
 
 const handleIntercambiarMoneda = () => {
@@ -711,7 +781,7 @@ const refreshCotizacion = async () => {
       costo_base: 0,
       margen: 20,
       marca: '',
-      codigo: '',
+      codigo: nextCodigoStr,
       unidad_medida: 'UND',
       garantia_meses: 12,
       disponibilidad_tipo: 'stock',
@@ -827,6 +897,7 @@ const refreshCotizacion = async () => {
                 <input
                   type="number"
                   value={validezDias || ''}
+                  onChange={(e) => setValidezDias(Number(e.target.value))}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder='Ingresa días de validez, ej: 30'
                 />
@@ -839,7 +910,7 @@ const refreshCotizacion = async () => {
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="" disabled >Seleccionar plantilla</option>
-                  {plantilla.map((plantilla: any) => (
+                  {plantillas.map((plantilla: Plantilla) => (
                     <option
                       key={plantilla.id}
                       value={plantilla.id}
@@ -852,7 +923,8 @@ const refreshCotizacion = async () => {
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Modo Distribución</label>
                 <select
-                  value={modoDistribucion ?? 'POR_ITEM' }
+                  value={modoDistribucion}
+                  onChange={(e)=> setModoDistribucion(e.target.value as 'POR_ITEM' | 'POR_CANTIDAD')}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="" disabled >Seleccionar Modo</option>
@@ -977,7 +1049,7 @@ const refreshCotizacion = async () => {
 
                               {todosItemsAprobados && (
                             <button 
-                              onClick={() => setEstadoCotizacionId(2)} 
+                              onClick={() => setEstadoCotizacionId(4)} 
                               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
                             >
                               <CheckCircle className="w-4 h-4" /> Aprobar Completa
@@ -993,7 +1065,7 @@ const refreshCotizacion = async () => {
                           <input 
                             type="number" 
                             value={(item.margen ?? 0).toFixed(1)} 
-                            onChange={(e) => actualizarMargenItem(item.id, parseFloat(e.target.value))}
+                            onChange={(e) => actualizarMargenItem(item.margen, parseFloat(e.target.value))}
                             className="w-14 px-1 py-1 border rounded text-xs" 
                             step="0.1" 
                           />
@@ -1018,23 +1090,24 @@ const refreshCotizacion = async () => {
 
         <div className="space-y-6">
           {/* RESUMEN */}
+          < CotizacionesResumen />
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <h2 className="text-xl mb-4">Resumen Aprobado</h2>
             <div className="space-y-3 text-sm">
-              <div className="flex justify-between">Subtotal: <span className="font-bold">{simboloMoneda} {cotizacion?.subtotal.toFixed(2)}</span></div>
-              <div className="flex justify-between">IGV 18%: <span>{simboloMoneda} {cotizacion?.igv.toFixed(2)}</span></div>
+              <div className="flex justify-between">Subtotal: <span className="font-bold">{simboloMoneda} {resumen.subtotal.toFixed(2)}</span></div>
+              <div className="flex justify-between">IGV 18%: <span>{simboloMoneda} {resumen.igv.toFixed(2)}</span></div>
               <div className="flex justify-between">
-                Total Costos Adicionales: <span>{simboloMoneda} {(cotizacion?.total_gasto ?? 0).toFixed(2)}</span>
+                Total Costos Adicionales: <span>{simboloMoneda} {(resumen.costosTotal ?? 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm text-gray-600">
-                Distribuido por Item ({items.length} items): <span>{simboloMoneda} {(items.length > 0 ? ((cotizacion?.total_gasto ?? 0) / items.length) : 0).toFixed(2)}</span>
+                Distribuido por Item ({items.length} items): <span>{simboloMoneda} {(items.length > 0 ? ((resumen.costosTotal ?? 0) / items.length) : 0).toFixed(2)}</span>
               </div>
 
               <div className="border-t pt-3 flex justify-between text-lg font-bold">
-                Total: <span>{simboloMoneda} {cotizacion?.total.toFixed(2)}</span>
+                Total: <span>{simboloMoneda} {resumen.total.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-green-600 font-bold">
-                Ganancia: <span>{simboloMoneda} {(cotizacion?.ganancia ?? 0).toFixed(2)}</span>
+                Ganancia: <span>{simboloMoneda} {(resumen.ganancia ?? 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between pt-2 border-t text-blue-600 font-bold">
                 Margen Promedio: <span>{items.length > 0 ? (items.reduce((sum, item) => sum + item.margen, 0) / items.length).toFixed(1) : '0.0'}%</span>
@@ -1272,7 +1345,7 @@ const refreshCotizacion = async () => {
             </div>
             <div className="mt-6 flex gap-3">
               <button onClick={() => setShowItemFormModal(false)} className="flex-1 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
-              <button onClick={editingItem ? () => handleUpdateItem(editingItem.id) : handleAddItem} className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">Agregar al listado</button>
+              <button onClick={editingItem ? () => handleUpdateItem(editingItem.id) : handleAddItem} className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">{editingItem ? 'Actualizar Item' : 'Agregar al listado'}</button>
             </div>
           </div>
         </div>
