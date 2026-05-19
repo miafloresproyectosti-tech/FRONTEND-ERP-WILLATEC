@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useNotifications } from '../NotificationContext';
 import { useAuth } from '../AuthContext';
@@ -16,9 +16,11 @@ import {
   recalcularCotizacion,
   exportarCotizacionPdf,
   descargarPdfCotizacion,
+  getPlantillas,
   type Cotizacion,
   type CotizacionItem,
   type CotizacionCostosAdicional,
+  type Plantilla,
 } from '../services/cotizacion.service';
 import {
   ArrowLeft,
@@ -53,10 +55,13 @@ export function CotizacionDetail() {
   // Cotización header
   const [cotizacion, setCotizacion] = useState<Cotizacion | null>(null);
   const [clienteId, setClienteId] = useState<number | null>(null);
-  const [plantillaId, setPlantillaId] = useState<number | null>(1);
+  const [plantillaId, setPlantillaId] = useState<number | null>(null);
   const [monedaId, setMonedaId] = useState<string>('1'); // 1=PEN, 2=USD
   const [modoDistribucion, setModoDistribucion] = useState<'POR_ITEM' | 'POR_CANTIDAD'>('POR_ITEM');
   const [titulo, setTitulo] = useState('');
+  const [validezDias, setValidezDias] = useState(30);
+  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+  const [estadoCotizacionId, setEstadoCotizacionId] = useState<number>(1);
   const simboloMoneda = cotizacion?.cliente?.moneda_id === 2 ? '$' : 'S/';
 
   // Listas
@@ -64,6 +69,7 @@ export function CotizacionDetail() {
   const [items, setItems] = useState<CotizacionItem[]>([]);
   const [costos, setCostos] = useState<CotizacionCostosAdicional[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [plantilla, setPlantillas] = useState<Plantilla[]>([]);
 
   // UI State
   const [showItemForm, setShowItemForm] = useState(false);
@@ -75,27 +81,24 @@ export function CotizacionDetail() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showCostosModal, setShowCostosModal] = useState(false);
 
-  const [estado, setEstado] = useState('');
-
   const TIPO_CAMBIO_DOLAR = 3.6; // Ejemplo, en un caso real se debería obtener dinámicamente DE DOLAR A SOLES
   const TIPO_CAMBIO_SOLES = 3.3; // Ejemplo, en un caso real se debería obtener dinámicamente DE SOLES A DOLAR
+
+    const nextCodigo = useMemo(() => {
+      const maxCodigo = items.reduce((max, item) => {
+        const value = parseInt(item.codigo ?? "", 10);
+        return Number.isFinite(value) ? Math.max(max, value) : max;
+      }, 0);
+  
+      return items.length > 0 ? maxCodigo + 1 : 1;
+    }, [items]);
+  
+    const nextCodigoStr = String(nextCodigo).padStart(4, "0");
 
   useEffect(() => {
     if (!cotizacion) return;
 
-    const nuevoEstado =
-      cotizacion?.estado_cotizacion_id === 1
-      ? 'borrador'
-      : cotizacion?.estado_cotizacion_id === 2
-      ? 'enviada'
-      : cotizacion?.estado_cotizacion_id === 3
-      ? 'parcialmente_aprobada'
-      : cotizacion?.estado_cotizacion_id === 4
-      ? 'aprobada'
-      : cotizacion?.estado_cotizacion_id === 5
-      ? 'oc_registrada'
-      : '';
-    setEstado(nuevoEstado);
+    setEstadoCotizacionId(cotizacion.estado_cotizacion_id);
   }, [cotizacion]);
 
   // Formularios
@@ -103,12 +106,7 @@ export function CotizacionDetail() {
     descripcion: '',
     cantidad: 1,
     costo_base: 0,
-    precio_venta: 0,
-    costo_unitario: 0,
-    costo_total: 0,
-    ganancia: 0,
-    subtotal: 0,
-    imagen: '',
+    // imagen: '',
     orden: 1,
     cotizacion_id: currentCotizacionId || 0,
     producto_id: undefined,
@@ -116,14 +114,16 @@ export function CotizacionDetail() {
     tipo: 'personalizado' as 'catalogo' | 'personalizado',
     margen: 20,
     marca: '',
-    codigo: '',
+    codigo: nextCodigoStr,
     unidad_medida: 'UND',
     garantia_meses: 12,
     disponibilidad_tipo: 'stock' as 'stock' | 'importacion',
     disponibilidad_dias: 4,
+    proveedor: '',
+    link_proveedor: '',
   });
 
-  useEffect(() => {
+const calculosItem = useMemo(() => {
   const precioVenta =
     itemForm.costo_base / (1 - itemForm.margen / 100);
 
@@ -134,12 +134,11 @@ export function CotizacionDetail() {
     (precioVenta - itemForm.costo_base) *
     itemForm.cantidad;
 
-  setItemForm(prev => ({
-    ...prev,
-    precio_venta: Number(precioVenta.toFixed(2)),
+  return {
+    precioVenta: Number(precioVenta.toFixed(2)),
     subtotal: Number(subtotal.toFixed(2)),
     ganancia: Number(ganancia.toFixed(2)),
-  }));
+  };
 }, [
   itemForm.costo_base,
   itemForm.margen,
@@ -147,8 +146,10 @@ export function CotizacionDetail() {
 ]);
 
   const [costoForm, setCostoForm] = useState({
-    tipo: 'flete',
+    tipo: '',
+    descripcion: '',
     monto: 0,
+    cotizacion_id: currentCotizacionId,
   });
 
   // ====== EFECTOS ======
@@ -190,12 +191,37 @@ export function CotizacionDetail() {
     fetchProductos();
   }, []);
 
+  //Cargar plantillas
+  useEffect(() => {
+  const fetchPlantillas = async () => {
+    try {
+
+      const data = await getPlantillas();
+
+      setPlantillas(data);
+
+    } catch (error) {
+
+      addNotification({
+        message: 'Error al cargar plantillas',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    }
+  };
+
+  fetchPlantillas();
+
+}, []);
+
   // Cargar cotización si es edición
   useEffect(() => {
     if (isEditing && currentCotizacionId) {
       loadCotizacion();
     }
   }, [isEditing, currentCotizacionId]);
+
+  
 
   // ====== FUNCIONES API ======
 
@@ -205,11 +231,13 @@ export function CotizacionDetail() {
       setLoading(true);
       const data = await getCotizacion(currentCotizacionId);
       setCotizacion(data);
+      setFecha(data.fecha ? new Date(data.fecha).toISOString().split('T')[0] : '')
       setClienteId(data.cliente_id);
       setPlantillaId(data.plantilla_id);
       setMonedaId(data.cliente?.moneda_id?.toString() || '1');
       setModoDistribucion(data.modo_distribucion);
       setTitulo(data.titulo);
+      setValidezDias(data.validez_dias);
       setItems(data.items || []);
       setCostos(data.costosAdicionales || []);
     } catch (error) {
@@ -243,6 +271,10 @@ export function CotizacionDetail() {
           plantilla_id: plantillaId,
           moneda_id: monedaId,
           modo_distribucion: modoDistribucion,
+          estado_cotizacion_id: estadoCotizacionId,
+          fecha: fecha,
+          validez_dias: validezDias,
+          titulo: titulo,
         });
         addNotification({
           message: 'Cotización actualizada',
@@ -257,6 +289,9 @@ export function CotizacionDetail() {
           titulo: titulo || `Cotización ${new Date().toLocaleDateString()}`,
           modo_distribucion: modoDistribucion,
           moneda_id: Number(monedaId),
+          validez_dias: validezDias,
+          estado_cotizacion_id: 1, // Borrador
+          fecha: fecha,
         });
         addNotification({
           message: 'Cotización creada',
@@ -265,7 +300,7 @@ export function CotizacionDetail() {
         } as any);
         setCotizacion(newCotizacion);
       }
-      navigate(`/cotizaciones/${currentCotizacionId || cotizacion?.id}`);
+      // navigate(`/cotizaciones/${currentCotizacionId || cotizacion?.id}`);
     } catch (error: any) {
       addNotification({
         message: error?.response?.data?.message || 'Error al guardar',
@@ -278,50 +313,98 @@ export function CotizacionDetail() {
   };
 
   const handleAddItem = async () => {
-    if (!cotizacion || !itemForm.descripcion || itemForm.cantidad <= 0) {
+  try {
+
+    let cotizacionActual = cotizacion;
+
+    // ===== CREAR COTIZACION SI NO EXISTE =====
+    if (!cotizacionActual) {
+
+      if (!clienteId || !plantillaId) {
+        addNotification({
+          message: 'Seleccione cliente y plantilla',
+          type: 'warning',
+          duration: 4000,
+        } as any);
+
+        return;
+      }
+
+      const nuevaCotizacion = await createCotizacion({
+        cliente_id: clienteId,
+        plantilla_id: plantillaId,
+        titulo: titulo || `Cotización ${new Date().toLocaleDateString()}`,
+        modo_distribucion: modoDistribucion,
+        moneda_id: Number(monedaId),
+        validez_dias: validezDias,
+        estado_cotizacion_id: 1,
+        fecha: new Date().toISOString(),
+      });
+
+      setCotizacion(nuevaCotizacion);
+
+      cotizacionActual = nuevaCotizacion;
+
+      addNotification({
+        message: 'Cotización creada automáticamente',
+        type: 'success',
+        duration: 3000,
+      } as any);
+    }
+
+    // ===== VALIDAR ITEM =====
+    if (!itemForm.descripcion || itemForm.cantidad <= 0) {
       addNotification({
         message: 'Completa los datos del item',
         type: 'warning',
         duration: 4000,
       } as any);
+
       return;
     }
 
-    try {
-      await addItem(cotizacion.id, {
-        descripcion: itemForm.descripcion,
-        cantidad: itemForm.cantidad,
-        costo_base: itemForm.costo_base,
-        margen: itemForm.margen,
-        marca: itemForm.marca,
-        codigo: itemForm.codigo,
-        unidad_medida: itemForm.unidad_medida,
-        disponibilidad_tipo: itemForm.disponibilidad_tipo,
-        disponibilidad_dias: itemForm.disponibilidad_dias,
-        garantia_meses: itemForm.garantia_meses,}
-      );
-      addNotification({
-        message: 'Item agregado',
-        type: 'success',
-        duration: 4000,
-      } as any);
+    // ===== AGREGAR ITEM =====
+    await addItem(cotizacionActual.id, {
+      descripcion: itemForm.descripcion,
+      cantidad: itemForm.cantidad,
+      costo_base: itemForm.costo_base,
+      precio_venta: calculosItem.precioVenta,
+      subtotal: calculosItem.subtotal,
+      ganancia: calculosItem.ganancia,
+      margen: itemForm.margen,
+      marca: itemForm.marca,
+      codigo: nextCodigoStr,
+      unidad_medida: itemForm.unidad_medida,
+      disponibilidad_tipo: itemForm.disponibilidad_tipo,
+      disponibilidad_dias: itemForm.disponibilidad_dias,
+      garantia_meses: itemForm.garantia_meses,
+    });
 
-      setShowItemForm(false);
+    addNotification({
+      message: 'Item agregado correctamente',
+      type: 'success',
+      duration: 3000,
+    } as any);
 
-      resetItemForm();
+    setShowItemFormModal(false);
 
-      await refreshCotizacion();
+    resetItemForm();
 
-      await loadCotizacion(); // Recargar
+    await refreshCotizacion();
 
-    } catch (error: any) {
-      addNotification({
-        message: error?.response?.data?.message || 'Error al agregar item',
-        type: 'error',
-        duration: 4000,
-      } as any);
-    }
-  };
+  } catch (error: any) {
+
+    addNotification({
+      message:
+        error?.response?.data?.message ||
+        'Error al guardar item',
+      type: 'error',
+      duration: 4000,
+    } as any);
+
+    console.error(error);
+  }
+};
 
   const handleUpdateItem = async (itemId: number) => {
     if (!cotizacion) return;
@@ -382,16 +465,16 @@ export function CotizacionDetail() {
     if (user.role === 'SUPERADMIN') return true;
     
     if (user.role === 'VENTAS') {
-      return estado === 'aprobada';
+      return estadoCotizacionId === 2 || estadoCotizacionId === 4; // Enviada o Aprobada
     }
     
     return true;
   };
 
+  // ========== 
+  // COSTOS ADICIONALES
+  // ==========
   const handleAddCosto = async () => {
-    // Este handler no se usa actualmente desde la UI.
-    // Los costos adicionales se gestionan por backend en el modal de "Costos Adicionales".
-    // Se conserva para futuras mejoras.
     if (!cotizacion || costoForm.monto <= 0) {
       addNotification({
         message: 'Ingresa un monto válido',
@@ -409,7 +492,11 @@ export function CotizacionDetail() {
         duration: 4000,
       } as any);
       setShowCostoForm(false);
-      setCostoForm({ tipo: 'flete', monto: 0 });
+      setCostoForm({ 
+        tipo: '', 
+        monto: 0, 
+        descripcion: '', 
+        cotizacion_id: currentCotizacionId });
       await loadCotizacion();
     } catch (error: any) {
       addNotification({
@@ -457,12 +544,7 @@ export function CotizacionDetail() {
       descripcion: '',
       cantidad: 1,
       costo_base: 0,
-      precio_venta: 0,
-      costo_unitario: 0,
-      costo_total: 0,
-      ganancia: 0,
-      subtotal: 0,
-      imagen: '',
+      // imagen: '',
       orden: 1,
       cotizacion_id: currentCotizacionId || 0,
       producto_id: undefined,
@@ -475,6 +557,8 @@ export function CotizacionDetail() {
       garantia_meses: 12,
       disponibilidad_tipo: 'stock',
       disponibilidad_dias: 4,
+      proveedor: '',
+      link_proveedor: '',
     });
 
     setShowItemFormModal(true);
@@ -492,12 +576,7 @@ export function CotizacionDetail() {
     descripcion: producto.nombre || '',
     cantidad: 1,
     costo_base: producto.costo || 0,
-    precio_venta: producto.precio || 0,
-    costo_unitario: producto.costo || 0,
-    costo_total: producto.costo || 0,
-    ganancia: (producto.precio || 0) - (producto.costo || 0),
-    subtotal: producto.precio || 0,
-    imagen: producto.imagen || '',
+    // imagen: producto.imagen || '',
     orden: 1,
     cotizacion_id: currentCotizacionId || 0,
     producto_id: producto.id,
@@ -510,6 +589,8 @@ export function CotizacionDetail() {
     garantia_meses: producto.garantia_meses || 12,
     disponibilidad_tipo: producto.disponibilidad_tipo || 'stock',
     disponibilidad_dias: producto.disponibilidad_dias || 4,
+    proveedor: '',
+    link_proveedor: '',
   });
 
   addNotification({
@@ -606,6 +687,7 @@ const refreshCotizacion = async () => {
   if (!currentCotizacionId) return;
 
   const data = await getCotizacion(currentCotizacionId);
+
   setCotizacion(data);
   setItems(data.items || []);
   setCostos(data.costosAdicionales || []);
@@ -617,20 +699,7 @@ const refreshCotizacion = async () => {
   setTitulo(data.titulo);
 
   // 🔥 sincronizar estado UI
-  const nuevoEstado =
-    data.estado_cotizacion_id === 1
-      ? 'borrador'
-      : data.estado_cotizacion_id === 2
-      ? 'enviada'
-      : data.estado_cotizacion_id === 3
-      ? 'parcialmente_aprobada'
-      : data.estado_cotizacion_id === 4
-      ? 'aprobada'
-      : data.estado_cotizacion_id === 5
-      ? 'oc_registrada'
-      : '';
-
-  setEstado(nuevoEstado);
+  setEstadoCotizacionId(data.estado_cotizacion_id);
 };
 
 // ====== HELPERS ======
@@ -647,17 +716,14 @@ const refreshCotizacion = async () => {
       garantia_meses: 12,
       disponibilidad_tipo: 'stock',
       disponibilidad_dias: 4,
-      precio_venta: 0,
-      costo_unitario: 0,
-      costo_total: 0,
-      ganancia: 0,
-      subtotal: 0,
-      imagen: '',
+      // imagen: '',
       orden: 1,
       cotizacion_id: currentCotizacionId || 0,
       producto_id: undefined,
       estado_cotizacion_item_id: undefined,
       tipo: 'personalizado' as 'catalogo' | 'personalizado',
+      proveedor: '',
+      link_proveedor: '',
     });
   };
 
@@ -674,17 +740,14 @@ const refreshCotizacion = async () => {
       garantia_meses: item.garantia_meses || 12,
       disponibilidad_tipo: item.disponibilidad_tipo,
       disponibilidad_dias: item.disponibilidad_dias,
-      precio_venta: item.precio_venta || 0,
-      costo_unitario: item.costo_unitario || 0,
-      costo_total: item.costo_total || 0,
-      ganancia: item.ganancia || 0,
-      subtotal: item.subtotal || 0,
-      imagen: '',
+      // imagen: '',
       orden: 1,
       cotizacion_id: currentCotizacionId || 0,
       producto_id: undefined,
       estado_cotizacion_item_id: undefined,
       tipo: 'personalizado' as 'catalogo' | 'personalizado',
+      proveedor: item.proveedor || '',
+      link_proveedor: item.link_proveedor || '',
     });
     setShowItemFormModal(true);
   };
@@ -710,7 +773,7 @@ const refreshCotizacion = async () => {
             <ArrowLeft className="w-6 h-6 text-gray-600" />
           </button>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-              {cotizacion?.estado_cotizacion_id === 1 && (
+              {estadoCotizacionId === 1 && (
                 <CheckCircle className="text-green-500 w-6 h-6" />
               )}
 
@@ -754,7 +817,8 @@ const refreshCotizacion = async () => {
                 <label className="block text-sm mb-2 text-gray-700">Fecha</label>
                 <input
                   type="date"
-                  value={cotizacion?.fecha ? new Date(cotizacion.fecha).toISOString().split('T')[0] : ''}
+                  value={fecha}
+                  onChange={(e) => setFecha(e.target.value)}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -762,8 +826,9 @@ const refreshCotizacion = async () => {
                 <label className="block text-sm mb-2 text-gray-700">Validez (días)</label>
                 <input
                   type="number"
-                  value={cotizacion?.validez_dias || 0}
+                  value={validezDias || ''}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder='Ingresa días de validez, ej: 30'
                 />
               </div>
               <div>
@@ -773,9 +838,26 @@ const refreshCotizacion = async () => {
                   onChange={(e) => setPlantillaId(Number(e.target.value))}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value={1}>Soles</option>
-                  <option value={2}>Dólares</option>
-                  <option value={3}>Soles Estándar</option>
+                  <option value="" disabled >Seleccionar plantilla</option>
+                  {plantilla.map((plantilla: any) => (
+                    <option
+                      key={plantilla.id}
+                      value={plantilla.id}
+                    >
+                      {plantilla.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm mb-2 text-gray-700">Modo Distribución</label>
+                <select
+                  value={modoDistribucion ?? 'POR_ITEM' }
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="" disabled >Seleccionar Modo</option>
+                  <option value="POR_ITEM">Por Items</option>
+                  <option value="POR_CANTIDAD">Por cantidad de item</option>
                 </select>
               </div>
               <div>
@@ -785,21 +867,23 @@ const refreshCotizacion = async () => {
                   onChange={(e) => setMonedaId(e.target.value)}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="1">PEN (S/)</option>
-                  <option value="2">USD ($)</option>
+                  <option value="" disabled >Seleccionar moneda</option>
+                  <option value={1}>PEN (S/)</option>
+                  <option value={2}>USD ($)</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Estado</label>
                 <select
-                  value={cotizacion?.estado_cotizacion_id === 1 ? 'borrador' : cotizacion?.estado_cotizacion_id === 2 ? 'enviada' : cotizacion?.estado_cotizacion_id === 3 ? 'parcialmente_aprobada' : cotizacion?.estado_cotizacion_id === 4 ? 'aprobada' : cotizacion?.estado_cotizacion_id === 5 ? 'oc_registrada' : ''}
+                  value={estadoCotizacionId}
+                  onChange={(e) => setEstadoCotizacionId(Number(e.target.value))}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="borrador">Borrador</option>
-                  <option value="enviada">Enviada</option>
-                  <option value="parcialmente_aprobada">Parcialmente Aprobada</option>
-                  <option value="aprobada">Aprobada</option>
-                  <option value="aprobada">OC_Registrada</option>
+                  <option value={1}>Borrador</option>
+                  <option value={2}>Enviada</option>
+                  <option value={3}>Parcialmente Aprobada</option>
+                  <option value={4}>Aprobada</option>
+                  <option value={5}>OC_Registrada</option>
                 </select>
               </div>
             </div>
@@ -818,13 +902,12 @@ const refreshCotizacion = async () => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b">
-                    <th className="text-left py-3 px-2 text-xs">Producto</th>
+                    <th className="text-left py-3 px-2 text-xs">Desc.</th>
                     <th className="text-left py-3 px-2 text-xs">Tipo</th>
-                    <th className="text-left py-3 px-2 text-xs">📦 Disp.</th>
-                    <th className="text-left py-3 px-2 text-xs">⏱️ Días</th>
+                    <th className="text-left py-3 px-2 text-xs">Días Entrega</th>
                     <th className="text-left py-3 px-2 text-xs">Garantía</th>
                     <th className="text-left py-3 px-2 text-xs">Cant.</th>
-                    {estado === 'parcialmente_aprobada' && (
+                    {estadoCotizacionId === 3 && (
                       <>
                         <th className="text-left py-3 px-2 text-xs">Aprobada</th>
                         <th className="text-left py-3 px-2 text-xs">Estado</th>
@@ -851,7 +934,7 @@ const refreshCotizacion = async () => {
                             {item.tipo === 'catalogo' ? 'Cat' : 'Ext'}
                           </span>
                         </td>
-                        <td className="py-3 px-2">
+                        {/* <td className="py-3 px-2">
                           <div className="flex items-center gap-1">
                             <IconoDisponibilidad tipo={item.disponibilidad_tipo} />
                             <span className={`text-xs font-medium ${
@@ -862,7 +945,7 @@ const refreshCotizacion = async () => {
                               {item.disponibilidad_tipo === 'stock' ? 'Stock' : 'Imp'}
                             </span>
                           </div>
-                        </td>
+                        </td> */}
                         <td className="py-3 px-2 font-medium text-xs">{item.disponibilidad_dias}</td>
                         <td className="py-3 px-2">
                           <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
@@ -871,7 +954,7 @@ const refreshCotizacion = async () => {
                         </td>
                         <td className="py-3 px-2 font-medium">{item.cantidad}</td>
                         
-                        {estado === 'parcialmente_aprobada' && (
+                        {estadoCotizacionId === 3 && (
                           <>
                             <td className="py-3 px-2">
                               <input
@@ -883,13 +966,23 @@ const refreshCotizacion = async () => {
                             </td>
                             <td className="py-3 px-2">
                               <select
-                                value={item.estado_cotizacion_item_id === 1 ? 'pendiente' : item.estado_cotizacion_item_id === 2 ? 'aprobado' : 'rechazado'}
+                                value={ item.estado_cotizacion_item_id === 1 ? 'pendiente' : 
+                                        item.estado_cotizacion_item_id === 2 ? 'aprobado' : 'rechazado'}
                                 className="px-2 py-1 border border-yellow-300 bg-yellow-50 rounded text-xs focus:ring-2 focus:ring-yellow-500"
                               >
-                                <option value="pendiente">⏳ Pend.</option>
-                                <option value="aprobado">✅ Aprob.</option>
-                                <option value="rechazado">❌ Rech.</option>
+                                <option value={1}>⏳ Pend.</option>
+                                <option value={2}>✅ Aprob.</option>
+                                <option value={3}>❌ Rech.</option>
                               </select>
+
+                              {todosItemsAprobados && (
+                            <button 
+                              onClick={() => setEstadoCotizacionId(2)} 
+                              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                            >
+                              <CheckCircle className="w-4 h-4" /> Aprobar Completa
+                            </button>
+                          )}
                             </td>
                           </>
                         )}
@@ -900,7 +993,7 @@ const refreshCotizacion = async () => {
                           <input 
                             type="number" 
                             value={(item.margen ?? 0).toFixed(1)} 
-                            onChange={(e) => actualizarMargenItem(item.id, parseFloat(e.target.value) || 0)}
+                            onChange={(e) => actualizarMargenItem(item.id, parseFloat(e.target.value))}
                             className="w-14 px-1 py-1 border rounded text-xs" 
                             step="0.1" 
                           />
@@ -920,26 +1013,6 @@ const refreshCotizacion = async () => {
                 </tbody>
               </table>
             </div>
-
-            {estado === 'parcialmente_aprobada' && (
-              <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex gap-6 text-sm">
-                    <span>⏳ Pendientes: {items.filter(i => i.estado_cotizacion_item_id === 1).length}</span>
-                    <span>✅ Aprobados: {items.filter(i => i.estado_cotizacion_item_id === 2).length}</span>
-                    <span>❌ Rechazados: {items.filter(i => i.estado_cotizacion_item_id === 3).length}</span>
-                  </div>
-                  {todosItemsAprobados && (
-                    <button 
-                      onClick={() => setEstado('aprobada')} 
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-                    >
-                      <CheckCircle className="w-4 h-4" /> Aprobar Completa
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
@@ -1006,7 +1079,7 @@ const refreshCotizacion = async () => {
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold text-gray-800">Agregar nuevo item</h3>
-              <button onClick={() => setShowItemFormModal(false)}><X className="w-6 h-6 text-gray-400" /></button>
+              <button onClick={() => setShowItemTypeModal(false)}><X className="w-6 h-6 text-gray-400" /></button>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <button 
@@ -1078,7 +1151,7 @@ const refreshCotizacion = async () => {
                 <label className="text-xs font-bold text-gray-500 uppercase">Cantidad</label>
                 <input 
                   type="number" 
-                  value={itemForm.cantidad} 
+                  value={itemForm.cantidad || 1} 
                   onChange={e => setItemForm({...itemForm, cantidad: parseInt(e.target.value) || 1})}
                   className="w-full p-2 border rounded-lg"
                 />
@@ -1087,8 +1160,8 @@ const refreshCotizacion = async () => {
                 <label className="text-xs font-bold text-gray-500 uppercase">Garantía</label>
                 <input 
                   type="number" 
-                  value={itemForm.garantia_meses} 
-                  onChange={e => setItemForm({...itemForm, garantia_meses: parseInt(e.target.value) || 0})}
+                  value={itemForm.garantia_meses || ""} 
+                  onChange={e => setItemForm({...itemForm, garantia_meses: parseInt(e.target.value) || 12})}
                   className="w-full p-2 border rounded-lg"
                 />
               </div>
@@ -1097,7 +1170,7 @@ const refreshCotizacion = async () => {
                 <div className="flex gap-2">
                   <input 
                     type="number" 
-                    value={itemForm.costo_base} 
+                    value={itemForm.costo_base || ""} 
                     onChange={e => setItemForm({...itemForm, costo_base: parseFloat(e.target.value) || 0})}
                     className="w-full p-2 border rounded-lg"
                   />
@@ -1107,18 +1180,18 @@ const refreshCotizacion = async () => {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Precio Venta Unit.</label>
+                <label className="text-xs font-bold text-gray-500 uppercase">Margen %</label>
                 <input 
                   type="number" 
-                  value={itemForm.precio_venta} 
-                  onChange={e => setItemForm({...itemForm, precio_venta: parseFloat(e.target.value) || 0})}
-                  className="w-full p-2 border rounded-lg bg-blue-50 font-bold"
+                  value={itemForm.margen || ""} 
+                  onChange={e => setItemForm({...itemForm, margen: parseFloat(e.target.value) || 0})}
+                  className="w-full p-2 border rounded-lg"
                 />
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase">Disponibilidad</label>
                 <select 
-                  value={itemForm.disponibilidad_tipo}
+                  value={itemForm.disponibilidad_tipo || ""}
                   onChange={e => setItemForm({...itemForm, disponibilidad_tipo: e.target.value as any, disponibilidad_dias: e.target.value === 'stock' ? 4 : 25})}
                   className="w-full p-2 border rounded-lg"
                 >
@@ -1126,6 +1199,45 @@ const refreshCotizacion = async () => {
                   <option value="importacion">Importación</option>
                 </select>
               </div>
+              {itemForm.tipo === 'personalizado' && (
+              <>
+                <div className="col-span-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase">
+                    Proveedor
+                  </label>
+
+                  <input
+                    type="text"
+                    value={itemForm.proveedor}
+                    onChange={(e) =>
+                      setItemForm({
+                        ...itemForm,
+                        proveedor: e.target.value
+                      })
+                    }
+                    className="w-full p-2 border rounded-lg"
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase">
+                    Link Proveedor
+                  </label>
+
+                  <input
+                    type="text"
+                    value={itemForm.link_proveedor}
+                    onChange={(e) =>
+                      setItemForm({
+                        ...itemForm,
+                        link_proveedor: e.target.value
+                      })
+                    }
+                    className="w-full p-2 border rounded-lg"
+                  />
+                </div>
+              </>
+            )}
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase">Días Entrega</label>
                 <input 
@@ -1135,31 +1247,31 @@ const refreshCotizacion = async () => {
                   className="w-full p-2 border rounded-lg"
                 />
               </div>
-            </div>
-            <div className="mt-6 flex gap-3">
-              <button onClick={() => setShowItemFormModal(false)} className="flex-1 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
               <div className="mt-4 p-4 bg-gray-50 rounded-lg text-sm space-y-1">
                 <div className="flex justify-between">
                   <span>Precio Venta:</span>
                   <span className="font-bold">
-                    {simboloMoneda} {itemForm.precio_venta.toFixed(2)}
+                    {simboloMoneda} {calculosItem.precioVenta.toFixed(2)}
                   </span>
                 </div>
 
                 <div className="flex justify-between text-green-600">
                   <span>Ganancia:</span>
                   <span className="font-bold">
-                    {simboloMoneda} {itemForm.ganancia.toFixed(2)}
+                    {simboloMoneda} {calculosItem.ganancia.toFixed(2)}
                   </span>
                 </div>
 
                 <div className="flex justify-between font-bold border-t pt-2">
                   <span>Subtotal:</span>
                   <span>
-                    {simboloMoneda} {itemForm.subtotal.toFixed(2)}
+                    {simboloMoneda} {calculosItem.subtotal.toFixed(2)}
                   </span>
                 </div>
               </div>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => setShowItemFormModal(false)} className="flex-1 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
               <button onClick={editingItem ? () => handleUpdateItem(editingItem.id) : handleAddItem} className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">Agregar al listado</button>
             </div>
           </div>

@@ -27,7 +27,7 @@ export default function MainLayout() {
       )}
 
       {/* SIDEBAR DESKTOP */}
-      <div className="hidden lg:flex">
+      <div className="hidden lg:flex lg:w-[290px] lg:min-w-[290px] flex-shrink-0">
         <Sidebar />
       </div>
 

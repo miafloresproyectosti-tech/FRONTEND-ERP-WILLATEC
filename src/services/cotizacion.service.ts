@@ -3,12 +3,6 @@ import api from "./api";
 // ========================
 // INTERFACES
 // ========================
-
-export interface EstadoCotizacion {
-  id: number;
-  nombre: string;
-}
-
 export interface CotizacionItem {
   id: number;
   cotizacion_id: number;
@@ -35,6 +29,8 @@ export interface CotizacionItem {
   created_at?: string;
   updated_at?: string;
   tipo?: "catalogo" | "personalizado"; // Para diferenciar items de catálogo vs personalizados
+  proveedor?: string; // Nuevo campo para proveedor
+  link_proveedor?: string; // Nuevo campo para link del proveedor
 }
 
 export interface CotizacionCostosAdicional {
@@ -85,15 +81,18 @@ export interface Cotizacion {
   cliente?: Cliente;
   items?: CotizacionItem[];
   costosAdicionales?: CotizacionCostosAdicional[];
-  estadoCotizacion?: EstadoCotizacion;
+  // estadoCotizacion?: EstadoCotizacion;
 }
 
 export interface CreateCotizacionData {
   cliente_id: number;
   plantilla_id: number;
-  titulo: string;
+  titulo?: string;
   modo_distribucion?: "POR_ITEM" | "POR_CANTIDAD";
   moneda_id: number;
+  estado_cotizacion_id?: number;
+  fecha?: string;
+  validez_dias?: number;
 }
 
 export interface UpdateCotizacionData {
@@ -101,12 +100,19 @@ export interface UpdateCotizacionData {
   plantilla_id: number;
   moneda_id: string;
   modo_distribucion: "POR_ITEM" | "POR_CANTIDAD";
+  estado_cotizacion_id?: number;
+  fecha?: string;
+  validez_dias?: number;
+  titulo?: string;
 }
 
 export interface CreateItemData {
   descripcion: string;
   cantidad: number;
   costo_base: number;
+  precio_venta: number;
+  subtotal: number;
+  ganancia: number;
   margen: number;
   marca?: string;
   codigo?: string;
@@ -122,6 +128,12 @@ export interface UpdateItemData extends CreateItemData {}
 export interface AddCostoData {
   tipo: string;
   monto: number;
+}
+
+export interface Plantilla{
+  id:number,
+  nombre: string,
+  incluye_igv: boolean
 }
 
 // ========================
@@ -336,3 +348,12 @@ export function descargarPdfCotizacion(
   link.click();
   window.URL.revokeObjectURL(url);
 }
+
+// ========================
+// PLANTILLAS
+// ========================
+
+export const getPlantillas = async (): Promise<Plantilla[]> => {
+  const res = await api.get("/plantillas");
+  return res.data?.data ?? [];
+};
