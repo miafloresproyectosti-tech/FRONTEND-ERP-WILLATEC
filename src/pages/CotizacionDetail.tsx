@@ -88,7 +88,7 @@ export function CotizacionDetail() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showCostosModal, setShowCostosModal] = useState(false);
 
-  const [estado_cotizacion_id, setEstadoCotizacionId] = useState('');
+  const [estadoCotizacionId, setEstadoCotizacionId] = useState<number>(1);
 
   const TIPO_CAMBIO_DOLAR = 3.6; // Ejemplo, en un caso real se debería obtener dinámicamente DE DOLAR A SOLES
   const TIPO_CAMBIO_SOLES = 3.3; // Ejemplo, en un caso real se debería obtener dinámicamente DE SOLES A DOLAR
@@ -96,20 +96,19 @@ export function CotizacionDetail() {
   useEffect(() => {
     if (!cotizacion) return;
 
-    const nuevoEstado =
-      cotizacion?.estado_cotizacion_id === 1
-      ? 'borrador'
-      : cotizacion?.estado_cotizacion_id === 2
-      ? 'enviada'
-      : cotizacion?.estado_cotizacion_id === 3
-      ? 'parcialmente_aprobada'
-      : cotizacion?.estado_cotizacion_id === 4
-      ? 'aprobada'
-      : cotizacion?.estado_cotizacion_id === 5
-      ? 'oc_registrada'
-      : '';
-    setEstado(nuevoEstado);
+    setEstadoCotizacionId(cotizacion.estado_cotizacion_id);
   }, [cotizacion]);
+
+  const estadoLabel = useMemo(() => {
+  switch (estadoCotizacionId) {
+    case 1: return 'borrador';
+    case 2: return 'enviada';
+    case 3: return 'parcialmente_aprobada';
+    case 4: return 'aprobada';
+    case 5: return 'oc_registrada';
+    default: return '';
+  }
+}, [estadoCotizacionId]);
 
   // Formularios
   const [itemForm, setItemForm] = useState<ItemForm>({
@@ -438,7 +437,7 @@ export function CotizacionDetail() {
     if (user.role === 'SUPERADMIN') return true;
     
     if (user.role === 'VENTAS') {
-      return estado === 'aprobada';
+      return estadoCotizacionId === 4;
     }
     
     return true;
@@ -685,20 +684,7 @@ const refreshCotizacion = async () => {
   setTitulo(data.titulo);
 
   // 🔥 sincronizar estado UI
-  const nuevoEstado =
-    data.estado_cotizacion_id === 1
-      ? 'borrador'
-      : data.estado_cotizacion_id === 2
-      ? 'enviada'
-      : data.estado_cotizacion_id === 3
-      ? 'parcialmente_aprobada'
-      : data.estado_cotizacion_id === 4
-      ? 'aprobada'
-      : data.estado_cotizacion_id === 5
-      ? 'oc_registrada'
-      : '';
-
-  setEstado(nuevoEstado);
+  setEstadoCotizacionId(data.estado_cotizacion_id || 1);
 };
 
 // ====== HELPERS ======
@@ -810,13 +796,8 @@ const refreshCotizacion = async () => {
             monedaId={monedaId}
             setMonedaId={setMonedaId}
 
-            estado_cotizacion_id={cotizacion?.estado_cotizacion_id || 1}
-            setEstadoCotizacionId={(value) =>
-              setCotizacion((prev: any) => ({
-                ...prev,
-                estado_cotizacion_id: value,
-              }))
-            }
+            estado_cotizacion_id={estadoCotizacionId}
+            setEstadoCotizacionId={setEstadoCotizacionId}
 
             modoDistribucion={modoDistribucion}
             setModoDistribucion={setModoDistribucion}
@@ -834,13 +815,13 @@ const refreshCotizacion = async () => {
           <CotizacionItemsTable
             items={items}
             simboloMoneda={simboloMoneda}
-            estadoCotizacionId={cotizacion?.estado_cotizacion_id || 1}
-            setEstadoCotizacionId={setEstado}
+            estadoCotizacionId={estadoCotizacionId}
+            setEstadoCotizacionId={setEstadoCotizacionId}
             onDeleteItem={handleDeleteItem}
             onOpenEdit={openEditItem}
             actualizarMargenItem={actualizarMargenItem}
             todosItemsAprobados={todosItemsAprobados}
-            onApproveAll={() => setEstado('aprobada')}
+            onApproveAll={() => setEstadoCotizacionId(4)}
 
             onAddItem={() => setShowItemTypeModal(true)} // 🔥 AQUÍ
           />
