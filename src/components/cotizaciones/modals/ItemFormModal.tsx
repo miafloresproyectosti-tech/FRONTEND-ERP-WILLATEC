@@ -1,6 +1,39 @@
-{/* 3. Modal Formulario de Item */}
-      {showItemFormModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+import type { ItemForm } from "../../../types/cotizaciones.type";
+import { ArrowLeftRight } from "lucide-react";
+
+interface Props{
+  open: boolean;
+  onClose: () => void;
+
+  itemForm: ItemForm;
+  setItemForm: React.Dispatch<React.SetStateAction<ItemForm>>;
+  
+  monedaId: string;
+  simboloMoneda: string;
+  
+  onSave: () => void;
+  onUpdate: () => void;
+  editingItem?: ItemForm | null;
+
+  handleIntercambiarMoneda: () => void;
+}
+
+export function ItemFormModal({
+  open, 
+  onClose, 
+  itemForm, 
+  setItemForm, 
+  monedaId, 
+  simboloMoneda, 
+  onSave, 
+  onUpdate, 
+  editingItem, 
+  handleIntercambiarMoneda
+}: Props) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl">
             <h3 className="text-xl font-bold mb-6 text-gray-800 border-b pb-2">Detalles del Item</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -113,33 +146,46 @@
                   className="w-full p-2 border rounded-lg"
                 />
               </div>
-              <div className="mt-4 p-4 bg-gray-50 rounded-lg text-sm space-y-1">
-                <div className="flex justify-between">
-                  <span>Precio Venta:</span>
-                  <span className="font-bold">
-                    {simboloMoneda} {calculosItem.precioVenta.toFixed(2)}
-                  </span>
-                </div>
-
-                <div className="flex justify-between text-green-600">
-                  <span>Ganancia:</span>
-                  <span className="font-bold">
-                    {simboloMoneda} {calculosItem.ganancia.toFixed(2)}
-                  </span>
-                </div>
-
-                <div className="flex justify-between font-bold border-t pt-2">
-                  <span>Subtotal:</span>
-                  <span>
-                    {simboloMoneda} {calculosItem.subtotal.toFixed(2)}
-                  </span>
-                </div>
-              </div>
             </div>
+            {/* BOTONES */}
             <div className="mt-6 flex gap-3">
-              <button onClick={() => setShowItemFormModal(false)} className="flex-1 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
-              <button onClick={editingItem ? () => handleUpdateItem(editingItem.id) : handleAddItem} className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">{editingItem ? 'Actualizar Item' : 'Agregar al listado'}</button>
+              <button onClick={onClose} className="flex-1 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
+              <button 
+              onClick={editingItem ? onUpdate : onSave} 
+              className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold"
+              >
+                {editingItem ? 'Actualizar' : 'Agregar'}
+                </button>
             </div>
+            {/* RESUMEN */}
+        <div className="mt-4 p-4 bg-gray-50 rounded-lg text-sm space-y-1">
+          <div className="flex justify-between">
+            <span>Precio Venta:</span>
+            <span className="font-bold">
+              {simboloMoneda}{' '}
+              {(itemForm.precio_venta ?? 0).toFixed(2)}
+            </span>
+          </div>
+
+          <div className="flex justify-between text-green-600">
+            <span>Ganancia:</span>
+            <span className="font-bold">
+              {simboloMoneda}{' '}
+              {(itemForm.ganancia ?? 0).toFixed(2)}
+            </span>
+          </div>
+
+          <div className="flex justify-between font-bold border-t pt-2">
+            <span>Subtotal:</span>
+            <span>
+              {simboloMoneda}{' '}
+              {(itemForm.subtotal ?? 0).toFixed(2)}
+            </span>
           </div>
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+        

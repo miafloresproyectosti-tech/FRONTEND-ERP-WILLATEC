@@ -4,23 +4,27 @@ import { useNotifications } from '../NotificationContext';
 import { useAuth } from '../AuthContext';
 import { getClientes, type Cliente } from '../services/cliente.service';;
 import { getProductos, type Producto} from "../services/producto.service";
+import { CotizacionResumen } from '../components/cotizaciones/CotizacionResumen';
+import { ExportModal } from '../components/cotizaciones/modals/ExportModal';
+import { ItemTypeModal } from '../components/cotizaciones/modals/ItemTypeModal';
+import { ProductModal } from '../components/cotizaciones/modals/ProductModal';
+import { ItemFormModal } from '../components/cotizaciones/modals/ItemFormModal';
+import { CostosModal } from '../components/cotizaciones/modals/CostosModal';
 import {
   getCotizacion,
-  // createCotizacion,
-  // updateCotizacion,
-  // updateItem,
-  // deleteItem,
-  // deleteCosto,
+  createCotizacion,
+  updateCotizacion,
+  addItem,
+  updateItem,
+  deleteItem,
+  addCosto,
+  deleteCosto,
+  recalcularCotizacion,
   exportarCotizacionPdf,
   descargarPdfCotizacion,
-  createCotizacionCompleta,
-  getPlantillas,
   type Cotizacion,
   type CotizacionItem,
   type CotizacionCostosAdicional,
-  type Plantilla,
-  type ItemFormState,
-
 } from '../services/cotizacion.service';
 import {
   ArrowLeft,
@@ -37,7 +41,7 @@ import {
   ArrowLeftRight,
   Truck,
 } from 'lucide-react';
-import type { ItemCotizacion } from '../CotizacionesContext';
+import type { ItemForm } from '../types/cotizaciones.type';
 
 export function CotizacionDetail() {
   const navigate = useNavigate();
@@ -56,21 +60,17 @@ export function CotizacionDetail() {
   // Cotización header
   const [cotizacion, setCotizacion] = useState<Cotizacion | null>(null);
   const [clienteId, setClienteId] = useState<number | null>(null);
-  const [plantillaId, setPlantillaId] = useState<number | null>(null);
+  const [plantillaId, setPlantillaId] = useState<number | null>(1);
   const [monedaId, setMonedaId] = useState<string>('1'); // 1=PEN, 2=USD
   const [modoDistribucion, setModoDistribucion] = useState<'POR_ITEM' | 'POR_CANTIDAD'>('POR_ITEM');
   const [titulo, setTitulo] = useState('');
-  const [validezDias, setValidezDias] = useState(30);
-  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
-  const [estadoCotizacionId, setEstadoCotizacionId] = useState<number>(1);
-  const simboloMoneda = monedaId === '2' ? '$' : 'S/';
+  const simboloMoneda = cotizacion?.cliente?.moneda_id === 2 ? '$' : 'S/';
 
   // Listas
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [items, setItems] = useState<CotizacionItem[]>([]);
   const [costos, setCostos] = useState<CotizacionCostosAdicional[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
-  const [plantillas, setPlantillas] = useState<Plantilla[]>([]);
 
   // UI State
   const [showItemForm, setShowItemForm] = useState(false);
@@ -82,40 +82,49 @@ export function CotizacionDetail() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showCostosModal, setShowCostosModal] = useState(false);
 
+  const [estado, setEstado] = useState('');
+
   const TIPO_CAMBIO_DOLAR = 3.6; // Ejemplo, en un caso real se debería obtener dinámicamente DE DOLAR A SOLES
   const TIPO_CAMBIO_SOLES = 3.3; // Ejemplo, en un caso real se debería obtener dinámicamente DE SOLES A DOLAR
-
-    const nextCodigo = useMemo(() => {
-      const maxCodigo = items.reduce((max, item) => {
-        const value = parseInt(item.codigo ?? "", 10);
-        return Number.isFinite(value) ? Math.max(max, value) : max;
-      }, 0);
-  
-      return items.length > 0 ? maxCodigo + 1 : 1;
-    }, [items]);
-  
-    const nextCodigoStr = String(nextCodigo).padStart(4, "0");
 
   useEffect(() => {
     if (!cotizacion) return;
 
-    setEstadoCotizacionId(cotizacion.estado_cotizacion_id);
+    const nuevoEstado =
+      cotizacion?.estado_cotizacion_id === 1
+      ? 'borrador'
+      : cotizacion?.estado_cotizacion_id === 2
+      ? 'enviada'
+      : cotizacion?.estado_cotizacion_id === 3
+      ? 'parcialmente_aprobada'
+      : cotizacion?.estado_cotizacion_id === 4
+      ? 'aprobada'
+      : cotizacion?.estado_cotizacion_id === 5
+      ? 'oc_registrada'
+      : '';
+    setEstado(nuevoEstado);
   }, [cotizacion]);
 
   // Formularios
-  const [itemForm, setItemForm] = useState<ItemFormState>({
+  const [itemForm, setItemForm] = useState<ItemForm>({
+    id: 1,
     descripcion: '',
     cantidad: 1,
     costo_base: 0,
-    // imagen: '',
+    precio_venta: 0,
+    costo_unitario: 0,
+    costo_total: 0,
+    ganancia: 0,
+    subtotal: 0,
+    imagen: '',
     orden: 1,
     cotizacion_id: currentCotizacionId || 0,
-    producto_id: 0 || undefined,
+    producto_id: undefined,
     estado_cotizacion_item_id: undefined,
     tipo: 'personalizado' as 'catalogo' | 'personalizado',
     margen: 20,
     marca: '',
-    codigo: nextCodigoStr,
+    codigo: '',
     unidad_medida: 'UND',
     garantia_meses: 12,
     disponibilidad_tipo: 'stock' as 'stock' | 'importacion',
@@ -124,7 +133,7 @@ export function CotizacionDetail() {
     link_proveedor: '',
   });
 
-const calculosItem = useMemo(() => {
+  useEffect(() => {
   const precioVenta =
     itemForm.costo_base / (1 - itemForm.margen / 100);
 
@@ -135,11 +144,12 @@ const calculosItem = useMemo(() => {
     (precioVenta - itemForm.costo_base) *
     itemForm.cantidad;
 
-  return {
-    precioVenta: Number(precioVenta.toFixed(2)),
+  setItemForm(prev => ({
+    ...prev,
+    precio_venta: Number(precioVenta.toFixed(2)),
     subtotal: Number(subtotal.toFixed(2)),
     ganancia: Number(ganancia.toFixed(2)),
-  };
+  }));
 }, [
   itemForm.costo_base,
   itemForm.margen,
@@ -147,26 +157,46 @@ const calculosItem = useMemo(() => {
 ]);
 
   const [costoForm, setCostoForm] = useState({
+    id: 1,
+    cotizacion_id: currentCotizacionId || null,
     tipo: '',
-    descripcion: '',
     monto: 0,
-    cotizacion_id: currentCotizacionId,
+    descripcion: 'string',
   });
 
-const resumen = useMemo(() => {
-  const subtotal = items.reduce((acc, i) => acc + (i.subtotal || 0), 0);
-  const costosTotal = costos.reduce((acc, c) => acc + (c.monto || 0), 0);
-  const igv = subtotal * 0.18;
-  const ganancia = items.reduce((acc, i) => acc + (i.ganancia || 0), 0);
+  const handleUpdateWrapper = () => {
+  if (!editingItem) return;
+  handleUpdateItem(editingItem.id);
+};
 
+  const mapItemToForm = (item: CotizacionItem): ItemForm => {
   return {
-    subtotal,
-    costosTotal,
-    igv,
-    ganancia,
-    total: subtotal + igv + costosTotal,
+    id: item.id,
+    descripcion: item.descripcion,
+    cantidad: item.cantidad,
+    costo_base: item.costo_base,
+    precio_venta: item.precio_venta || 0,
+    costo_unitario: item.costo_unitario || 0,
+    costo_total: item.costo_total || 0,
+    ganancia: item.ganancia || 0,
+    subtotal: item.subtotal || 0,
+    imagen: '',
+    orden: item.orden,
+    cotizacion_id: Number(item.cotizacion_id),
+    producto_id: item.producto_id,
+    estado_cotizacion_item_id: item.estado_cotizacion_item_id,
+    tipo: item.tipo || 'personalizado',
+    margen: item.margen,
+    marca: item.marca || '',
+    codigo: item.codigo || '',
+    unidad_medida: item.unidad_medida || 'UND',
+    garantia_meses: item.garantia_meses || 12,
+    disponibilidad_tipo: item.disponibilidad_tipo,
+    disponibilidad_dias: item.disponibilidad_dias,
+    proveedor: '',
+    link_proveedor: '',
   };
-}, [items, costos]);
+};
 
   // ====== EFECTOS ======
 
@@ -207,87 +237,12 @@ const resumen = useMemo(() => {
     fetchProductos();
   }, []);
 
-  //Cargar plantillas
-  useEffect(() => {
-  const fetchPlantillas = async () => {
-    try {
-
-      const data = await getPlantillas();
-
-      setPlantillas(data);
-
-    } catch (error) {
-
-      addNotification({
-        message: 'Error al cargar plantillas',
-        type: 'error',
-        duration: 4000,
-      } as any);
-    }
-  };
-
-  fetchPlantillas();
-
-}, []);
-
   // Cargar cotización si es edición
   useEffect(() => {
     if (isEditing && currentCotizacionId) {
       loadCotizacion();
     }
   }, [isEditing, currentCotizacionId]);
-
-  //GUARDA BACKUP AUTOMATICAMENTE
-  useEffect(() => {
-
-  const draft = {
-    clienteId,
-    plantillaId,
-    monedaId,
-    items,
-    costos,
-    titulo,
-    fecha,
-    validezDias,
-    estadoCotizacionId,
-  };
-
-  localStorage.setItem(
-    'cotizacion_draft',
-    JSON.stringify(draft)
-  );
-
-}, [
-  clienteId,
-  plantillaId,
-  monedaId,
-  items,
-  costos,
-  titulo,
-  fecha,
-  validezDias,
-  estadoCotizacionId,
-]);
-
-  //RECUPERA BORRADOR
-  useEffect(() => {
-    if (isEditing) return;
-
-    const saved = localStorage.getItem('cotizacion_draft');
-
-    if (!saved) return;
-
-    const draft = JSON.parse(saved);
-
-    setClienteId(draft.clienteId);
-    setPlantillaId(draft.plantillaId);
-    setMonedaId(draft.monedaId);
-    setItems(draft.items || []);
-    setCostos(draft.costos || []);
-    setTitulo(draft.titulo || '');
-    setFecha(draft.fecha || '');
-    setValidezDias(draft.validezDias || 30);
-  }, [isEditing]);
 
   // ====== FUNCIONES API ======
 
@@ -297,13 +252,11 @@ const resumen = useMemo(() => {
       setLoading(true);
       const data = await getCotizacion(currentCotizacionId);
       setCotizacion(data);
-      setFecha(data.fecha ? new Date(data.fecha).toISOString().split('T')[0] : '')
       setClienteId(data.cliente_id);
       setPlantillaId(data.plantilla_id);
       setMonedaId(data.cliente?.moneda_id?.toString() || '1');
       setModoDistribucion(data.modo_distribucion);
       setTitulo(data.titulo);
-      setValidezDias(data.validez_dias);
       setItems(data.items || []);
       setCostos(data.costosAdicionales || []);
     } catch (error) {
@@ -320,200 +273,147 @@ const resumen = useMemo(() => {
 
   const handleSaveCotizacion = async () => {
     if (!clienteId || !plantillaId) {
-    addNotification({
-      message: 'Seleccione cliente y plantilla',
-      type: 'warning',
-      duration: 4000,
-    } as any);
+      addNotification({
+        message: 'Seleccione cliente y plantilla',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
 
-    return;
-  }
-
-  if (items.length === 0) {
-    addNotification({
-      message: 'Debe agregar al menos un item',
-      type: 'warning',
-      duration: 4000,
-    } as any);
-
-    return;
-  }
-
-  setSaving(true);
-
-  try {
-
-    const payload = {
-      cliente_id: clienteId,
-      plantilla_id: plantillaId,
-      titulo: titulo || `Cotización ${new Date().toLocaleDateString()}`,
-      modo_distribucion: modoDistribucion,
-      moneda_id: Number(monedaId || 1),
-      validez_dias: validezDias,
-      fecha: fecha,
-      estado_cotizacion_id: estadoCotizacionId,
-
-      items: items.map((item) => ({
-        descripcion: item.descripcion,
-        cantidad: item.cantidad,
-        costo_base: item.costo_base,
-        margen: item.margen,
-
-        marca: item.marca,
-        codigo: item.codigo,
-        unidad_medida: item.unidad_medida,
-
-        garantia_meses: item.garantia_meses,
-
-        disponibilidad_tipo: item.disponibilidad_tipo,
-        disponibilidad_dias: item.disponibilidad_dias,
-
-        proveedor: item.proveedor,
-        link_proveedor: item.link_proveedor,
-
-        producto_id: item.producto_id,
-        tipo: item.tipo,
-      })),
-
-      costos: costos.map((costo) => ({
-        tipo: costo.tipo,
-        monto: costo.monto,
-      })),
-    };
-
-    const response = await createCotizacionCompleta(payload);
-
-    addNotification({
-      message: 'Cotización creada correctamente',
-      type: 'success',
-      duration: 4000,
-    } as any);
-
-    navigate(`/cotizaciones/${response.cotizacion.id}`);
-    localStorage.removeItem('cotizacion_draft');
-
-  } catch (error: any) {
-
-    addNotification({
-      message:
-        error?.response?.data?.message ||
-        'Error al guardar cotización',
-      type: 'error',
-      duration: 4000,
-    } as any);
-
-  } finally {
-    setSaving(false);
-  }
+    setSaving(true);
+    try {
+      if (isEditing && currentCotizacionId && cotizacion) {
+        // Actualizar
+        await updateCotizacion(currentCotizacionId, {
+          cliente_id: clienteId,
+          plantilla_id: plantillaId,
+          moneda_id: monedaId,
+          modo_distribucion: modoDistribucion,
+        });
+        addNotification({
+          message: 'Cotización actualizada',
+          type: 'success',
+          duration: 4000,
+        } as any);
+      } else {
+        // Crear
+        const newCotizacion = await createCotizacion({
+          cliente_id: clienteId,
+          plantilla_id: plantillaId,
+          titulo: titulo || `Cotización ${new Date().toLocaleDateString()}`,
+          modo_distribucion: modoDistribucion,
+          moneda_id: Number(monedaId),
+        });
+        addNotification({
+          message: 'Cotización creada',
+          type: 'success',
+          duration: 4000,
+        } as any);
+        setCotizacion(newCotizacion);
+      }
+      navigate(`/cotizaciones/${currentCotizacionId || cotizacion?.id}`);
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al guardar',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleAddItem = () => {
+  const handleAddItem = async () => {
+    if (!cotizacion || !itemForm.descripcion || itemForm.cantidad <= 0) {
+      addNotification({
+        message: 'Completa los datos del item',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
 
-    const nuevoItem: CotizacionItem = {
-      id: Date.now(),
-
-      descripcion: itemForm.descripcion,
-      cantidad: itemForm.cantidad,
-
-      costo_base: itemForm.costo_base,
-      costo_total: itemForm.costo_base,
-
-      margen: itemForm.margen,
-
-      precio_venta: calculosItem.precioVenta,
-      subtotal: calculosItem.subtotal,
-      ganancia: calculosItem.ganancia,
-
-      marca: itemForm.marca,
-
-      codigo: nextCodigoStr,
-
-      unidad_medida: itemForm.unidad_medida,
-
-      disponibilidad_tipo: itemForm.disponibilidad_tipo,
-      disponibilidad_dias: itemForm.disponibilidad_dias,
-
-      garantia_meses: itemForm.garantia_meses,
-
-      producto_id: itemForm.producto_id,
-
-      estado_cotizacion_item_id: 1,
-
-      tipo: itemForm.tipo,
-
-      proveedor: itemForm.proveedor,
-
-      link_proveedor: itemForm.link_proveedor,
-
-      cotizacion_id: currentCotizacionId || 0,
-
-      orden: itemForm.orden,
-    };
-
-  setItems(prev => [...prev, nuevoItem])
-
-  setShowItemFormModal(false)
-
-  resetItemForm()
-  }
-
-  const handleUpdateItem = (itemId: number) => {
-    setItems(prev =>
-    prev.map(item => {
-
-      if (item.id !== itemId) return item;
-
-      return {
-        ...item,
-
+    try {
+      await addItem(cotizacion.id, {
         descripcion: itemForm.descripcion,
         cantidad: itemForm.cantidad,
         costo_base: itemForm.costo_base,
-        costo_total: itemForm.costo_base,
-
         margen: itemForm.margen,
-
-        precio_venta: calculosItem.precioVenta,
-        subtotal: calculosItem.subtotal,
-        ganancia: calculosItem.ganancia,
-
         marca: itemForm.marca,
         codigo: itemForm.codigo,
         unidad_medida: itemForm.unidad_medida,
-
-        garantia_meses: itemForm.garantia_meses,
-
         disponibilidad_tipo: itemForm.disponibilidad_tipo,
         disponibilidad_dias: itemForm.disponibilidad_dias,
-
+        garantia_meses: itemForm.garantia_meses,
         proveedor: itemForm.proveedor,
-        link_proveedor: itemForm.link_proveedor,
-      };
-    })
-  );
+        link_proveedor: itemForm.link_proveedor
+      }
+      );
+      addNotification({
+        message: 'Item agregado',
+        type: 'success',
+        duration: 4000,
+      } as any);
 
-  addNotification({
-    message: 'Item actualizado',
-    type: 'success',
-    duration: 3000,
-  } as any);
+      setShowItemForm(false);
 
-  setShowItemFormModal(false);
-  setEditingItem(null);
+      resetItemForm();
 
-  resetItemForm();
+      await refreshCotizacion();
+
+      await loadCotizacion(); // Recargar
+
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al agregar item',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    }
   };
 
-  const handleDeleteItem = (itemId: number) => {
-    setItems(prev =>
-    prev.filter(item => item.id !== itemId)
-  );
+  const handleUpdateItem = async (itemId: number) => {
+    if (!cotizacion) return;
+    try {
+      await updateItem(itemId, itemForm as any);
+      addNotification({
+        message: 'Item actualizado',
+        type: 'success',
+        duration: 4000,
+      } as any);
+      setShowItemForm(false);
+      setEditingItem(null);
+      resetItemForm();
+      await loadCotizacion();
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al actualizar item',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    }
+  };
 
-  addNotification({
-    message: 'Item eliminado',
-    type: 'success',
-    duration: 3000,
-  } as any);
+  const handleDeleteItem = async (itemId: number) => {
+    if (!cotizacion) return;
+    if (!confirm('¿Eliminar item?')) return;
+
+    try {
+      await deleteItem(itemId);
+      addNotification({
+        message: 'Item eliminado',
+        type: 'success',
+        duration: 4000,
+      } as any);
+      await loadCotizacion();
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al eliminar item',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    }
   };
 
   // 🆕 FUNCIÓN PARA ICONO DE DISPONIBILIDAD
@@ -532,17 +432,17 @@ const resumen = useMemo(() => {
     if (user.role === 'SUPERADMIN') return true;
     
     if (user.role === 'VENTAS') {
-      return estadoCotizacionId === 2 || estadoCotizacionId === 4; // Enviada o Aprobada
+      return estado === 'aprobada';
     }
     
     return true;
   };
 
-  // ========== 
-  // COSTOS ADICIONALES
-  // ==========
   const handleAddCosto = async () => {
-    if (costoForm.monto <= 0) {
+    // Este handler no se usa actualmente desde la UI.
+    // Los costos adicionales se gestionan por backend en el modal de "Costos Adicionales".
+    // Se conserva para futuras mejoras.
+    if (!cotizacion || costoForm.monto <= 0) {
       addNotification({
         message: 'Ingresa un monto válido',
         type: 'warning',
@@ -551,20 +451,8 @@ const resumen = useMemo(() => {
       return;
     }
 
-const nuevoCosto: CotizacionCostosAdicional = {
-  id: Date.now(),
-
-  tipo: costoForm.tipo,
-
-  descripcion: costoForm.descripcion,
-
-  monto: costoForm.monto,
-
-  cotizacion_id: currentCotizacionId || 0,
-};
-
     try {
-      setCostos(prev => [...prev, nuevoCosto])
+      await addCosto(cotizacion.id, costoForm);
       addNotification({
         message: 'Costo agregado',
         type: 'success',
@@ -572,11 +460,13 @@ const nuevoCosto: CotizacionCostosAdicional = {
       } as any);
       setShowCostoForm(false);
       setCostoForm({ 
-        tipo: '', 
-        monto: 0, 
-        descripcion: '', 
-        cotizacion_id: currentCotizacionId });
-      // await loadCotizacion();
+        id: 1,
+        cotizacion_id: currentCotizacionId,
+        tipo: '',
+        monto: 0,
+        descripcion: '',
+      });
+      await loadCotizacion();
     } catch (error: any) {
       addNotification({
         message: error?.response?.data?.message || 'Error al agregar costo',
@@ -587,16 +477,25 @@ const nuevoCosto: CotizacionCostosAdicional = {
   };
 
 
-  const handleDeleteCosto = (costoId: number) => {
-      setCostos(prev =>
-    prev.filter(costo => costo.id !== costoId)
-  );
+  const handleDeleteCosto = async (costoId: number) => {
+    if (!cotizacion) return;
+    if (!confirm('¿Eliminar costo?')) return;
 
-  addNotification({
-    message: 'Costo eliminado',
-    type: 'success',
-    duration: 3000,
-  } as any);
+    try {
+      await deleteCosto(costoId);
+      addNotification({
+        message: 'Costo eliminado',
+        type: 'success',
+        duration: 4000,
+      } as any);
+      await loadCotizacion();
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al eliminar costo',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    }
   };
 
   //PRUEBA
@@ -611,10 +510,16 @@ const nuevoCosto: CotizacionCostosAdicional = {
 
     // PERSONALIZADO
     setItemForm({
+      id: 1,
       descripcion: '',
       cantidad: 1,
       costo_base: 0,
-      // imagen: '',
+      precio_venta: 0,
+      costo_unitario: 0,
+      costo_total: 0,
+      ganancia: 0,
+      subtotal: 0,
+      imagen: '',
       orden: 1,
       cotizacion_id: currentCotizacionId || 0,
       producto_id: undefined,
@@ -622,31 +527,37 @@ const nuevoCosto: CotizacionCostosAdicional = {
       tipo: 'personalizado',
       margen: 20,
       marca: '',
-      codigo: nextCodigoStr,
+      codigo: '',
       unidad_medida: 'UND',
       garantia_meses: 12,
       disponibilidad_tipo: 'stock',
       disponibilidad_dias: 4,
       proveedor: '',
-      link_proveedor: '',
+      link_proveedor: ''
     });
 
     setShowItemFormModal(true);
   };
 
-  const handleProductSelection = (producto: Producto) => {
+  const handleProductSelection = (producto: any) => {
   setShowProductModal(false);
 
   const margen =
-    producto.precio_referencial > 0
-      ? ((producto.precio_referencial - producto.costo_base) / producto.precio_referencial) * 100
+    producto.precio > 0
+      ? ((producto.precio - producto.costo) / producto.precio) * 100
       : 0;
 
   setItemForm({
+    id: 1,
     descripcion: producto.nombre || '',
     cantidad: 1,
-    costo_base: producto.costo_base || 0,
-    // imagen: producto.imagen || '',
+    costo_base: producto.costo || 0,
+    precio_venta: producto.precio || 0,
+    costo_unitario: producto.costo || 0,
+    costo_total: producto.costo || 0,
+    ganancia: (producto.precio || 0) - (producto.costo || 0),
+    subtotal: producto.precio || 0,
+    imagen: producto.imagen || '',
     orden: 1,
     cotizacion_id: currentCotizacionId || 0,
     producto_id: producto.id,
@@ -659,6 +570,8 @@ const nuevoCosto: CotizacionCostosAdicional = {
     garantia_meses: producto.garantia_meses || 12,
     disponibilidad_tipo: producto.disponibilidad_tipo || 'stock',
     disponibilidad_dias: producto.disponibilidad_dias || 4,
+    proveedor: '',
+    link_proveedor: ''
   });
 
   addNotification({
@@ -700,10 +613,8 @@ const actualizarMargenItem = (
   );
 };
 
-const todosItemsAprobados =   
-    items.length > 0 &&
-    items.every(
-      item => item.estado_cotizacion_item_id === 2 //  = aprobado
+const todosItemsAprobados =   items.every(item => 
+    item.estado_cotizacion_item_id === 2 //  = aprobado
 );
 
 const handleIntercambiarMoneda = () => {
@@ -757,7 +668,6 @@ const refreshCotizacion = async () => {
   if (!currentCotizacionId) return;
 
   const data = await getCotizacion(currentCotizacionId);
-
   setCotizacion(data);
   setItems(data.items || []);
   setCostos(data.costosAdicionales || []);
@@ -769,58 +679,85 @@ const refreshCotizacion = async () => {
   setTitulo(data.titulo);
 
   // 🔥 sincronizar estado UI
-  setEstadoCotizacionId(data.estado_cotizacion_id);
+  const nuevoEstado =
+    data.estado_cotizacion_id === 1
+      ? 'borrador'
+      : data.estado_cotizacion_id === 2
+      ? 'enviada'
+      : data.estado_cotizacion_id === 3
+      ? 'parcialmente_aprobada'
+      : data.estado_cotizacion_id === 4
+      ? 'aprobada'
+      : data.estado_cotizacion_id === 5
+      ? 'oc_registrada'
+      : '';
+
+  setEstado(nuevoEstado);
 };
 
 // ====== HELPERS ======
 
   const resetItemForm = () => {
     setItemForm({
+      id: 1,
       descripcion: '',
       cantidad: 1,
       costo_base: 0,
       margen: 20,
       marca: '',
-      codigo: nextCodigoStr,
+      codigo: '',
       unidad_medida: 'UND',
       garantia_meses: 12,
       disponibilidad_tipo: 'stock',
       disponibilidad_dias: 4,
-      // imagen: '',
+      precio_venta: 0,
+      costo_unitario: 0,
+      costo_total: 0,
+      ganancia: 0,
+      subtotal: 0,
+      imagen: '',
       orden: 1,
       cotizacion_id: currentCotizacionId || 0,
       producto_id: undefined,
       estado_cotizacion_item_id: undefined,
       tipo: 'personalizado' as 'catalogo' | 'personalizado',
       proveedor: '',
-      link_proveedor: '',
+      link_proveedor: ''
     });
   };
 
   const openEditItem = (item: CotizacionItem) => {
     setEditingItem(item);
-    setItemForm({
-      descripcion: item.descripcion,
-      cantidad: item.cantidad,
-      costo_base: item.costo_base,
-      margen: item.margen,
-      marca: item.marca || '',
-      codigo: item.codigo || '',
-      unidad_medida: item.unidad_medida || 'UND',
-      garantia_meses: item.garantia_meses || 12,
-      disponibilidad_tipo: item.disponibilidad_tipo,
-      disponibilidad_dias: item.disponibilidad_dias,
-      // imagen: '',
-      orden: 1,
-      cotizacion_id: currentCotizacionId || 0,
-      producto_id: undefined,
-      estado_cotizacion_item_id: undefined,
-      tipo: 'personalizado' as 'catalogo' | 'personalizado',
-      proveedor: item.proveedor || '',
-      link_proveedor: item.link_proveedor || '',
-    });
+    setItemForm(mapItemToForm(item));
     setShowItemFormModal(true);
   };
+
+  const resumen = useMemo(() => {
+  const subtotal = items.reduce(
+    (acc, i) => acc + (i.subtotal || 0),
+    0
+  );
+
+  const costosTotal = costos.reduce(
+    (acc, c) => acc + (c.monto || 0),
+    0
+  );
+
+  const igv = subtotal * 0.18;
+
+  const ganancia = items.reduce(
+    (acc, i) => acc + (i.ganancia || 0),
+    0
+  );
+
+  return {
+    subtotal,
+    costosTotal,
+    igv,
+    ganancia,
+    total: subtotal + igv + costosTotal,
+  };
+}, [items, costos]);
 
   // ====== RENDER ======
 
@@ -843,7 +780,7 @@ const refreshCotizacion = async () => {
             <ArrowLeft className="w-6 h-6 text-gray-600" />
           </button>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-              {estadoCotizacionId === 1 && (
+              {cotizacion?.estado_cotizacion_id === 1 && (
                 <CheckCircle className="text-green-500 w-6 h-6" />
               )}
 
@@ -887,8 +824,7 @@ const refreshCotizacion = async () => {
                 <label className="block text-sm mb-2 text-gray-700">Fecha</label>
                 <input
                   type="date"
-                  value={fecha}
-                  onChange={(e) => setFecha(e.target.value)}
+                  value={cotizacion?.fecha ? new Date(cotizacion.fecha).toISOString().split('T')[0] : ''}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -896,10 +832,8 @@ const refreshCotizacion = async () => {
                 <label className="block text-sm mb-2 text-gray-700">Validez (días)</label>
                 <input
                   type="number"
-                  value={validezDias || ''}
-                  onChange={(e) => setValidezDias(Number(e.target.value))}
+                  value={cotizacion?.validez_dias || 0}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder='Ingresa días de validez, ej: 30'
                 />
               </div>
               <div>
@@ -909,27 +843,9 @@ const refreshCotizacion = async () => {
                   onChange={(e) => setPlantillaId(Number(e.target.value))}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="" disabled >Seleccionar plantilla</option>
-                  {plantillas.map((plantilla: Plantilla) => (
-                    <option
-                      key={plantilla.id}
-                      value={plantilla.id}
-                    >
-                      {plantilla.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm mb-2 text-gray-700">Modo Distribución</label>
-                <select
-                  value={modoDistribucion}
-                  onChange={(e)=> setModoDistribucion(e.target.value as 'POR_ITEM' | 'POR_CANTIDAD')}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="" disabled >Seleccionar Modo</option>
-                  <option value="POR_ITEM">Por Items</option>
-                  <option value="POR_CANTIDAD">Por cantidad de item</option>
+                  <option value={1}>Soles</option>
+                  <option value={2}>Dólares</option>
+                  <option value={3}>Soles Estándar</option>
                 </select>
               </div>
               <div>
@@ -939,23 +855,21 @@ const refreshCotizacion = async () => {
                   onChange={(e) => setMonedaId(e.target.value)}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="" disabled >Seleccionar moneda</option>
-                  <option value={1}>PEN (S/)</option>
-                  <option value={2}>USD ($)</option>
+                  <option value="1">PEN (S/)</option>
+                  <option value="2">USD ($)</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Estado</label>
                 <select
-                  value={estadoCotizacionId}
-                  onChange={(e) => setEstadoCotizacionId(Number(e.target.value))}
+                  value={cotizacion?.estado_cotizacion_id === 1 ? 'borrador' : cotizacion?.estado_cotizacion_id === 2 ? 'enviada' : cotizacion?.estado_cotizacion_id === 3 ? 'parcialmente_aprobada' : cotizacion?.estado_cotizacion_id === 4 ? 'aprobada' : cotizacion?.estado_cotizacion_id === 5 ? 'oc_registrada' : ''}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value={1}>Borrador</option>
-                  <option value={2}>Enviada</option>
-                  <option value={3}>Parcialmente Aprobada</option>
-                  <option value={4}>Aprobada</option>
-                  <option value={5}>OC_Registrada</option>
+                  <option value="borrador">Borrador</option>
+                  <option value="enviada">Enviada</option>
+                  <option value="parcialmente_aprobada">Parcialmente Aprobada</option>
+                  <option value="aprobada">Aprobada</option>
+                  <option value="aprobada">OC_Registrada</option>
                 </select>
               </div>
             </div>
@@ -974,12 +888,13 @@ const refreshCotizacion = async () => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b">
-                    <th className="text-left py-3 px-2 text-xs">Desc.</th>
+                    <th className="text-left py-3 px-2 text-xs">Producto</th>
                     <th className="text-left py-3 px-2 text-xs">Tipo</th>
-                    <th className="text-left py-3 px-2 text-xs">Días Entrega</th>
+                    <th className="text-left py-3 px-2 text-xs">📦 Disp.</th>
+                    <th className="text-left py-3 px-2 text-xs">⏱️ Días</th>
                     <th className="text-left py-3 px-2 text-xs">Garantía</th>
                     <th className="text-left py-3 px-2 text-xs">Cant.</th>
-                    {estadoCotizacionId === 3 && (
+                    {estado === 'parcialmente_aprobada' && (
                       <>
                         <th className="text-left py-3 px-2 text-xs">Aprobada</th>
                         <th className="text-left py-3 px-2 text-xs">Estado</th>
@@ -1006,7 +921,7 @@ const refreshCotizacion = async () => {
                             {item.tipo === 'catalogo' ? 'Cat' : 'Ext'}
                           </span>
                         </td>
-                        {/* <td className="py-3 px-2">
+                        <td className="py-3 px-2">
                           <div className="flex items-center gap-1">
                             <IconoDisponibilidad tipo={item.disponibilidad_tipo} />
                             <span className={`text-xs font-medium ${
@@ -1017,7 +932,7 @@ const refreshCotizacion = async () => {
                               {item.disponibilidad_tipo === 'stock' ? 'Stock' : 'Imp'}
                             </span>
                           </div>
-                        </td> */}
+                        </td>
                         <td className="py-3 px-2 font-medium text-xs">{item.disponibilidad_dias}</td>
                         <td className="py-3 px-2">
                           <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
@@ -1026,7 +941,7 @@ const refreshCotizacion = async () => {
                         </td>
                         <td className="py-3 px-2 font-medium">{item.cantidad}</td>
                         
-                        {estadoCotizacionId === 3 && (
+                        {estado === 'parcialmente_aprobada' && (
                           <>
                             <td className="py-3 px-2">
                               <input
@@ -1038,23 +953,13 @@ const refreshCotizacion = async () => {
                             </td>
                             <td className="py-3 px-2">
                               <select
-                                value={ item.estado_cotizacion_item_id === 1 ? 'pendiente' : 
-                                        item.estado_cotizacion_item_id === 2 ? 'aprobado' : 'rechazado'}
+                                value={item.estado_cotizacion_item_id === 1 ? 'pendiente' : item.estado_cotizacion_item_id === 2 ? 'aprobado' : 'rechazado'}
                                 className="px-2 py-1 border border-yellow-300 bg-yellow-50 rounded text-xs focus:ring-2 focus:ring-yellow-500"
                               >
-                                <option value={1}>⏳ Pend.</option>
-                                <option value={2}>✅ Aprob.</option>
-                                <option value={3}>❌ Rech.</option>
+                                <option value="pendiente">⏳ Pend.</option>
+                                <option value="aprobado">✅ Aprob.</option>
+                                <option value="rechazado">❌ Rech.</option>
                               </select>
-
-                              {todosItemsAprobados && (
-                            <button 
-                              onClick={() => setEstadoCotizacionId(4)} 
-                              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-                            >
-                              <CheckCircle className="w-4 h-4" /> Aprobar Completa
-                            </button>
-                          )}
                             </td>
                           </>
                         )}
@@ -1065,7 +970,7 @@ const refreshCotizacion = async () => {
                           <input 
                             type="number" 
                             value={(item.margen ?? 0).toFixed(1)} 
-                            onChange={(e) => actualizarMargenItem(item.margen, parseFloat(e.target.value))}
+                            onChange={(e) => actualizarMargenItem(item.id, parseFloat(e.target.value) || 0)}
                             className="w-14 px-1 py-1 border rounded text-xs" 
                             step="0.1" 
                           />
@@ -1085,39 +990,35 @@ const refreshCotizacion = async () => {
                 </tbody>
               </table>
             </div>
+
+            {estado === 'parcialmente_aprobada' && (
+              <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-6 text-sm">
+                    <span>⏳ Pendientes: {items.filter(i => i.estado_cotizacion_item_id === 1).length}</span>
+                    <span>✅ Aprobados: {items.filter(i => i.estado_cotizacion_item_id === 2).length}</span>
+                    <span>❌ Rechazados: {items.filter(i => i.estado_cotizacion_item_id === 3).length}</span>
+                  </div>
+                  {todosItemsAprobados && (
+                    <button 
+                      onClick={() => setEstado('aprobada')} 
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                    >
+                      <CheckCircle className="w-4 h-4" /> Aprobar Completa
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="space-y-6">
           {/* RESUMEN */}
-          < CotizacionesResumen />
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <h2 className="text-xl mb-4">Resumen Aprobado</h2>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">Subtotal: <span className="font-bold">{simboloMoneda} {resumen.subtotal.toFixed(2)}</span></div>
-              <div className="flex justify-between">IGV 18%: <span>{simboloMoneda} {resumen.igv.toFixed(2)}</span></div>
-              <div className="flex justify-between">
-                Total Costos Adicionales: <span>{simboloMoneda} {(resumen.costosTotal ?? 0).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm text-gray-600">
-                Distribuido por Item ({items.length} items): <span>{simboloMoneda} {(items.length > 0 ? ((resumen.costosTotal ?? 0) / items.length) : 0).toFixed(2)}</span>
-              </div>
-
-              <div className="border-t pt-3 flex justify-between text-lg font-bold">
-                Total: <span>{simboloMoneda} {resumen.total.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-green-600 font-bold">
-                Ganancia: <span>{simboloMoneda} {(resumen.ganancia ?? 0).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between pt-2 border-t text-blue-600 font-bold">
-                Margen Promedio: <span>{items.length > 0 ? (items.reduce((sum, item) => sum + item.margen, 0) / items.length).toFixed(1) : '0.0'}%</span>
-              </div>
-              <div className="flex justify-between pt-2 border-t text-purple-600 font-bold">
-                Items Stock: <span>{items.filter(i => i.disponibilidad_tipo === 'stock').length}</span> | 
-                Items Importación: <span>{items.filter(i => i.disponibilidad_tipo === 'importacion').length}</span>
-              </div>
-            </div>
-          </div>
+          <CotizacionResumen
+            resumen={resumen}
+            simboloMoneda={simboloMoneda}
+            items={items}
+            />
 
           {/* BOTONES */}
           <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
@@ -1142,311 +1043,57 @@ const refreshCotizacion = async () => {
             </button>
           </div>
         </div>
-      </div>
-
+            
       {/* --- MODALES --- */}
 
       {/* 1. Modal Selección de Tipo de Item */}
-      {showItemTypeModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-gray-800">Agregar nuevo item</h3>
-              <button onClick={() => setShowItemTypeModal(false)}><X className="w-6 h-6 text-gray-400" /></button>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <button 
-                onClick={() => handleItemTypeSelection('catalogo')}
-                className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-blue-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-colors"
-              >
-                <Package className="w-8 h-8 text-blue-600" />
-                <span className="font-semibold text-blue-700">Catálogo Local</span>
-              </button>
-              <button 
-                onClick={() => handleItemTypeSelection('personalizado')}
-                className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-purple-200 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-colors"
-              >
-                <ArrowLeftRight className="w-8 h-8 text-purple-600" />
-                <span className="font-semibold text-purple-700">Producto Externo</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ItemTypeModal 
+        open={showItemTypeModal} 
+        onClose={() => setShowItemTypeModal(false)} 
+        onSelect={handleItemTypeSelection} 
+      />
 
       {/* 2. Modal Catálogo de Productos */}
-      {showProductModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
-            <div className="p-6 border-b flex justify-between items-center bg-gray-50">
-              <h3 className="text-xl font-bold text-gray-800">Seleccionar del Catálogo</h3>
-              <button onClick={() => setShowProductModal(false)}><X className="w-6 h-6 text-gray-400" /></button>
-            </div>
-            <div className="p-4 overflow-y-auto">
-              <div className="space-y-2">
-                {productos.map(p => (
-                  <div 
-                    key={p.id} 
-                    onClick={() => handleProductSelection(p)}
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-blue-50 cursor-pointer group transition-all"
-                  >
-                    <div>
-                      <p className="font-bold text-gray-800 group-hover:text-blue-700">{p.nombre}</p>
-                      <p className="text-xs text-gray-500">Sugerido: {simboloMoneda} {p.precio_referencial}</p>
-                    </div>
-                    <span className={`text-xs px-2 py-1 rounded-full ${p.stock === 0 ? 'bg-red-100 text-red-700' : p.stock > 10 ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                      {p.stock === 0 ? 'Agotado' : p.stock > 10 ? 'En Stock' : `Pocas Unidades (${p.stock})`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProductModal
+        open={showProductModal}
+        onClose={() => setShowProductModal(false)}
+        productos={productos}
+        simboloMoneda={simboloMoneda}
+        onSelect={handleProductSelection}
+      />
 
       {/* 3. Modal Formulario de Item */}
-      {showItemFormModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl">
-            <h3 className="text-xl font-bold mb-6 text-gray-800 border-b pb-2">Detalles del Item</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <label className="text-xs font-bold text-gray-500 uppercase">Nombre del Producto</label>
-                <input 
-                  type="text" 
-                  value={itemForm.descripcion} 
-                  onChange={e => setItemForm({...itemForm, descripcion: e.target.value})}
-                  className="w-full p-2 border rounded-lg bg-gray-50"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Cantidad</label>
-                <input 
-                  type="number" 
-                  value={itemForm.cantidad || 1} 
-                  onChange={e => setItemForm({...itemForm, cantidad: parseInt(e.target.value) || 1})}
-                  className="w-full p-2 border rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Garantía</label>
-                <input 
-                  type="number" 
-                  value={itemForm.garantia_meses || ""} 
-                  onChange={e => setItemForm({...itemForm, garantia_meses: parseInt(e.target.value) || 12})}
-                  className="w-full p-2 border rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Costo Compra ({monedaId === '1' ? 'S/.' : '$'})</label>
-                <div className="flex gap-2">
-                  <input 
-                    type="number" 
-                    value={itemForm.costo_base || ""} 
-                    onChange={e => setItemForm({...itemForm, costo_base: parseFloat(e.target.value) || 0})}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                  <button onClick={handleIntercambiarMoneda} className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200">
-                    <ArrowLeftRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Margen %</label>
-                <input 
-                  type="number" 
-                  value={itemForm.margen || ""} 
-                  onChange={e => setItemForm({...itemForm, margen: parseFloat(e.target.value) || 0})}
-                  className="w-full p-2 border rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Disponibilidad</label>
-                <select 
-                  value={itemForm.disponibilidad_tipo || ""}
-                  onChange={e => setItemForm({...itemForm, disponibilidad_tipo: e.target.value as any, disponibilidad_dias: e.target.value === 'stock' ? 4 : 25})}
-                  className="w-full p-2 border rounded-lg"
-                >
-                  <option value="stock">Stock</option>
-                  <option value="importacion">Importación</option>
-                </select>
-              </div>
-              {itemForm.tipo === 'personalizado' && (
-              <>
-                <div className="col-span-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase">
-                    Proveedor
-                  </label>
-
-                  <input
-                    type="text"
-                    value={itemForm.proveedor}
-                    onChange={(e) =>
-                      setItemForm({
-                        ...itemForm,
-                        proveedor: e.target.value
-                      })
-                    }
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase">
-                    Link Proveedor
-                  </label>
-
-                  <input
-                    type="text"
-                    value={itemForm.link_proveedor}
-                    onChange={(e) =>
-                      setItemForm({
-                        ...itemForm,
-                        link_proveedor: e.target.value
-                      })
-                    }
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-              </>
-            )}
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Días Entrega</label>
-                <input 
-                  type="number" 
-                  value={itemForm.disponibilidad_dias} 
-                  onChange={e => setItemForm({...itemForm, disponibilidad_dias: parseInt(e.target.value) || 0})}
-                  className="w-full p-2 border rounded-lg"
-                />
-              </div>
-              <div className="mt-4 p-4 bg-gray-50 rounded-lg text-sm space-y-1">
-                <div className="flex justify-between">
-                  <span>Precio Venta:</span>
-                  <span className="font-bold">
-                    {simboloMoneda} {calculosItem.precioVenta.toFixed(2)}
-                  </span>
-                </div>
-
-                <div className="flex justify-between text-green-600">
-                  <span>Ganancia:</span>
-                  <span className="font-bold">
-                    {simboloMoneda} {calculosItem.ganancia.toFixed(2)}
-                  </span>
-                </div>
-
-                <div className="flex justify-between font-bold border-t pt-2">
-                  <span>Subtotal:</span>
-                  <span>
-                    {simboloMoneda} {calculosItem.subtotal.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="mt-6 flex gap-3">
-              <button onClick={() => setShowItemFormModal(false)} className="flex-1 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
-              <button onClick={editingItem ? () => handleUpdateItem(editingItem.id) : handleAddItem} className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">{editingItem ? 'Actualizar Item' : 'Agregar al listado'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ItemFormModal
+        open={showItemFormModal}
+        onClose={() => setShowItemFormModal(false)}
+        itemForm={itemForm}
+        setItemForm={setItemForm}
+        monedaId={monedaId}
+        simboloMoneda={simboloMoneda}
+        onSave={handleAddItem}
+        onUpdate={handleUpdateWrapper}
+        handleIntercambiarMoneda={handleIntercambiarMoneda}
+      />
 
       {/* 4. Modal Costos Adicionales */}
-      {showCostosModal && (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-    <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
-      <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-        <DollarSign className="w-5 h-5 text-purple-600" /> Costos Adicionales
-      </h3>
-
-      {/* LISTA DE COSTOS */}
-      <div className="space-y-3 mb-4">
-        {costos.map((costo) => (
-          <div key={costo.id} className="flex justify-between items-center border p-2 rounded">
-            <div>
-              <p className="text-sm font-medium">{costo.tipo}</p>
-              <p className="text-xs text-gray-500">S/ {costo.monto.toFixed(2)}</p>
-            </div>
-
-            <button
-              onClick={() => handleDeleteCosto(costo.id)}
-              className="p-1 hover:bg-red-50 rounded"
-            >
-              <Trash2 className="w-4 h-4 text-red-600" />
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* FORM AGREGAR */}
-      <div className="space-y-2 border-t pt-3">
-              <select
-                value={costoForm.tipo}
-                onChange={(e) => setCostoForm({ ...costoForm, tipo: e.target.value })}
-                className="w-full p-2 border rounded"
-              >
-                <option value="viaje">Viaje</option>
-                <option value="viatico">Viatico</option>
-                <option value="movilidad">Movilidad</option>
-                <option value="estancia">Estancia</option>
-                <option value="flete">Flete</option>
-                <option value="personal_externo">Personal Externo</option>
-              </select>
-
-              <input
-                type="number"
-                value={costoForm.monto}
-                onChange={(e) =>
-                  setCostoForm({ ...costoForm, monto: parseFloat(e.target.value) || 0 })
-                }
-                className="w-full p-2 border rounded"
-                placeholder="Monto"
-              />
-
-              <button
-                onClick={handleAddCosto}
-                className="w-full py-2 bg-purple-600 text-white rounded-lg font-bold"
-              >
-                Agregar costo
-              </button>
-            </div>
-
-            <button
-              onClick={() => setShowCostosModal(false)}
-              className="w-full mt-4 text-sm text-gray-500"
-            >
-              Cerrar
-            </button>
-          </div>
-        </div>
-      )}
+      <CostosModal
+        open={showCostosModal} 
+        onClose={() => setShowCostosModal(false)} 
+        costos={costos} 
+        costoForm={costoForm}
+        setCostoForm={setCostoForm} 
+        onAddCosto={handleAddCosto} 
+        onDeleteCosto={handleDeleteCosto}
+        />
 
       {/* 5. Modal Exportación */}
-      {showExportModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-2xl text-center">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <FileText className="w-8 h-8 text-blue-600" />
-            </div>
-            <h3 className="text-xl font-bold mb-2">Exportar Documento</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <button onClick={handleExportarPdf} className="flex items-center justify-center gap-2 p-3 border-2 border-red-100 rounded-xl hover:bg-red-50 text-red-700 font-bold">
-                {exportandoPdf ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <FileText className="w-5 h-5" />
-                )}
-
-                  {exportandoPdf ? 'Exportando...' : 'PDF'}
-              </button>
-              {/* <button onClick={() => handleExportarPdf('excel')} className="flex items-center justify-center gap-2 p-3 border-2 border-green-100 rounded-xl hover:bg-green-50 text-green-700 font-bold">
-                <FileSpreadsheet className="w-5 h-5" /> Excel
-              </button> */}
-            </div>
-            <button onClick={() => setShowExportModal(false)} className="mt-4 text-sm text-gray-400 hover:underline">Cerrar</button>
-          </div>
-        </div>
-      )}
+      <ExportModal
+        open={showExportModal} 
+        onClose={() => setShowExportModal(false)} 
+        onExportPdf={handleExportarPdf} 
+        exportandoPdf={exportandoPdf}  
+        />
+        
     </div>
-      );
-    }
+  );
+}

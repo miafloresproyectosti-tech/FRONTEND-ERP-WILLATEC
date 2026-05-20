@@ -1,5 +1,27 @@
-{/* RESUMEN */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
+import type { CotizacionItem } from "../../types/cotizaciones.type";
+
+interface Resumen {
+  subtotal: number;
+  igv: number;
+  costosTotal: number;
+  total: number;
+  ganancia: number;
+}
+
+interface Props {
+  resumen: Resumen;
+  simboloMoneda: string;
+  items: CotizacionItem[];
+}
+
+export function CotizacionResumen({
+  resumen,
+  simboloMoneda,
+  items,
+}: Props) {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border p-6">
+      {/* RESUMEN */}
             <h2 className="text-xl mb-4">Resumen Aprobado</h2>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">Subtotal: <span className="font-bold">{simboloMoneda} {resumen.subtotal.toFixed(2)}</span></div>
@@ -25,4 +47,7 @@
                 Items Importación: <span>{items.filter(i => i.disponibilidad_tipo === 'importacion').length}</span>
               </div>
             </div>
-          </div>
+    </div>
+  );
+}
+

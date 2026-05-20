@@ -22,8 +22,8 @@ export interface Cotizacion {
     plataforma_id: number;
     user_id: number;
     moneda_id: number;
-    items: ItemCotizacion[];
-    costosAdicionales: CostosAdicionales;
+    items: CotizacionItem[];
+    costosAdicionales: CotizacionCostosAdicional[];
 
     // 🔥 NUEVO CONTROL FLUJO
     aprobadoPor?: string;
@@ -32,35 +32,75 @@ export interface Cotizacion {
     fechaAprobacion?: string;
 }
 
-export interface ItemCotizacion {
+export type CotizacionItem ={
+    id: number;
+    cotizacion_id: number;
     descripcion: string;
     cantidad: number;
-    codigo: string;
-    unidad_medida: string;
-    costo_unitario: number;
-    precio_venta: number;
+    costo_base: number;
     margen: number;
     marca?: string;
+    codigo?: string;
+    unidad_medida?: string;
+    disponibilidad?: string;
+    garantia_meses?: number | null;
+    disponibilidad_tipo: "stock" | "importacion";
+    disponibilidad_dias: number;
+    orden: number;
+    costo_unitario?: number;
+    precio_venta?: number;
+    subtotal?: number;
+    costo_total?: number;
+    ganancia?: number;
+    producto_id?: number;
+    estado_cotizacion_item_id?: number;
+    created_at?: string;
+    updated_at?: string;
+    tipo?: "catalogo" | "personalizado"; // Para diferenciar items de catálogo vs personalizados
+    proveedor?: string; // Nuevo campo para proveedor
+    link_proveedor?: string; // Nuevo campo para link del proveedor
+}
+
+export interface CotizacionCostosAdicional {
+    id: number;
+    cotizacion_id: number;
+    tipo: string;
+    monto: number;
+    descripcion: string;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface Plantilla{
+    id:number,
+    nombre: string,
+    incluye_igv: boolean
+}
+
+export interface ItemForm {
+    id?: number;
+    descripcion: string;
+    cantidad: number;
     costo_base: number;
+    precio_venta: number;
+    costo_unitario: number;
     costo_total: number;
     ganancia: number;
     subtotal: number;
     imagen?: string;
     orden: number;
-    cotizacion_id: string;
-    producto_id: number | null;
-    estado_cotizacion_id: number;
-    garantia_meses?: number;
-    disponibilidad_tipo: "stock" | "importacion";
+    cotizacion_id: number;
+    producto_id?: number;
+    estado_cotizacion_item_id?: number;
+    tipo: 'catalogo' | 'personalizado';
+    margen: number;
+    marca: string;
+    codigo: string;
+    unidad_medida: string;
+    garantia_meses: number;
+    disponibilidad_tipo: 'stock' | 'importacion';
     disponibilidad_dias: number;
-    tipo: "catalogo" | "externo";
-}
 
-export interface CostosAdicionales {
-    viaje: number;
-    viatico: number;
-    movilidad: number;
-    estancia: number;
-    envioFlete: number;
-    personalExterno: number;
+    proveedor?: string;
+    link_proveedor?: string;
 }

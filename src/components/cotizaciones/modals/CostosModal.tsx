@@ -1,10 +1,48 @@
-{/* 4. Modal Costos Adicionales */}
-      {showCostosModal && (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+import type { CotizacionCostosAdicional } from "../../../services/cotizacion.service";
+import { X, DollarSign, Trash2 } from "lucide-react";
+
+interface Props{
+  open: boolean;
+  onClose: () => void;
+
+  costos: CotizacionCostosAdicional[]
+  
+  costoForm:{
+    id: number
+    cotizacion_id: number | null
+    tipo: string
+    monto: number
+    descripcion: string
+  }
+
+  setCostoForm: (data: any) => void;
+
+  onAddCosto: () => void;
+  onDeleteCosto: (id: number) => void;
+}
+
+export function CostosModal({ 
+  open, 
+  onClose, 
+  costos, 
+  costoForm, 
+  setCostoForm, 
+  onAddCosto, 
+  onDeleteCosto 
+}: Props) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
     <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
       <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
         <DollarSign className="w-5 h-5 text-purple-600" /> Costos Adicionales
       </h3>
+
+      <button onClick={onClose}>
+            <X className="w-5 h-5 text-gray-400" />
+      </button>
+    </div>
 
       {/* LISTA DE COSTOS */}
       <div className="space-y-3 mb-4">
@@ -16,7 +54,7 @@
             </div>
 
             <button
-              onClick={() => handleDeleteCosto(costo.id)}
+              onClick={() => onDeleteCosto(costo.id)}
               className="p-1 hover:bg-red-50 rounded"
             >
               <Trash2 className="w-4 h-4 text-red-600" />
@@ -25,7 +63,7 @@
         ))}
       </div>
 
-      {/* FORM AGREGAR */}
+      {/* FORMULARIO AGREGAR */}
       <div className="space-y-2 border-t pt-3">
               <select
                 value={costoForm.tipo}
@@ -51,7 +89,7 @@
               />
 
               <button
-                onClick={handleAddCosto}
+                onClick={onAddCosto}
                 className="w-full py-2 bg-purple-600 text-white rounded-lg font-bold"
               >
                 Agregar costo
@@ -59,11 +97,11 @@
             </div>
 
             <button
-              onClick={() => setShowCostosModal(false)}
+              onClick={onClose}
               className="w-full mt-4 text-sm text-gray-500"
             >
               Cerrar
             </button>
-          </div>
-        </div>
-      )}
+          </div> 
+  )
+}
