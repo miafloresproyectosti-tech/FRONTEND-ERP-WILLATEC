@@ -1,7 +1,54 @@
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          {/* FORM INFO GENERAL */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
+import type { Cliente } from "../../types/cotizaciones.type";
+
+interface Props {
+  clienteId: number | null;
+  setClienteId: (id: number) => void;
+
+  clientes: Cliente[];  
+  
+  cotizacion: any;
+
+  plantillaId: number;
+  setPlantillaId: (id: number) => void;
+
+  monedaId: number;
+  setMonedaId: (id: number) => void;
+
+  estado_cotizacion_id: number;
+  setEstadoCotizacionId: (id: number) => void;
+
+  modoDistribucion: 'POR_ITEM' | 'POR_CANTIDAD';
+  setModoDistribucion: (v: 'POR_ITEM' | 'POR_CANTIDAD') => void;
+  
+  fecha: string;
+  setFecha: (v: string) => void;
+
+  validezDias: number;
+  setValidezDias: (v: number) => void;
+
+  plantillas: { id: number; nombre: string }[];
+}
+
+export function CotizacionGeneralForm({ 
+  clienteId,
+  setClienteId,
+  clientes,
+  plantillaId,
+  setPlantillaId,
+  monedaId,
+  setMonedaId,
+  estado_cotizacion_id,
+  setEstadoCotizacionId,
+  modoDistribucion,
+  setModoDistribucion,
+  fecha,
+  setFecha,
+  validezDias,
+  setValidezDias,
+  plantillas 
+}: Props) {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border p-6">
             <h2 className="text-xl text-gray-800 mb-4">Información General</h2>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -14,7 +61,7 @@
                     const selectedCliente = clientes.find((c) => c.id === selectedId);
                     setClienteId(selectedId);
                     if (selectedCliente?.moneda_id) {
-                    setMonedaId(selectedCliente.moneda_id.toString());
+                    setMonedaId(selectedCliente.moneda_id);
                     }
                   }}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -42,7 +89,7 @@
                 <label className="block text-sm mb-2 text-gray-700">Validez (días)</label>
                 <input
                   type="number"
-                  value={validezDias || ''}
+                  value={validezDias}
                   onChange={(e) => setValidezDias(Number(e.target.value))}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder='Ingresa días de validez, ej: 30'
@@ -56,7 +103,7 @@
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="" disabled >Seleccionar plantilla</option>
-                  {plantillas.map((plantilla: Plantilla) => (
+                  {plantillas.map((plantilla) => (
                     <option
                       key={plantilla.id}
                       value={plantilla.id}
@@ -82,7 +129,7 @@
                 <label className="block text-sm mb-2 text-gray-700">Moneda</label>
                 <select
                   value={monedaId}
-                  onChange={(e) => setMonedaId(e.target.value)}
+                  onChange={(e) => setMonedaId(Number(e.target.value))}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="" disabled >Seleccionar moneda</option>
@@ -93,7 +140,7 @@
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Estado</label>
                 <select
-                  value={estadoCotizacionId}
+                  value={estado_cotizacion_id}
                   onChange={(e) => setEstadoCotizacionId(Number(e.target.value))}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
@@ -106,3 +153,5 @@
               </div>
             </div>
           </div>
+  )
+}

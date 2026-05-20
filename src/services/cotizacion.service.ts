@@ -118,7 +118,7 @@ export interface CreateCotizacionData {
 export interface UpdateCotizacionData {
   cliente_id: number;
   plantilla_id: number;
-  moneda_id: string;
+  moneda_id: number;
   modo_distribucion: "POR_ITEM" | "POR_CANTIDAD";
   estado_cotizacion_id?: number;
   fecha?: string;

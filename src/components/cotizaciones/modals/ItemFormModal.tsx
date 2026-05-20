@@ -8,7 +8,7 @@ interface Props{
   itemForm: ItemForm;
   setItemForm: React.Dispatch<React.SetStateAction<ItemForm>>;
   
-  monedaId: string;
+  monedaId: number;
   simboloMoneda: string;
   
   onSave: () => void;
@@ -65,7 +65,7 @@ export function ItemFormModal({
                 />
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Costo Compra ({monedaId === '1' ? 'S/.' : '$'})</label>
+                <label className="text-xs font-bold text-gray-500 uppercase">Costo Compra ({monedaId === 1 ? 'S/.' : '$'})</label>
                 <div className="flex gap-2">
                   <input 
                     type="number" 

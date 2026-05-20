@@ -1,8 +1,40 @@
-{/* TABLA CON DISPONIBILIDAD */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
+import type { CotizacionItem, } from "../../types/cotizaciones.type";
+import { CheckCircle, Trash2, Plus } from "lucide-react";
+interface Props{
+  items: CotizacionItem[];
+  simboloMoneda: string;
+
+  estadoCotizacionId: number;
+  setEstadoCotizacionId: (id: number) => void;
+
+  onDeleteItem: (id: number) => void;
+  onOpenEdit: (item: CotizacionItem) => void;
+
+  actualizarMargenItem: (id:number, margen: number)=>void;
+
+  onApproveAll?: () => void;
+  todosItemsAprobados?: boolean;
+  onAddItem: () => void;
+}
+
+export function CotizacionItemsTable ({ 
+  items, 
+  simboloMoneda, 
+  estadoCotizacionId, 
+  setEstadoCotizacionId,
+  onDeleteItem, 
+  onOpenEdit, 
+  actualizarMargenItem,
+  onApproveAll,
+  todosItemsAprobados,
+  onAddItem
+}: Props){
+  return (
+    <div className="bg-white rounded-xl shadow-sm border p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl text-gray-800">Items ({items.length})</h2>
-              <button onClick={() => setShowItemTypeModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+
+              <button onClick={onAddItem} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
                 <Plus className="w-4 h-4" /> Agregar Item
               </button>
             </div>
@@ -55,6 +87,7 @@
                             </span>
                           </div>
                         </td> */}
+                        
                         <td className="py-3 px-2 font-medium text-xs">{item.disponibilidad_dias}</td>
                         <td className="py-3 px-2">
                           <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
@@ -112,8 +145,14 @@
                         </td>
                         <td className="font-medium">{simboloMoneda} {(item.subtotal || 0).toFixed(2)}</td>
                         <td>
-                          <button onClick={() => handleDeleteItem(item.id)} className="p-1 hover:bg-red-50 rounded">
+                          <button onClick={() => onDeleteItem(item.id)} className="p-1 hover:bg-red-50 rounded">
                             <Trash2 className="w-4 h-4 text-red-600" />
+                          </button>
+                          <button
+                            onClick={() => onOpenEdit(item)}
+                            className="p-1 hover:bg-blue-50 rounded ml-2"
+                          >
+                            ✏️
                           </button>
                         </td>
                       </tr>
@@ -123,4 +162,6 @@
               </table>
             </div>
           </div>
-        </div>
+  )
+}
+          

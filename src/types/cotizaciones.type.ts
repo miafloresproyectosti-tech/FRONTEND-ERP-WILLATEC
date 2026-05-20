@@ -104,3 +104,14 @@ export interface ItemForm {
     proveedor?: string;
     link_proveedor?: string;
 }
+
+export interface Cliente {
+    id: number;
+    nombre: string;
+    ruc: string;
+    correo: string | null;
+    telefono: string | null;
+    estado: "activo" | "inactivo";
+    tipo_cliente_id: number;
+    moneda_id: number;
+}

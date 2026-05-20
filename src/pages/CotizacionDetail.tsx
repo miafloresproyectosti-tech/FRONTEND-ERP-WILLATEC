@@ -2,9 +2,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useNotifications } from '../NotificationContext';
 import { useAuth } from '../AuthContext';
-import { getClientes, type Cliente } from '../services/cliente.service';;
+import { getClientes, type Cliente } from '../services/cliente.service';
 import { getProductos, type Producto} from "../services/producto.service";
 import { CotizacionResumen } from '../components/cotizaciones/CotizacionResumen';
+import { CotizacionGeneralForm } from '../components/cotizaciones/CotizacionGeneralForm';
+import { CotizacionItemsTable } from '../components/cotizaciones/CotizacionItemsTable';
+import type { ItemForm } from '../types/cotizaciones.type';
 import { ExportModal } from '../components/cotizaciones/modals/ExportModal';
 import { ItemTypeModal } from '../components/cotizaciones/modals/ItemTypeModal';
 import { ProductModal } from '../components/cotizaciones/modals/ProductModal';
@@ -41,7 +44,7 @@ import {
   ArrowLeftRight,
   Truck,
 } from 'lucide-react';
-import type { ItemForm } from '../types/cotizaciones.type';
+
 
 export function CotizacionDetail() {
   const navigate = useNavigate();
@@ -60,8 +63,11 @@ export function CotizacionDetail() {
   // Cotización header
   const [cotizacion, setCotizacion] = useState<Cotizacion | null>(null);
   const [clienteId, setClienteId] = useState<number | null>(null);
-  const [plantillaId, setPlantillaId] = useState<number | null>(1);
-  const [monedaId, setMonedaId] = useState<string>('1'); // 1=PEN, 2=USD
+  const [plantillaId, setPlantillaId] = useState<number>(1);
+  const [fecha, setFecha] = useState('');
+  const [validezDias, setValidezDias] = useState(30);
+  const [plantillas, setPlantillas] = useState<{id:number,nombre:string}[]>([]);
+  const [monedaId, setMonedaId] = useState<number>(1); // 1=PEN, 2=USD
   const [modoDistribucion, setModoDistribucion] = useState<'POR_ITEM' | 'POR_CANTIDAD'>('POR_ITEM');
   const [titulo, setTitulo] = useState('');
   const simboloMoneda = cotizacion?.cliente?.moneda_id === 2 ? '$' : 'S/';
@@ -82,7 +88,7 @@ export function CotizacionDetail() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showCostosModal, setShowCostosModal] = useState(false);
 
-  const [estado, setEstado] = useState('');
+  const [estado_cotizacion_id, setEstadoCotizacionId] = useState('');
 
   const TIPO_CAMBIO_DOLAR = 3.6; // Ejemplo, en un caso real se debería obtener dinámicamente DE DOLAR A SOLES
   const TIPO_CAMBIO_SOLES = 3.3; // Ejemplo, en un caso real se debería obtener dinámicamente DE SOLES A DOLAR
@@ -254,7 +260,7 @@ export function CotizacionDetail() {
       setCotizacion(data);
       setClienteId(data.cliente_id);
       setPlantillaId(data.plantilla_id);
-      setMonedaId(data.cliente?.moneda_id?.toString() || '1');
+      setMonedaId(data.cliente?.moneda_id || 1);
       setModoDistribucion(data.modo_distribucion);
       setTitulo(data.titulo);
       setItems(data.items || []);
@@ -618,7 +624,7 @@ const todosItemsAprobados =   items.every(item =>
 );
 
 const handleIntercambiarMoneda = () => {
-  const esSoles = monedaId === '1';
+  const esSoles = monedaId === 1;
 
   const nuevoCosto = esSoles
     ? itemForm.costo_base / TIPO_CAMBIO_SOLES
@@ -674,7 +680,7 @@ const refreshCotizacion = async () => {
   // 🔥 sincronizar header
   setClienteId(data.cliente_id);
   setPlantillaId(data.plantilla_id);
-  setMonedaId(data.cliente?.moneda_id?.toString() || '1');
+  setMonedaId(data.cliente?.moneda_id || 1);
   setModoDistribucion(data.modo_distribucion);
   setTitulo(data.titulo);
 
@@ -792,225 +798,53 @@ const refreshCotizacion = async () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           {/* FORM INFO GENERAL */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <h2 className="text-xl text-gray-800 mb-4">Información General</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm mb-2 text-gray-700">Cliente</label>
-                <select
-                  value={clienteId ?? ''}
-                  onChange={(e) => {
-                    const selectedId = Number(e.target.value);
-                    const selectedCliente = clientes.find((c) => c.id === selectedId);
-                    setClienteId(selectedId);
-                    if (selectedCliente?.moneda_id) {
-                    setMonedaId(selectedCliente.moneda_id.toString());
-                    }
-                  }}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="" disabled>
-                    Seleccione un cliente
-                  </option>
-                  {clientes.map((clienteOption) => (
-                    <option key={clienteOption.id} value={clienteOption.id}>
-                      {clienteOption.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm mb-2 text-gray-700">Fecha</label>
-                <input
-                  type="date"
-                  value={cotizacion?.fecha ? new Date(cotizacion.fecha).toISOString().split('T')[0] : ''}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm mb-2 text-gray-700">Validez (días)</label>
-                <input
-                  type="number"
-                  value={cotizacion?.validez_dias || 0}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm mb-2 text-gray-700">Plantilla</label>
-                <select
-                  value={plantillaId ?? ''}
-                  onChange={(e) => setPlantillaId(Number(e.target.value))}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value={1}>Soles</option>
-                  <option value={2}>Dólares</option>
-                  <option value={3}>Soles Estándar</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm mb-2 text-gray-700">Moneda</label>
-                <select
-                  value={monedaId}
-                  onChange={(e) => setMonedaId(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="1">PEN (S/)</option>
-                  <option value="2">USD ($)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm mb-2 text-gray-700">Estado</label>
-                <select
-                  value={cotizacion?.estado_cotizacion_id === 1 ? 'borrador' : cotizacion?.estado_cotizacion_id === 2 ? 'enviada' : cotizacion?.estado_cotizacion_id === 3 ? 'parcialmente_aprobada' : cotizacion?.estado_cotizacion_id === 4 ? 'aprobada' : cotizacion?.estado_cotizacion_id === 5 ? 'oc_registrada' : ''}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="borrador">Borrador</option>
-                  <option value="enviada">Enviada</option>
-                  <option value="parcialmente_aprobada">Parcialmente Aprobada</option>
-                  <option value="aprobada">Aprobada</option>
-                  <option value="aprobada">OC_Registrada</option>
-                </select>
-              </div>
-            </div>
-          </div>
+          <CotizacionGeneralForm
+            clienteId={clienteId}
+            setClienteId={setClienteId}
+            clientes={clientes}
+            cotizacion={cotizacion}
+
+            plantillaId={plantillaId}
+            setPlantillaId={setPlantillaId}
+
+            monedaId={monedaId}
+            setMonedaId={setMonedaId}
+
+            estado_cotizacion_id={cotizacion?.estado_cotizacion_id || 1}
+            setEstadoCotizacionId={(value) =>
+              setCotizacion((prev: any) => ({
+                ...prev,
+                estado_cotizacion_id: value,
+              }))
+            }
+
+            modoDistribucion={modoDistribucion}
+            setModoDistribucion={setModoDistribucion}
+
+            fecha={fecha}
+            setFecha={setFecha}
+
+            validezDias={validezDias}
+            setValidezDias={setValidezDias}
+
+            plantillas={plantillas}
+          />
 
           {/* TABLA CON DISPONIBILIDAD */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl text-gray-800">Items ({items.length})</h2>
-              <button onClick={() => setShowItemTypeModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
-                <Plus className="w-4 h-4" /> Agregar Item
-              </button>
-            </div>
+          <CotizacionItemsTable
+            items={items}
+            simboloMoneda={simboloMoneda}
+            estadoCotizacionId={cotizacion?.estado_cotizacion_id || 1}
+            setEstadoCotizacionId={setEstado}
+            onDeleteItem={handleDeleteItem}
+            onOpenEdit={openEditItem}
+            actualizarMargenItem={actualizarMargenItem}
+            todosItemsAprobados={todosItemsAprobados}
+            onApproveAll={() => setEstado('aprobada')}
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b">
-                    <th className="text-left py-3 px-2 text-xs">Producto</th>
-                    <th className="text-left py-3 px-2 text-xs">Tipo</th>
-                    <th className="text-left py-3 px-2 text-xs">📦 Disp.</th>
-                    <th className="text-left py-3 px-2 text-xs">⏱️ Días</th>
-                    <th className="text-left py-3 px-2 text-xs">Garantía</th>
-                    <th className="text-left py-3 px-2 text-xs">Cant.</th>
-                    {estado === 'parcialmente_aprobada' && (
-                      <>
-                        <th className="text-left py-3 px-2 text-xs">Aprobada</th>
-                        <th className="text-left py-3 px-2 text-xs">Estado</th>
-                      </>
-                    )}
-                    <th className="text-left py-3 px-2 text-xs">Precio</th>
-                    <th className="text-left py-3 px-2 text-xs">Costo</th>
-                    <th className="text-left py-3 px-2 text-xs">Margen</th>
-                    <th className="text-left py-3 px-2 text-xs">Ganancia</th>
-                    <th className="text-left py-3 px-2 text-xs">Subtotal</th>
-                    <th className="w-8"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => {
-                    const costoFinal = item.costo_total || 0;
-                    return (
-                      <tr key={item.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-2 max-w-[200px] truncate" title='descripcion'>
-                          {item.descripcion}
-                        </td>
-                        <td className="py-3 px-2">
-                          <span className={`px-2 py-1 rounded-full text-xs ${item.tipo === 'catalogo' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
-                            {item.tipo === 'catalogo' ? 'Cat' : 'Ext'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-2">
-                          <div className="flex items-center gap-1">
-                            <IconoDisponibilidad tipo={item.disponibilidad_tipo} />
-                            <span className={`text-xs font-medium ${
-                              item.disponibilidad_tipo === 'stock' 
-                                ? 'text-green-700 bg-green-100' 
-                                : 'text-orange-700 bg-orange-100'
-                            } px-2 py-1 rounded-full`}>
-                              {item.disponibilidad_tipo === 'stock' ? 'Stock' : 'Imp'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-2 font-medium text-xs">{item.disponibilidad_dias}</td>
-                        <td className="py-3 px-2">
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
-                            {item.garantia_meses} meses
-                          </span>
-                        </td>
-                        <td className="py-3 px-2 font-medium">{item.cantidad}</td>
-                        
-                        {estado === 'parcialmente_aprobada' && (
-                          <>
-                            <td className="py-3 px-2">
-                              <input
-                                type="number"
-                                value={item.cantidad || 0}
-                                min="0" max={item.cantidad}
-                                className="w-16 px-2 py-1 border border-yellow-300 bg-yellow-50 rounded focus:ring-2 focus:ring-yellow-500 text-xs"
-                              />
-                            </td>
-                            <td className="py-3 px-2">
-                              <select
-                                value={item.estado_cotizacion_item_id === 1 ? 'pendiente' : item.estado_cotizacion_item_id === 2 ? 'aprobado' : 'rechazado'}
-                                className="px-2 py-1 border border-yellow-300 bg-yellow-50 rounded text-xs focus:ring-2 focus:ring-yellow-500"
-                              >
-                                <option value="pendiente">⏳ Pend.</option>
-                                <option value="aprobado">✅ Aprob.</option>
-                                <option value="rechazado">❌ Rech.</option>
-                              </select>
-                            </td>
-                          </>
-                        )}
-                        
-                        <td>{simboloMoneda} {(item.precio_venta || 0).toFixed(2)}</td>
-                        <td>{simboloMoneda} {(costoFinal ?? 0).toFixed(2)}</td>
-                        <td>
-                          <input 
-                            type="number" 
-                            value={(item.margen ?? 0).toFixed(1)} 
-                            onChange={(e) => actualizarMargenItem(item.id, parseFloat(e.target.value) || 0)}
-                            className="w-14 px-1 py-1 border rounded text-xs" 
-                            step="0.1" 
-                          />
-                        </td>
-                        <td className={((item.ganancia ?? 0) > 0) ? 'text-green-600' : 'text-red-600'}>
-                          {simboloMoneda} {(item.ganancia|| 0).toFixed(2)}
-                        </td>
-                        <td className="font-medium">{simboloMoneda} {(item.subtotal || 0).toFixed(2)}</td>
-                        <td>
-                          <button onClick={() => handleDeleteItem(item.id)} className="p-1 hover:bg-red-50 rounded">
-                            <Trash2 className="w-4 h-4 text-red-600" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            onAddItem={() => setShowItemTypeModal(true)} // 🔥 AQUÍ
+          />
 
-            {estado === 'parcialmente_aprobada' && (
-              <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex gap-6 text-sm">
-                    <span>⏳ Pendientes: {items.filter(i => i.estado_cotizacion_item_id === 1).length}</span>
-                    <span>✅ Aprobados: {items.filter(i => i.estado_cotizacion_item_id === 2).length}</span>
-                    <span>❌ Rechazados: {items.filter(i => i.estado_cotizacion_item_id === 3).length}</span>
-                  </div>
-                  {todosItemsAprobados && (
-                    <button 
-                      onClick={() => setEstado('aprobada')} 
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-                    >
-                      <CheckCircle className="w-4 h-4" /> Aprobar Completa
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
           {/* RESUMEN */}
