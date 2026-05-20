@@ -22,7 +22,6 @@ import {
   deleteItem,
   addCosto,
   deleteCosto,
-  recalcularCotizacion,
   exportarCotizacionPdf,
   descargarPdfCotizacion,
   type Cotizacion,
@@ -31,17 +30,12 @@ import {
 } from '../services/cotizacion.service';
 import {
   ArrowLeft,
-  Plus,
-  Trash2,
   Save,
   CheckCircle,
   FileSpreadsheet,
-  FileText,
-  X,
   Loader2,
   DollarSign,
   Package,
-  ArrowLeftRight,
   Truck,
 } from 'lucide-react';
 
@@ -98,17 +92,6 @@ export function CotizacionDetail() {
 
     setEstadoCotizacionId(cotizacion.estado_cotizacion_id);
   }, [cotizacion]);
-
-  const estadoLabel = useMemo(() => {
-  switch (estadoCotizacionId) {
-    case 1: return 'borrador';
-    case 2: return 'enviada';
-    case 3: return 'parcialmente_aprobada';
-    case 4: return 'aprobada';
-    case 5: return 'oc_registrada';
-    default: return '';
-  }
-}, [estadoCotizacionId]);
 
   // Formularios
   const [itemForm, setItemForm] = useState<ItemForm>({
@@ -168,11 +151,6 @@ export function CotizacionDetail() {
     monto: 0,
     descripcion: 'string',
   });
-
-  const handleUpdateWrapper = () => {
-  if (!editingItem) return;
-  handleUpdateItem(editingItem.id);
-};
 
   const mapItemToForm = (item: CotizacionItem): ItemForm => {
   return {
@@ -381,7 +359,7 @@ export function CotizacionDetail() {
   const handleUpdateItem = async (itemId: number) => {
     if (!cotizacion) return;
     try {
-      await updateItem(itemId, itemForm as any);
+      await updateItem(itemId, itemForm);
       addNotification({
         message: 'Item actualizado',
         type: 'success',
@@ -886,7 +864,7 @@ const refreshCotizacion = async () => {
         monedaId={monedaId}
         simboloMoneda={simboloMoneda}
         onSave={handleAddItem}
-        onUpdate={handleUpdateWrapper}
+        onUpdate={() =>editingItem && handleUpdateItem(editingItem.id)} // 🔥 AQUÍ 
         handleIntercambiarMoneda={handleIntercambiarMoneda}
       />
 

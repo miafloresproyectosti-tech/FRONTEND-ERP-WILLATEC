@@ -138,8 +138,8 @@ export interface CreateItemData {
   garantia_meses?: number;
   disponibilidad_tipo: "stock" | "importacion";
   disponibilidad_dias: number;
-  proveedor: string | undefined;
-  link_proveedor: string | undefined;
+  proveedor?: string | undefined;
+  link_proveedor?: string | undefined;
 }
 
 export interface UpdateItemData extends CreateItemData {}

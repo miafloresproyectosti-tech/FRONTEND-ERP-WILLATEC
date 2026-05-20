@@ -135,7 +135,7 @@ export function CotizacionItemsTable ({
                           <input 
                             type="number" 
                             value={(item.margen ?? 0).toFixed(1)} 
-                            onChange={(e) => actualizarMargenItem(item.margen, parseFloat(e.target.value))}
+                            onChange={(e) => actualizarMargenItem(item.id, parseFloat(e.target.value))}
                             className="w-14 px-1 py-1 border rounded text-xs" 
                             step="0.1" 
                           />
