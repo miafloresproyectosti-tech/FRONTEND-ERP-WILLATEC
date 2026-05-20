@@ -4,6 +4,8 @@ import { useNotifications } from '../NotificationContext';
 import { useAuth } from '../AuthContext';
 import { getClientes, type Cliente } from '../services/cliente.service';
 import { getProductos, type Producto} from "../services/producto.service";
+import { getPlantillas } from '../services/plantilla.service';
+import { getPlataformas } from '../services/plataforma.service';
 import { CotizacionResumen } from '../components/cotizaciones/CotizacionResumen';
 import { CotizacionGeneralForm } from '../components/cotizaciones/CotizacionGeneralForm';
 import { CotizacionItemsTable } from '../components/cotizaciones/CotizacionItemsTable';
@@ -35,8 +37,6 @@ import {
   FileSpreadsheet,
   Loader2,
   DollarSign,
-  Package,
-  Truck,
 } from 'lucide-react';
 
 
@@ -58,9 +58,11 @@ export function CotizacionDetail() {
   const [cotizacion, setCotizacion] = useState<Cotizacion | null>(null);
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [plantillaId, setPlantillaId] = useState<number>(1);
+  const [plataformaId, setPlataformaId] = useState<number>(1);
   const [fecha, setFecha] = useState('');
   const [validezDias, setValidezDias] = useState(30);
   const [plantillas, setPlantillas] = useState<{id:number,nombre:string}[]>([]);
+  const [plataformas, setPlataformas] = useState<{id:number,nombre:string}[]>([]);
   const [monedaId, setMonedaId] = useState<number>(1); // 1=PEN, 2=USD
   const [modoDistribucion, setModoDistribucion] = useState<'POR_ITEM' | 'POR_CANTIDAD'>('POR_ITEM');
   const [titulo, setTitulo] = useState('');
@@ -227,6 +229,54 @@ export function CotizacionDetail() {
     }
   }, [isEditing, currentCotizacionId]);
 
+  //Cargar plataformas
+  useEffect(() => {
+  const fetchPlataformas = async () => {
+    try {
+      const data = await getPlataformas();
+
+      setPlataformas(data);
+
+      if (data.length > 0 && !plataformaId) {
+        setPlataformaId(data[0].id);
+      }
+
+    } catch (error) {
+      addNotification({
+        message: 'Error al cargar plataformas',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    }
+  };
+
+  fetchPlataformas();
+}, []);
+
+  //Cargar plantillas
+  useEffect(() => {
+  const fetchPlantillas = async () => {
+    try {
+      const data = await getPlantillas();
+
+      setPlantillas(data);
+
+      if (data.length > 0 && !plantillaId) {
+        setPlantillaId(data[0].id);
+      }
+
+    } catch (error) {
+      addNotification({
+        message: 'Error al cargar plantillas',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    }
+  };
+
+  fetchPlantillas();
+}, []);
+
   // ====== FUNCIONES API ======
 
   const loadCotizacion = async () => {
@@ -237,6 +287,7 @@ export function CotizacionDetail() {
       setCotizacion(data);
       setClienteId(data.cliente_id);
       setPlantillaId(data.plantilla_id);
+      setPlataformaId(data.plataforma_id);
       setMonedaId(data.cliente?.moneda_id || 1);
       setModoDistribucion(data.modo_distribucion);
       setTitulo(data.titulo);
@@ -271,6 +322,7 @@ export function CotizacionDetail() {
         await updateCotizacion(currentCotizacionId, {
           cliente_id: clienteId,
           plantilla_id: plantillaId,
+          plataforma_id: plataformaId,
           moneda_id: monedaId,
           modo_distribucion: modoDistribucion,
         });
@@ -284,6 +336,7 @@ export function CotizacionDetail() {
         const newCotizacion = await createCotizacion({
           cliente_id: clienteId,
           plantilla_id: plantillaId,
+          plataforma_id: plataformaId,
           titulo: titulo || `Cotización ${new Date().toLocaleDateString()}`,
           modo_distribucion: modoDistribucion,
           moneda_id: Number(monedaId),
@@ -318,6 +371,7 @@ export function CotizacionDetail() {
     }
 
     try {
+      setShowItemForm(false); // ← cierra el modal inmediatamente
       await addItem(cotizacion.id, {
         descripcion: itemForm.descripcion,
         cantidad: itemForm.cantidad,
@@ -339,7 +393,7 @@ export function CotizacionDetail() {
         duration: 4000,
       } as any);
 
-      setShowItemForm(false);
+      // setShowItemForm(false);
 
       resetItemForm();
 
@@ -348,12 +402,14 @@ export function CotizacionDetail() {
       await loadCotizacion(); // Recargar
 
     } catch (error: any) {
+      setShowItemForm(true); // ← reabre si falla
       addNotification({
         message: error?.response?.data?.message || 'Error al agregar item',
         type: 'error',
         duration: 4000,
       } as any);
     }
+    console.log('CLICK')
   };
 
   const handleUpdateItem = async (itemId: number) => {
@@ -399,14 +455,14 @@ export function CotizacionDetail() {
     }
   };
 
-  // 🆕 FUNCIÓN PARA ICONO DE DISPONIBILIDAD
-  const IconoDisponibilidad = ({ tipo }: { tipo: 'stock' | 'importacion' }) => {
-    return tipo === 'stock' ? (
-      <Package className="w-4 h-4 text-green-600" />
-    ) : (
-      <Truck className="w-4 h-4 text-orange-600" />
-    );
-  };
+  // // 🆕 FUNCIÓN PARA ICONO DE DISPONIBILIDAD
+  // const IconoDisponibilidad = ({ tipo }: { tipo: 'stock' | 'importacion' }) => {
+  //   return tipo === 'stock' ? (
+  //     <Package className="w-4 h-4 text-green-600" />
+  //   ) : (
+  //     <Truck className="w-4 h-4 text-orange-600" />
+  //   );
+  // };
 
   // 🆕 CONTROL DE EXPORTACIÓN
   const puedeExportar = () => {
@@ -657,6 +713,7 @@ const refreshCotizacion = async () => {
   // 🔥 sincronizar header
   setClienteId(data.cliente_id);
   setPlantillaId(data.plantilla_id);
+  setPlataformaId(data.plataforma_id);
   setMonedaId(data.cliente?.moneda_id || 1);
   setModoDistribucion(data.modo_distribucion);
   setTitulo(data.titulo);
@@ -739,7 +796,7 @@ const refreshCotizacion = async () => {
     );
   }
 
-  const selectedCliente = clientes.find(c => c.id === clienteId);
+  // const selectedCliente = clientes.find(c => c.id === clienteId);
 
   return (
     <div className="p-8 space-y-6">
@@ -774,6 +831,9 @@ const refreshCotizacion = async () => {
             monedaId={monedaId}
             setMonedaId={setMonedaId}
 
+            plataformaId={plataformaId}
+            setPlataformaId={setPlataformaId}
+
             estado_cotizacion_id={estadoCotizacionId}
             setEstadoCotizacionId={setEstadoCotizacionId}
 
@@ -787,6 +847,7 @@ const refreshCotizacion = async () => {
             setValidezDias={setValidezDias}
 
             plantillas={plantillas}
+            plataformas={plataformas}
           />
 
           {/* TABLA CON DISPONIBILIDAD */}
@@ -806,37 +867,48 @@ const refreshCotizacion = async () => {
 
         </div>
 
+        {/* COLUMNA DERECHA */}
+        <div className="space-y-6">
+
           {/* RESUMEN */}
           <CotizacionResumen
             resumen={resumen}
             simboloMoneda={simboloMoneda}
             items={items}
-            />
+          />
 
           {/* BOTONES */}
           <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
-            <button onClick={handleSaveCotizacion} 
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+            <button
+              onClick={handleSaveCotizacion}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+            >
               <Save className="w-5 h-5" /> Guardar
             </button>
-            <button onClick={() => setShowCostosModal(true)} 
-              className="w-full flex items-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+
+            <button
+              onClick={() => setShowCostosModal(true)}
+              className="w-full flex items-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+            >
               <DollarSign className="w-5 h-5" /> Costos Adicionales
             </button>
-            <button 
-              onClick={() => setShowExportModal(true)} 
+
+            <button
+              onClick={() => setShowExportModal(true)}
               disabled={!puedeExportar() || items.length === 0}
               className={`w-full flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${
-                puedeExportar() 
-                  ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                puedeExportar()
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
             >
               <FileSpreadsheet className="w-5 h-5" /> Exportar Documento
             </button>
           </div>
+
         </div>
-            
+      </div>
+      
       {/* --- MODALES --- */}
 
       {/* 1. Modal Selección de Tipo de Item */}
@@ -865,6 +937,7 @@ const refreshCotizacion = async () => {
         simboloMoneda={simboloMoneda}
         onSave={handleAddItem}
         onUpdate={() =>editingItem && handleUpdateItem(editingItem.id)} // 🔥 AQUÍ 
+        editingItem={editingItem}
         handleIntercambiarMoneda={handleIntercambiarMoneda}
       />
 

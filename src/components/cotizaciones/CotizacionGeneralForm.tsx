@@ -14,6 +14,9 @@ interface Props {
   monedaId: number;
   setMonedaId: (id: number) => void;
 
+  plataformaId:number;
+  setPlataformaId: (id:number) =>void;
+
   estado_cotizacion_id: number;
   setEstadoCotizacionId: (id: number) => void;
 
@@ -27,6 +30,7 @@ interface Props {
   setValidezDias: (v: number) => void;
 
   plantillas: { id: number; nombre: string }[];
+  plataformas: { id: number; nombre: string} [];
 }
 
 export function CotizacionGeneralForm({ 
@@ -37,6 +41,8 @@ export function CotizacionGeneralForm({
   setPlantillaId,
   monedaId,
   setMonedaId,
+  plataformaId,
+  setPlataformaId,
   estado_cotizacion_id,
   setEstadoCotizacionId,
   modoDistribucion,
@@ -45,8 +51,11 @@ export function CotizacionGeneralForm({
   setFecha,
   validezDias,
   setValidezDias,
-  plantillas 
+  plantillas,
+  plataformas 
 }: Props) {
+
+  const selectedCliente = clientes.find((c) => c.id === clienteId);
   return (
     <div className="bg-white rounded-xl shadow-sm border p-6">
             <h2 className="text-xl text-gray-800 mb-4">Información General</h2>
@@ -128,13 +137,31 @@ export function CotizacionGeneralForm({
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Moneda</label>
                 <select
-                  value={monedaId}
+                  value={selectedCliente?.moneda_id || monedaId}
                   onChange={(e) => setMonedaId(Number(e.target.value))}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="" disabled >Seleccionar moneda</option>
                   <option value={1}>PEN (S/)</option>
                   <option value={2}>USD ($)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm mb-2 text-gray-700">Plataforma</label>
+                <select
+                  value={plataformaId ?? 1}
+                  onChange={(e) => setPlataformaId(Number(e.target.value))}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="" disabled >Seleccionar plantilla</option>
+                  {plataformas.map((plataforma) => (
+                    <option
+                      key={plataforma.id}
+                      value={plataforma.id}
+                    >
+                      {plataforma.nombre}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>

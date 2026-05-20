@@ -47,6 +47,7 @@ export function CotizacionResumen({
                 Items Importación: <span>{items.filter(i => i.disponibilidad_tipo === 'importacion').length}</span>
               </div>
             </div>
+            
     </div>
   );
 }

@@ -64,6 +64,29 @@ export function ItemFormModal({
                   className="w-full p-2 border rounded-lg"
                 />
               </div>
+              {/* ── NUEVOS CAMPOS ── */}
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Marca</label>
+                <input
+                  type="text"
+                  value={itemForm.marca || ""}
+                  onChange={e => setItemForm({ ...itemForm, marca: e.target.value })}
+                  className="w-full p-2 border rounded-lg"
+                  placeholder="ej: Dell, HP, Lenovo"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Modelo / Código</label>
+                <input
+                  type="text"
+                  value={itemForm.codigo || ""}
+                  onChange={e => setItemForm({ ...itemForm, codigo: e.target.value })}
+                  className="w-full p-2 border rounded-lg"
+                  placeholder="ej: XPS-15-9500"
+                />
+              </div>
+              {/* ── FIN NUEVOS CAMPOS ── */}
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase">Costo Compra ({monedaId === 1 ? 'S/.' : '$'})</label>
                 <div className="flex gap-2">

@@ -64,7 +64,14 @@ export function CotizacionItemsTable ({
                 </thead>
                 <tbody>
                   {items.map((item) => {
-                    const costoFinal = item.costo_total || 0;
+                      // Parsear todos los números que vienen como string desde la API
+                      const precioVenta    = parseFloat(item.precio_venta as any) || 0;
+                      const costoUnitario  = parseFloat(item.costo_unitario as any) || 0;
+                      const costoTotal     = parseFloat(item.costo_total as any) || 0;
+                      const ganancia       = parseFloat(item.ganancia as any) || 0;
+                      const subtotal       = parseFloat(item.subtotal as any) || 0;
+                      const margen         = parseFloat(item.margen as any) || 0;
+                      const costoFinal = item.costo_total || 0;
                     return (
                       <tr key={item.id} className="border-b hover:bg-gray-50">
                         <td className="py-3 px-2 max-w-[200px] truncate" title='descripcion'>
@@ -129,21 +136,21 @@ export function CotizacionItemsTable ({
                           </>
                         )}
                         
-                        <td>{simboloMoneda} {(item.precio_venta || 0).toFixed(2)}</td>
+                        <td>{simboloMoneda} {(precioVenta || 0).toFixed(2)}</td>
                         <td>{simboloMoneda} {(costoFinal ?? 0).toFixed(2)}</td>
                         <td>
                           <input 
                             type="number" 
-                            value={(item.margen ?? 0).toFixed(1)} 
+                            value={(margen ?? 0).toFixed(1)} 
                             onChange={(e) => actualizarMargenItem(item.id, parseFloat(e.target.value))}
                             className="w-14 px-1 py-1 border rounded text-xs" 
                             step="0.1" 
                           />
                         </td>
-                        <td className={((item.ganancia ?? 0) > 0) ? 'text-green-600' : 'text-red-600'}>
-                          {simboloMoneda} {(item.ganancia|| 0).toFixed(2)}
+                        <td className={((ganancia ?? 0) > 0) ? 'text-green-600' : 'text-red-600'}>
+                          {simboloMoneda} {(ganancia|| 0).toFixed(2)}
                         </td>
-                        <td className="font-medium">{simboloMoneda} {(item.subtotal || 0).toFixed(2)}</td>
+                        <td className="font-medium">{simboloMoneda} {(subtotal || 0).toFixed(2)}</td>
                         <td>
                           <button onClick={() => onDeleteItem(item.id)} className="p-1 hover:bg-red-50 rounded">
                             <Trash2 className="w-4 h-4 text-red-600" />

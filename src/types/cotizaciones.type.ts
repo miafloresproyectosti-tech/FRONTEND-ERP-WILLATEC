@@ -38,12 +38,13 @@ export type CotizacionItem ={
     descripcion: string;
     cantidad: number;
     costo_base: number;
+    imagen: string;
     margen: number;
     marca?: string;
     codigo?: string;
     unidad_medida?: string;
     disponibilidad?: string;
-    garantia_meses?: number | null;
+    garantia_meses: number;
     disponibilidad_tipo: "stock" | "importacion";
     disponibilidad_dias: number;
     orden: number;
@@ -78,31 +79,33 @@ export interface Plantilla{
 }
 
 export interface ItemForm {
-    id?: number;
+    id: number;
+    cotizacion_id: number;
     descripcion: string;
     cantidad: number;
     costo_base: number;
-    precio_venta: number;
-    costo_unitario: number;
-    costo_total: number;
-    ganancia: number;
-    subtotal: number;
-    imagen?: string;
+    imagen: string;
+    margen: number;
+    marca?: string;
+    codigo?: string;
+    unidad_medida?: string;
+    disponibilidad?: string;
+    garantia_meses?: number;
+    disponibilidad_tipo: "stock" | "importacion";
+    disponibilidad_dias: number;
     orden: number;
-    cotizacion_id: number;
+    costo_unitario?: number;
+    precio_venta?: number;
+    subtotal?: number;
+    costo_total?: number;
+    ganancia?: number;
     producto_id?: number;
     estado_cotizacion_item_id?: number;
-    tipo: 'catalogo' | 'personalizado';
-    margen: number;
-    marca: string;
-    codigo: string;
-    unidad_medida: string;
-    garantia_meses: number;
-    disponibilidad_tipo: 'stock' | 'importacion';
-    disponibilidad_dias: number;
-
-    proveedor?: string;
-    link_proveedor?: string;
+    created_at?: string;
+    updated_at?: string;
+    tipo?: "catalogo" | "personalizado"; // Para diferenciar items de catálogo vs personalizados
+    proveedor?: string; // Nuevo campo para proveedor
+    link_proveedor?: string; // Nuevo campo para link del proveedor
 }
 
 export interface Cliente {

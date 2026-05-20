@@ -9,12 +9,13 @@ export interface CotizacionItem {
   descripcion: string;
   cantidad: number;
   costo_base: number;
+  imagen: string;
   margen: number;
   marca?: string;
   codigo?: string;
   unidad_medida?: string;
   disponibilidad?: string;
-  garantia_meses?: number | null;
+  garantia_meses: number;
   disponibilidad_tipo: "stock" | "importacion";
   disponibilidad_dias: number;
   orden: number;
@@ -82,6 +83,7 @@ export interface Cotizacion {
   validez_dias: number;
   cliente_id: number;
   plantilla_id: number;
+  plataforma_id:number;
   user_id: number;
   modo_distribucion: "POR_ITEM" | "POR_CANTIDAD";
   subtotal: number;
@@ -107,6 +109,7 @@ export interface Cotizacion {
 export interface CreateCotizacionData {
   cliente_id: number;
   plantilla_id: number;
+  plataforma_id: number;
   titulo?: string;
   modo_distribucion?: "POR_ITEM" | "POR_CANTIDAD";
   moneda_id: number;
@@ -118,6 +121,7 @@ export interface CreateCotizacionData {
 export interface UpdateCotizacionData {
   cliente_id: number;
   plantilla_id: number;
+  plataforma_id:number;
   moneda_id: number;
   modo_distribucion: "POR_ITEM" | "POR_CANTIDAD";
   estado_cotizacion_id?: number;
@@ -179,10 +183,37 @@ export async function getCotizaciones(
 /**
  * Obtener una cotización específica con todos sus detalles
  */
-export async function getCotizacion(id: number): Promise<Cotizacion> {
+export async function getCotizacion(id: string | number): Promise<Cotizacion> {
   try {
     const response = await api.get(`/cotizaciones/${id}`);
-    return response.data;
+    const data = response.data || response.data.cotizacion;
+
+    // Normalizar strings numéricos que devuelve PostgreSQL
+    data.subtotal    = parseFloat(data.subtotal)    || 0;
+    data.igv         = parseFloat(data.igv)         || 0;
+    data.total       = parseFloat(data.total)       || 0;
+    data.ganancia    = parseFloat(data.ganancia)    || 0;
+    data.total_gasto = parseFloat(data.total_gasto) || 0;
+    data.tipo_cambio = parseFloat(data.tipo_cambio) || 1;
+
+    data.items = (data.items ?? []).map((item: any) => ({
+      ...item,
+      cantidad:         parseInt(item.cantidad)          || 0,
+      costo_base:       parseFloat(item.costo_base)      || 0,
+      costo_unitario:   parseFloat(item.costo_unitario)  || 0,
+      costo_total:      parseFloat(item.costo_total)     || 0,
+      precio_venta:     parseFloat(item.precio_venta)    || 0,
+      subtotal:         parseFloat(item.subtotal)        || 0,
+      ganancia:         parseFloat(item.ganancia)        || 0,
+      margen:           parseFloat(item.margen)          || 0,
+    }));
+
+    data.costos_adicionales = (data.costos_adicionales ?? []).map((c: any) => ({
+      ...c,
+      monto: parseFloat(c.monto) || 0,
+    }));
+
+  return data;
   } catch (error) {
     console.error("Error al obtener cotización:", error);
     throw error;
