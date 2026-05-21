@@ -49,7 +49,7 @@ export type CotizacionItem ={
     disponibilidad_dias: number;
     orden: number;
     costo_unitario?: number;
-    precio_venta?: number;
+    precio_venta: number;
     subtotal?: number;
     costo_total?: number;
     ganancia?: number;

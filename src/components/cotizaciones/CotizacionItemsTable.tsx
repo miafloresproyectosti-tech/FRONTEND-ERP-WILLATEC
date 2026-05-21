@@ -10,8 +10,6 @@ interface Props{
   onDeleteItem: (id: number) => void;
   onOpenEdit: (item: CotizacionItem) => void;
 
-  actualizarMargenItem: (id:number, margen: number)=>void;
-
   onApproveAll?: () => void;
   todosItemsAprobados?: boolean;
   onAddItem: () => void;
@@ -24,7 +22,6 @@ export function CotizacionItemsTable ({
   setEstadoCotizacionId,
   onDeleteItem, 
   onOpenEdit, 
-  actualizarMargenItem,
   onApproveAll,
   todosItemsAprobados,
   onAddItem
@@ -138,15 +135,7 @@ export function CotizacionItemsTable ({
                         
                         <td>{simboloMoneda} {(precioVenta || 0).toFixed(2)}</td>
                         <td>{simboloMoneda} {(costoFinal ?? 0).toFixed(2)}</td>
-                        <td>
-                          <input 
-                            type="number" 
-                            value={(margen ?? 0).toFixed(1)} 
-                            onChange={(e) => actualizarMargenItem(item.id, parseFloat(e.target.value))}
-                            className="w-14 px-1 py-1 border rounded text-xs" 
-                            step="0.1" 
-                          />
-                        </td>
+                        <td className="py-3 px-2 font-medium text-xs">{(margen ?? 0).toFixed(1)} % </td>
                         <td className={((ganancia ?? 0) > 0) ? 'text-green-600' : 'text-red-600'}>
                           {simboloMoneda} {(ganancia|| 0).toFixed(2)}
                         </td>

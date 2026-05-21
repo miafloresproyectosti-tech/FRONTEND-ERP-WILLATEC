@@ -20,7 +20,7 @@ export interface CotizacionItem {
   disponibilidad_dias: number;
   orden: number;
   costo_unitario?: number;
-  precio_venta?: number;
+  precio_venta: number;
   subtotal?: number;
   costo_total?: number;
   ganancia?: number;
@@ -55,7 +55,7 @@ export interface ItemFormState {
 
 export interface CotizacionCostosAdicional {
   id: number;
-  cotizacion_id: number;
+  cotizacion_id: number | null;
   tipo: string;
   monto: number;
   descripcion: string;

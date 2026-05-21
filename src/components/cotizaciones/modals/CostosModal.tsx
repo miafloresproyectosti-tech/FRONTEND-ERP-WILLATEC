@@ -67,6 +67,18 @@ export function CostosModal({
               <p className="text-xs text-gray-500">
                 S/ {costo.monto.toFixed(2)}
               </p>
+              <input
+                type="text"
+                value={costoForm.descripcion}
+                onChange={(e) =>
+                  setCostoForm({
+                    ...costoForm,
+                    descripcion: e.target.value
+                  })
+                }
+                className="w-full p-2 border rounded-lg"
+                placeholder="Descripción"
+              />
             </div>
 
             <button

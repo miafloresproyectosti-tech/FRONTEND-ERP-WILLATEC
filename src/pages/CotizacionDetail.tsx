@@ -19,11 +19,8 @@ import {
   getCotizacion,
   createCotizacion,
   updateCotizacion,
-  addItem,
   updateItem,
   deleteItem,
-  addCosto,
-  deleteCosto,
   exportarCotizacionPdf,
   descargarPdfCotizacion,
   type Cotizacion,
@@ -78,6 +75,7 @@ export function CotizacionDetail() {
   const [showItemForm, setShowItemForm] = useState(false);
   const [showCostoForm, setShowCostoForm] = useState(false);
   const [editingItem, setEditingItem] = useState<CotizacionItem | null>(null);
+  const [editingItemId, setEditingItemId] = useState<number | null> (null);
   const [showItemFormModal, setShowItemFormModal] = useState(false);
   const [showItemTypeModal, setShowItemTypeModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
@@ -181,6 +179,25 @@ export function CotizacionDetail() {
     proveedor: '',
     link_proveedor: '',
   };
+};
+
+  const handleOpenNewItem = () => {
+  setEditingItemId(null);
+
+  resetItemForm();
+
+  setShowItemForm(true);
+  };
+
+  const handleOpenEditItem = (item: CotizacionItem) => {
+
+  setEditingItemId(item.id);
+
+  setItemForm({
+    ...item
+  });
+
+  setShowItemForm(true);
 };
 
   // ====== EFECTOS ======
@@ -361,55 +378,102 @@ export function CotizacionDetail() {
   };
 
   const handleAddItem = async () => {
-    if (!cotizacion || !itemForm.descripcion || itemForm.cantidad <= 0) {
+    if (!itemForm.descripcion || itemForm.cantidad <= 0) {
       addNotification({
         message: 'Completa los datos del item',
         type: 'warning',
         duration: 4000,
       } as any);
+    
       return;
     }
 
-    try {
-      setShowItemForm(false); // ← cierra el modal inmediatamente
-      await addItem(cotizacion.id, {
-        descripcion: itemForm.descripcion,
-        cantidad: itemForm.cantidad,
-        costo_base: itemForm.costo_base,
-        margen: itemForm.margen,
-        marca: itemForm.marca,
-        codigo: itemForm.codigo,
-        unidad_medida: itemForm.unidad_medida,
-        disponibilidad_tipo: itemForm.disponibilidad_tipo,
-        disponibilidad_dias: itemForm.disponibilidad_dias,
-        garantia_meses: itemForm.garantia_meses,
-        proveedor: itemForm.proveedor,
-        link_proveedor: itemForm.link_proveedor
-      }
-      );
-      addNotification({
-        message: 'Item agregado',
-        type: 'success',
-        duration: 4000,
-      } as any);
+     // ===== CÁLCULOS =====
+    const costoBase = Number(itemForm.costo_base || 0);
+    const margen = Number(itemForm.margen || 0);
+    const cantidad = Number(itemForm.cantidad || 0);
 
-      // setShowItemForm(false);
+    const precioVenta =
+      margen < 100
+        ? costoBase / (1 - margen / 100)
+        : costoBase;
 
-      resetItemForm();
+    const subtotal = precioVenta * cantidad;
+    const costosTotal = costos.reduce(
+      (acc, costo) => acc + costo.monto,
+      0
+    );
 
-      await refreshCotizacion();
+    const totalCantidad = items.reduce(
+      (acc, item) => acc + item.cantidad,
+      0
+    );
 
-      await loadCotizacion(); // Recargar
+    const costoExtraPorUnidad =
+      modoDistribucion === 'POR_ITEM'
+        ? (
+            items.length > 0
+              ? costosTotal / (items.length + 1)
+              : costosTotal
+          )
+        : (
+            totalCantidad > 0
+              ? costosTotal / (totalCantidad + cantidad)
+              : costosTotal
+    );
 
-    } catch (error: any) {
-      setShowItemForm(true); // ← reabre si falla
-      addNotification({
-        message: error?.response?.data?.message || 'Error al agregar item',
-        type: 'error',
-        duration: 4000,
-      } as any);
-    }
-    console.log('CLICK')
+    const costo_unitario = costoBase + costoExtraPorUnidad;
+
+    const costoTotal = costo_unitario * cantidad;
+
+    const ganancia = subtotal - costoTotal;
+
+    // ===== NUEVO ITEM =====
+    const nuevoItem: any = {
+      id: Date.now(), // temporal
+
+      descripcion: itemForm.descripcion,
+      cantidad,
+
+      costo_base: costoBase,
+      costo_unitario: costoBase,
+
+      margen,
+
+      precio_venta: precioVenta,
+
+      subtotal,
+      costo_total: costoTotal,
+      ganancia,
+
+      marca: itemForm.marca,
+      codigo: itemForm.codigo,
+      unidad_medida: itemForm.unidad_medida,
+
+      disponibilidad_tipo: itemForm.disponibilidad_tipo,
+      disponibilidad_dias: itemForm.disponibilidad_dias,
+
+      garantia_meses: itemForm.garantia_meses,
+
+      proveedor: itemForm.proveedor,
+      link_proveedor: itemForm.link_proveedor,
+
+      tipo: 'personalizado',
+  };
+
+  // ===== AGREGAR AL STATE =====
+  setItems((prev) => [...prev, nuevoItem]);
+
+  // ===== UI =====
+  setShowItemForm(false);
+
+  resetItemForm();
+
+  addNotification({
+    message: 'Item agregado',
+    type: 'success',
+    duration: 4000,
+  } as any);
   };
 
   const handleUpdateItem = async (itemId: number) => {
@@ -478,63 +542,52 @@ export function CotizacionDetail() {
   };
 
   const handleAddCosto = async () => {
-    // Este handler no se usa actualmente desde la UI.
-    // Los costos adicionales se gestionan por backend en el modal de "Costos Adicionales".
-    // Se conserva para futuras mejoras.
-    if (!cotizacion || costoForm.monto <= 0) {
+    if (!costoForm.descripcion || costoForm.monto <= 0 || !costoForm.tipo) {
       addNotification({
         message: 'Ingresa un monto válido',
         type: 'warning',
         duration: 4000,
       } as any);
+
       return;
     }
 
-    try {
-      await addCosto(cotizacion.id, costoForm);
-      addNotification({
-        message: 'Costo agregado',
-        type: 'success',
-        duration: 4000,
-      } as any);
-      setShowCostoForm(false);
-      setCostoForm({ 
-        id: 1,
-        cotizacion_id: currentCotizacionId,
-        tipo: '',
-        monto: 0,
-        descripcion: '',
-      });
-      await loadCotizacion();
-    } catch (error: any) {
-      addNotification({
-        message: error?.response?.data?.message || 'Error al agregar costo',
-        type: 'error',
-        duration: 4000,
-      } as any);
-    }
+    const nuevoCosto = {
+    id: Date.now(),
+
+    tipo: costoForm.tipo,
+
+    cotizacion_id: currentCotizacionId,
+
+    monto: Number(costoForm.monto),
+
+    descripcion: costoForm.descripcion || '',
+  };
+
+  setCostos((prev) => [...prev, nuevoCosto]);
+
+  addNotification({
+    message: 'Costo agregado',
+    type: 'success',
+    duration: 4000,
+  } as any);
+
+  setCostoForm({
+    id: 0,
+    cotizacion_id: null,
+    tipo: 'viaje',
+    monto: 0,
+    descripcion: '',
+  });
+
+  setShowCostoForm(false);
   };
 
 
-  const handleDeleteCosto = async (costoId: number) => {
-    if (!cotizacion) return;
-    if (!confirm('¿Eliminar costo?')) return;
-
-    try {
-      await deleteCosto(costoId);
-      addNotification({
-        message: 'Costo eliminado',
-        type: 'success',
-        duration: 4000,
-      } as any);
-      await loadCotizacion();
-    } catch (error: any) {
-      addNotification({
-        message: error?.response?.data?.message || 'Error al eliminar costo',
-        type: 'error',
-        duration: 4000,
-      } as any);
-    }
+  const handleDeleteCosto = async (id: number) => {
+    setCostos((prev) =>
+      prev.filter((costo) => costo.id !== id)
+    );
   };
 
   //PRUEBA
@@ -753,37 +806,81 @@ const refreshCotizacion = async () => {
     });
   };
 
-  const openEditItem = (item: CotizacionItem) => {
-    setEditingItem(item);
-    setItemForm(mapItemToForm(item));
-    setShowItemFormModal(true);
-  };
+  // const openEditItem = (item: CotizacionItem) => {
+  //   setEditingItem(item);
+  //   setItemForm(mapItemToForm(item));
+  //   setShowItemFormModal(true);
+  // };
 
   const resumen = useMemo(() => {
-  const subtotal = items.reduce(
-    (acc, i) => acc + (i.subtotal || 0),
-    0
-  );
+    const costosTotal = costos.reduce(
+      (acc, c) => acc + (c.monto || 0),
+      0
+    );
 
-  const costosTotal = costos.reduce(
-    (acc, c) => acc + (c.monto || 0),
-    0
-  );
+    const totalCantidad = items.reduce(
+      (acc, item) => acc + item.cantidad,
+      0
+    );
 
-  const igv = subtotal * 0.18;
+    const costoDistribuido =
+      modoDistribucion === 'POR_ITEM'
+        ? (items.length > 0
+            ? costosTotal / items.length
+            : 0)
+        : (totalCantidad > 0
+            ? costosTotal / totalCantidad
+            : 0);
 
-  const ganancia = items.reduce(
-    (acc, i) => acc + (i.ganancia || 0),
-    0
-  );
+    const itemsCalculados = items.map((item) => 
+      {
+        const extra =
+          modoDistribucion === 'POR_ITEM'
+            ? costoDistribuido
+            : costoDistribuido * item.cantidad;
 
-  return {
-    subtotal,
-    costosTotal,
-    igv,
-    ganancia,
-    total: subtotal + igv + costosTotal,
-  };
+        const costoUnitarioFinal =
+          item.costo_base + extra;
+
+        const costoTotal =
+          costoUnitarioFinal * item.cantidad;
+
+        const subtotal =
+          item.precio_venta * item.cantidad;
+
+        const ganancia =
+          subtotal - costoTotal;
+
+        return {
+          ...item,
+
+          costo_unitario: costoUnitarioFinal,
+
+          costo_total: costoTotal,
+
+          ganancia,
+      };
+    });
+
+    const subtotal = itemsCalculados.reduce(
+      (acc, i) => acc + (i.subtotal || 0),
+      0
+    );
+    
+    const igv = subtotal * 0.18;
+
+    const ganancia = items.reduce(
+      (acc, i) => acc + (i.ganancia || 0),
+      0
+    );
+
+    return {
+      subtotal,
+      costosTotal,
+      igv,
+      ganancia,
+      total: subtotal + igv + costosTotal,
+    };
 }, [items, costos]);
 
   // ====== RENDER ======
@@ -857,12 +954,11 @@ const refreshCotizacion = async () => {
             estadoCotizacionId={estadoCotizacionId}
             setEstadoCotizacionId={setEstadoCotizacionId}
             onDeleteItem={handleDeleteItem}
-            onOpenEdit={openEditItem}
-            actualizarMargenItem={actualizarMargenItem}
+            onOpenEdit={handleOpenEditItem}
             todosItemsAprobados={todosItemsAprobados}
             onApproveAll={() => setEstadoCotizacionId(4)}
 
-            onAddItem={() => setShowItemTypeModal(true)} // 🔥 AQUÍ
+            onAddItem={handleOpenNewItem} // 🔥 AQUÍ
           />
 
         </div>
