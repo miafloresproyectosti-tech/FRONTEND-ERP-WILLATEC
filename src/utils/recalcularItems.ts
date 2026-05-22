@@ -21,14 +21,13 @@ export function recalcularItems(
   );
 
   // ===== COSTO DISTRIBUIDO =====
+  // Extra UNITARIO según modo
+  // POR_ITEM:     se divide entre número de líneas → mismo monto por línea
+  // POR_CANTIDAD: se divide entre unidades totales → mismo monto por unidad
   const costoDistribuido =
     modoDistribucion === "POR_ITEM"
-      ? items.length > 0
-        ? costosTotal / items.length
-        : 0
-      : totalCantidad > 0
-        ? costosTotal / totalCantidad
-        : 0;
+      ? items.length > 0 ? costosTotal / items.length : 0
+      : totalCantidad > 0 ? costosTotal / totalCantidad  : 0;
 
   // ===== ITEMS RECALCULADOS =====
   const itemsRecalculados = items.map((item) => {
@@ -38,14 +37,14 @@ export function recalcularItems(
 
     const margen = Number(item.margen || 0);
 
-    // EXTRA
-    const extra =
-      modoDistribucion === "POR_ITEM"
-        ? costoDistribuido
-        : costoDistribuido * cantidad;
+    // // EXTRA
+    // const extra =
+    //   modoDistribucion === "POR_ITEM"
+    //     ? costoDistribuido
+    //     : costoDistribuido * cantidad;
 
     // COSTO UNITARIO FINAL
-    const costoUnitario = costoBase + extra;
+    const costoUnitario = costoBase + costoDistribuido;
 
     // PRECIO VENTA
     const precioVenta =

@@ -29,6 +29,9 @@ interface Props {
   validezDias: number;
   setValidezDias: (v: number) => void;
 
+  titulo: string;
+  setTitulo: (v:string) => void;
+
   plantillas: { id: number; nombre: string }[];
   plataformas: { id: number; nombre: string} [];
 }
@@ -52,7 +55,9 @@ export function CotizacionGeneralForm({
   validezDias,
   setValidezDias,
   plantillas,
-  plataformas 
+  plataformas,
+  titulo,
+  setTitulo,
 }: Props) {
 
   const selectedCliente = clientes.find((c) => c.id === clienteId);
@@ -85,15 +90,16 @@ export function CotizacionGeneralForm({
                   ))}
                 </select>
               </div>
-              {/* <div>
-                <label className="block text-sm mb-2 text-gray-700">Fecha</label>
+              <div className="md:col-span-2">
+                <label className="block text-sm mb-2 text-gray-700">Título *</label>
                 <input
-                  type="date"
-                  value={fecha}
-                  onChange={(e) => setFecha(e.target.value)}
+                  type="text"
+                  value={titulo}
+                  onChange={(e) => setTitulo(e.target.value)}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="ej: Cotización Equipos de Cómputo"
                 />
-              </div> */}
+              </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Validez (días)</label>
                 <input

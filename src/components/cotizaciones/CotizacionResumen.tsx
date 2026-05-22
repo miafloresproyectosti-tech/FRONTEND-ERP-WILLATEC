@@ -32,6 +32,20 @@ export function CotizacionResumen({
               <div className="flex justify-between text-sm text-gray-600">
                 Distribuido por Item ({items.length} items): <span>{simboloMoneda} {(items.length > 0 ? ((resumen.costosTotal ?? 0) / items.length) : 0).toFixed(2)}</span>
               </div>
+              <div className="flex justify-between text-sm text-gray-600">
+                {(() => {
+                  const totalUnidades = items.reduce((sum, item) => sum + Number(item.cantidad || 0), 0);
+                  return (
+                    <>
+                      Distribuido por Cantidad ({totalUnidades} unidades):
+                      <span>
+                        {simboloMoneda}{' '}
+                        {(totalUnidades > 0 ? (resumen.costosTotal ?? 0) / totalUnidades : 0).toFixed(2)}
+                      </span>
+                    </>
+                  );
+                })()}
+              </div>
 
               <div className="border-t pt-3 flex justify-between text-lg font-bold">
                 Total: <span>{simboloMoneda} {resumen.total.toFixed(2)}</span>
@@ -46,8 +60,7 @@ export function CotizacionResumen({
                 Items Stock: <span>{items.filter(i => i.disponibilidad_tipo === 'stock').length}</span> | 
                 Items Importación: <span>{items.filter(i => i.disponibilidad_tipo === 'importacion').length}</span>
               </div>
-            </div>
-            
+            </div>  
     </div>
   );
 }

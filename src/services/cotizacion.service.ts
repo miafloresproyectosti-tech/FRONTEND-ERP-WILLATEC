@@ -227,7 +227,7 @@ export async function createCotizacion(
   data: CreateCotizacionData,
 ): Promise<Cotizacion> {
   try {
-    const response = await api.post("/cotizaciones", data);
+    const response = await api.post("/cotizaciones/completa", data);
     return response.data.cotizacion;
   } catch (error) {
     console.error("Error al crear cotización:", error);

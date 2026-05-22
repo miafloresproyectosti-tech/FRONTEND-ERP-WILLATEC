@@ -21,7 +21,7 @@ import {
   createCotizacion,
   updateCotizacion,
   updateItem,
-  deleteItem,
+  // deleteItem,
   exportarCotizacionPdf,
   descargarPdfCotizacion,
   type Cotizacion,
@@ -73,8 +73,6 @@ export function CotizacionDetail() {
   const [productos, setProductos] = useState<Producto[]>([]);
 
   // UI State
-  const [showItemForm, setShowItemForm] = useState(false);
-  const [showCostoForm, setShowCostoForm] = useState(false);
   const [editingItem, setEditingItem] = useState<CotizacionItem | null>(null);
   const [editingItemId, setEditingItemId] = useState<number | null> (null);
   const [showItemFormModal, setShowItemFormModal] = useState(false);
@@ -146,41 +144,41 @@ export function CotizacionDetail() {
 ]);
 
   const [costoForm, setCostoForm] = useState({
-    id: 1,
+    id: 0,
     cotizacion_id: currentCotizacionId || null,
-    tipo: '',
+    tipo: 'viaje',
     monto: 0,
-    descripcion: 'string',
+    descripcion: '',
   });
 
-  const mapItemToForm = (item: CotizacionItem): ItemForm => {
-  return {
-    id: item.id,
-    descripcion: item.descripcion,
-    cantidad: item.cantidad,
-    costo_base: item.costo_base,
-    precio_venta: item.precio_venta || 0,
-    costo_unitario: item.costo_unitario || 0,
-    costo_total: item.costo_total || 0,
-    ganancia: item.ganancia || 0,
-    subtotal: item.subtotal || 0,
-    imagen: '',
-    orden: item.orden,
-    cotizacion_id: Number(item.cotizacion_id),
-    producto_id: item.producto_id,
-    estado_cotizacion_item_id: item.estado_cotizacion_item_id,
-    tipo: item.tipo || 'personalizado',
-    margen: item.margen,
-    marca: item.marca || '',
-    codigo: item.codigo || '',
-    unidad_medida: item.unidad_medida || 'UND',
-    garantia_meses: item.garantia_meses || 12,
-    disponibilidad_tipo: item.disponibilidad_tipo,
-    disponibilidad_dias: item.disponibilidad_dias,
-    proveedor: '',
-    link_proveedor: '',
-  };
-};
+//   const mapItemToForm = (item: CotizacionItem): ItemForm => {
+//   return {
+//     id: item.id,
+//     descripcion: item.descripcion,
+//     cantidad: item.cantidad,
+//     costo_base: item.costo_base,
+//     precio_venta: item.precio_venta || 0,
+//     costo_unitario: item.costo_unitario || 0,
+//     costo_total: item.costo_total || 0,
+//     ganancia: item.ganancia || 0,
+//     subtotal: item.subtotal || 0,
+//     imagen: '',
+//     orden: item.orden,
+//     cotizacion_id: Number(item.cotizacion_id),
+//     producto_id: item.producto_id,
+//     estado_cotizacion_item_id: item.estado_cotizacion_item_id,
+//     tipo: item.tipo || 'personalizado',
+//     margen: item.margen,
+//     marca: item.marca || '',
+//     codigo: item.codigo || '',
+//     unidad_medida: item.unidad_medida || 'UND',
+//     garantia_meses: item.garantia_meses || 12,
+//     disponibilidad_tipo: item.disponibilidad_tipo,
+//     disponibilidad_dias: item.disponibilidad_dias,
+//     proveedor: '',
+//     link_proveedor: '',
+//   };
+// };
 
   const handleOpenNewItem = () => {
     setEditingItemId(null);
@@ -197,9 +195,9 @@ export function CotizacionDetail() {
   
     setEditingItemId(item.id);
 
-  setItemForm({
-    ...item
-  });
+    setItemForm({
+      ...item
+    });
 
   setShowItemFormModal(true);
 };
@@ -336,17 +334,23 @@ export function CotizacionDetail() {
       return;
     }
 
+    const payload = {
+      cliente_id: clienteId,
+      plantilla_id: plantillaId,
+      plataforma_id: plataformaId,
+      moneda_id: monedaId,
+      modo_distribucion: modoDistribucion,
+      titulo,
+
+      items,
+      costos,
+    };
+
     setSaving(true);
     try {
       if (isEditing && currentCotizacionId && cotizacion) {
         // Actualizar
-        await updateCotizacion(currentCotizacionId, {
-          cliente_id: clienteId,
-          plantilla_id: plantillaId,
-          plataforma_id: plataformaId,
-          moneda_id: monedaId,
-          modo_distribucion: modoDistribucion,
-        });
+        await updateCotizacion(currentCotizacionId, payload);
         addNotification({
           message: 'Cotización actualizada',
           type: 'success',
@@ -354,14 +358,7 @@ export function CotizacionDetail() {
         } as any);
       } else {
         // Crear
-        const newCotizacion = await createCotizacion({
-          cliente_id: clienteId,
-          plantilla_id: plantillaId,
-          plataforma_id: plataformaId,
-          titulo: titulo || `Cotización ${new Date().toLocaleDateString()}`,
-          modo_distribucion: modoDistribucion,
-          moneda_id: Number(monedaId),
-        });
+        const newCotizacion = await createCotizacion(payload);
         addNotification({
           message: 'Cotización creada',
           type: 'success',
@@ -426,10 +423,10 @@ export function CotizacionDetail() {
   setItems((prev) => [...prev, nuevoItem]);
 
   setEditingItem(null);
-  setEditingItem(null);
+  setEditingItemId(null);
 
   // ===== UI =====
-  setShowItemForm(false);
+  setShowItemFormModal(false);
 
   resetItemForm();
 
@@ -449,7 +446,7 @@ export function CotizacionDetail() {
         type: 'success',
         duration: 4000,
       } as any);
-      setShowItemForm(false);
+      setShowItemFormModal(false);
       setEditingItem(null);
       setEditingItemId(null);
       resetItemForm();
@@ -468,13 +465,9 @@ export function CotizacionDetail() {
     if (!confirm('¿Eliminar item?')) return;
 
     try {
-      await deleteItem(itemId);
-      addNotification({
-        message: 'Item eliminado',
-        type: 'success',
-        duration: 4000,
-      } as any);
-      await loadCotizacion();
+      setItems(prev =>
+      prev.filter(item => item.id !== itemId)
+      );
     } catch (error: any) {
       addNotification({
         message: error?.response?.data?.message || 'Error al eliminar item',
@@ -545,7 +538,7 @@ export function CotizacionDetail() {
     descripcion: '',
   });
 
-  setShowCostoForm(false);
+  setShowCostosModal(false);
   };
 
 
@@ -640,35 +633,35 @@ export function CotizacionDetail() {
   setShowItemFormModal(true);
 };
 
-const actualizarMargenItem = (
-  id: number,
-  nuevoMargen: number
-) => {
-  setItems(prev =>
-    prev.map(item => {
-      if (item.id !== id) return item;
+// const actualizarMargenItem = (
+//   id: number,
+//   nuevoMargen: number
+// ) => {
+//   setItems(prev =>
+//     prev.map(item => {
+//       if (item.id !== id) return item;
 
-      const costo = item.costo_total || 0;
+//       const costo = item.costo_total || 0;
 
-      const nuevoPrecio =
-        costo / (1 - nuevoMargen / 100);
+//       const nuevoPrecio =
+//         costo / (1 - nuevoMargen / 100);
 
-      const subtotal =
-        nuevoPrecio * item.cantidad;
+//       const subtotal =
+//         nuevoPrecio * item.cantidad;
 
-      const ganancia =
-        (nuevoPrecio - costo) * item.cantidad;
+//       const ganancia =
+//         (nuevoPrecio - costo) * item.cantidad;
 
-      return {
-        ...item,
-        margen: nuevoMargen,
-        precio_venta: Number(nuevoPrecio.toFixed(2)),
-        subtotal: Number(subtotal.toFixed(2)),
-        ganancia: Number(ganancia.toFixed(2)),
-      };
-    })
-  );
-};
+//       return {
+//         ...item,
+//         margen: nuevoMargen,
+//         precio_venta: Number(nuevoPrecio.toFixed(2)),
+//         subtotal: Number(subtotal.toFixed(2)),
+//         ganancia: Number(ganancia.toFixed(2)),
+//       };
+//     })
+//   );
+// };
 
 const todosItemsAprobados =   items.every(item => 
     item.estado_cotizacion_item_id === 2 //  = aprobado
@@ -721,24 +714,24 @@ const handleExportarPdf = async () => {
   }
 };
 
-const refreshCotizacion = async () => {
-  if (!currentCotizacionId) return;
+// const refreshCotizacion = async () => {
+//   if (!currentCotizacionId) return;
 
-  const data = await getCotizacion(currentCotizacionId);
-  setCotizacion(data);
-  setItems(data.items || []);
-  setCostos(data.costosAdicionales || []);
-  // 🔥 sincronizar header
-  setClienteId(data.cliente_id);
-  setPlantillaId(data.plantilla_id);
-  setPlataformaId(data.plataforma_id);
-  setMonedaId(data.cliente?.moneda_id || 1);
-  setModoDistribucion(data.modo_distribucion);
-  setTitulo(data.titulo);
+//   const data = await getCotizacion(currentCotizacionId);
+//   setCotizacion(data);
+//   setItems(data.items || []);
+//   setCostos(data.costosAdicionales || []);
+//   // 🔥 sincronizar header
+//   setClienteId(data.cliente_id);
+//   setPlantillaId(data.plantilla_id);
+//   setPlataformaId(data.plataforma_id);
+//   setMonedaId(data.cliente?.moneda_id || 1);
+//   setModoDistribucion(data.modo_distribucion);
+//   setTitulo(data.titulo);
 
-  // 🔥 sincronizar estado UI
-  setEstadoCotizacionId(data.estado_cotizacion_id || 1);
-};
+//   // 🔥 sincronizar estado UI
+//   setEstadoCotizacionId(data.estado_cotizacion_id || 1);
+// };
 
 // ====== HELPERS ======
 
@@ -904,6 +897,9 @@ const {
 
             monedaId={monedaId}
             setMonedaId={setMonedaId}
+            
+            titulo={titulo}
+            setTitulo={setTitulo}
 
             plataformaId={plataformaId}
             setPlataformaId={setPlataformaId}
@@ -947,7 +943,7 @@ const {
           <CotizacionResumen
             resumen={resumen}
             simboloMoneda={simboloMoneda}
-            items={items}
+            items={itemsCalculados}
           />
 
           {/* BOTONES */}
