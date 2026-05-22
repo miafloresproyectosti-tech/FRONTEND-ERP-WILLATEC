@@ -6,6 +6,7 @@ import { getClientes, type Cliente } from '../services/cliente.service';
 import { getProductos, type Producto} from "../services/producto.service";
 import { getPlantillas } from '../services/plantilla.service';
 import { getPlataformas } from '../services/plataforma.service';
+import { recalcularItems } from "../utils/recalcularItems";
 import { CotizacionResumen } from '../components/cotizaciones/CotizacionResumen';
 import { CotizacionGeneralForm } from '../components/cotizaciones/CotizacionGeneralForm';
 import { CotizacionItemsTable } from '../components/cotizaciones/CotizacionItemsTable';
@@ -182,22 +183,25 @@ export function CotizacionDetail() {
 };
 
   const handleOpenNewItem = () => {
-  setEditingItemId(null);
+    setEditingItemId(null);
 
-  resetItemForm();
+    setEditingItem(null);
 
-  setShowItemForm(true);
+    resetItemForm();
+
+    setShowItemFormModal(true);
   };
 
   const handleOpenEditItem = (item: CotizacionItem) => {
-
-  setEditingItemId(item.id);
+    setEditingItem(item);
+  
+    setEditingItemId(item.id);
 
   setItemForm({
     ...item
   });
 
-  setShowItemForm(true);
+  setShowItemFormModal(true);
 };
 
   // ====== EFECTOS ======
@@ -387,82 +391,42 @@ export function CotizacionDetail() {
     
       return;
     }
-
-     // ===== CÁLCULOS =====
-    const costoBase = Number(itemForm.costo_base || 0);
-    const margen = Number(itemForm.margen || 0);
-    const cantidad = Number(itemForm.cantidad || 0);
-
-    const precioVenta =
-      margen < 100
-        ? costoBase / (1 - margen / 100)
-        : costoBase;
-
-    const subtotal = precioVenta * cantidad;
-    const costosTotal = costos.reduce(
-      (acc, costo) => acc + costo.monto,
-      0
-    );
-
-    const totalCantidad = items.reduce(
-      (acc, item) => acc + item.cantidad,
-      0
-    );
-
-    const costoExtraPorUnidad =
-      modoDistribucion === 'POR_ITEM'
-        ? (
-            items.length > 0
-              ? costosTotal / (items.length + 1)
-              : costosTotal
-          )
-        : (
-            totalCantidad > 0
-              ? costosTotal / (totalCantidad + cantidad)
-              : costosTotal
-    );
-
-    const costo_unitario = costoBase + costoExtraPorUnidad;
-
-    const costoTotal = costo_unitario * cantidad;
-
-    const ganancia = subtotal - costoTotal;
-
     // ===== NUEVO ITEM =====
     const nuevoItem: any = {
-      id: Date.now(), // temporal
+      id: Date.now(),
 
       descripcion: itemForm.descripcion,
-      cantidad,
 
-      costo_base: costoBase,
-      costo_unitario: costoBase,
+      cantidad: Number(itemForm.cantidad),
 
-      margen,
+      costo_base: Number(itemForm.costo_base),
 
-      precio_venta: precioVenta,
-
-      subtotal,
-      costo_total: costoTotal,
-      ganancia,
+      margen: Number(itemForm.margen),
 
       marca: itemForm.marca,
+
       codigo: itemForm.codigo,
+
       unidad_medida: itemForm.unidad_medida,
 
       disponibilidad_tipo: itemForm.disponibilidad_tipo,
+
       disponibilidad_dias: itemForm.disponibilidad_dias,
 
       garantia_meses: itemForm.garantia_meses,
 
       proveedor: itemForm.proveedor,
+
       link_proveedor: itemForm.link_proveedor,
 
       tipo: 'personalizado',
-  };
+    };
 
   // ===== AGREGAR AL STATE =====
   setItems((prev) => [...prev, nuevoItem]);
+
+  setEditingItem(null);
+  setEditingItem(null);
 
   // ===== UI =====
   setShowItemForm(false);
@@ -487,6 +451,7 @@ export function CotizacionDetail() {
       } as any);
       setShowItemForm(false);
       setEditingItem(null);
+      setEditingItemId(null);
       resetItemForm();
       await loadCotizacion();
     } catch (error: any) {
@@ -812,76 +777,88 @@ const refreshCotizacion = async () => {
   //   setShowItemFormModal(true);
   // };
 
-  const resumen = useMemo(() => {
-    const costosTotal = costos.reduce(
-      (acc, c) => acc + (c.monto || 0),
-      0
-    );
+//   const resumen = useMemo(() => {
+//     const costosTotal = costos.reduce(
+//       (acc, c) => acc + (c.monto || 0),
+//       0
+//     );
 
-    const totalCantidad = items.reduce(
-      (acc, item) => acc + item.cantidad,
-      0
-    );
+//     const totalCantidad = items.reduce(
+//       (acc, item) => acc + item.cantidad,
+//       0
+//     );
 
-    const costoDistribuido =
-      modoDistribucion === 'POR_ITEM'
-        ? (items.length > 0
-            ? costosTotal / items.length
-            : 0)
-        : (totalCantidad > 0
-            ? costosTotal / totalCantidad
-            : 0);
+//     const costoDistribuido =
+//       modoDistribucion === 'POR_ITEM'
+//         ? (items.length > 0
+//             ? costosTotal / items.length
+//             : 0)
+//         : (totalCantidad > 0
+//             ? costosTotal / totalCantidad
+//             : 0);
 
-    const itemsCalculados = items.map((item) => 
-      {
-        const extra =
-          modoDistribucion === 'POR_ITEM'
-            ? costoDistribuido
-            : costoDistribuido * item.cantidad;
+//     const itemsCalculados = items.map((item) => 
+//       {
+//         const extra =
+//           modoDistribucion === 'POR_ITEM'
+//             ? costoDistribuido
+//             : costoDistribuido * item.cantidad;
 
-        const costoUnitarioFinal =
-          item.costo_base + extra;
+//         const costoUnitarioFinal =
+//           item.costo_base + extra;
 
-        const costoTotal =
-          costoUnitarioFinal * item.cantidad;
+//         const costoTotal =
+//           costoUnitarioFinal * item.cantidad;
 
-        const subtotal =
-          item.precio_venta * item.cantidad;
+//         const subtotal =
+//           item.precio_venta * item.cantidad;
 
-        const ganancia =
-          subtotal - costoTotal;
+//         const ganancia =
+//           subtotal - costoTotal;
 
-        return {
-          ...item,
+//         return {
+//           ...item,
 
-          costo_unitario: costoUnitarioFinal,
+//           costo_unitario: costoUnitarioFinal,
 
-          costo_total: costoTotal,
+//           costo_total: costoTotal,
 
-          ganancia,
-      };
-    });
+//           ganancia,
+//       };
+//     });
 
-    const subtotal = itemsCalculados.reduce(
-      (acc, i) => acc + (i.subtotal || 0),
-      0
-    );
+//     const subtotal = itemsCalculados.reduce(
+//       (acc, i) => acc + (i.subtotal || 0),
+//       0
+//     );
     
-    const igv = subtotal * 0.18;
+//     const igv = subtotal * 0.18;
 
-    const ganancia = items.reduce(
-      (acc, i) => acc + (i.ganancia || 0),
-      0
+//     const ganancia = items.reduce(
+//       (acc, i) => acc + (i.ganancia || 0),
+//       0
+//     );
+
+//     return {
+//       subtotal,
+//       costosTotal,
+//       igv,
+//       ganancia,
+//       total: subtotal + igv + costosTotal,
+//     };
+// }, [items, costos]);
+
+//RECALCULO DE ITEMS
+const {
+  items: itemsCalculados,
+  resumen
+} = useMemo(() => {
+    return recalcularItems(
+      items,
+      costos,
+      modoDistribucion
     );
-
-    return {
-      subtotal,
-      costosTotal,
-      igv,
-      ganancia,
-      total: subtotal + igv + costosTotal,
-    };
-}, [items, costos]);
+}, [items, costos, modoDistribucion]);
 
   // ====== RENDER ======
 
@@ -949,7 +926,7 @@ const refreshCotizacion = async () => {
 
           {/* TABLA CON DISPONIBILIDAD */}
           <CotizacionItemsTable
-            items={items}
+            items={itemsCalculados}
             simboloMoneda={simboloMoneda}
             estadoCotizacionId={estadoCotizacionId}
             setEstadoCotizacionId={setEstadoCotizacionId}
