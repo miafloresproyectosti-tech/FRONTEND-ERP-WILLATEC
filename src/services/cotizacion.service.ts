@@ -236,27 +236,14 @@ export async function createCotizacion(
 }
 
 /**
- * Crear una nueva cotización Completa
- */
-export const createCotizacionCompleta = async (data: any) => {
-
-  const response = await api.post(
-    '/cotizaciones/completa',
-    data
-  );
-
-  return response.data.cotizacion;
-};
-
-/**
  * Actualizar una cotización existente
  */
 export async function updateCotizacion(
   id: number,
-  data: UpdateCotizacionData,
+  data: any,
 ): Promise<Cotizacion> {
   try {
-    const response = await api.put(`/cotizaciones/${id}`, data);
+    const response = await api.put(`/cotizaciones/${id}/completa`, data);
     return response.data.cotizacion;
   } catch (error) {
     console.error("Error al actualizar cotización:", error);

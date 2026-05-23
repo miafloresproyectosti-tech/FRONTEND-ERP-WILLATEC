@@ -348,7 +348,7 @@ export function CotizacionDetail() {
 
     setSaving(true);
     try {
-      if (isEditing && currentCotizacionId && cotizacion) {
+      if (isEditing && currentCotizacionId ) {
         // Actualizar
         await updateCotizacion(currentCotizacionId, payload);
         addNotification({
@@ -366,7 +366,7 @@ export function CotizacionDetail() {
         } as any);
         setCotizacion(newCotizacion);
       }
-      navigate(`/cotizaciones/${currentCotizacionId || cotizacion?.id}`);
+      navigate('/cotizaciones');
     } catch (error: any) {
       addNotification({
         message: error?.response?.data?.message || 'Error al guardar',
