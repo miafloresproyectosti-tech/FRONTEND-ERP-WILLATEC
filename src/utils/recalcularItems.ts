@@ -77,6 +77,8 @@ export function recalcularItems(
   // ===== RESUMEN =====
   const subtotal = itemsRecalculados.reduce((acc, i) => acc + i.subtotal, 0);
 
+  const costoCompraTotal = itemsRecalculados.reduce((acc, i) => acc + i.costo_total, 0);
+
   const igv = subtotal * 0.18;
 
   const ganancia = itemsRecalculados.reduce((acc, i) => acc + i.ganancia, 0);
@@ -86,6 +88,7 @@ export function recalcularItems(
 
     resumen: {
       subtotal,
+      costoCompraTotal,
       costosTotal,
       igv,
       ganancia,

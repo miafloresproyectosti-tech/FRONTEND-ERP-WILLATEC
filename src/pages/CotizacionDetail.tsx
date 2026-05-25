@@ -166,35 +166,6 @@ const isViewMode = location.pathname.includes('/view');
     descripcion: '',
   });
 
-//   const mapItemToForm = (item: CotizacionItem): ItemForm => {
-//   return {
-//     id: item.id,
-//     descripcion: item.descripcion,
-//     cantidad: item.cantidad,
-//     costo_base: item.costo_base,
-//     precio_venta: item.precio_venta || 0,
-//     costo_unitario: item.costo_unitario || 0,
-//     costo_total: item.costo_total || 0,
-//     ganancia: item.ganancia || 0,
-//     subtotal: item.subtotal || 0,
-//     imagen: '',
-//     orden: item.orden,
-//     cotizacion_id: Number(item.cotizacion_id),
-//     producto_id: item.producto_id,
-//     estado_cotizacion_item_id: item.estado_cotizacion_item_id,
-//     tipo: item.tipo || 'personalizado',
-//     margen: item.margen,
-//     marca: item.marca || '',
-//     codigo: item.codigo || '',
-//     unidad_medida: item.unidad_medida || 'UND',
-//     garantia_meses: item.garantia_meses || 12,
-//     disponibilidad_tipo: item.disponibilidad_tipo,
-//     disponibilidad_dias: item.disponibilidad_dias,
-//     proveedor: '',
-//     link_proveedor: '',
-//   };
-// };
-
   const handleOpenNewItem = () => {
     if (isViewMode) return;
 
@@ -912,6 +883,11 @@ const handleExportarPdf = async () => {
 
 // ====== HELPERS ======
 
+const nombreUsuario =
+  cotizacion?.user?.profile
+    ? `${cotizacion.user.profile.nombres} ${cotizacion.user.profile.apellidos}`
+    : cotizacion?.user?.name || 'Sin asignar';
+
   const resetItemForm = () => {
     setItemForm({
       id: 1,
@@ -1003,6 +979,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
         <div className="lg:col-span-2 space-y-6">
           {/* FORM INFO GENERAL */}
           <CotizacionGeneralForm
+            // usuarioNombre={nombreUsuario}
             clienteId={clienteId}
             setClienteId={setClienteId}
             clientes={clientes}

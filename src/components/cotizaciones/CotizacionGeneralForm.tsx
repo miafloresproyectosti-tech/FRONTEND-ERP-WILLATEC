@@ -2,6 +2,8 @@ import type { Cliente } from "../../types/cotizaciones.type";
 
 interface Props {
 
+  usuarioNombre?: string;
+
   disabled: boolean;
   
   clienteId: number | null;
@@ -40,6 +42,7 @@ interface Props {
 }
 
 export function CotizacionGeneralForm({ 
+  usuarioNombre,
   clienteId,
   setClienteId,
   clientes,
@@ -53,8 +56,6 @@ export function CotizacionGeneralForm({
   setEstadoCotizacionId,
   modoDistribucion,
   setModoDistribucion,
-  fecha,
-  setFecha,
   validezDias,
   setValidezDias,
   plantillas,
@@ -94,6 +95,9 @@ export function CotizacionGeneralForm({
                   ))}
                 </select>
               </div>
+              {/* <div className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
+                Realizado por: {usuarioNombre}
+              </div> */}
               <div className="md:col-span-2">
                 <label className="block text-sm mb-2 text-gray-700">Título *</label>
                 <input disabled={disabled}

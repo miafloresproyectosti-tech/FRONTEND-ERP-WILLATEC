@@ -307,7 +307,7 @@ export default function Cotizaciones() {
                   filteredCotizaciones.map((cotizacion) => {
                     const estadoBadge = getEstadoBadge(cotizacion.estado_cotizacion_id);
                     const puedeEditar =
-                      user?.role === 'SUPERADMIN' ||
+                      // user?.role === 'SUPERADMIN' ||
                       cotizacion.user_id === user?.id;
 
                     return (
@@ -341,7 +341,7 @@ export default function Cotizaciones() {
                         </td>
 
                         <td className="px-6 py-5 text-slate-600 dark:text-slate-300">
-                          {cotizacion.items?.length || 0}
+                          {(cotizacion as any).items_count ?? 0}
                         </td>
 
                         <td className="px-6 py-5 font-semibold text-slate-900 dark:text-slate-100">
@@ -388,6 +388,7 @@ export default function Cotizaciones() {
                             
 
                             {/* ELIMINAR */}
+                            {puedeEditar && (
                             <button
                               onClick={() => {
                                 if (
@@ -410,9 +411,12 @@ export default function Cotizaciones() {
                             >
                               <Trash2 size={18} />
                             </button>
+                            )}
+                            
 
                             {/* GENERAR OC */}
-                            <button
+                            {puedeEditar && (
+                              <button
                               onClick={() => {
                                 navigate(
                                   `/ordenes-compra/nueva?cotizacion=${cotizacion.id}`
@@ -432,6 +436,8 @@ export default function Cotizaciones() {
                             >
                               <ShoppingCart size={18} />
                             </button>
+                            )}
+                            
                           </div>
                         </td>
                       </tr>

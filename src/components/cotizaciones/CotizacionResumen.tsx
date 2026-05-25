@@ -2,6 +2,7 @@ import type { CotizacionItem } from "../../types/cotizaciones.type";
 
 interface Resumen {
   subtotal: number;
+  costoCompraTotal: number;
   igv: number;
   costosTotal: number;
   total: number;
@@ -28,6 +29,9 @@ export function CotizacionResumen({
               <div className="flex justify-between">IGV 18%: <span>{simboloMoneda} {resumen.igv.toFixed(2)}</span></div>
               <div className="flex justify-between">
                 Total Costos Adicionales: <span>{simboloMoneda} {(resumen.costosTotal ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                Total Costos Compra: <span>{simboloMoneda} {(resumen.costoCompraTotal ?? 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm text-gray-600">
                 Distribuido por Item ({items.length} items): <span>{simboloMoneda} {(items.length > 0 ? ((resumen.costosTotal ?? 0) / items.length) : 0).toFixed(2)}</span>

@@ -129,6 +129,15 @@ export interface Cotizacion {
   historial?: CotizacionHistorial[];
   cotizacion_historial?: CotizacionHistorial[];
   // estadoCotizacion?: EstadoCotizacion;
+  user?: {
+  id: number;
+  name?: string;
+
+  profile?: {
+    nombres?: string;
+    apellidos?: string;
+  };
+};
 }
 
 export interface CreateCotizacionData {
