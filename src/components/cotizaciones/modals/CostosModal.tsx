@@ -19,6 +19,7 @@ interface Props{
 
   onAddCosto: () => void;
   onDeleteCosto: (id: number) => void;
+  readOnly?: boolean;
 }
 
 export function CostosModal({ 
@@ -28,7 +29,8 @@ export function CostosModal({
   costoForm, 
   setCostoForm, 
   onAddCosto, 
-  onDeleteCosto 
+  onDeleteCosto,
+  readOnly = false
 }: Props) {
   if (!open) return null;
 
@@ -74,12 +76,14 @@ export function CostosModal({
               )}
             </div>
 
+            {!readOnly && (
             <button
               onClick={() => onDeleteCosto(costo.id)}
               className="p-1 hover:bg-red-50 rounded"
             >
               <Trash2 className="w-4 h-4 text-red-600" />
             </button>
+            )}
           </div>
         ))}
       </div>
@@ -87,6 +91,8 @@ export function CostosModal({
       {/* FORMULARIO */}
       <div className="space-y-3 border-t pt-4">
 
+        {!readOnly && (
+        <>
         <select
           value={costoForm.tipo}
           onChange={(e) =>
@@ -137,6 +143,8 @@ export function CostosModal({
         >
           Agregar costo
         </button>
+        </>
+        )}
 
         <button
           onClick={onClose}

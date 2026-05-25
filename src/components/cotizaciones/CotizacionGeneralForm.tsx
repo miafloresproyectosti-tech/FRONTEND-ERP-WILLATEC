@@ -1,6 +1,9 @@
 import type { Cliente } from "../../types/cotizaciones.type";
 
 interface Props {
+
+  disabled: boolean;
+  
   clienteId: number | null;
   setClienteId: (id: number) => void;
 
@@ -58,6 +61,7 @@ export function CotizacionGeneralForm({
   plataformas,
   titulo,
   setTitulo,
+  disabled
 }: Props) {
 
   const selectedCliente = clientes.find((c) => c.id === clienteId);
@@ -68,7 +72,7 @@ export function CotizacionGeneralForm({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Cliente</label>
-                <select
+                <select disabled={disabled}
                   value={clienteId ?? ''}
                   onChange={(e) => {
                     const selectedId = Number(e.target.value);
@@ -92,7 +96,7 @@ export function CotizacionGeneralForm({
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm mb-2 text-gray-700">Título *</label>
-                <input
+                <input disabled={disabled}
                   type="text"
                   value={titulo}
                   onChange={(e) => setTitulo(e.target.value)}
@@ -102,7 +106,7 @@ export function CotizacionGeneralForm({
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Validez (días)</label>
-                <input
+                <input disabled={disabled}
                   type="number"
                   value={validezDias}
                   onChange={(e) => setValidezDias(Number(e.target.value))}
@@ -112,7 +116,7 @@ export function CotizacionGeneralForm({
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Plantilla</label>
-                <select
+                <select disabled={disabled}
                   value={plantillaId ?? ''}
                   onChange={(e) => setPlantillaId(Number(e.target.value))}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -130,7 +134,7 @@ export function CotizacionGeneralForm({
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Modo Distribución</label>
-                <select
+                <select disabled={disabled}
                   value={modoDistribucion}
                   onChange={(e)=> setModoDistribucion(e.target.value as 'POR_ITEM' | 'POR_CANTIDAD')}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -142,7 +146,7 @@ export function CotizacionGeneralForm({
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Moneda</label>
-                <select
+                <select disabled={disabled}
                   value={selectedCliente?.moneda_id || monedaId}
                   onChange={(e) => setMonedaId(Number(e.target.value))}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -154,7 +158,7 @@ export function CotizacionGeneralForm({
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Plataforma</label>
-                <select
+                <select disabled={disabled}
                   value={plataformaId ?? 1}
                   onChange={(e) => setPlataformaId(Number(e.target.value))}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -172,7 +176,7 @@ export function CotizacionGeneralForm({
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Estado</label>
-                <select
+                <select disabled={disabled}
                   value={estado_cotizacion_id}
                   onChange={(e) => setEstadoCotizacionId(Number(e.target.value))}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -181,7 +185,8 @@ export function CotizacionGeneralForm({
                   <option value={2}>Enviada</option>
                   <option value={3}>Parcialmente Aprobada</option>
                   <option value={4}>Aprobada</option>
-                  <option value={5}>OC_Registrada</option>
+                  <option value={5}>Rechazada</option>
+                  <option value={6}>OC_Registrada</option>
                 </select>
               </div>
             </div>

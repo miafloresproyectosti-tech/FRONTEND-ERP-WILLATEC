@@ -118,6 +118,7 @@ export default function Cotizaciones() {
     (c) => Number(c.estado_cotizacion_id) === 2
   ).length;
 
+
   return (
     <div className="space-y-6">
       {/* HEADER */}
@@ -305,6 +306,9 @@ export default function Cotizaciones() {
                 {filteredCotizaciones.length > 0 ? (
                   filteredCotizaciones.map((cotizacion) => {
                     const estadoBadge = getEstadoBadge(cotizacion.estado_cotizacion_id);
+                    const puedeEditar =
+                      user?.role === 'SUPERADMIN' ||
+                      cotizacion.user_id === user?.id;
 
                     return (
                       <tr
@@ -360,7 +364,7 @@ export default function Cotizaciones() {
                             {/* VER */}
                             <button
                               onClick={() =>
-                                navigate(`/cotizaciones/${cotizacion.id}`)
+                                navigate(`/cotizaciones/${cotizacion.id}/view`)
                               }
 
                               className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-200 flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-800 transition"
@@ -370,15 +374,18 @@ export default function Cotizaciones() {
                             </button>
 
                             {/* EDITAR */}
-                            <button
+                            {puedeEditar && (
+                              <button
                               onClick={() =>
-                                navigate(`/cotizaciones/${cotizacion.id}`)
+                                navigate(`/cotizaciones/${cotizacion.id}/edit`)
                               }
                               className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-200 flex items-center justify-center hover:bg-blue-200 dark:hover:bg-blue-800 transition"
                               title="Editar cotización"
                             >
                               <Pencil size={18} />
                             </button>
+                            )}
+                            
 
                             {/* ELIMINAR */}
                             <button

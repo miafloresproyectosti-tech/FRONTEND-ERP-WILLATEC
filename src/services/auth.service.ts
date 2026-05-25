@@ -28,8 +28,9 @@ export const loginRequest = async (
             ? user.roles[0].name.toUpperCase() 
             : 'VENTAS';
         
+        const id = user.id;
         localStorage.setItem("token", token);
-        return { token, role };
+        return { token, role, id };
     } catch (error) {
         console.error("Login error:", error);
         throw new Error("Error al iniciar sesión");

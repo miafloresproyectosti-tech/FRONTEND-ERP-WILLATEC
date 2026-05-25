@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useNotifications } from '../NotificationContext';
 import { useAuth } from '../AuthContext';
+import { useLocation } from 'react-router-dom';
 import { getClientes, type Cliente } from '../services/cliente.service';
 import { getProductos, type Producto} from "../services/producto.service";
 import { getPlantillas } from '../services/plantilla.service';
@@ -20,13 +21,16 @@ import {
   getCotizacion,
   createCotizacion,
   updateCotizacion,
-  updateItem,
+  aprobarCotizacion,
+  rechazarCotizacion,
+  getCotizacionHistorial,
   // deleteItem,
   exportarCotizacionPdf,
   descargarPdfCotizacion,
   type Cotizacion,
   type CotizacionItem,
   type CotizacionCostosAdicional,
+  type CotizacionHistorial,
 } from '../services/cotizacion.service';
 import {
   ArrowLeft,
@@ -35,6 +39,9 @@ import {
   FileSpreadsheet,
   Loader2,
   DollarSign,
+  Check,
+  XCircle,
+  Send,
 } from 'lucide-react';
 
 
@@ -50,7 +57,12 @@ export function CotizacionDetail() {
 
   // ====== STATE MANAGEMENT ======
   const [loading, setLoading] = useState(isEditing);
-  const [saving, setSaving] = useState(false);
+  const [, setSaving] = useState(false);
+
+  //LOCALIZACIÓN
+const location = useLocation();
+
+const isViewMode = location.pathname.includes('/view');
 
   // Cotización header
   const [cotizacion, setCotizacion] = useState<Cotizacion | null>(null);
@@ -70,6 +82,7 @@ export function CotizacionDetail() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [items, setItems] = useState<CotizacionItem[]>([]);
   const [costos, setCostos] = useState<CotizacionCostosAdicional[]>([]);
+  const [historial, setHistorial] = useState<CotizacionHistorial[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
 
   // UI State
@@ -80,6 +93,8 @@ export function CotizacionDetail() {
   const [showProductModal, setShowProductModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showCostosModal, setShowCostosModal] = useState(false);
+  const [showRechazoModal, setShowRechazoModal] = useState(false);
+  const [comentarioRechazo, setComentarioRechazo] = useState('');
 
   const [estadoCotizacionId, setEstadoCotizacionId] = useState<number>(1);
 
@@ -181,6 +196,8 @@ export function CotizacionDetail() {
 // };
 
   const handleOpenNewItem = () => {
+    if (isViewMode) return;
+
     setEditingItemId(null);
 
     setEditingItem(null);
@@ -191,6 +208,8 @@ export function CotizacionDetail() {
   };
 
   const handleOpenEditItem = (item: CotizacionItem) => {
+    if (isViewMode) return;
+
     setEditingItem(item);
   
     setEditingItemId(item.id);
@@ -226,6 +245,8 @@ export function CotizacionDetail() {
 
   //Cargar Productos:
   useEffect(() => {
+    if (isViewMode || !showProductModal || productos.length > 0) return;
+
     const fetchProductos = async () => {
       try {
         const data = await getProductos();
@@ -239,7 +260,7 @@ export function CotizacionDetail() {
       }
     };
     fetchProductos();
-  }, []);
+  }, [isViewMode, showProductModal, productos.length]);
 
   // Cargar cotización si es edición
   useEffect(() => {
@@ -304,6 +325,7 @@ export function CotizacionDetail() {
       setLoading(true);
       const data = await getCotizacion(currentCotizacionId);
       setCotizacion(data);
+      setEstadoCotizacionId(data.estado_cotizacion_id);
       setClienteId(data.cliente_id);
       setPlantillaId(data.plantilla_id);
       setPlataformaId(data.plataforma_id);
@@ -311,7 +333,19 @@ export function CotizacionDetail() {
       setModoDistribucion(data.modo_distribucion);
       setTitulo(data.titulo);
       setItems(data.items || []);
-      setCostos(data.costosAdicionales || []);
+      setCostos(data.costosAdicionales || data.costos_adicionales || []);
+      const historialData = data.historial || data.cotizacion_historial || [];
+      setHistorial(historialData);
+      setLoading(false);
+
+      if (historialData.length === 0) {
+        try {
+          const historialApi = await Promise.resolve([]).then(() => getCotizacionHistorial(currentCotizacionId));
+          setHistorial(historialApi);
+        } catch (historialError) {
+          console.warn('No se pudo cargar el historial de la cotizaciÃ³n', historialError);
+        }
+      }
     } catch (error) {
       addNotification({
         message: 'Error al cargar cotización',
@@ -324,7 +358,122 @@ export function CotizacionDetail() {
     }
   };
 
+  const handleAprobarCotizacion = async () => {
+    const cotizacionId = cotizacion?.id || currentCotizacionId;
+    if (!cotizacionId) return;
+
+  try {
+    const data = await aprobarCotizacion(cotizacionId);
+    const historialApi = await getCotizacionHistorial(cotizacionId);
+
+    setEstadoCotizacionId(4);
+    setCotizacion(data);
+    setHistorial(historialApi);
+
+    addNotification({
+      message: 'Cotización aprobada',
+      type: 'success',
+      duration: 3000,
+    } as any);
+
+  } catch (error) {
+    addNotification({
+      message: 'Error al aprobar',
+      type: 'error',
+      duration: 4000,
+    } as any);
+  }
+  };
+
+  const handleRechazarCotizacion = async () => {
+    const cotizacionId = cotizacion?.id || currentCotizacionId;
+    if (!cotizacionId) return;
+
+    const comentario = comentarioRechazo.trim();
+
+    if (!comentario) {
+      addNotification({
+        message: 'Ingresa un comentario para rechazar',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
+
+    try {
+      const data = await rechazarCotizacion(cotizacionId, comentario);
+      const historialApi = await getCotizacionHistorial(cotizacionId);
+
+      setEstadoCotizacionId(5);
+      setCotizacion(data);
+      setHistorial(historialApi);
+      setShowRechazoModal(false);
+      setComentarioRechazo('');
+
+      addNotification({
+        message: 'CotizaciÃ³n rechazada',
+        type: 'success',
+        duration: 3000,
+      } as any);
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al rechazar',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    }
+  };
+
+  const buildCotizacionPayload = (estadoId = estadoCotizacionId) => {
+    // NO enviar cotizacion_id en items - el backend lo asigna automáticamente del URL
+    const itemsLimpios = items.map(({ cotizacion_id, ...item }) => item);
+
+    return {
+      id: currentCotizacionId,
+      cliente_id: clienteId ?? 0,
+      plantilla_id: plantillaId,
+      plataforma_id: plataformaId,
+      moneda_id: monedaId,
+      modo_distribucion: modoDistribucion,
+      titulo: titulo,
+      validez_dias: validezDias,
+      estado_cotizacion_id: estadoId,
+      items: itemsLimpios,
+      costos,
+      costos_adicionales: costos,
+    };
+  };
+
+  // const handleEnviarAprobacion = async () => {
+  //   const cotizacionId = cotizacion?.id || currentCotizacionId;
+  //   if (!cotizacionId) return;
+
+  //   try {
+  //     await updateCotizacion(cotizacionId, buildCotizacionPayload(estadoCotizacionId));
+  //     const data = await enviarCotizacionAprobacion(cotizacionId);
+  //     const historialApi = await getCotizacionHistorial(cotizacionId);
+
+  //     setCotizacion(data);
+  //     setEstadoCotizacionId(2);
+  //     setHistorial(historialApi);
+
+  //     addNotification({
+  //       message: 'CotizaciÃ³n enviada a aprobaciÃ³n',
+  //       type: 'success',
+  //       duration: 3000,
+  //     } as any);
+  //   } catch (error: any) {
+  //     addNotification({
+  //       message: error?.response?.data?.message || 'Error al enviar a aprobaciÃ³n',
+  //       type: 'error',
+  //       duration: 4000,
+  //     } as any);
+  //   }
+  // };
+
   const handleSaveCotizacion = async () => {
+    if (isViewMode) return;
+
     if (!clienteId || !plantillaId) {
       addNotification({
         message: 'Seleccione cliente y plantilla',
@@ -334,17 +483,7 @@ export function CotizacionDetail() {
       return;
     }
 
-    const payload = {
-      cliente_id: clienteId,
-      plantilla_id: plantillaId,
-      plataforma_id: plataformaId,
-      moneda_id: monedaId,
-      modo_distribucion: modoDistribucion,
-      titulo,
-
-      items,
-      costos,
-    };
+    const payload = buildCotizacionPayload();
 
     setSaving(true);
     try {
@@ -378,7 +517,9 @@ export function CotizacionDetail() {
     }
   };
 
-  const handleAddItem = async () => {
+const handleAddItem = async () => {
+    if (isViewMode) return;
+
     if (!itemForm.descripcion || itemForm.cantidad <= 0) {
       addNotification({
         message: 'Completa los datos del item',
@@ -391,7 +532,6 @@ export function CotizacionDetail() {
     // ===== NUEVO ITEM =====
     const nuevoItem: any = {
       id: Date.now(),
-
       descripcion: itemForm.descripcion,
 
       cantidad: Number(itemForm.cantidad),
@@ -416,7 +556,8 @@ export function CotizacionDetail() {
 
       link_proveedor: itemForm.link_proveedor,
 
-      tipo: 'personalizado',
+      tipo: itemForm.tipo,
+
     };
 
   // ===== AGREGAR AL STATE =====
@@ -437,37 +578,70 @@ export function CotizacionDetail() {
   } as any);
   };
 
-  const handleUpdateItem = async (itemId: number) => {
-    if (!cotizacion) return;
-    try {
-      await updateItem(itemId, itemForm);
+  const handleUpdateItem = () => {
+    if (isViewMode) return;
+
+    if (!editingItemId) return;
+
+    if (!itemForm.descripcion || itemForm.cantidad <= 0) {
       addNotification({
-        message: 'Item actualizado',
-        type: 'success',
+        message: 'Completa los datos del item',
+        type: 'warning',
         duration: 4000,
       } as any);
-      setShowItemFormModal(false);
-      setEditingItem(null);
-      setEditingItemId(null);
-      resetItemForm();
-      await loadCotizacion();
-    } catch (error: any) {
-      addNotification({
-        message: error?.response?.data?.message || 'Error al actualizar item',
-        type: 'error',
-        duration: 4000,
-      } as any);
+      return;
     }
-  };
+
+  setItems((prev) =>
+  prev.map((item) =>
+    item.id === editingItemId
+      ? {
+          ...item,
+          descripcion: itemForm.descripcion,
+          cantidad: Number(itemForm.cantidad),
+          costo_base: Number(itemForm.costo_base),
+          margen: Number(itemForm.margen),
+          marca: itemForm.marca,
+          codigo: itemForm.codigo,
+          unidad_medida: itemForm.unidad_medida ?? 'UND',
+          disponibilidad_tipo: itemForm.disponibilidad_tipo,
+          disponibilidad_dias: itemForm.disponibilidad_dias,
+          garantia_meses: itemForm.garantia_meses ?? 12,
+          proveedor: itemForm.proveedor,
+          link_proveedor: itemForm.link_proveedor,
+        }
+      : item
+    )
+  );
+  setShowItemFormModal(false);
+
+  setEditingItem(null);
+
+  setEditingItemId(null);
+
+  resetItemForm();
+
+  addNotification({
+    message: 'Item actualizado',
+    type: 'success',
+    duration: 4000,
+  } as any);
+};
 
   const handleDeleteItem = async (itemId: number) => {
-    if (!cotizacion) return;
+    if (isViewMode) return;
+
     if (!confirm('¿Eliminar item?')) return;
 
     try {
       setItems(prev =>
       prev.filter(item => item.id !== itemId)
       );
+      addNotification({
+        message: 'Item eliminado',
+        type: 'success',
+        duration: 4000,
+      } as any);
     } catch (error: any) {
       addNotification({
         message: error?.response?.data?.message || 'Error al eliminar item',
@@ -476,15 +650,6 @@ export function CotizacionDetail() {
       } as any);
     }
   };
-
-  // // 🆕 FUNCIÓN PARA ICONO DE DISPONIBILIDAD
-  // const IconoDisponibilidad = ({ tipo }: { tipo: 'stock' | 'importacion' }) => {
-  //   return tipo === 'stock' ? (
-  //     <Package className="w-4 h-4 text-green-600" />
-  //   ) : (
-  //     <Truck className="w-4 h-4 text-orange-600" />
-  //   );
-  // };
 
   // 🆕 CONTROL DE EXPORTACIÓN
   const puedeExportar = () => {
@@ -500,6 +665,8 @@ export function CotizacionDetail() {
   };
 
   const handleAddCosto = async () => {
+    if (isViewMode) return;
+
     if (!costoForm.descripcion || costoForm.monto <= 0 || !costoForm.tipo) {
       addNotification({
         message: 'Ingresa un monto válido',
@@ -543,6 +710,8 @@ export function CotizacionDetail() {
 
 
   const handleDeleteCosto = async (id: number) => {
+    if (isViewMode) return;
+
     setCostos((prev) =>
       prev.filter((costo) => costo.id !== id)
     );
@@ -550,6 +719,8 @@ export function CotizacionDetail() {
 
   //PRUEBA
   const handleItemTypeSelection = (tipo: 'catalogo' | 'personalizado') => {
+    if (isViewMode) return;
+
     setShowItemTypeModal(false);
 
     if (tipo === 'catalogo') {
@@ -590,6 +761,8 @@ export function CotizacionDetail() {
   };
 
   const handleProductSelection = (producto: any) => {
+  if (isViewMode) return;
+
   setShowProductModal(false);
 
   const margen =
@@ -668,6 +841,8 @@ const todosItemsAprobados =   items.every(item =>
 );
 
 const handleIntercambiarMoneda = () => {
+  if (isViewMode) return;
+
   const esSoles = monedaId === 1;
 
   const nuevoCosto = esSoles
@@ -681,6 +856,8 @@ const handleIntercambiarMoneda = () => {
 };
 
 const handleExportarPdf = async () => {
+  if (isViewMode) return;
+
   if (!cotizacion?.id) return;
 
   setExportandoPdf(true);
@@ -764,83 +941,6 @@ const handleExportarPdf = async () => {
     });
   };
 
-  // const openEditItem = (item: CotizacionItem) => {
-  //   setEditingItem(item);
-  //   setItemForm(mapItemToForm(item));
-  //   setShowItemFormModal(true);
-  // };
-
-//   const resumen = useMemo(() => {
-//     const costosTotal = costos.reduce(
-//       (acc, c) => acc + (c.monto || 0),
-//       0
-//     );
-
-//     const totalCantidad = items.reduce(
-//       (acc, item) => acc + item.cantidad,
-//       0
-//     );
-
-//     const costoDistribuido =
-//       modoDistribucion === 'POR_ITEM'
-//         ? (items.length > 0
-//             ? costosTotal / items.length
-//             : 0)
-//         : (totalCantidad > 0
-//             ? costosTotal / totalCantidad
-//             : 0);
-
-//     const itemsCalculados = items.map((item) => 
-//       {
-//         const extra =
-//           modoDistribucion === 'POR_ITEM'
-//             ? costoDistribuido
-//             : costoDistribuido * item.cantidad;
-
-//         const costoUnitarioFinal =
-//           item.costo_base + extra;
-
-//         const costoTotal =
-//           costoUnitarioFinal * item.cantidad;
-
-//         const subtotal =
-//           item.precio_venta * item.cantidad;
-
-//         const ganancia =
-//           subtotal - costoTotal;
-
-//         return {
-//           ...item,
-
-//           costo_unitario: costoUnitarioFinal,
-
-//           costo_total: costoTotal,
-
-//           ganancia,
-//       };
-//     });
-
-//     const subtotal = itemsCalculados.reduce(
-//       (acc, i) => acc + (i.subtotal || 0),
-//       0
-//     );
-    
-//     const igv = subtotal * 0.18;
-
-//     const ganancia = items.reduce(
-//       (acc, i) => acc + (i.ganancia || 0),
-//       0
-//     );
-
-//     return {
-//       subtotal,
-//       costosTotal,
-//       igv,
-//       ganancia,
-//       total: subtotal + igv + costosTotal,
-//     };
-// }, [items, costos]);
-
 //RECALCULO DE ITEMS
 const {
   items: itemsCalculados,
@@ -852,6 +952,22 @@ const {
       modoDistribucion
     );
 }, [items, costos, modoDistribucion]);
+
+const estadoLabels: Record<number, string> = {
+  1: 'Borrador',
+  2: 'Enviada',
+  3: 'Parcialmente aprobada',
+  4: 'Aprobada',
+  5: 'Rechazada',
+  6: 'OC registrada',
+};
+
+const comentariosRevision = historial.filter((h) => h.comentario?.trim());
+
+const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
+  const usuario = movimiento.usuario || movimiento.user;
+  return usuario?.nombres || usuario?.email || 'Usuario no identificado';
+};
 
   // ====== RENDER ======
 
@@ -918,6 +1034,8 @@ const {
 
             plantillas={plantillas}
             plataformas={plataformas}
+
+            disabled={isViewMode}
           />
 
           {/* TABLA CON DISPONIBILIDAD */}
@@ -932,6 +1050,8 @@ const {
             onApproveAll={() => setEstadoCotizacionId(4)}
 
             onAddItem={handleOpenNewItem} // 🔥 AQUÍ
+
+            readOnly={isViewMode}
           />
 
         </div>
@@ -946,7 +1066,64 @@ const {
             items={itemsCalculados}
           />
 
+          {comentariosRevision.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+              <h2 className="text-base font-semibold text-amber-900 mb-3">
+                Comentarios de revision
+              </h2>
+              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                {comentariosRevision.map((movimiento) => (
+                  <div
+                    key={movimiento.id}
+                    className="bg-white border border-amber-100 rounded-lg p-3"
+                  >
+                    <p className="text-xs font-medium text-amber-800">
+                      {estadoLabels[movimiento.estado_anterior_id || 0] || 'Sin estado'} {'->'} {estadoLabels[movimiento.estado_nuevo_id] || 'Estado actualizado'}
+                    </p>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap mt-2">
+                      {movimiento.comentario}
+                    </p>
+                    <div className="flex flex-wrap items-center justify-between gap-2 mt-3 text-xs text-gray-400">
+                      <span>Por: {getNombreUsuarioHistorial(movimiento)}</span>
+                      {movimiento.created_at && (
+                        <span>{new Date(movimiento.created_at).toLocaleString('es-PE')}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* BOTONES */}
+          {isViewMode && (
+            <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
+              {user?.role === 'SUPERADMIN' && estadoCotizacionId === 2 && (
+                <button
+                  onClick={handleAprobarCotizacion}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+                >
+                  <Check className="w-5 h-5" /> Aprobar Cotizacion
+                </button>
+              )}
+              {user?.role === 'SUPERADMIN' && estadoCotizacionId === 2 && (
+                <button
+                  onClick={() => setShowRechazoModal(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                >
+                  <XCircle className="w-5 h-5" /> Rechazar Cotizacion
+                </button>
+              )}
+
+              <button
+                onClick={() => setShowCostosModal(true)}
+                className="w-full flex items-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+              >
+                <DollarSign className="w-5 h-5" /> Costos Adicionales
+              </button>
+            </div>
+          )}
+          {!isViewMode && (
           <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
             <button
               onClick={handleSaveCotizacion}
@@ -954,6 +1131,16 @@ const {
             >
               <Save className="w-5 h-5" /> Guardar
             </button>
+
+            {/* {[1, 5].includes(estadoCotizacionId) && currentCotizacionId && (
+              <button
+                onClick={handleEnviarAprobacion}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                <Send className="w-5 h-5" />
+                {estadoCotizacionId === 5 ? 'Reenviar a aprobacion' : 'Enviar a aprobacion'}
+              </button>
+            )} */}
 
             <button
               onClick={() => setShowCostosModal(true)}
@@ -974,6 +1161,8 @@ const {
               <FileSpreadsheet className="w-5 h-5" /> Exportar Documento
             </button>
           </div>
+          )}
+
 
         </div>
       </div>
@@ -981,15 +1170,15 @@ const {
       {/* --- MODALES --- */}
 
       {/* 1. Modal Selección de Tipo de Item */}
-      <ItemTypeModal 
-        open={showItemTypeModal} 
-        onClose={() => setShowItemTypeModal(false)} 
-        onSelect={handleItemTypeSelection} 
+      <ItemTypeModal
+        open={!isViewMode && showItemTypeModal}
+        onClose={() => setShowItemTypeModal(false)}
+        onSelect={handleItemTypeSelection}
       />
 
       {/* 2. Modal Catálogo de Productos */}
       <ProductModal
-        open={showProductModal}
+        open={!isViewMode && showProductModal}
         onClose={() => setShowProductModal(false)}
         productos={productos}
         simboloMoneda={simboloMoneda}
@@ -998,35 +1187,67 @@ const {
 
       {/* 3. Modal Formulario de Item */}
       <ItemFormModal
-        open={showItemFormModal}
+        open={!isViewMode && showItemFormModal}
         onClose={() => setShowItemFormModal(false)}
         itemForm={itemForm}
         setItemForm={setItemForm}
         monedaId={monedaId}
         simboloMoneda={simboloMoneda}
         onSave={handleAddItem}
-        onUpdate={() =>editingItem && handleUpdateItem(editingItem.id)} // 🔥 AQUÍ 
+        onUpdate={() =>editingItem && handleUpdateItem()} // 🔥 AQUÍ
         editingItem={editingItem}
         handleIntercambiarMoneda={handleIntercambiarMoneda}
       />
 
       {/* 4. Modal Costos Adicionales */}
       <CostosModal
-        open={showCostosModal} 
-        onClose={() => setShowCostosModal(false)} 
-        costos={costos} 
+        open={showCostosModal}
+        onClose={() => setShowCostosModal(false)}
+        costos={costos}
         costoForm={costoForm}
-        setCostoForm={setCostoForm} 
-        onAddCosto={handleAddCosto} 
+        setCostoForm={setCostoForm}
+        onAddCosto={handleAddCosto}
         onDeleteCosto={handleDeleteCosto}
+        readOnly={isViewMode}
         />
+
+      {showRechazoModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
+            <h3 className="text-xl font-bold mb-4">Rechazar cotizacion</h3>
+            <textarea
+              value={comentarioRechazo}
+              onChange={(e) => setComentarioRechazo(e.target.value)}
+              className="w-full min-h-28 p-3 border rounded-lg resize-none focus:ring-2 focus:ring-red-500 outline-none"
+              placeholder="Comentario del rechazo"
+            />
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => {
+                  setShowRechazoModal(false);
+                  setComentarioRechazo('');
+                }}
+                className="flex-1 px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleRechazarCotizacion}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+              >
+                Rechazar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 5. Modal Exportación */}
       <ExportModal
-        open={showExportModal} 
-        onClose={() => setShowExportModal(false)} 
-        onExportPdf={handleExportarPdf} 
-        exportandoPdf={exportandoPdf}  
+        open={!isViewMode && showExportModal}
+        onClose={() => setShowExportModal(false)}
+        onExportPdf={handleExportarPdf}
+        exportandoPdf={exportandoPdf}
         />
         
     </div>

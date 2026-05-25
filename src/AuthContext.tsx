@@ -11,6 +11,7 @@ import { rolePermissions } from "./utils/permissions";
 import { logoutRequest } from "./services/auth.service";
 
 interface User {
+  id: number;
   email: string;
   role: UserRole;
   name: string;
@@ -18,7 +19,7 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, role: string) => void;
+  login: (id: number, email: string, role: string) => void;
   logout: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
   loading: boolean;
@@ -31,7 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   // LOGIN
-  const login = (email: string, roleStr: string) => {
+  const login = (id: number, email: string, roleStr: string) => {
     const role = roleStr as UserRole;
 
     const name =
@@ -39,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       "Usuario";
 
     const userData: User = {
+      id,
       email,
       role,
       name,
@@ -82,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const parsed = JSON.parse(saved);
 
         // validación básica
-        if (parsed?.email && parsed?.role) {
+        if (parsed?.id && parsed?.email && parsed?.role) {
           setUser(parsed);
         } else {
           localStorage.removeItem("user");

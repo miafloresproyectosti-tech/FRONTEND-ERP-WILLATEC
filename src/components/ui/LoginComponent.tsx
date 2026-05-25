@@ -41,8 +41,8 @@ export default function LoginComponent() {
     setLoading(true);
 
     try {
-      const { role } = await loginRequest(email, password);
-      login(email, role);
+      const { role, id } = await loginRequest(email, password);
+      login(id, email, role);
       setLoading(false);
 
       const targetRoute =

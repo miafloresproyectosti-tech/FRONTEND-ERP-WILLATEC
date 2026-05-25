@@ -24,6 +24,8 @@ export interface Cotizacion {
     moneda_id: number;
     items: CotizacionItem[];
     costosAdicionales: CotizacionCostosAdicional[];
+    historial?: CotizacionHistorial[];
+    cotizacion_historial?: CotizacionHistorial[];
 
     // 🔥 NUEVO CONTROL FLUJO
     aprobadoPor?: string;
@@ -70,6 +72,29 @@ export interface CotizacionCostosAdicional {
     descripcion: string;
     created_at?: string;
     updated_at?: string;
+}
+
+export interface CotizacionHistorial {
+    id: number;
+    cotizacion_id: number;
+    estado_anterior_id: number | null;
+    estado_nuevo_id: number;
+    comentario?: string | null;
+    user_id: number;
+    created_at?: string;
+    updated_at?: string;
+    user?: {
+        id: number;
+        nombre?: string;
+        name?: string;
+        email?: string;
+    };
+    usuario?: {
+        id: number;
+        nombre?: string;
+        name?: string;
+        email?: string;
+    };
 }
 
 export interface Plantilla{

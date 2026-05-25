@@ -63,6 +63,28 @@ export interface CotizacionCostosAdicional {
   updated_at?: string;
 }
 
+export interface CotizacionHistorial {
+  id: number;
+  cotizacion_id: number;
+  estado_anterior_id: number | null;
+  estado_nuevo_id: number;
+  comentario?: string | null;
+  user_id: number;
+  created_at?: string;
+  updated_at?: string;
+  user?: {
+    id: number;
+    nombres?: string;
+    email?: string;
+  };
+  usuario?: {
+    id: number;
+    nombres?: string;
+    name?: string;
+    email?: string;
+  };
+}
+
 export interface Cliente {
   id: number;
   nombre: string;
@@ -103,6 +125,9 @@ export interface Cotizacion {
   cliente?: Cliente;
   items?: CotizacionItem[];
   costosAdicionales?: CotizacionCostosAdicional[];
+  costos_adicionales?: CotizacionCostosAdicional[];
+  historial?: CotizacionHistorial[];
+  cotizacion_historial?: CotizacionHistorial[];
   // estadoCotizacion?: EstadoCotizacion;
 }
 
@@ -186,7 +211,7 @@ export async function getCotizaciones(
 export async function getCotizacion(id: string | number): Promise<Cotizacion> {
   try {
     const response = await api.get(`/cotizaciones/${id}`);
-    const data = response.data || response.data.cotizacion;
+    const data = response.data?.cotizacion || response.data?.data || response.data;
 
     // Normalizar strings numéricos que devuelve PostgreSQL
     data.subtotal    = parseFloat(data.subtotal)    || 0;
@@ -208,10 +233,29 @@ export async function getCotizacion(id: string | number): Promise<Cotizacion> {
       margen:           parseFloat(item.margen)          || 0,
     }));
 
-    data.costos_adicionales = (data.costos_adicionales ?? []).map((c: any) => ({
+    const costos = (data.costosAdicionales ?? data.costos_adicionales ?? []).map((c: any) => ({
       ...c,
       monto: parseFloat(c.monto) || 0,
     }));
+    data.costosAdicionales = costos;
+    data.costos_adicionales = costos;
+
+    const historial = (
+      data.historial ??
+      data.cotizacion_historial ??
+      data.historialEstados ??
+      []
+    ).map((h: any) => ({
+      ...h,
+      estado_anterior_id:
+        h.estado_anterior_id === null || h.estado_anterior_id === undefined
+          ? null
+          : Number(h.estado_anterior_id),
+      estado_nuevo_id: Number(h.estado_nuevo_id),
+      user_id: Number(h.user_id),
+    }));
+    data.historial = historial;
+    data.cotizacion_historial = historial;
 
   return data;
   } catch (error) {
@@ -247,6 +291,72 @@ export async function updateCotizacion(
     return response.data.cotizacion;
   } catch (error) {
     console.error("Error al actualizar cotización:", error);
+    throw error;
+  }
+}
+
+export async function aprobarCotizacion(id: number): Promise<Cotizacion> {
+  try {
+    const response = await api.patch(`/cotizaciones/${id}/aprobar`, {
+      cotizacion_id: id,
+    });
+    return response.data?.cotizacion || response.data?.data || response.data;
+  } catch (error) {
+    console.error("Error al aprobar cotizaciÃ³n:", error);
+    throw error;
+  }
+}
+
+// export async function enviarCotizacionAprobacion(id: number): Promise<Cotizacion> {
+//   try {
+//     const response = await api.patch(`/cotizaciones/${id}/enviar-aprobacion`, {
+//       cotizacion_id: id,
+//     });
+//     return response.data?.cotizacion || response.data?.data || response.data;
+//   } catch (error) {
+//     console.error("Error al enviar cotizaciÃ³n a aprobaciÃ³n:", error);
+//     throw error;
+//   }
+// }
+
+export async function rechazarCotizacion(
+  id: number,
+  comentario: string,
+): Promise<Cotizacion> {
+  try {
+    const response = await api.patch(`/cotizaciones/${id}/rechazar`, {
+      cotizacion_id: id,
+      comentario_rechazo: comentario,
+    });
+    return response.data?.cotizacion || response.data?.data || response.data;
+  } catch (error) {
+    console.error("Error al rechazar cotizaciÃ³n:", error);
+    throw error;
+  }
+}
+
+export async function getCotizacionHistorial(
+  id: number,
+): Promise<CotizacionHistorial[]> {
+  try {
+    const response = await api.get(`/cotizaciones/${id}/historial`);
+    const historial =
+      response.data?.historial?.data ||
+      response.data?.historial ||
+      response.data?.data ||
+      response.data ||
+      [];
+    return historial.map((h: any) => ({
+      ...h,
+      estado_anterior_id:
+        h.estado_anterior_id === null || h.estado_anterior_id === undefined
+          ? null
+          : Number(h.estado_anterior_id),
+      estado_nuevo_id: Number(h.estado_nuevo_id),
+      user_id: Number(h.user_id),
+    }));
+  } catch (error) {
+    console.error("Error al obtener historial de cotizaciÃ³n:", error);
     throw error;
   }
 }

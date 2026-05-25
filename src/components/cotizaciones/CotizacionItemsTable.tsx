@@ -4,6 +4,8 @@ interface Props{
   items: CotizacionItem[];
   simboloMoneda: string;
 
+  readOnly: boolean;
+
   estadoCotizacionId: number;
   setEstadoCotizacionId: (id: number) => void;
 
@@ -24,7 +26,8 @@ export function CotizacionItemsTable ({
   onOpenEdit, 
   onApproveAll,
   todosItemsAprobados,
-  onAddItem
+  onAddItem,
+  readOnly
 }: Props){
 // CotizacionItemsTable.tsx — reemplaza el return completo
 return (
@@ -33,12 +36,14 @@ return (
       <h2 className="text-base font-medium text-gray-800">
         Items <span className="text-gray-400 font-normal">({items.length})</span>
       </h2>
+      {!readOnly && (
       <button
         onClick={onAddItem}
         className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium"
       >
         <Plus className="w-3.5 h-3.5" /> Agregar ítem
       </button>
+      )}
     </div>
 
     <div className="overflow-x-auto rounded-lg border border-gray-100">
@@ -130,21 +135,30 @@ return (
                           defaultValue={item.cantidad || 0}
                           min={0}
                           max={item.cantidad}
+                          disabled={readOnly}
                           className="w-12 px-1 py-0.5 text-center border border-yellow-300 bg-yellow-50 rounded text-xs focus:ring-1 focus:ring-yellow-400 outline-none"
                         />
                       </td>
                       <td className="py-2.5 px-2 text-center">
                         <select
                           defaultValue={item.estado_cotizacion_item_id ?? 1}
+                          disabled={readOnly}
                           className="px-1 py-0.5 border border-yellow-300 bg-yellow-50 rounded text-[10px] focus:ring-1 focus:ring-yellow-400 outline-none"
                         >
                           <option value={1}>⏳ Pend.</option>
                           <option value={2}>✅ Aprob.</option>
                           <option value={3}>❌ Rech.</option>
                         </select>
-                        {todosItemsAprobados && (
+                        {!readOnly && todosItemsAprobados && (
                           <button
-                            onClick={() => setEstadoCotizacionId(4)}
+                            onClick={() => {
+                              if (onApproveAll) {
+                                onApproveAll();
+                                return;
+                              }
+
+                              setEstadoCotizacionId(4);
+                            }}
                             className="mt-1 flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-[10px] hover:bg-green-700"
                           >
                             <CheckCircle className="w-3 h-3" /> Aprobar
@@ -165,7 +179,8 @@ return (
                     {simboloMoneda} {subtotal.toFixed(2)}
                   </td>
                   <td className="py-2.5 px-2">
-                    <div className="flex items-center justify-center gap-1">
+                    {!readOnly && (
+                      <div className="flex items-center justify-center gap-1">
                       <button
                         onClick={() => onDeleteItem(item.id)}
                         className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
@@ -181,6 +196,7 @@ return (
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                     </div>
+                    )}
                   </td>
                 </tr>
               );
@@ -192,4 +208,3 @@ return (
   </div>
 );
 }
-          
