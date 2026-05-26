@@ -707,7 +707,7 @@ export default function Productos() {
 
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">
-                  Precio referencial
+                  Precio de Compra
                 </label>
                 <input
                   type="number"

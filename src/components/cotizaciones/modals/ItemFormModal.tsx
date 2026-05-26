@@ -52,7 +52,7 @@ export function ItemFormModal({
               {editingItem ? 'Editar ítem' : 'Agregar ítem'}
             </span>
             <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
-              {itemForm.tipo ?? 'personalizado'}
+              {itemForm.tipo ?? 'Externo'}
             </span>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
@@ -104,18 +104,18 @@ export function ItemFormModal({
             <div className="grid grid-cols-3 gap-2.5 mb-2.5">
               {field('Cantidad',
                 <input className={inp} type="number" min={1}
-                  value={itemForm.cantidad || 1}
-                  onChange={e => setItemForm({ ...itemForm, cantidad: parseInt(e.target.value) || 1 })} />
+                  value={itemForm.cantidad || ''}
+                  onChange={e => setItemForm({ ...itemForm, cantidad: e.target.value ? parseInt(e.target.value) : undefined })} />
               )}
               {field('Garantía (meses)',
                 <input className={inp} type="number"
                   value={itemForm.garantia_meses || ''}
-                  onChange={e => setItemForm({ ...itemForm, garantia_meses: parseInt(e.target.value) || 12 })} />
+                  onChange={e => setItemForm({ ...itemForm, garantia_meses: e.target.value ? parseInt(e.target.value) : undefined })} />
               )}
               {field('Días entrega',
                 <input className={inp} type="number"
-                  value={itemForm.disponibilidad_dias}
-                  onChange={e => setItemForm({ ...itemForm, disponibilidad_dias: parseInt(e.target.value) || 0 })} />
+                  value={itemForm.disponibilidad_dias || ''}
+                  onChange={e => setItemForm({ ...itemForm, disponibilidad_dias: e.target.value ? parseInt(e.target.value) : undefined })} />
               )}
             </div>
             <div className="grid grid-cols-3 gap-2.5">
@@ -123,7 +123,7 @@ export function ItemFormModal({
                 <div className="flex gap-1.5">
                   <input className={`${inp} flex-1`} type="number"
                     value={itemForm.costo_base || ''}
-                    onChange={e => setItemForm({ ...itemForm, costo_base: parseFloat(e.target.value) || 0 })} />
+                    onChange={e => setItemForm({ ...itemForm, costo_base: e.target.value ? parseFloat(e.target.value) : undefined })} />
                   <button onClick={handleIntercambiarMoneda}
                     className="px-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-500">
                     <ArrowLeftRight className="w-3.5 h-3.5" />
@@ -133,7 +133,7 @@ export function ItemFormModal({
               {field('Margen %',
                 <input className={inp} type="number" step="0.1"
                   value={itemForm.margen || ''}
-                  onChange={e => setItemForm({ ...itemForm, margen: parseFloat(e.target.value) || 0 })} />
+                  onChange={e => setItemForm({ ...itemForm, margen: e.target.value ? parseFloat(e.target.value) : undefined })} />
               )}
               {field('Disponibilidad',
                 <select className={inp} value={itemForm.disponibilidad_tipo || 'stock'}
@@ -185,7 +185,7 @@ export function ItemFormModal({
               <p className="text-sm font-semibold text-gray-800">{simboloMoneda} {(itemForm.subtotal || 0).toFixed(2)}</p>
             </div>
           </div>
-          <p className="text-[10px] text-gray-400 -mt-2">* Estimado sin costos adicionales distribuidos</p>
+          <p className="text-[10px] text-gray-400 -mt-2">* Precios NO incluyen IGV y costos adicionales</p>
         </div>
 
         {/* Footer */}

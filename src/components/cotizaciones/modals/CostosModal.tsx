@@ -113,11 +113,11 @@ export function CostosModal({
 
         <input
           type="number"
-          value={costoForm.monto}
+          value={costoForm.monto || ''}
           onChange={(e) =>
             setCostoForm({
               ...costoForm,
-              monto: parseFloat(e.target.value) || 0
+              monto: e.target.value ? parseFloat(e.target.value) : undefined
             })
           }
           className="w-full p-2 border rounded-lg"

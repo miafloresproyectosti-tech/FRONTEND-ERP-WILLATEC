@@ -285,6 +285,10 @@ export default function Cotizaciones() {
                   </th>
 
                   <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                    Ejecutivo
+                  </th>
+
+                  <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300">
                     Ítems
                   </th>
 
@@ -338,6 +342,13 @@ export default function Cotizaciones() {
 
                         <td className="px-6 py-5 text-slate-900 dark:text-slate-100">
                           {cotizacion.cliente_nombre}
+                        </td>
+
+                        <td className="px-6 py-5 text-slate-600 dark:text-slate-300">
+                          <div className="text-sm">
+                            {cotizacion.user?.profile?.nombres || 'N/A'}
+                            {cotizacion.user?.profile?.apellidos ? ` ${cotizacion.user.profile.apellidos}` : ''}
+                          </div>
                         </td>
 
                         <td className="px-6 py-5 text-slate-600 dark:text-slate-300">

@@ -15,6 +15,7 @@ interface Props{
   onApproveAll?: () => void;
   todosItemsAprobados?: boolean;
   onAddItem: () => void;
+  isOwnCotizacion?: boolean;
 }
 
 export function CotizacionItemsTable ({ 
@@ -27,7 +28,8 @@ export function CotizacionItemsTable ({
   onApproveAll,
   todosItemsAprobados,
   onAddItem,
-  readOnly
+  readOnly,
+  isOwnCotizacion = true
 }: Props){
 // CotizacionItemsTable.tsx — reemplaza el return completo
 return (
@@ -59,7 +61,7 @@ return (
           <col style={{ width: '76px' }} />
           <col style={{ width: '60px' }} />
           <col style={{ width: '76px' }} />
-          <col style={{ width: '76px' }} />
+          {isOwnCotizacion && <col style={{ width: '76px' }} />}
           <col style={{ width: '84px' }} />
           <col style={{ width: '56px' }} />
         </colgroup>
@@ -80,7 +82,7 @@ return (
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Costo tot.</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Margen</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">P. venta</th>
-            <th className="py-2.5 px-2 text-center font-medium text-gray-500">Ganancia</th>
+            {isOwnCotizacion && <th className="py-2.5 px-2 text-center font-medium text-gray-500">Ganancia</th>}
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Subtotal</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Acc.</th>
           </tr>
@@ -88,7 +90,7 @@ return (
         <tbody>
           {items.length === 0 ? (
             <tr>
-              <td colSpan={14} className="py-10 text-center text-gray-400">
+              <td colSpan={isOwnCotizacion ? 14 : 13} className="py-10 text-center text-gray-400">
                 Sin ítems — agrega el primero
               </td>
             </tr>
@@ -172,9 +174,9 @@ return (
                   <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{simboloMoneda} {costoTotal.toFixed(2)}</td>
                   <td className="py-3 px-2 font-medium text-xs">{(margen ?? 0).toFixed(1)} % </td>
                   <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{simboloMoneda} {precioVenta.toFixed(2)}</td>
-                  <td className={`py-2.5 px-2 text-center tabular-nums font-medium ${ganancia > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                  {isOwnCotizacion && <td className={`py-2.5 px-2 text-center tabular-nums font-medium ${ganancia > 0 ? 'text-green-700' : 'text-red-700'}`}>
                     {simboloMoneda} {ganancia.toFixed(2)}
-                  </td>
+                  </td>}
                   <td className="py-2.5 px-2 text-center tabular-nums font-medium text-gray-800">
                     {simboloMoneda} {subtotal.toFixed(2)}
                   </td>

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Cliente } from "../../types/cotizaciones.type";
 
 interface Props {
@@ -31,8 +32,8 @@ interface Props {
   fecha: string;
   setFecha: (v: string) => void;
 
-  validezDias: number;
-  setValidezDias: (v: number) => void;
+  validezDias: number | undefined;
+  setValidezDias: (v: number | undefined) => void;
 
   titulo: string;
   setTitulo: (v:string) => void;
@@ -42,7 +43,6 @@ interface Props {
 }
 
 export function CotizacionGeneralForm({ 
-  usuarioNombre,
   clienteId,
   setClienteId,
   clientes,
@@ -62,42 +62,77 @@ export function CotizacionGeneralForm({
   plataformas,
   titulo,
   setTitulo,
-  disabled
+  disabled,
+  cotizacion
 }: Props) {
 
+  const [searchClienteInput, setSearchClienteInput] = useState('');
+  const [showClienteDropdown, setShowClienteDropdown] = useState(false);
+
   const selectedCliente = clientes.find((c) => c.id === clienteId);
+  
+  const filteredClientes = clientes.filter(cliente =>
+    cliente.nombre.toLowerCase().includes(searchClienteInput.toLowerCase())
+  );
+
+  const handleClienteSelect = (cliente: Cliente) => {
+    setClienteId(cliente.id);
+    setSearchClienteInput(cliente.nombre);
+    setShowClienteDropdown(false);
+    if (cliente.moneda_id) {
+      setMonedaId(cliente.moneda_id);
+    }
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border p-6">
             <h2 className="text-xl text-gray-800 mb-4">Información General</h2>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
+              <div className="relative">
                 <label className="block text-sm mb-2 text-gray-700">Cliente</label>
-                <select disabled={disabled}
-                  value={clienteId ?? ''}
+                <input 
+                  disabled={disabled}
+                  type="text"
+                  value={searchClienteInput || selectedCliente?.nombre || ''}
                   onChange={(e) => {
-                    const selectedId = Number(e.target.value);
-                    const selectedCliente = clientes.find((c) => c.id === selectedId);
-                    setClienteId(selectedId);
-                    if (selectedCliente?.moneda_id) {
-                    setMonedaId(selectedCliente.moneda_id);
-                    }
+                    setSearchClienteInput(e.target.value);
+                    setShowClienteDropdown(true);
                   }}
+                  onFocus={() => setShowClienteDropdown(true)}
+                  placeholder="Buscar cliente..."
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="" disabled>
-                    Seleccione un cliente
-                  </option>
-                  {clientes.map((clienteOption) => (
-                    <option key={clienteOption.id} value={clienteOption.id}>
-                      {clienteOption.nombre}
-                    </option>
-                  ))}
-                </select>
+                />
+                
+                {showClienteDropdown && !disabled && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                    {filteredClientes.length > 0 ? (
+                      filteredClientes.map((cliente) => (
+                        <button
+                          key={cliente.id}
+                          type="button"
+                          onClick={() => handleClienteSelect(cliente)}
+                          className="w-full text-left px-4 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 text-gray-800 text-sm"
+                        >
+                          {cliente.nombre}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-4 py-3 text-gray-400 text-sm text-center">
+                        No se encontraron clientes
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              {/* <div className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
-                Realizado por: {usuarioNombre}
-              </div> */}
+
+              <div>
+                <label className="block text-sm mb-2 text-gray-700">Ejecutivo</label>
+                <div className="px-4 py-2 border rounded-lg bg-gray-50 text-gray-700">
+                  {cotizacion?.user?.profile?.nombres || cotizacion?.user?.name || 'Desconocido'}
+                  {cotizacion?.user?.profile?.apellidos ? ` ${cotizacion.user.profile.apellidos}` : ''}
+                </div>
+              </div>
               <div className="md:col-span-2">
                 <label className="block text-sm mb-2 text-gray-700">Título *</label>
                 <input disabled={disabled}
@@ -112,8 +147,8 @@ export function CotizacionGeneralForm({
                 <label className="block text-sm mb-2 text-gray-700">Validez (días)</label>
                 <input disabled={disabled}
                   type="number"
-                  value={validezDias}
-                  onChange={(e) => setValidezDias(Number(e.target.value))}
+                  value={validezDias || ''}
+                  onChange={(e) => setValidezDias(e.target.value ? Number(e.target.value) : undefined)}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder='Ingresa días de validez, ej: 30'
                 />
@@ -161,7 +196,7 @@ export function CotizacionGeneralForm({
                 </select>
               </div>
               <div>
-                <label className="block text-sm mb-2 text-gray-700">Plataforma</label>
+                <label className="block text-sm mb-2 text-gray-700">Requerimiento Via: </label>
                 <select disabled={disabled}
                   value={plataformaId ?? 1}
                   onChange={(e) => setPlataformaId(Number(e.target.value))}

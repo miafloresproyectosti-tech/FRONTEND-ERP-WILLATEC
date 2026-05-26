@@ -70,7 +70,7 @@ const isViewMode = location.pathname.includes('/view');
   const [plantillaId, setPlantillaId] = useState<number>(1);
   const [plataformaId, setPlataformaId] = useState<number>(1);
   const [fecha, setFecha] = useState('');
-  const [validezDias, setValidezDias] = useState(30);
+  const [validezDias, setValidezDias] = useState<number | undefined>(30);
   const [plantillas, setPlantillas] = useState<{id:number,nombre:string}[]>([]);
   const [plataformas, setPlataformas] = useState<{id:number,nombre:string}[]>([]);
   const [monedaId, setMonedaId] = useState<number>(1); // 1=PEN, 2=USD
@@ -100,6 +100,9 @@ const isViewMode = location.pathname.includes('/view');
 
   const TIPO_CAMBIO_DOLAR = 3.6; // Ejemplo, en un caso real se debería obtener dinámicamente DE DOLAR A SOLES
   const TIPO_CAMBIO_SOLES = 3.3; // Ejemplo, en un caso real se debería obtener dinámicamente DE SOLES A DOLAR
+
+  // Verificar si el usuario actual es el propietario de la cotización
+  const isOwnCotizacion = cotizacion && user ? cotizacion.user_id === user.id : true;
 
   useEffect(() => {
     if (!cotizacion) return;
@@ -175,7 +178,7 @@ const isViewMode = location.pathname.includes('/view');
 
     resetItemForm();
 
-    setShowItemFormModal(true);
+    setShowItemTypeModal(true);
   };
 
   const handleOpenEditItem = (item: CotizacionItem) => {
@@ -676,7 +679,7 @@ const handleAddItem = async () => {
     descripcion: '',
   });
 
-  setShowCostosModal(false);
+  // setShowCostosModal(false);
   };
 
 
@@ -883,10 +886,10 @@ const handleExportarPdf = async () => {
 
 // ====== HELPERS ======
 
-const nombreUsuario =
-  cotizacion?.user?.profile
-    ? `${cotizacion.user.profile.nombres} ${cotizacion.user.profile.apellidos}`
-    : cotizacion?.user?.name || 'Sin asignar';
+// const nombreUsuario =
+//   cotizacion?.user?.profile
+//     ? `${cotizacion.user.profile.nombres} ${cotizacion.user.profile.apellidos}`
+//     : cotizacion?.user?.name || 'Sin asignar';
 
   const resetItemForm = () => {
     setItemForm({
@@ -1029,6 +1032,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
             onAddItem={handleOpenNewItem} // 🔥 AQUÍ
 
             readOnly={isViewMode}
+            isOwnCotizacion={isOwnCotizacion}
           />
 
         </div>
@@ -1041,6 +1045,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
             resumen={resumen}
             simboloMoneda={simboloMoneda}
             items={itemsCalculados}
+            isOwnCotizacion={isOwnCotizacion}
           />
 
           {comentariosRevision.length > 0 && (

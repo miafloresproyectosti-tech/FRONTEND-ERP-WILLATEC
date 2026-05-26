@@ -13,12 +13,14 @@ interface Props {
   resumen: Resumen;
   simboloMoneda: string;
   items: CotizacionItem[];
+  isOwnCotizacion?: boolean;
 }
 
 export function CotizacionResumen({
   resumen,
   simboloMoneda,
   items,
+  isOwnCotizacion = true,
 }: Props) {
   return (
     <div className="bg-white rounded-xl shadow-sm border p-6">
@@ -54,9 +56,11 @@ export function CotizacionResumen({
               <div className="border-t pt-3 flex justify-between text-lg font-bold">
                 Total: <span>{simboloMoneda} {resumen.total.toFixed(2)}</span>
               </div>
+              {isOwnCotizacion && (
               <div className="flex justify-between text-green-600 font-bold">
                 Ganancia: <span>{simboloMoneda} {(resumen.ganancia ?? 0).toFixed(2)}</span>
               </div>
+              )}
               <div className="flex justify-between pt-2 border-t text-blue-600 font-bold">
                 Margen Promedio: <span>{items.length > 0 ? (items.reduce((sum, item) => sum + item.margen, 0) / items.length).toFixed(1) : '0.0'}%</span>
               </div>
