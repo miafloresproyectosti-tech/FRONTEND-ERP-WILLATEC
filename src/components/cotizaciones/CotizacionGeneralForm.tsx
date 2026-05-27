@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Cliente } from "../../types/cotizaciones.type";
 
 interface Props {
-
   usuarioNombre?: string;
 
   disabled: boolean;
@@ -19,6 +18,10 @@ interface Props {
 
   monedaId: number;
   setMonedaId: (id: number) => void;
+  tipoCambioSolesADolar: number;
+  setTipoCambioSolesADolar: (v:number) => void;
+  tipoCambioDolarASoles: number;
+  setTipoCambioDolarASoles: (v:number) => void;
 
   plataformaId:number;
   setPlataformaId: (id:number) =>void;
@@ -38,11 +41,12 @@ interface Props {
   titulo: string;
   setTitulo: (v:string) => void;
 
-  plantillas: { id: number; nombre: string }[];
+  plantillas: { id: number; nombre: string; incluye_igv: Boolean }[];
   plataformas: { id: number; nombre: string} [];
 }
 
 export function CotizacionGeneralForm({ 
+  usuarioNombre,
   clienteId,
   setClienteId,
   clientes,
@@ -50,6 +54,10 @@ export function CotizacionGeneralForm({
   setPlantillaId,
   monedaId,
   setMonedaId,
+    tipoCambioSolesADolar,
+    setTipoCambioSolesADolar,
+    tipoCambioDolarASoles,
+    setTipoCambioDolarASoles,
   plataformaId,
   setPlataformaId,
   estado_cotizacion_id,
@@ -70,6 +78,32 @@ export function CotizacionGeneralForm({
   const [showClienteDropdown, setShowClienteDropdown] = useState(false);
 
   const selectedCliente = clientes.find((c) => c.id === clienteId);
+
+  const [plantillaImposesMoneda, setPlantillaImposesMoneda] = useState(false);
+
+  const detectMonedaFromPlantilla = (nombre?: string): number | null => {
+    if (!nombre) return null;
+    const up = nombre.toUpperCase();
+    if (up.includes('DOLAR') || up.includes('DÓLAR') || up.includes('USD')) return 2;
+    if (up.includes('SOLES') || up.includes('S/')) return 1;
+    return null;
+  };
+
+  const getEjecutivoNombre = () => {
+    const ejecutivo = cotizacion?.user || cotizacion?.usuario;
+    const nombres = ejecutivo?.user?.nombres;
+    const apellidos = ejecutivo?.user?.apellidos;
+
+    if (nombres) {
+      return `${nombres}${apellidos ? ` ${apellidos}` : ''}`;
+    }
+
+    if (usuarioNombre) {
+      return usuarioNombre;
+    }
+
+    return cotizacion?.user_id ? `Usuario #${cotizacion.user_id}` : 'Desconocido';
+  };
   
   const filteredClientes = clientes.filter(cliente =>
     cliente.nombre.toLowerCase().includes(searchClienteInput.toLowerCase())
@@ -83,6 +117,31 @@ export function CotizacionGeneralForm({
       setMonedaId(cliente.moneda_id);
     }
   };
+
+  const handlePlantillaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = Number(e.target.value);
+    setPlantillaId(id);
+    const plantilla = plantillas.find(p => p.id === id);
+    const moneda = detectMonedaFromPlantilla(plantilla?.nombre);
+    if (moneda) {
+      setMonedaId(moneda);
+      setPlantillaImposesMoneda(true);
+    } else {
+      setPlantillaImposesMoneda(false);
+    }
+  };
+
+  // Inicializar bloqueo de moneda si la plantilla actual impone moneda
+  useEffect(() => {
+    const plantilla = plantillas.find(p => p.id === plantillaId);
+    const moneda = detectMonedaFromPlantilla(plantilla?.nombre);
+    if (moneda) {
+      setMonedaId(moneda);
+      setPlantillaImposesMoneda(true);
+    } else {
+      setPlantillaImposesMoneda(false);
+    }
+  }, [plantillaId, plantillas]);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border p-6">
@@ -129,8 +188,7 @@ export function CotizacionGeneralForm({
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Ejecutivo</label>
                 <div className="px-4 py-2 border rounded-lg bg-gray-50 text-gray-700">
-                  {cotizacion?.user?.profile?.nombres || cotizacion?.user?.name || 'Desconocido'}
-                  {cotizacion?.user?.profile?.apellidos ? ` ${cotizacion.user.profile.apellidos}` : ''}
+                  {getEjecutivoNombre()}
                 </div>
               </div>
               <div className="md:col-span-2">
@@ -157,7 +215,7 @@ export function CotizacionGeneralForm({
                 <label className="block text-sm mb-2 text-gray-700">Plantilla</label>
                 <select disabled={disabled}
                   value={plantillaId ?? ''}
-                  onChange={(e) => setPlantillaId(Number(e.target.value))}
+                  onChange={handlePlantillaChange}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="" disabled >Seleccionar plantilla</option>
@@ -185,15 +243,42 @@ export function CotizacionGeneralForm({
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Moneda</label>
-                <select disabled={disabled}
-                  value={selectedCliente?.moneda_id || monedaId}
-                  onChange={(e) => setMonedaId(Number(e.target.value))}
+                <select disabled={disabled || plantillaImposesMoneda}
+                  value={monedaId}
+                  onChange={(e) => { setMonedaId(Number(e.target.value)); setPlantillaImposesMoneda(false); }}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="" disabled >Seleccionar moneda</option>
                   <option value={1}>PEN (S/)</option>
                   <option value={2}>USD ($)</option>
                 </select>
+                {plantillaImposesMoneda && (
+                  <p className="text-xs text-gray-500 mt-1">Moneda asignada por la plantilla</p>
+                )}
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm mb-2 text-gray-700">Soles → USD</label>
+                    <input
+                      disabled={disabled}
+                      type="number"
+                      step="0.01"
+                      value={tipoCambioSolesADolar}
+                      onChange={(e) => setTipoCambioSolesADolar(Number(e.target.value || 0))}
+                      className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm mb-2 text-gray-700">USD → Soles</label>
+                    <input
+                      disabled={disabled}
+                      type="number"
+                      step="0.01"
+                      value={tipoCambioDolarASoles}
+                      onChange={(e) => setTipoCambioDolarASoles(Number(e.target.value || 0))}
+                      className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Requerimiento Via: </label>

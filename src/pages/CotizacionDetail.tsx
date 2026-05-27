@@ -41,7 +41,6 @@ import {
   DollarSign,
   Check,
   XCircle,
-  Send,
 } from 'lucide-react';
 
 
@@ -58,6 +57,8 @@ export function CotizacionDetail() {
   // ====== STATE MANAGEMENT ======
   const [loading, setLoading] = useState(isEditing);
   const [, setSaving] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
 
   //LOCALIZACIÓN
 const location = useLocation();
@@ -71,12 +72,14 @@ const isViewMode = location.pathname.includes('/view');
   const [plataformaId, setPlataformaId] = useState<number>(1);
   const [fecha, setFecha] = useState('');
   const [validezDias, setValidezDias] = useState<number | undefined>(30);
-  const [plantillas, setPlantillas] = useState<{id:number,nombre:string}[]>([]);
+  const [plantillas, setPlantillas] = useState<{id:number,nombre:string, incluye_igv: Boolean}[]>([]);
   const [plataformas, setPlataformas] = useState<{id:number,nombre:string}[]>([]);
   const [monedaId, setMonedaId] = useState<number>(1); // 1=PEN, 2=USD
+  const [tipoCambioSolesADolar, setTipoCambioSolesADolar] = useState<number>(3.3);
+  const [tipoCambioDolarASoles, setTipoCambioDolarASoles] = useState<number>(3.5);
   const [modoDistribucion, setModoDistribucion] = useState<'POR_ITEM' | 'POR_CANTIDAD'>('POR_ITEM');
   const [titulo, setTitulo] = useState('');
-  const simboloMoneda = cotizacion?.cliente?.moneda_id === 2 ? '$' : 'S/';
+  const simboloMoneda = monedaId === 2 ? '$' : 'S/';
 
   // Listas
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -98,8 +101,7 @@ const isViewMode = location.pathname.includes('/view');
 
   const [estadoCotizacionId, setEstadoCotizacionId] = useState<number>(1);
 
-  const TIPO_CAMBIO_DOLAR = 3.6; // Ejemplo, en un caso real se debería obtener dinámicamente DE DOLAR A SOLES
-  const TIPO_CAMBIO_SOLES = 3.3; // Ejemplo, en un caso real se debería obtener dinámicamente DE SOLES A DOLAR
+  // tipoCambio es ahora estado editable por el usuario
 
   // Verificar si el usuario actual es el propietario de la cotización
   const isOwnCotizacion = cotizacion && user ? cotizacion.user_id === user.id : true;
@@ -109,6 +111,37 @@ const isViewMode = location.pathname.includes('/view');
 
     setEstadoCotizacionId(cotizacion.estado_cotizacion_id);
   }, [cotizacion]);
+
+  const handleSetMonedaId = (id: number) => {
+    if (id === monedaId) return;
+    if (isViewMode) { setMonedaId(id); return; }
+
+    // convertir todos los montos usando el tipo de cambio correcto según dirección
+    const convertirMultiplicador = (() => {
+      // de PEN(1) a USD(2) => dividir por tipoCambioSolesADolar
+      if (monedaId === 1 && id === 2) return 1 / tipoCambioSolesADolar;
+      // de USD(2) a PEN(1) => multiplicar por tipoCambioDolarASoles
+      if (monedaId === 2 && id === 1) return tipoCambioDolarASoles;
+      return 1;
+    })();
+
+    setItems(prev => prev.map(item => ({
+      ...item,
+      costo_base: Number((Number(item.costo_base || 0) * convertirMultiplicador).toFixed(2)),
+      costo_unitario: Number((Number(item.costo_unitario || 0) * convertirMultiplicador).toFixed(2)),
+      costo_total: Number((Number(item.costo_total || 0) * convertirMultiplicador).toFixed(2)),
+      precio_venta: Number((Number(item.precio_venta || 0) * convertirMultiplicador).toFixed(2)),
+      subtotal: Number((Number(item.subtotal || 0) * convertirMultiplicador).toFixed(2)),
+      ganancia: Number((Number(item.ganancia || 0) * convertirMultiplicador).toFixed(2)),
+    })));
+
+    setCostos(prev => prev.map(c => ({
+      ...c,
+      monto: Number((Number(c.monto || 0) * convertirMultiplicador).toFixed(2)),
+    })));
+
+    setMonedaId(id);
+  };
 
   // Formularios
   const [itemForm, setItemForm] = useState<ItemForm>({
@@ -335,33 +368,37 @@ const isViewMode = location.pathname.includes('/view');
   const handleAprobarCotizacion = async () => {
     const cotizacionId = cotizacion?.id || currentCotizacionId;
     if (!cotizacionId) return;
+    if (isApproving) return; // Prevenir doble click
 
-  try {
-    const data = await aprobarCotizacion(cotizacionId);
-    const historialApi = await getCotizacionHistorial(cotizacionId);
+    setIsApproving(true);
+    try {
+      const data = await aprobarCotizacion(cotizacionId);
+      const historialApi = await getCotizacionHistorial(cotizacionId);
 
-    setEstadoCotizacionId(4);
-    setCotizacion(data);
-    setHistorial(historialApi);
+      setEstadoCotizacionId(4);
+      setCotizacion(data);
+      setHistorial(historialApi);
 
-    addNotification({
-      message: 'Cotización aprobada',
-      type: 'success',
-      duration: 3000,
-    } as any);
-
-  } catch (error) {
-    addNotification({
-      message: 'Error al aprobar',
-      type: 'error',
-      duration: 4000,
-    } as any);
-  }
+      addNotification({
+        message: '✓ Cotización aprobada con éxito',
+        type: 'success',
+        duration: 3000,
+      } as any);
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al aprobar la cotización',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    } finally {
+      setIsApproving(false);
+    }
   };
 
   const handleRechazarCotizacion = async () => {
     const cotizacionId = cotizacion?.id || currentCotizacionId;
     if (!cotizacionId) return;
+    if (isRejecting) return; // Prevenir doble click
 
     const comentario = comentarioRechazo.trim();
 
@@ -374,6 +411,7 @@ const isViewMode = location.pathname.includes('/view');
       return;
     }
 
+    setIsRejecting(true);
     try {
       const data = await rechazarCotizacion(cotizacionId, comentario);
       const historialApi = await getCotizacionHistorial(cotizacionId);
@@ -385,7 +423,7 @@ const isViewMode = location.pathname.includes('/view');
       setComentarioRechazo('');
 
       addNotification({
-        message: 'CotizaciÃ³n rechazada',
+        message: '✗ Cotización rechazada con éxito',
         type: 'success',
         duration: 3000,
       } as any);
@@ -395,6 +433,8 @@ const isViewMode = location.pathname.includes('/view');
         type: 'error',
         duration: 4000,
       } as any);
+    } finally {
+      setIsRejecting(false);
     }
   };
 
@@ -410,6 +450,8 @@ const isViewMode = location.pathname.includes('/view');
       moneda_id: monedaId,
       modo_distribucion: modoDistribucion,
       titulo: titulo,
+      tipo_cambio_soles_a_usd: tipoCambioSolesADolar,
+      tipo_cambio_usd_a_soles: tipoCambioDolarASoles,
       validez_dias: validezDias,
       estado_cotizacion_id: estadoId,
       items: itemsLimpios,
@@ -820,8 +862,8 @@ const handleIntercambiarMoneda = () => {
   const esSoles = monedaId === 1;
 
   const nuevoCosto = esSoles
-    ? itemForm.costo_base / TIPO_CAMBIO_SOLES
-    : itemForm.costo_base * TIPO_CAMBIO_DOLAR;
+    ? itemForm.costo_base / tipoCambioSolesADolar
+    : itemForm.costo_base * tipoCambioDolarASoles;
 
   setItemForm(prev => ({
     ...prev,
@@ -886,10 +928,17 @@ const handleExportarPdf = async () => {
 
 // ====== HELPERS ======
 
-// const nombreUsuario =
-//   cotizacion?.user?.profile
-//     ? `${cotizacion.user.profile.nombres} ${cotizacion.user.profile.apellidos}`
-//     : cotizacion?.user?.name || 'Sin asignar';
+const nombreUsuario = (() => {
+  const ejecutivo = (cotizacion?.user || cotizacion?.usuario) as any;
+  const nombres = ejecutivo?.profile?.nombres || ejecutivo?.nombres || ejecutivo?.name;
+  const apellidos = ejecutivo?.profile?.apellidos || ejecutivo?.apellidos;
+
+  if (nombres) {
+    return `${nombres}${apellidos ? ` ${apellidos}` : ''}`;
+  }
+
+  return 'Sin asignar';
+})();
 
   const resetItemForm = () => {
     setItemForm({
@@ -925,12 +974,16 @@ const {
   items: itemsCalculados,
   resumen
 } = useMemo(() => {
+    const plantilla = plantillas.find(p => p.id === plantillaId);
+    const includeIgv = Boolean((plantilla as any)?.incluye_igv);
+
     return recalcularItems(
       items,
       costos,
-      modoDistribucion
+      modoDistribucion,
+      includeIgv
     );
-}, [items, costos, modoDistribucion]);
+}, [items, costos, modoDistribucion, plantillaId, plantillas]);
 
 const estadoLabels: Record<number, string> = {
   1: 'Borrador',
@@ -982,7 +1035,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
         <div className="lg:col-span-2 space-y-6">
           {/* FORM INFO GENERAL */}
           <CotizacionGeneralForm
-            // usuarioNombre={nombreUsuario}
+            usuarioNombre={nombreUsuario}
             clienteId={clienteId}
             setClienteId={setClienteId}
             clientes={clientes}
@@ -992,7 +1045,11 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
             setPlantillaId={setPlantillaId}
 
             monedaId={monedaId}
-            setMonedaId={setMonedaId}
+            setMonedaId={handleSetMonedaId}
+            tipoCambioSolesADolar={tipoCambioSolesADolar}
+            setTipoCambioSolesADolar={setTipoCambioSolesADolar}
+            tipoCambioDolarASoles={tipoCambioDolarASoles}
+            setTipoCambioDolarASoles={setTipoCambioDolarASoles}
             
             titulo={titulo}
             setTitulo={setTitulo}
@@ -1083,15 +1140,25 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
               {user?.role === 'SUPERADMIN' && estadoCotizacionId === 2 && (
                 <button
                   onClick={handleAprobarCotizacion}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+                  disabled={isApproving}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <Check className="w-5 h-5" /> Aprobar Cotizacion
+                  {isApproving ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" /> Aprobando...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-5 h-5" /> Aprobar Cotizacion
+                    </>
+                  )}
                 </button>
               )}
               {user?.role === 'SUPERADMIN' && estadoCotizacionId === 2 && (
                 <button
                   onClick={() => setShowRechazoModal(true)}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  disabled={isRejecting}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <XCircle className="w-5 h-5" /> Rechazar Cotizacion
                 </button>

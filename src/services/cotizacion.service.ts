@@ -102,9 +102,10 @@ export interface Cotizacion {
   fecha: string;
   titulo: string;
   tipo_cambio: number;
-  validez_dias: number;
   cliente_id: number;
   plantilla_id: number;
+  moneda_id?: number;
+  validez_dias: number;
   plataforma_id:number;
   user_id: number;
   modo_distribucion: "POR_ITEM" | "POR_CANTIDAD";

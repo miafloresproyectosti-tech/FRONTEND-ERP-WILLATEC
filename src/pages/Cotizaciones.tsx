@@ -105,6 +105,18 @@ export default function Cotizaciones() {
     };
   };
 
+  const getEjecutivoNombre = (cotizacion: ApiCotizacion) => {
+    const ejecutivo = (cotizacion.user || cotizacion.usuario) as any;
+    const nombres = ejecutivo?.profile?.nombres || ejecutivo?.nombres || ejecutivo?.name;
+    const apellidos = ejecutivo?.profile?.apellidos;
+
+    if (nombres) {
+      return `${nombres}${apellidos ? ` ${apellidos}` : ''}`;
+    }
+
+    return cotizacion.user_id ? `Usuario #${cotizacion.user_id}` : 'N/A';
+  };
+
   const totalPorEstado = {
     borrador: cotizaciones.filter((c) => Number(c.estado_cotizacion_id) === 1).length,
     enviada: cotizaciones.filter((c) => Number(c.estado_cotizacion_id) === 2).length,
@@ -346,8 +358,7 @@ export default function Cotizaciones() {
 
                         <td className="px-6 py-5 text-slate-600 dark:text-slate-300">
                           <div className="text-sm">
-                            {cotizacion.user?.profile?.nombres || 'N/A'}
-                            {cotizacion.user?.profile?.apellidos ? ` ${cotizacion.user.profile.apellidos}` : ''}
+                            {getEjecutivoNombre(cotizacion)}
                           </div>
                         </td>
 
