@@ -7,6 +7,7 @@ import { getClientes, type Cliente } from '../services/cliente.service';
 import { getProductos, type Producto} from "../services/producto.service";
 import { getPlantillas } from '../services/plantilla.service';
 import { getPlataformas } from '../services/plataforma.service';
+import { getUsers, type User as ApiUser } from '../services/usuario.service';
 import { recalcularItems } from "../utils/recalcularItems";
 import { CotizacionResumen } from '../components/cotizaciones/CotizacionResumen';
 import { CotizacionGeneralForm } from '../components/cotizaciones/CotizacionGeneralForm';
@@ -41,6 +42,7 @@ import {
   DollarSign,
   Check,
   XCircle,
+  UserCheck,
 } from 'lucide-react';
 
 
@@ -87,6 +89,18 @@ const isViewMode = location.pathname.includes('/view');
   const [costos, setCostos] = useState<CotizacionCostosAdicional[]>([]);
   const [historial, setHistorial] = useState<CotizacionHistorial[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [usuarios, setUsuarios] = useState<ApiUser[]>([]);
+
+  // Estado de delegación
+  const [delegadoId, setDelegadoId] = useState<number | null>(null);
+  const [delegadoSelectionId, setDelegadoSelectionId] = useState<number | null>(null);
+  const [showDelegacionModal, setShowDelegacionModal] = useState(false);
+
+  useEffect(() => {
+    if (showDelegacionModal) {
+      setDelegadoSelectionId(delegadoId);
+    }
+  }, [showDelegacionModal, delegadoId]);
 
   // UI State
   const [editingItem, setEditingItem] = useState<CotizacionItem | null>(null);
@@ -250,6 +264,19 @@ const isViewMode = location.pathname.includes('/view');
     fetchClientes();
   }, []);
 
+  // Cargar usuarios (para delegación)
+  useEffect(() => {
+    const fetchUsuarios = async () => {
+      try {
+        const data = await getUsers();
+        setUsuarios(data);
+      } catch (error) {
+        console.warn('Error al cargar usuarios:', error);
+      }
+    };
+    fetchUsuarios();
+  }, []);
+
   //Cargar Productos:
   useEffect(() => {
     if (isViewMode || !showProductModal || productos.length > 0) return;
@@ -339,6 +366,7 @@ const isViewMode = location.pathname.includes('/view');
       setMonedaId(data.cliente?.moneda_id || 1);
       setModoDistribucion(data.modo_distribucion);
       setTitulo(data.titulo);
+      setDelegadoId(data.delegado_id || null);
       setItems(data.items || []);
       setCostos(data.costosAdicionales || data.costos_adicionales || []);
       const historialData = data.historial || data.cotizacion_historial || [];
@@ -369,6 +397,16 @@ const isViewMode = location.pathname.includes('/view');
     const cotizacionId = cotizacion?.id || currentCotizacionId;
     if (!cotizacionId) return;
     if (isApproving || isRejecting) return; // Prevenir doble click y acciones cruzadas
+
+    // Si la cotización fue delegada, solo el delegado puede aprobarla
+    if (cotizacion?.delegado_id && user?.id !== cotizacion.delegado_id) {
+      addNotification({
+        message: 'No estás autorizado: esta cotización fue delegada a otro usuario',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
 
     setIsApproving(true);
     try {
@@ -429,6 +467,16 @@ const isViewMode = location.pathname.includes('/view');
     }
 
     setIsRejecting(true);
+    // Si la cotización fue delegada, solo el delegado puede rechazarla
+    if (cotizacion?.delegado_id && user?.id !== cotizacion.delegado_id) {
+      addNotification({
+        message: 'No estás autorizado: esta cotización fue delegada a otro usuario',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      setIsRejecting(false);
+      return;
+    }
     try {
       const data = await rechazarCotizacion(cotizacionId, comentario);
       const historialApi = await getCotizacionHistorial(cotizacionId);
@@ -472,11 +520,51 @@ const isViewMode = location.pathname.includes('/view');
     }
   };
 
+  const handleAsignarDelegado = async () => {
+    if (!currentCotizacionId) return;
+    if (!delegadoSelectionId) {
+      addNotification({
+        message: 'Selecciona un delegado antes de guardar',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const payload = buildCotizacionPayload(estadoCotizacionId);
+      const data = await updateCotizacion(currentCotizacionId, {
+        ...payload,
+        delegado_id: delegadoSelectionId,
+      });
+
+      setCotizacion(data);
+      setDelegadoId(data.delegado_id || delegadoSelectionId);
+      setShowDelegacionModal(false);
+      addNotification({
+        message: 'Delegado asignado correctamente',
+        type: 'success',
+        duration: 4000,
+      } as any);
+      // Volver a la lista de cotizaciones después de delegar
+      navigate('/cotizaciones');
+    } catch (error: any) {
+      addNotification({
+        message: error?.response?.data?.message || 'Error al asignar delegado',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const buildCotizacionPayload = (estadoId = estadoCotizacionId) => {
     // NO enviar cotizacion_id en items - el backend lo asigna automáticamente del URL
     const itemsLimpios = items.map(({ cotizacion_id, ...item }) => item);
 
-    return {
+    const payload: any = {
       id: currentCotizacionId,
       cliente_id: clienteId ?? 0,
       plantilla_id: plantillaId,
@@ -492,6 +580,13 @@ const isViewMode = location.pathname.includes('/view');
       costos,
       costos_adicionales: costos,
     };
+
+    // Incluir delegado_id solo si el usuario es SUPERADMIN
+    if (user?.role === 'SUPERADMIN' && delegadoId) {
+      payload.delegado_id = delegadoId;
+    }
+
+    return payload;
   };
 
   // const handleEnviarAprobacion = async () => {
@@ -539,7 +634,10 @@ const isViewMode = location.pathname.includes('/view');
     try {
       if (isEditing && currentCotizacionId ) {
         // Actualizar
-        await updateCotizacion(currentCotizacionId, payload);
+        const updated = await updateCotizacion(currentCotizacionId, payload);
+        // sincronizar estado local con respuesta del servidor
+        setCotizacion(updated);
+        setDelegadoId(updated.delegado_id || null);
         addNotification({
           message: 'Cotización actualizada',
           type: 'success',
@@ -974,6 +1072,19 @@ const nombreUsuario = (() => {
   return 'Sin asignar';
 })();
 
+const ventasUsuarios = usuarios.filter((u) =>
+  u.roles?.some((role) => role.name?.toUpperCase() === 'VENTAS')
+);
+
+const nombreDelegado = (() => {
+  const delegado = cotizacion?.delegado || usuarios.find((u) => u.id === delegadoId);
+  if (!delegado) return 'No delegado';
+  const nombres = (delegado as any).nombres || (delegado as any).name || '';
+  const apellidos = (delegado as any).apellidos || '';
+  const nombreCompleto = `${nombres}${apellidos ? ` ${apellidos}` : ''}`.trim();
+  return nombreCompleto || 'Delegado desconocido';
+})();
+
   const resetItemForm = () => {
     setItemForm({
       id: 1,
@@ -1028,7 +1139,14 @@ const estadoLabels: Record<number, string> = {
   6: 'OC registrada',
 };
 
-const comentariosRevision = historial.filter((h) => h.comentario?.trim());
+const comentariosRevision = historial
+  .filter((h) => h.comentario?.trim())
+  .slice()
+  .sort((a, b) => {
+    const fechaA = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const fechaB = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return fechaB - fechaA;
+  });
 
 const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
   const usuario = movimiento.usuario || movimiento.user;
@@ -1139,6 +1257,44 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
             isOwnCotizacion={isOwnCotizacion}
           />
 
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h2 className="text-base font-semibold text-gray-800 mb-3">
+              Delegado de aprobación
+            </h2>
+            <p className="text-sm text-gray-600 mb-3">
+              {nombreDelegado}
+            </p>
+
+            {user?.role === 'SUPERADMIN' && !isViewMode && (
+              <div>
+                <label className="block text-sm text-gray-700 mb-2">
+                  Seleccionar delegado
+                </label>
+                <select
+                  value={delegadoId ?? ''}
+                  onChange={(e) => setDelegadoId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Sin delegado</option>
+                  {ventasUsuarios.map((usuario) => (
+                    <option key={usuario.id} value={usuario.id}>
+                      {`${usuario.nombres || (usuario as any).name || 'Usuario'} ${(usuario as any).apellidos || ''}`.trim()}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-2">
+                  El delegado se aplicará al guardar la cotización.
+                </p>
+              </div>
+            )}
+
+            {user?.role === 'SUPERADMIN' && isViewMode && (
+              <p className="text-xs text-gray-500">
+                Solo un SUPERADMIN puede cambiar el delegado desde esta vista.
+              </p>
+            )}
+          </div>
+
           {comentariosRevision.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
               <h2 className="text-base font-semibold text-amber-900 mb-3">
@@ -1171,38 +1327,49 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
           {/* BOTONES */}
           {isViewMode && (
             <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
-              {user?.role === 'SUPERADMIN' && estadoCotizacionId === 2 && (
-                <button
-                  onClick={handleAprobarCotizacion}
-                  disabled={isApproving || isRejecting}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {isApproving ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" /> Aprobando...
-                    </>
-                  ) : (
-                    <>
-                      <Check className="w-5 h-5" /> Aprobar Cotizacion
-                    </>
-                  )}
-                </button>
+              {/* Mostrar si es SUPERADMIN O si es VENTAS y es delegado */}
+                  {estadoCotizacionId === 2 && ((delegadoId ? delegadoId === user?.id : user?.role === 'SUPERADMIN')) && (
+                <>
+                  <button
+                    onClick={handleAprobarCotizacion}
+                    disabled={isApproving || isRejecting}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isApproving ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" /> Aprobando...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-5 h-5" /> Aprobar Cotizacion
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setShowRechazoModal(true)}
+                    disabled={isApproving || isRejecting}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isRejecting ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" /> Rechazando...
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="w-5 h-5" /> Rechazar Cotizacion
+                      </>
+                    )}
+                  </button>
+                </>
               )}
+
+              {/* Botón para asignar delegado - solo SUPERADMIN */}
               {user?.role === 'SUPERADMIN' && estadoCotizacionId === 2 && (
                 <button
-                  onClick={() => setShowRechazoModal(true)}
-                  disabled={isApproving || isRejecting}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                  onClick={() => setShowDelegacionModal(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
-                  {isRejecting ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" /> Rechazando...
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="w-5 h-5" /> Rechazar Cotizacion
-                    </>
-                  )}
+                  <UserCheck className="w-5 h-5" /> Delegar Aprobación
                 </button>
               )}
 
@@ -1334,6 +1501,44 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
                 ) : (
                   'Rechazar'
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Modal Delegación */}
+      {showDelegacionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl">
+            <h3 className="text-xl font-bold mb-4">Delegar aprobación</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Selecciona el usuario de ventas que será responsable de aprobar esta cotización.
+            </p>
+            <select
+              value={delegadoSelectionId ?? ''}
+              onChange={(e) => setDelegadoSelectionId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 mb-4"
+            >
+              <option value="">Seleccionar delegado</option>
+              {ventasUsuarios.map((usuario) => (
+                <option key={usuario.id} value={usuario.id}>
+                  {`${usuario.nombres || (usuario as any).name || 'Usuario'} ${(usuario as any).apellidos || ''}`.trim()}
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDelegacionModal(false)}
+                className="flex-1 px-4 py-3 border rounded-lg text-gray-700 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAsignarDelegado}
+                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Asignar delegado
               </button>
             </div>
           </div>

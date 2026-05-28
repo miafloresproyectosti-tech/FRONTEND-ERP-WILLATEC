@@ -108,6 +108,7 @@ export interface Cotizacion {
   validez_dias: number;
   plataforma_id:number;
   user_id: number;
+  delegado_id?: number | null;
   modo_distribucion: "POR_ITEM" | "POR_CANTIDAD";
   subtotal: number;
   igv: number;
@@ -129,6 +130,12 @@ export interface Cotizacion {
   costos_adicionales?: CotizacionCostosAdicional[];
   historial?: CotizacionHistorial[];
   cotizacion_historial?: CotizacionHistorial[];
+  delegado?: {
+    id: number;
+    nombres?: string;
+    email?: string;
+    name?: string;
+  };
   // estadoCotizacion?: EstadoCotizacion;
   user?: {
     id: number;
@@ -172,6 +179,7 @@ export interface UpdateCotizacionData {
   fecha?: string;
   validez_dias?: number;
   titulo?: string;
+  delegado_id?: number | null;
 }
 
 export interface CreateItemData {
