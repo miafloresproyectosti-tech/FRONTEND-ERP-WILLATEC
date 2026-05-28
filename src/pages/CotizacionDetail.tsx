@@ -368,7 +368,7 @@ const isViewMode = location.pathname.includes('/view');
   const handleAprobarCotizacion = async () => {
     const cotizacionId = cotizacion?.id || currentCotizacionId;
     if (!cotizacionId) return;
-    if (isApproving) return; // Prevenir doble click
+    if (isApproving || isRejecting) return; // Prevenir doble click y acciones cruzadas
 
     setIsApproving(true);
     try {
@@ -379,11 +379,28 @@ const isViewMode = location.pathname.includes('/view');
       setCotizacion(data);
       setHistorial(historialApi);
 
+      const approverName = user?.name || 'Superadministrador';
+      const approvedAt = new Date().toLocaleString('es-PE');
+      const targetUserId = cotizacion?.user?.id || cotizacion?.user_id;
+
       addNotification({
-        message: '✓ Cotización aprobada con éxito',
+        title: 'Cotización aprobada',
+        description: `Aprobada por ${approverName} a las ${approvedAt}`,
         type: 'success',
-        duration: 3000,
+        icon: 'CheckCircle',
+        route: `/cotizaciones/${cotizacionId}/view`,
       } as any);
+
+      if (targetUserId) {
+        addNotification({
+          title: 'Tu cotización fue aprobada',
+          description: `La cotización ${cotizacionId} fue aprobada por ${approverName} a las ${approvedAt}`,
+          type: 'success',
+          icon: 'CheckCircle',
+          route: `/cotizaciones/${cotizacionId}/view`,
+          targetUserId,
+        } as any);
+      }
     } catch (error: any) {
       addNotification({
         message: error?.response?.data?.message || 'Error al aprobar la cotización',
@@ -398,7 +415,7 @@ const isViewMode = location.pathname.includes('/view');
   const handleRechazarCotizacion = async () => {
     const cotizacionId = cotizacion?.id || currentCotizacionId;
     if (!cotizacionId) return;
-    if (isRejecting) return; // Prevenir doble click
+    if (isRejecting || isApproving) return; // Prevenir doble click y acciones cruzadas
 
     const comentario = comentarioRechazo.trim();
 
@@ -422,11 +439,28 @@ const isViewMode = location.pathname.includes('/view');
       setShowRechazoModal(false);
       setComentarioRechazo('');
 
+      const approverName = user?.name || 'Superadministrador';
+      const rejectedAt = new Date().toLocaleString('es-PE');
+      const targetUserId = cotizacion?.user?.id || cotizacion?.user_id;
+
       addNotification({
-        message: '✗ Cotización rechazada con éxito',
-        type: 'success',
-        duration: 3000,
+        title: 'Cotización rechazada',
+        description: `Rechazada por ${approverName} a las ${rejectedAt}`,
+        type: 'warning',
+        icon: 'MessageCircle',
+        route: `/cotizaciones/${cotizacionId}/view`,
       } as any);
+
+      if (targetUserId) {
+        addNotification({
+          title: 'Tu cotización fue rechazada',
+          description: `La cotización ${cotizacionId} fue rechazada por ${approverName} a las ${rejectedAt}`,
+          type: 'warning',
+          icon: 'MessageCircle',
+          route: `/cotizaciones/${cotizacionId}/view`,
+          targetUserId,
+        } as any);
+      }
     } catch (error: any) {
       addNotification({
         message: error?.response?.data?.message || 'Error al rechazar',
@@ -1140,7 +1174,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
               {user?.role === 'SUPERADMIN' && estadoCotizacionId === 2 && (
                 <button
                   onClick={handleAprobarCotizacion}
-                  disabled={isApproving}
+                  disabled={isApproving || isRejecting}
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isApproving ? (
@@ -1157,10 +1191,18 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
               {user?.role === 'SUPERADMIN' && estadoCotizacionId === 2 && (
                 <button
                   onClick={() => setShowRechazoModal(true)}
-                  disabled={isRejecting}
+                  disabled={isApproving || isRejecting}
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <XCircle className="w-5 h-5" /> Rechazar Cotizacion
+                  {isRejecting ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" /> Rechazando...
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-5 h-5" /> Rechazar Cotizacion
+                    </>
+                  )}
                 </button>
               )}
 
@@ -1282,9 +1324,16 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
               </button>
               <button
                 onClick={handleRechazarCotizacion}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                disabled={isRejecting}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Rechazar
+                {isRejecting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin mr-2" /> Rechazando...
+                  </>
+                ) : (
+                  'Rechazar'
+                )}
               </button>
             </div>
           </div>

@@ -28,6 +28,7 @@ export interface Notification {
   route: string;
   read?: boolean;
   targetRole?: UserRole;
+  targetUserId?: number;
 }
 
 interface NotificationContextType {
@@ -107,6 +108,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // =========================
   const notifications = allNotifications.filter((n) => {
     if (user?.role === 'SUPERADMIN') return true;
+    if (n.targetUserId) return n.targetUserId === user?.id;
     if (!n.targetRole) return true;
     return n.targetRole === user?.role;
   });
