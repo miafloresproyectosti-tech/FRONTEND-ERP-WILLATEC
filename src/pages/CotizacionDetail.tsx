@@ -255,7 +255,8 @@ const isViewMode = location.pathname.includes('/view');
         }
       } catch (error) {
         addNotification({
-          message: 'Error al cargar clientes',
+          title: 'Error',
+          description: 'Error al cargar clientes',
           type: 'error',
           duration: 4000,
         } as any);
@@ -287,6 +288,8 @@ const isViewMode = location.pathname.includes('/view');
         setProductos(data);
       } catch (error) {
         addNotification({
+          title: 'Error',
+          description: 'Error al cargar productos',
           message: 'Error al cargar productos',
           type: 'error',
           duration: 4000,
@@ -317,6 +320,8 @@ const isViewMode = location.pathname.includes('/view');
 
     } catch (error) {
       addNotification({
+        title: 'Error',
+        description: 'Error al cargar plataformas',
         message: 'Error al cargar plataformas',
         type: 'error',
         duration: 4000,
@@ -341,6 +346,8 @@ const isViewMode = location.pathname.includes('/view');
 
     } catch (error) {
       addNotification({
+        title: 'Error',
+        description: 'Error al cargar plantillas',
         message: 'Error al cargar plantillas',
         type: 'error',
         duration: 4000,
@@ -383,6 +390,8 @@ const isViewMode = location.pathname.includes('/view');
       }
     } catch (error) {
       addNotification({
+        title: 'Error',
+        description: 'Error al cargar cotizacion',
         message: 'Error al cargar cotización',
         type: 'error',
         duration: 4000,
@@ -401,6 +410,8 @@ const isViewMode = location.pathname.includes('/view');
     // Si la cotización fue delegada, solo el delegado puede aprobarla
     if (cotizacion?.delegado_id && user?.id !== cotizacion.delegado_id) {
       addNotification({
+        title: 'Error',
+        description: 'No estás autorizado: esta cotización fue delegada a otro usuario',
         message: 'No estás autorizado: esta cotización fue delegada a otro usuario',
         type: 'warning',
         duration: 4000,
@@ -588,33 +599,6 @@ const isViewMode = location.pathname.includes('/view');
 
     return payload;
   };
-
-  // const handleEnviarAprobacion = async () => {
-  //   const cotizacionId = cotizacion?.id || currentCotizacionId;
-  //   if (!cotizacionId) return;
-
-  //   try {
-  //     await updateCotizacion(cotizacionId, buildCotizacionPayload(estadoCotizacionId));
-  //     const data = await enviarCotizacionAprobacion(cotizacionId);
-  //     const historialApi = await getCotizacionHistorial(cotizacionId);
-
-  //     setCotizacion(data);
-  //     setEstadoCotizacionId(2);
-  //     setHistorial(historialApi);
-
-  //     addNotification({
-  //       message: 'CotizaciÃ³n enviada a aprobaciÃ³n',
-  //       type: 'success',
-  //       duration: 3000,
-  //     } as any);
-  //   } catch (error: any) {
-  //     addNotification({
-  //       message: error?.response?.data?.message || 'Error al enviar a aprobaciÃ³n',
-  //       type: 'error',
-  //       duration: 4000,
-  //     } as any);
-  //   }
-  // };
 
   const handleSaveCotizacion = async () => {
     if (isViewMode) return;
@@ -954,35 +938,6 @@ const handleAddItem = async () => {
   setShowItemFormModal(true);
 };
 
-// const actualizarMargenItem = (
-//   id: number,
-//   nuevoMargen: number
-// ) => {
-//   setItems(prev =>
-//     prev.map(item => {
-//       if (item.id !== id) return item;
-
-//       const costo = item.costo_total || 0;
-
-//       const nuevoPrecio =
-//         costo / (1 - nuevoMargen / 100);
-
-//       const subtotal =
-//         nuevoPrecio * item.cantidad;
-
-//       const ganancia =
-//         (nuevoPrecio - costo) * item.cantidad;
-
-//       return {
-//         ...item,
-//         margen: nuevoMargen,
-//         precio_venta: Number(nuevoPrecio.toFixed(2)),
-//         subtotal: Number(subtotal.toFixed(2)),
-//         ganancia: Number(ganancia.toFixed(2)),
-//       };
-//     })
-//   );
-// };
 
 const todosItemsAprobados =   items.every(item => 
     item.estado_cotizacion_item_id === 2 //  = aprobado
@@ -1038,25 +993,6 @@ const handleExportarPdf = async () => {
     setExportandoPdf(false);
   }
 };
-
-// const refreshCotizacion = async () => {
-//   if (!currentCotizacionId) return;
-
-//   const data = await getCotizacion(currentCotizacionId);
-//   setCotizacion(data);
-//   setItems(data.items || []);
-//   setCostos(data.costosAdicionales || []);
-//   // 🔥 sincronizar header
-//   setClienteId(data.cliente_id);
-//   setPlantillaId(data.plantilla_id);
-//   setPlataformaId(data.plataforma_id);
-//   setMonedaId(data.cliente?.moneda_id || 1);
-//   setModoDistribucion(data.modo_distribucion);
-//   setTitulo(data.titulo);
-
-//   // 🔥 sincronizar estado UI
-//   setEstadoCotizacionId(data.estado_cotizacion_id || 1);
-// };
 
 // ====== HELPERS ======
 
