@@ -59,7 +59,7 @@ export type CotizacionItem ={
     estado_cotizacion_item_id?: number;
     created_at?: string;
     updated_at?: string;
-    tipo?: "catalogo" | "personalizado"; // Para diferenciar items de catálogo vs personalizados
+    tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados
     proveedor?: string; // Nuevo campo para proveedor
     link_proveedor?: string; // Nuevo campo para link del proveedor
 }
@@ -128,7 +128,7 @@ export interface ItemForm {
     estado_cotizacion_item_id?: number;
     created_at?: string;
     updated_at?: string;
-    tipo?: "catalogo" | "personalizado"; // Para diferenciar items de catálogo vs personalizados
+    tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados
     proveedor?: string; // Nuevo campo para proveedor
     link_proveedor?: string; // Nuevo campo para link del proveedor
 }

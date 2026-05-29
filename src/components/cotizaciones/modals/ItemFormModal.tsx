@@ -150,7 +150,7 @@ export function ItemFormModal({
           </div>
 
           {/* Proveedor — solo si es personalizado */}
-          {itemForm.tipo === 'personalizado' && (
+          {itemForm.tipo === 'externo' && (
             <>
               <hr className="border-gray-100" />
               <div>

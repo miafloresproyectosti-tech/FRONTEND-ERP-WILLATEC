@@ -28,7 +28,7 @@ export interface CotizacionItem {
   estado_cotizacion_item_id?: number;
   created_at?: string;
   updated_at?: string;
-  tipo?: "catalogo" | "personalizado"; // Para diferenciar items de catálogo vs personalizados
+  tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados
   proveedor?: string; // Nuevo campo para proveedor
   link_proveedor?: string; // Nuevo campo para link del proveedor
 }
@@ -41,7 +41,7 @@ export interface ItemFormState {
   cotizacion_id: number;
   producto_id?: number;
   estado_cotizacion_item_id?: number;
-  tipo: 'catalogo' | 'personalizado';
+  tipo: 'catalogo' | 'externo';
   margen: number;
   marca: string;
   codigo: string;

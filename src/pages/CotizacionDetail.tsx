@@ -173,7 +173,7 @@ const isViewMode = location.pathname.includes('/view');
     cotizacion_id: currentCotizacionId || 0,
     producto_id: undefined,
     estado_cotizacion_item_id: undefined,
-    tipo: 'personalizado' as 'catalogo' | 'personalizado',
+    tipo: 'externo' as 'catalogo' | 'externo',
     margen: 20,
     marca: '',
     codigo: '',
@@ -880,7 +880,7 @@ const handleAddItem = async () => {
       cotizacion_id: currentCotizacionId || 0,
       producto_id: undefined,
       estado_cotizacion_item_id: undefined,
-      tipo: 'personalizado',
+      tipo: 'externo',
       margen: 20,
       marca: '',
       codigo: '',
@@ -1047,7 +1047,7 @@ const nombreDelegado = (() => {
       cotizacion_id: currentCotizacionId || 0,
       producto_id: undefined,
       estado_cotizacion_item_id: undefined,
-      tipo: 'personalizado' as 'catalogo' | 'personalizado',
+      tipo: 'externo' as 'catalogo' | 'externo',
       proveedor: '',
       link_proveedor: ''
     });
