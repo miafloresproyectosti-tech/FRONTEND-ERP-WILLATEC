@@ -593,7 +593,7 @@ export default function Productos() {
           <p className="text-gray-500 mt-1">
             {isStockTab
               ? `Gestión de productos del sistema (${productos.length} total)`
-              : `Items externos cargados desde el backend (${externalMeta.total} total)`}
+              : `Items externos traídos desde la cotización (${externalMeta.total} total)`}
           </p>
         </div>
 

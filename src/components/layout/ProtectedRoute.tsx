@@ -8,7 +8,11 @@ interface Props {
 }
 
 export function ProtectedRoute({ children, requiredPermission }: Props) {
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, loading } = useAuth();
+
+  if (loading) {
+    return null;
+  }
 
   console.log('🔒 ProtectedRoute:', {
     user: user?.email,

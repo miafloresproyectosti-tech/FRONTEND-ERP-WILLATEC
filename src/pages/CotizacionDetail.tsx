@@ -50,7 +50,7 @@ export function CotizacionDetail() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
-  const { addNotification } = useNotifications();
+  const { showToast ,addNotification } = useNotifications();
 
   const isEditing = id !== 'new' && id !== undefined;
   const currentCotizacionId = id ? parseInt(id) : null;
@@ -409,7 +409,7 @@ const isViewMode = location.pathname.includes('/view');
 
     // Si la cotización fue delegada, solo el delegado puede aprobarla
     if (cotizacion?.delegado_id && user?.id !== cotizacion.delegado_id) {
-      addNotification({
+      showToast({
         title: 'Error',
         description: 'No estás autorizado: esta cotización fue delegada a otro usuario',
         message: 'No estás autorizado: esta cotización fue delegada a otro usuario',
@@ -420,6 +420,7 @@ const isViewMode = location.pathname.includes('/view');
     }
 
     setIsApproving(true);
+    await new Promise(r => setTimeout(r, 0)); // 🔥 fuerza un re-render antes del await pesado
     try {
       const data = await aprobarCotizacion(cotizacionId);
       const historialApi = await getCotizacionHistorial(cotizacionId);
@@ -432,7 +433,7 @@ const isViewMode = location.pathname.includes('/view');
       const approvedAt = new Date().toLocaleString('es-PE');
       const targetUserId = cotizacion?.user?.id || cotizacion?.user_id;
 
-      addNotification({
+      showToast({
         title: 'Cotización aprobada',
         description: `Aprobada por ${approverName} a las ${approvedAt}`,
         type: 'success',
@@ -451,8 +452,9 @@ const isViewMode = location.pathname.includes('/view');
         } as any);
       }
     } catch (error: any) {
-      addNotification({
-        message: error?.response?.data?.message || 'Error al aprobar la cotización',
+      showToast({
+        title: 'Error al aprobar la cotización',
+        description: error?.response?.data?.message || 'Error al aprobar la cotización',
         type: 'error',
         duration: 4000,
       } as any);
@@ -469,8 +471,9 @@ const isViewMode = location.pathname.includes('/view');
     const comentario = comentarioRechazo.trim();
 
     if (!comentario) {
-      addNotification({
-        message: 'Ingresa un comentario para rechazar',
+      showToast({
+        title: 'Comentario requerido',
+        description: 'Ingresa un comentario para rechazar',
         type: 'warning',
         duration: 4000,
       } as any);
@@ -480,8 +483,9 @@ const isViewMode = location.pathname.includes('/view');
     setIsRejecting(true);
     // Si la cotización fue delegada, solo el delegado puede rechazarla
     if (cotizacion?.delegado_id && user?.id !== cotizacion.delegado_id) {
-      addNotification({
-        message: 'No estás autorizado: esta cotización fue delegada a otro usuario',
+      showToast({
+        title: 'Error',
+        description: 'No estás autorizado: esta cotización fue delegada a otro usuario',
         type: 'warning',
         duration: 4000,
       } as any);
@@ -502,7 +506,7 @@ const isViewMode = location.pathname.includes('/view');
       const rejectedAt = new Date().toLocaleString('es-PE');
       const targetUserId = cotizacion?.user?.id || cotizacion?.user_id;
 
-      addNotification({
+      showToast({
         title: 'Cotización rechazada',
         description: `Rechazada por ${approverName} a las ${rejectedAt}`,
         type: 'warning',
@@ -521,8 +525,9 @@ const isViewMode = location.pathname.includes('/view');
         } as any);
       }
     } catch (error: any) {
-      addNotification({
-        message: error?.response?.data?.message || 'Error al rechazar',
+      showToast({
+        title: 'Error al rechazar la cotización',
+        description: error?.response?.data?.message || 'Error al rechazar la cotización',
         type: 'error',
         duration: 4000,
       } as any);
@@ -534,8 +539,9 @@ const isViewMode = location.pathname.includes('/view');
   const handleAsignarDelegado = async () => {
     if (!currentCotizacionId) return;
     if (!delegadoSelectionId) {
-      addNotification({
-        message: 'Selecciona un delegado antes de guardar',
+      showToast({
+        title: 'Selecciona un delegado',
+        description: 'Selecciona un delegado antes de guardar',
         type: 'warning',
         duration: 4000,
       } as any);
@@ -553,19 +559,19 @@ const isViewMode = location.pathname.includes('/view');
       setCotizacion(data);
       setDelegadoId(data.delegado_id || delegadoSelectionId);
       setShowDelegacionModal(false);
-      addNotification({
-        message: 'Delegado asignado correctamente',
+      showToast({
+        title: 'Delegado asignado correctamente',
+        description: 'El delegado ha sido asignado exitosamente.',
         type: 'success',
-        duration: 4000,
-      } as any);
+      });
       // Volver a la lista de cotizaciones después de delegar
       navigate('/cotizaciones');
     } catch (error: any) {
-      addNotification({
-        message: error?.response?.data?.message || 'Error al asignar delegado',
-        type: 'error',
-        duration: 4000,
-      } as any);
+      showToast({
+        title: 'Error al asignar delegado',
+        description: error?.response?.data?.message || 'Error al asignar delegado',
+        type: 'warning',
+      });
     } finally {
       setSaving(false);
     }
@@ -604,11 +610,11 @@ const isViewMode = location.pathname.includes('/view');
     if (isViewMode) return;
 
     if (!clienteId || !plantillaId) {
-      addNotification({
-        message: 'Seleccione cliente y plantilla',
+      showToast({
+        title: 'Datos incompletos',
+        description: 'Seleccione cliente y plantilla',
         type: 'warning',
-        duration: 4000,
-      } as any);
+      });
       return;
     }
 
@@ -622,7 +628,9 @@ const isViewMode = location.pathname.includes('/view');
         // sincronizar estado local con respuesta del servidor
         setCotizacion(updated);
         setDelegadoId(updated.delegado_id || null);
-        addNotification({
+        showToast({
+          title: 'Cotización actualizada',
+          description: 'La cotización ha sido actualizada exitosamente.',
           message: 'Cotización actualizada',
           type: 'success',
           duration: 4000,

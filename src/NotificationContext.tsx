@@ -7,6 +7,7 @@ import {
 } from 'react';
 import { useAuth } from './AuthContext';
 import type { UserRole } from './types/roles';
+import { ToastContainer } from './ToastContainer';
 
 export type NotificationType = 'success' | 'warning' | 'info';
 
@@ -44,6 +45,26 @@ interface NotificationContextType {
   notifyCotizacionRechazada: (id: string, motivo?: string) => void;
 }
 
+// Agrega estos tipos arriba
+export interface Toast {
+  id: number;
+  title: string;
+  description?: string;
+  type: NotificationType;
+}
+
+interface NotificationContextType {
+  notifications: Notification[];
+  addNotification: (notification: Omit<Notification, 'id' | 'time' | 'read'>) => void;
+  markRead: (id: number) => void;
+  // 🔥 NUEVO
+  showToast: (toast: Omit<Toast, 'id'>) => void;
+  // ... tus PRO FLOW HELPERS
+  notifyCotizacionEnviada: (id: string) => void;
+  notifyCotizacionAprobada: (id: string) => void;
+  notifyCotizacionRechazada: (id: string, motivo?: string) => void;
+}
+
 const NotificationContext = createContext<
   NotificationContextType | undefined
 >(undefined);
@@ -53,6 +74,15 @@ const STORAGE_KEY = 'erp_notifications';
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
   const { user } = useAuth();
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+const showToast = (toast: Omit<Toast, 'id'>) => {
+  const id = Date.now();
+  setToasts((prev) => [...prev, { ...toast, id }]);
+  setTimeout(() => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, 4000);
+};
 
   // =========================
   // LOAD STORAGE
@@ -153,6 +183,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   return (
     <NotificationContext.Provider
       value={{
+        showToast,
         notifications,
         addNotification,
         markRead,
@@ -162,6 +193,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
+      <ToastContainer toasts={toasts} />   {/* 🔥 montado aquí, siempre disponible */}
     </NotificationContext.Provider>
   );
 }

@@ -57,7 +57,7 @@ export default function LoginComponent() {
           : '/login';
       navigate(targetRoute);
     } catch (err:any) {
-      setError(err instanceof Error ? err.message : 'Error al iniciar sesión');
+      setError(err instanceof Error ? err.message : 'Error al iniciar sesión, revise sus credenciales');
       setLoading(false);
     }
   };
@@ -169,30 +169,6 @@ export default function LoginComponent() {
                 )}
               </button>
             </form>
-
-            {/* Usuarios Demo
-            <div className="mt-10 pt-8 border-t-2 border-gray-100">
-              <p className="text-sm font-semibold text-gray-700 text-center mb-6">👥 Usuarios de Prueba</p>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl">
-                  <div className="font-mono text-purple-800">super@empresa.com</div>
-                  <div className="text-purple-600 font-bold">SUPERADMIN</div>
-                </div>
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                  <div className="font-mono text-blue-800">admin@empresa.com</div>
-                  <div className="text-blue-600 font-bold">ADMIN</div>
-                </div>
-                <div className="p-3 bg-orange-50 border border-orange-200 rounded-xl">
-                  <div className="font-mono text-orange-800">ventas@empresa.com</div>
-                  <div className="text-orange-600 font-bold">VENTAS</div>
-                </div>
-                <div className="p-3 bg-cyan-50 border border-cyan-200 rounded-xl col-span-2">
-                  <div className="font-mono text-cyan-800">soporte@empresa.com</div>
-                  <div className="text-cyan-600 font-bold">SOPORTE</div>
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 text-center mt-4 font-mono">Contraseña: cualquiera (6+ chars)</p>
-            </div> */}
           </div>
         </div>
       </div>

@@ -92,10 +92,12 @@ export default function Topbar({
       {/* LEFT */}
       <div className="flex items-center gap-3">
 
-        {/* MOBILE MENU */}
+        {/* MENU TOGGLE */}
         <button
           onClick={onMenuClick}
-          className="lg:hidden p-3 rounded-2xl bg-slate-100 border border-slate-200 hover:bg-slate-200 transition"
+          className="p-3 rounded-2xl bg-slate-100 border border-slate-200 hover:bg-slate-200 transition"
+          aria-label="Toggle sidebar"
+          title="Ocultar / mostrar sidebar"
         >
 
           <Menu size={22} className="text-slate-700" />

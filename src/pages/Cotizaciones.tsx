@@ -12,6 +12,8 @@ import {
   FileText,
   ShoppingCart,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 import { useAuth } from "../AuthContext";
@@ -33,6 +35,8 @@ export default function Cotizaciones() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterEstado, setFilterEstado] = useState("todos");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
   // Cargar cotizaciones al montar el componente
   useEffect(() => {
@@ -79,6 +83,17 @@ export default function Cotizaciones() {
 
     return matchesSearch && matchesEstado;
   });
+
+  // Resetear página cuando cambian los filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterEstado]);
+
+  // Calcular paginación
+  const totalPages = Math.ceil(filteredCotizaciones.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedCotizaciones = filteredCotizaciones.slice(startIndex, endIndex);
 
   // ✅ BADGES
   const getEstadoBadge = (estadoId: number) => {
@@ -319,8 +334,8 @@ export default function Cotizaciones() {
               </thead>
 
               <tbody>
-                {filteredCotizaciones.length > 0 ? (
-                  filteredCotizaciones.map((cotizacion) => {
+                {paginatedCotizaciones.length > 0 ? (
+                  paginatedCotizaciones.map((cotizacion) => {
                     const estadoBadge = getEstadoBadge(cotizacion.estado_cotizacion_id);
                     const puedeEditar =
                       // user?.role === 'SUPERADMIN' ||
@@ -476,6 +491,51 @@ export default function Cotizaciones() {
             </table>
           )}
         </div>
+
+        {/* PAGINACIÓN */}
+        {filteredCotizaciones.length > 0 && (
+          <div className="px-6 py-4 border-t border-gray-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="text-sm text-slate-600 dark:text-slate-400">
+              Mostrando {startIndex + 1} a {Math.min(endIndex, filteredCotizaciones.length)} de {filteredCotizaciones.length} cotizaciones
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg border border-gray-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                title="Página anterior"
+              >
+                <ChevronLeft size={18} />
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`px-3 py-2 rounded-lg font-medium transition ${
+                      currentPage === page
+                        ? "bg-blue-600 text-white"
+                        : "border border-gray-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-900"
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-lg border border-gray-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                title="Página siguiente"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

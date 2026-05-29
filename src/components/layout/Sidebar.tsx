@@ -70,7 +70,7 @@ export default function Sidebar({
       <aside
         className="
           bg-gray-950 text-white flex flex-col justify-between
-          h-screen
+          h-full
           w-[290px]
           p-5
           border-r border-gray-800

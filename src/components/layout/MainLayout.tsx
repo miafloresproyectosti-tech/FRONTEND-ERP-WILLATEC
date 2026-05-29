@@ -10,13 +10,14 @@ export default function MainLayout() {
   const navigate = useNavigate();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
 
   const handleNotificationClick = (route: string) => {
     navigate(route);
   };
 
   return (
-    <div className="min-h-screen flex bg-slate-100 overflow-hidden">
+    <div className="h-screen flex bg-slate-100 overflow-hidden">
 
       {/* Overlay Mobile */}
       {sidebarOpen && (
@@ -27,9 +28,11 @@ export default function MainLayout() {
       )}
 
       {/* SIDEBAR DESKTOP */}
-      <div className="hidden lg:flex lg:w-[290px] lg:min-w-[290px] flex-shrink-0">
-        <Sidebar />
-      </div>
+      {sidebarVisible && (
+        <div className="hidden lg:flex lg:w-[290px] lg:min-w-[290px] flex-shrink-0">
+          <Sidebar />
+        </div>
+      )}
 
       {/* SIDEBAR MOBILE */}
       <div
@@ -42,18 +45,24 @@ export default function MainLayout() {
       </div>
 
       {/* MAIN */}
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* TOPBAR */}
         <Topbar
           onNotificationClick={handleNotificationClick}
-          onMenuClick={() => setSidebarOpen(true)}
+          onMenuClick={() => {
+            if (window.innerWidth >= 1024) {
+              setSidebarVisible((prev) => !prev);
+            } else {
+              setSidebarOpen(true);
+            }
+          }}
         />
 
         {/* CONTENT */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
 
-          <div className="bg-white rounded-3xl min-h-full shadow-sm p-4 sm:p-6 lg:p-8">
+          <div className="bg-white rounded-3xl shadow-sm p-4 sm:p-6 lg:p-8 w-full">
             <Outlet />
           </div>
 
