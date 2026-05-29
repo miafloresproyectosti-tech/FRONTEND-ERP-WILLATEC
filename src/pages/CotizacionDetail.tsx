@@ -690,6 +690,8 @@ const handleAddItem = async () => {
 
       tipo: itemForm.tipo,
 
+      stock: 0,
+
     };
 
   // ===== AGREGAR AL STATE =====
@@ -741,6 +743,7 @@ const handleAddItem = async () => {
           garantia_meses: itemForm.garantia_meses ?? 12,
           proveedor: itemForm.proveedor,
           link_proveedor: itemForm.link_proveedor,
+          stock: 0,
         }
       : item
     )
