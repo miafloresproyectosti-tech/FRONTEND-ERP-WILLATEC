@@ -700,6 +700,8 @@ const handleAddItem = async () => {
 
       stock: 0,
 
+      imagen: itemForm.imagen || null,
+
     };
 
   // ===== AGREGAR AL STATE =====
@@ -752,6 +754,7 @@ const handleAddItem = async () => {
           proveedor: itemForm.proveedor,
           link_proveedor: itemForm.link_proveedor,
           stock: 0,
+          imagen: itemForm.imagen || null,
         }
       : item
     )

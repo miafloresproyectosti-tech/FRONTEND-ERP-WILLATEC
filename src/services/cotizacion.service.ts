@@ -196,6 +196,7 @@ export interface CreateItemData {
   disponibilidad_dias: number;
   proveedor?: string | undefined;
   link_proveedor?: string | undefined;
+  imagen?: string | null;
 }
 
 export interface UpdateItemData extends CreateItemData {}

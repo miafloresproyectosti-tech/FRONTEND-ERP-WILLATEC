@@ -6,6 +6,8 @@ import { getUsers, createUser, updateUser, deleteUser, type User as ApiUser, typ
 interface User {
   id: number;
   name: string;
+  nombres: string;
+  apellidos: string;
   email: string;
   role: string;
   status: 'activo' | 'inactivo';
@@ -30,6 +32,8 @@ export default function Usuarios() {
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState({
     id: null as number | null,
     name: '',
+    nombres: '',
+    apellidos: '',
     email: '',
     role: 'VENTAS',
     status: 'activo' as 'activo' | 'inactivo',
@@ -54,7 +58,9 @@ export default function Usuarios() {
       const apiUsers = await getUsers();
       const formattedUsers: User[] = apiUsers.map((apiUser: ApiUser) => ({
         id: apiUser.id,
-        name: `${apiUser.nombres} ${apiUser.apellidos}`,
+        name: `${apiUser.nombres} ${apiUser.apellidos}`.trim(),
+        nombres: apiUser.nombres,
+        apellidos: apiUser.apellidos,
         email: apiUser.email,
         role: apiUser.roles && apiUser.roles.length > 0 ? apiUser.roles[0].name.toUpperCase() : 'VENTAS',
         status: apiUser.activo ? 'activo' : 'inactivo',
@@ -132,6 +138,8 @@ export default function Usuarios() {
     setUsuarioSeleccionado({
       id: null,
       name: '',
+      nombres: '',
+      apellidos: '',
       email: '',
       role: 'VENTAS',
       status: 'activo',
@@ -149,9 +157,14 @@ export default function Usuarios() {
   const handleEditar = (usuario: User) => {
     if (user?.role !== 'SUPERADMIN') return;
 
+    const nombres = usuario.nombres || usuario.name.split(' ')[0] || '';
+    const apellidos = usuario.apellidos || usuario.name.split(' ').slice(1).join(' ') || '';
+
     setUsuarioSeleccionado({
       id: usuario.id,
-      name: usuario.name,
+      name: `${nombres} ${apellidos}`.trim(),
+      nombres,
+      apellidos,
       email: usuario.email,
       role: usuario.role,
       status: usuario.status,
@@ -187,13 +200,13 @@ export default function Usuarios() {
   };
 
   const handleGuardar = async () => {
-    if (!usuarioSeleccionado.name || !usuarioSeleccionado.email) return;
+    if (!usuarioSeleccionado.nombres || !usuarioSeleccionado.apellidos || !usuarioSeleccionado.email) return;
 
     try {
       setSaving(true);
 
-      const [nombres, ...apellidosArr] = usuarioSeleccionado.name.split(' ');
-      const apellidos = apellidosArr.join(' ');
+      const nombres = usuarioSeleccionado.nombres.trim();
+      const apellidos = usuarioSeleccionado.apellidos.trim();
 
       if (modoEdicion && usuarioSeleccionado.id) {
         // Actualizar usuario existente
@@ -486,25 +499,48 @@ export default function Usuarios() {
             {/* FORM */}
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* NOMBRE */}
+                {/* NOMBRES */}
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                     <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                    Nombre completo
+                    Nombres
                   </label>
                   <input
-                    value={usuarioSeleccionado.name}
+                    value={usuarioSeleccionado.nombres}
                     onChange={(e) =>
                       setUsuarioSeleccionado({
                         ...usuarioSeleccionado,
-                        name: e.target.value,
+                        nombres: e.target.value,
+                        name: `${e.target.value} ${usuarioSeleccionado.apellidos}`.trim(),
                       })
                     }
                     className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
-                    placeholder="Nombre del usuario"
+                    placeholder="Juan Carlos"
                   />
                 </div>
 
+                {/* APELLIDOS */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                    Apellidos
+                  </label>
+                  <input
+                    value={usuarioSeleccionado.apellidos}
+                    onChange={(e) =>
+                      setUsuarioSeleccionado({
+                        ...usuarioSeleccionado,
+                        apellidos: e.target.value,
+                        name: `${usuarioSeleccionado.nombres} ${e.target.value}`.trim(),
+                      })
+                    }
+                    className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                    placeholder="Pérez Gómez"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* EMAIL */}
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
@@ -547,7 +583,7 @@ export default function Usuarios() {
                   </select>
                 </div>
 
-                {/* AREA */}
+                {/* AREA
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700">Área</label>
                   <input
@@ -557,7 +593,7 @@ export default function Usuarios() {
                     className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed"
                     placeholder="Se determina automáticamente por el rol"
                   />
-                </div>
+                </div> */}
 
                 {/* ESTADO - Solo en edición */}
                 {modoEdicion && (
@@ -685,7 +721,7 @@ export default function Usuarios() {
                 </button>
                 <button
                   onClick={handleGuardar}
-                  disabled={saving || !usuarioSeleccionado.name || !usuarioSeleccionado.email}
+                  disabled={saving || !usuarioSeleccionado.nombres || !usuarioSeleccionado.apellidos || !usuarioSeleccionado.email}
                   className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-4 px-6 rounded-2xl transition-all duration-200 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm flex items-center justify-center gap-2"
                 >
                   {saving ? (

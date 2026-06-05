@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Search,
   Plus,
@@ -42,6 +42,7 @@ interface ProductoForm {
   stock: string;
   precio_referencial: string;
   descripcion: string;
+  imagen: string;
   activo: "Activo" | "Inactivo";
   unidad_medida: string;
 }
@@ -51,6 +52,7 @@ type ProductoUI = ProductoForm & {
   categoria_label: string;
   precio_referencial: string;
   activo: "Activo" | "Inactivo";
+  imagen?: string;
 };
 
 type ExternalItem = CotizacionItem;
@@ -69,6 +71,7 @@ const mapProducto = (producto: Producto): ProductoUI => ({
   stock: String(producto.stock),
   precio_referencial: String(producto.precio_referencial),
   descripcion: producto.descripcion ?? "",
+  imagen: producto.imagen ?? "",
   activo: producto.activo ? "Activo" : "Inactivo",
   unidad_medida: producto.unidad_medida ?? "unidad",
 });
@@ -113,6 +116,7 @@ export default function Productos() {
       stock: "",
       precio_referencial: "",
       descripcion: "",
+      imagen: "",
       activo: "Activo",
       marca: "",
       modelo: "",
@@ -270,6 +274,7 @@ export default function Productos() {
       stock: "",
       precio_referencial: "",
       descripcion: "",
+      imagen: "",
       activo: "Activo",
       marca: "",
       modelo: "",
@@ -290,6 +295,7 @@ export default function Productos() {
       stock: String(producto.stock || ""),
       precio_referencial: String(producto.precio_referencial || ""),
       descripcion: producto.descripcion || "",
+      imagen: producto.imagen || "",
       activo: producto.activo ? "Activo" : "Inactivo",
       marca: producto.marca || "",
       modelo: producto.modelo || "",
@@ -338,6 +344,46 @@ export default function Productos() {
   };
 
   // GUARDAR
+  const readImageFile = (file: File, callback: (dataUrl: string) => void) => {
+    if (!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        callback(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleProductImageFile = (file: File) => {
+    readImageFile(file, (dataUrl) => {
+      setProductoSeleccionado((prev) => ({
+        ...prev,
+        imagen: dataUrl,
+      }));
+    });
+  };
+
+  const handleProductDrop = (event: React.DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0];
+    if (file) {
+      handleProductImageFile(file);
+    }
+  };
+
+  const handleProductPaste = (event: React.ClipboardEvent<HTMLLabelElement>) => {
+    const imageItem = Array.from(event.clipboardData.items).find(
+      (item) => item.type.startsWith("image/")
+    );
+    if (imageItem) {
+      const file = imageItem.getAsFile();
+      if (file) {
+        handleProductImageFile(file);
+      }
+    }
+  };
+
   const handleGuardar = async () => {
     const stockNum = parseInt(productoSeleccionado.stock, 10);
     const precioNum = parseFloat(productoSeleccionado.precio_referencial);
@@ -348,6 +394,7 @@ export default function Productos() {
       modelo: productoSeleccionado.modelo,
       codigo: productoSeleccionado.codigo,
       descripcion: productoSeleccionado.descripcion || "",
+      imagen: productoSeleccionado.imagen || undefined,
       precio_referencial: isNaN(precioNum) ? 0 : precioNum,
       unidad_medida:
         productoSeleccionado.unidad_medida || "unidad",
@@ -928,176 +975,156 @@ export default function Productos() {
 
       {/* MODAL CREAR / EDITAR */}
       {openModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white w-full max-w-2xl rounded-3xl p-8 shadow-2xl">
-            <div className="flex items-center justify-between mb-8">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
               <div>
-                <h2 className="text-3xl font-bold">
-                  {modoEdicion
-                    ? "Editar Producto"
-                    : "Nuevo Producto"}
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {modoEdicion ? "Editar Producto" : "Agregar Producto"}
                 </h2>
-
-                <p className="text-gray-500 text-sm mt-1">
-                  Completa toda la información
+                <p className="text-xs text-gray-500 mt-1">
+                  Completa los datos para guardar.
                 </p>
               </div>
-
               <button
                 onClick={() => setOpenModal(false)}
-                className="w-12 h-12 rounded-2xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center"
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">
-                  Código
-                </label>
-                <input
-                  value={productoSeleccionado.codigo}
-                  disabled
-                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed"
-                />
+            <div className="px-6 py-4 space-y-3 overflow-y-auto flex-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-gray-500 uppercase">Código</label>
+                  <input
+                    value={productoSeleccionado.codigo}
+                    disabled
+                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-gray-500 uppercase">Nombre</label>
+                  <input
+                    value={productoSeleccionado.nombre}
+                    onChange={(e) =>
+                      setProductoSeleccionado({
+                        ...productoSeleccionado,
+                        nombre: e.target.value,
+                      })
+                    }
+                    placeholder="Nombre"
+                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-gray-500 uppercase">Categoría</label>
+                  <select
+                    value={productoSeleccionado.categoria_id}
+                    onChange={(e) =>
+                      setProductoSeleccionado({
+                        ...productoSeleccionado,
+                        categoria_id: Number(e.target.value),
+                      })
+                    }
+                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
+                  >
+                    {categoriaOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-gray-500 uppercase">Stock</label>
+                  <input
+                    type="number"
+                    value={productoSeleccionado.stock}
+                    onChange={(e) =>
+                      setProductoSeleccionado({
+                        ...productoSeleccionado,
+                        stock: e.target.value,
+                      })
+                    }
+                    placeholder="Stock"
+                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-gray-500 uppercase">Precio de compra</label>
+                  <input
+                    type="number"
+                    value={productoSeleccionado.precio_referencial}
+                    onChange={(e) =>
+                      setProductoSeleccionado({
+                        ...productoSeleccionado,
+                        precio_referencial: e.target.value,
+                      })
+                    }
+                    placeholder="Precio"
+                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-gray-500 uppercase">Marca</label>
+                  <input
+                    value={productoSeleccionado.marca}
+                    onChange={(e) =>
+                      setProductoSeleccionado({
+                        ...productoSeleccionado,
+                        marca: e.target.value,
+                      })
+                    }
+                    placeholder="Marca"
+                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-gray-500 uppercase">Modelo</label>
+                  <input
+                    value={productoSeleccionado.modelo}
+                    onChange={(e) =>
+                      setProductoSeleccionado({
+                        ...productoSeleccionado,
+                        modelo: e.target.value,
+                      })
+                    }
+                    placeholder="Modelo"
+                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-gray-500 uppercase">Unidad medida</label>
+                  <select
+                    value={productoSeleccionado.unidad_medida}
+                    onChange={(e) =>
+                      setProductoSeleccionado({
+                        ...productoSeleccionado,
+                        unidad_medida: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
+                  >
+                    {unidadMedidaOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">
-                  Nombre
-                </label>
-                <input
-                  value={productoSeleccionado.nombre}
-                  onChange={(e) =>
-                    setProductoSeleccionado({
-                      ...productoSeleccionado,
-                      nombre: e.target.value,
-                    })
-                  }
-                  placeholder="Nombre"
-                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">
-                  Categoría
-                </label>
-                <select
-                  value={productoSeleccionado.categoria_id}
-                  onChange={(e) =>
-                    setProductoSeleccionado({
-                      ...productoSeleccionado,
-                      categoria_id: Number(e.target.value),
-                    })
-                  }
-                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-                >
-                  {categoriaOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">
-                  Stock
-                </label>
-                <input
-                  type="number"
-                  value={productoSeleccionado.stock}
-                  onChange={(e) =>
-                    setProductoSeleccionado({
-                      ...productoSeleccionado,
-                      stock: e.target.value,
-                    })
-                  }
-                  placeholder="Stock"
-                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">
-                  Precio de Compra
-                </label>
-                <input
-                  type="number"
-                  value={productoSeleccionado.precio_referencial}
-                  onChange={(e) =>
-                    setProductoSeleccionado({
-                      ...productoSeleccionado,
-                      precio_referencial: e.target.value,
-                    })
-                  }
-                  placeholder="Precio"
-                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">
-                  Marca
-                </label>
-                <input
-                  value={productoSeleccionado.marca}
-                  onChange={(e) =>
-                    setProductoSeleccionado({
-                      ...productoSeleccionado,
-                      marca: e.target.value,
-                    })
-                  }
-                  placeholder="Marca"
-                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">
-                  Modelo
-                </label>
-                <input
-                  value={productoSeleccionado.modelo}
-                  onChange={(e) =>
-                    setProductoSeleccionado({
-                      ...productoSeleccionado,
-                      modelo: e.target.value,
-                    })
-                  }
-                  placeholder="Modelo"
-                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">
-                  Unidad de medida
-                </label>
-                <select
-                  value={productoSeleccionado.unidad_medida}
-                  onChange={(e) =>
-                    setProductoSeleccionado({
-                      ...productoSeleccionado,
-                      unidad_medida: e.target.value,
-                    })
-                  }
-                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
-                >
-                  {unidadMedidaOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">
-                  Descripción
-                </label>
+              <div className="space-y-1">
+                <label className="block text-[11px] text-gray-500 uppercase">Descripción</label>
                 <input
                   value={productoSeleccionado.descripcion}
                   onChange={(e) =>
@@ -1107,18 +1134,66 @@ export default function Productos() {
                     })
                   }
                   placeholder="Descripción"
-                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
+                  className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">
-                  Estado
-                </label>
+              <div className="space-y-1">
+                <label className="block text-[11px] text-gray-500 uppercase mb-1">Imagen</label>
+                <label
+                  htmlFor="producto-imagen"
+                  onDragOver={(e: React.DragEvent<HTMLLabelElement>) => e.preventDefault()}
+                  onDrop={handleProductDrop}
+                  onPaste={handleProductPaste}
+                  className="group cursor-pointer border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 p-2.5 text-center transition-colors hover:border-blue-400 hover:bg-blue-50 block"
+                >
+                    <input
+                      id="producto-imagen"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleProductImageFile(file);
+                      }}
+                    />
+
+                    {productoSeleccionado.imagen ? (
+                      <div className="space-y-2">
+                        <img
+                          src={productoSeleccionado.imagen}
+                          alt="Vista previa"
+                          className="mx-auto h-24 w-auto object-contain rounded-lg border border-gray-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setProductoSeleccionado({
+                              ...productoSeleccionado,
+                              imagen: "",
+                            });
+                          }}
+                          className="text-xs text-red-600 hover:underline w-full"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-1 text-xs text-gray-500">
+                        <p className="font-medium text-gray-700">Imagen del producto</p>
+                        <p className="text-gray-500">Arrastra, pega o haz clic para cargar</p>
+                      </div>
+                    )}
+                  </label>
+                </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] text-gray-500 uppercase">Estado</label>
                 <select
                   value={productoSeleccionado.activo}
                   onChange={(e) => handleEstadoChange(e.target.value)}
-                  className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200"
+                  className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                 >
                   <option value="Activo">Activo</option>
                   <option value="Inactivo">Inactivo</option>
@@ -1126,10 +1201,10 @@ export default function Productos() {
               </div>
             </div>
 
-            <div className="flex gap-3 mt-8">
+            <div className="flex gap-2 px-6 py-3 border-t border-gray-100 flex-shrink-0">
               <button
                 onClick={() => setOpenModal(false)}
-                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-4 rounded-2xl font-semibold"
+                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-lg text-sm font-semibold"
               >
                 Cancelar
               </button>
@@ -1137,15 +1212,13 @@ export default function Productos() {
               <button
                 onClick={handleGuardar}
                 disabled={saving}
-                className={`flex-1 py-4 rounded-2xl font-semibold text-white ${
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold text-white ${
                   saving
                     ? "bg-blue-400 cursor-not-allowed"
                     : "bg-blue-600 hover:bg-blue-700"
                 }`}
               >
-                {modoEdicion
-                  ? "Actualizar Producto"
-                  : "Crear Producto"}
+                {modoEdicion ? "Actualizar" : "Crear"}
               </button>
             </div>
           </div>

@@ -16,6 +16,7 @@ export interface Producto {
     garantia_meses: number;
     disponibilidad_tipo: "stock" | "importacion";
     disponibilidad_dias: number;
+    imagen?: string | null;
 }
 
 export interface CotizacionItem {
@@ -53,6 +54,7 @@ export interface ProductoPayload {
     modelo: string;
     codigo:string;
     descripcion?: string;
+    imagen?: string;
     precio_referencial: number;
     unidad_medida: string;
     activo: boolean;
