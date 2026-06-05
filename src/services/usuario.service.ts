@@ -90,3 +90,8 @@ export const getRoles = async () => {
   const response = await api.get("/roles");
   return response.data;
 };
+
+export const resetPassword = async (id: number) => {
+  const response = await api.patch(`/users/${id}/reset-password`);
+  return response.data; // espera { tempPassword: string } o { message }
+};

@@ -29,8 +29,11 @@ export const loginRequest = async (
             : 'VENTAS';
         
         const id = user.id;
+        // marcar si el backend exige cambio obligatorio de contraseña
+        const requires_password_change = user.requires_password_change || response.data.requires_password_change || response.data.requiresPasswordChange || false;
+
         localStorage.setItem("token", token);
-        return { token, role, id };
+        return { token, role, id, requires_password_change };
     } catch (error) {
         console.error("Login error:", error);
         throw new Error("Error al iniciar sesión");
@@ -43,4 +46,17 @@ export const logoutRequest = async () => {
 
 export const meRequest = async () => {
     return api.get("/user");
+};
+
+export const forgotPasswordRequest = async (email: string) => {
+    const response = await api.post('/forgot-password', { email });
+    return response.data;
+};
+
+export const changePasswordRequest = async (current_password: string, password: string, password_confirmation: string) => {
+    const response = await api.post('/password/change', { current_password, password, password_confirmation });
+    if (response.data?.token) {
+        localStorage.setItem('token', response.data.token);
+    }
+    return response.data;
 };

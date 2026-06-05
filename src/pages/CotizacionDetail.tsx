@@ -61,6 +61,7 @@ export function CotizacionDetail() {
   const [, setSaving] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   //LOCALIZACIÓN
 const location = useLocation();
@@ -128,6 +129,11 @@ const isViewMode = location.pathname.includes('/view');
 
   const handleSetMonedaId = (id: number) => {
     if (id === monedaId) return;
+    // Durante la carga inicial, solo cambiar el id sin convertir precios
+    if (isInitialLoad) {
+      setMonedaId(id);
+      return;
+    }
     if (isViewMode) { setMonedaId(id); return; }
 
     // convertir todos los montos usando el tipo de cambio correcto según dirección
@@ -303,6 +309,8 @@ const isViewMode = location.pathname.includes('/view');
   useEffect(() => {
     if (isEditing && currentCotizacionId) {
       loadCotizacion();
+    }else{
+      setIsInitialLoad(false);
     }
   }, [isEditing, currentCotizacionId]);
 
@@ -399,6 +407,7 @@ const isViewMode = location.pathname.includes('/view');
       navigate('/cotizaciones');
     } finally {
       setLoading(false);
+      setIsInitialLoad(false); // ← aquí se habilita la conversión para cambios manuales
     }
   };
 
@@ -754,7 +763,7 @@ const handleAddItem = async () => {
           proveedor: itemForm.proveedor,
           link_proveedor: itemForm.link_proveedor,
           stock: 0,
-          imagen: itemForm.imagen || null,
+          imagen: itemForm.imagen ||"",
         }
       : item
     )

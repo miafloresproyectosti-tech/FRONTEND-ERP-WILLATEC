@@ -3,6 +3,7 @@ import { Mail, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { loginRequest } from '../../services/auth.service';
+import ResetPasswordModal from './ResetPasswordModal';
 
 export default function LoginComponent() {
 
@@ -11,6 +12,7 @@ export default function LoginComponent() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
   
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -41,7 +43,18 @@ export default function LoginComponent() {
     setLoading(true);
 
     try {
-      const { role, id } = await loginRequest(email, password);
+      const { role, id, requires_password_change } = await loginRequest(email, password);
+      // Si el backend indica que la contraseña es temporal, redirigir a cambio de contraseña
+      if (requires_password_change) {
+        // Guardar credenciales temporales en sessionStorage para el cambio
+        sessionStorage.setItem('temp_user_email', email);
+        sessionStorage.setItem('temp_user_id', String(id));
+        sessionStorage.setItem('temp_user_password', password);
+        // Navegar a ruta interna para cambiar contraseña
+        navigate('/change-password?temp=1');
+        return;
+      }
+
       login(id, email, role);
       setLoading(false);
 
@@ -168,7 +181,12 @@ export default function LoginComponent() {
                   'Acceder al Sistema'
                 )}
               </button>
+
+              <div className="mt-3 text-center">
+                <button type="button" onClick={() => setShowResetModal(true)} className="text-sm text-blue-600 hover:underline">¿Olvidaste tu contraseña?</button>
+              </div>
             </form>
+            {showResetModal && <ResetPasswordModal isOpen={showResetModal} onClose={() => setShowResetModal(false)} />}
           </div>
         </div>
       </div>

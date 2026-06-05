@@ -62,6 +62,46 @@ export interface ProductoPayload {
     categoria_id: number;
 }
 
+// Convierte una imagen base64 dataURL a File
+function base64ToFile(dataUrl: string, filename: string): File {
+    const [header, data] = dataUrl.split(",");
+    const mime = header.match(/:(.*?);/)?.[1] ?? "image/jpeg";
+    const binary = atob(data);
+    const array = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        array[i] = binary.charCodeAt(i);
+    }
+    return new File([array], filename, { type: mime });
+}
+ 
+// Construye un FormData a partir del payload
+function buildFormData(payload: ProductoPayload): FormData {
+    const formData = new FormData();
+ 
+    const fields: (keyof ProductoPayload)[] = [
+        "nombre", "marca", "modelo", "codigo",
+        "descripcion", "precio_referencial",
+        "unidad_medida", "stock", "categoria_id",
+    ];
+ 
+    for (const key of fields) {
+        const value = payload[key];
+        if (value !== undefined && value !== null) {
+            formData.append(key, String(value));
+        }
+    }
+        formData.append("activo", payload.activo ? "1" : "0");
+
+            // Solo adjunta imagen si es base64 nueva
+            if (payload.imagen?.startsWith("data:")) {
+                const file = base64ToFile(payload.imagen, "producto.jpg");
+                formData.append("imagen", file);
+            }
+            // Si es URL existente o vacío → no se envía nada → backend no toca la imagen
+
+            return formData;
+}
+
 //Backend devuelve productos paginados
 export const getProductos = async (): Promise<Producto[]> => {
     const res = await api.get("/productos");
@@ -101,7 +141,11 @@ export const getProducto = async (id: number): Promise<Producto> => {
 export const createProducto = async (
     payload: ProductoPayload,
 ): Promise<Producto> => {
-    const res = await api.post("/productos", payload);
+    const formData = buildFormData(payload);
+ 
+    const res = await api.post("/productos", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+    });
     return res.data.producto;
 };
 
@@ -109,7 +153,15 @@ export const updateProducto = async (
     id: number,
     payload: ProductoPayload,
 ): Promise<Producto> => {
-    const res = await api.put(`/productos/${id}`, payload);
+    const formData = buildFormData(payload);
+ 
+    // Laravel no procesa archivos en PUT/PATCH nativamente,
+    // por eso enviamos POST con _method=PUT
+    formData.append("_method", "PUT");
+ 
+    const res = await api.post(`/productos/${id}`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+    });
     return res.data.producto;
 };
 

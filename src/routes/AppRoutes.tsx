@@ -4,6 +4,7 @@ import MainLayout from "../components/layout/MainLayout";
 import { ProtectedRoute } from "../components/layout/ProtectedRoute";
 
 import LoginPage from "../pages/LoginPage";
+import ChangePasswordPage from "../pages/ChangePasswordPage";
 import Dashboard from "../pages/Dashboard";
 import Clientes from "../pages/Clientes";
 import Productos from "../pages/Productos";
@@ -14,6 +15,7 @@ import Configuracion from "../pages/Configuracion";
 import Auditoria from "../pages/Auditoria";
 import OrdenesCompraPage from "../pages/OrdenesCompraPage";
 import OrdenCompraDetail from "../pages/OrdenCompraDetail";
+import Notificaciones from "../pages/Notificaciones";
 
 export default function AppRoutes() {
   return (
@@ -22,6 +24,7 @@ export default function AppRoutes() {
 
         {/* LOGIN */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/change-password" element={<ChangePasswordPage />} />
 
         {/* RUTAS PROTEGIDAS */}
         <Route
@@ -34,6 +37,9 @@ export default function AppRoutes() {
 
           {/* DASHBOARD */}
           <Route path="/" element={<Dashboard />} />
+
+          {/* NOTIFICACIONES */}
+          <Route path="/notificaciones" element={<Notificaciones />} />
 
           {/* MÓDULOS ERP */}
           <Route path="/productos" element={<Productos />} />

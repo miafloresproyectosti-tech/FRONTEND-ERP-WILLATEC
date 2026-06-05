@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, Loader2, Key } from 'lucide-react';
 import { useAuth } from '../AuthContext';
-import { getUsers, createUser, updateUser, deleteUser, type User as ApiUser, type CreateUserData, type UpdateUserData } from '../services/usuario.service';
+import { getUsers, createUser, updateUser, deleteUser, resetPassword, type User as ApiUser, type CreateUserData, type UpdateUserData } from '../services/usuario.service';
+import TempPasswordModal from '../components/ui/TempPasswordModal';
+import { useNotifications } from '../NotificationContext';
 
 interface User {
   id: number;
@@ -46,6 +48,9 @@ export default function Usuarios() {
   });
 
   const [usuarioAEliminar, setUsuarioAEliminar] = useState<User | null>(null);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [showTempModal, setShowTempModal] = useState(false);
+  const { showToast } = useNotifications();
 
   // Cargar usuarios al montar el componente
   useEffect(() => {
@@ -371,6 +376,25 @@ export default function Usuarios() {
                           >
                             <Trash2 size={18} />
                           </button>
+                          <button
+                            onClick={async () => {
+                              try{
+                                const res = await resetPassword(u.id);
+                                // esperar { tempPassword }
+                                const temp = res?.temporary_password || res?.password || res?.temporay_password || null;
+                                setTempPassword(temp);
+                                setShowTempModal(true);
+                                showToast({ title: 'Contraseña generada', description: 'Se generó una contraseña temporal', type: 'info' });
+                              }catch(err){
+                                console.error('Error al resetear contraseña', err);
+                                showToast({ title: 'Error', description: 'No se pudo resetear la contraseña', type: 'warning' });
+                              }
+                            }}
+                            className="w-11 h-11 rounded-xl bg-yellow-100 text-yellow-700 flex items-center justify-center hover:bg-yellow-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                            title="Resetear contraseña"
+                          >
+                            <Key size={18} />
+                          </button>
                         </div>
                       )}
                     </td>
@@ -471,6 +495,10 @@ export default function Usuarios() {
             </div>
           </div>
         </div>
+      )}
+
+      {showTempModal && (
+        <TempPasswordModal isOpen={showTempModal} onClose={() => setShowTempModal(false)} tempPassword={tempPassword ?? undefined} />
       )}
 
       {/* MODAL CREAR / EDITAR */}

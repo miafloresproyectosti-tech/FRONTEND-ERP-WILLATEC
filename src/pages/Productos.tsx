@@ -43,7 +43,7 @@ interface ProductoForm {
   precio_referencial: string;
   descripcion: string;
   imagen: string;
-  activo: "Activo" | "Inactivo";
+  activo: "true" | "false";
   unidad_medida: string;
 }
 
@@ -51,7 +51,7 @@ type ProductoUI = ProductoForm & {
   id: number;
   categoria_label: string;
   precio_referencial: string;
-  activo: "Activo" | "Inactivo";
+  activo: "true" | "false";
   imagen?: string;
 };
 
@@ -71,8 +71,10 @@ const mapProducto = (producto: Producto): ProductoUI => ({
   stock: String(producto.stock),
   precio_referencial: String(producto.precio_referencial),
   descripcion: producto.descripcion ?? "",
-  imagen: producto.imagen ?? "",
-  activo: producto.activo ? "Activo" : "Inactivo",
+  imagen: producto.imagen
+    ? `http://127.0.0.1:8000/storage/${producto.imagen}`
+    : "",
+  activo: producto.activo ? "true" : "false",
   unidad_medida: producto.unidad_medida ?? "unidad",
 });
 
@@ -117,7 +119,7 @@ export default function Productos() {
       precio_referencial: "",
       descripcion: "",
       imagen: "",
-      activo: "Activo",
+      activo: "true",
       marca: "",
       modelo: "",
       unidad_medida: "unidad",
@@ -275,7 +277,7 @@ export default function Productos() {
       precio_referencial: "",
       descripcion: "",
       imagen: "",
-      activo: "Activo",
+      activo: "true",
       marca: "",
       modelo: "",
       unidad_medida: "unidad",
@@ -295,8 +297,8 @@ export default function Productos() {
       stock: String(producto.stock || ""),
       precio_referencial: String(producto.precio_referencial || ""),
       descripcion: producto.descripcion || "",
-      imagen: producto.imagen || "",
-      activo: producto.activo ? "Activo" : "Inactivo",
+      imagen: producto.imagen || "", 
+      activo: producto.activo ? "true" : "false",
       marca: producto.marca || "",
       modelo: producto.modelo || "",
       unidad_medida: producto.unidad_medida || "unidad",
@@ -398,7 +400,7 @@ export default function Productos() {
       precio_referencial: isNaN(precioNum) ? 0 : precioNum,
       unidad_medida:
         productoSeleccionado.unidad_medida || "unidad",
-      activo: productoSeleccionado.activo === "Activo",
+      activo: productoSeleccionado.activo === "true",
       stock: isNaN(stockNum) ? 0 : stockNum,
       categoria_id: productoSeleccionado.categoria_id,
     };
@@ -459,7 +461,7 @@ export default function Productos() {
   const handleEstadoChange = (activo: string) => {
     setProductoSeleccionado({
       ...productoSeleccionado,
-      activo: 'Activo' === activo ? "Activo" : "Inactivo",
+      activo: 'true' === activo ? "true" : "false",
     });
   };
 
@@ -773,16 +775,12 @@ export default function Productos() {
                       <td className="px-6 py-5">
                         <span
                           className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            item.activo === "Activo" || item.activo === true
+                            item.activo === "true"
                               ? "bg-green-100 text-green-700 border border-green-200"
                               : "bg-red-100 text-red-700 border border-red-200"
                           }`}
                         >
-                          {item.activo === "Activo"
-                            ? item.activo
-                            : item.activo === true
-                            ? "Activo"
-                            : "Inactivo"}
+                          {item.activo === "true" || item.activo === true ? "Activo" : "Inactivo"}
                         </span>
                       </td>
                       <td className="px-6 py-5">
@@ -1195,8 +1193,8 @@ export default function Productos() {
                   onChange={(e) => handleEstadoChange(e.target.value)}
                   className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                 >
-                  <option value="Activo">Activo</option>
-                  <option value="Inactivo">Inactivo</option>
+                  <option value="true">Activo</option>
+                  <option value="false">Inactivo</option>
                 </select>
               </div>
             </div>
