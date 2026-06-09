@@ -49,7 +49,6 @@ export default function LoginComponent() {
         // Guardar credenciales temporales en sessionStorage para el cambio
         sessionStorage.setItem('temp_user_email', email);
         sessionStorage.setItem('temp_user_id', String(id));
-        sessionStorage.setItem('temp_user_password', password);
         // Navegar a ruta interna para cambiar contraseña
         navigate('/change-password?temp=1');
         return;

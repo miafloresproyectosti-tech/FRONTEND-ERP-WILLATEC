@@ -1,6 +1,7 @@
 import React from "react";
 import type { ItemForm } from "../../../types/cotizaciones.type";
 import { ArrowLeftRight, X } from "lucide-react";
+import { formatMoney } from "../../../utils/formatNumber";
 
 interface Props{
   open: boolean;
@@ -266,15 +267,15 @@ export function ItemFormModal({
           <div className="grid grid-cols-3 gap-2">
             <div className="bg-blue-50 rounded-lg p-2">
               <p className="text-[9px] text-gray-500 mb-0.5">Precio venta</p>
-              <p className="text-xs font-semibold text-gray-800">{simboloMoneda} {(itemForm.precio_venta || 0).toFixed(2)}</p>
+              <p className="text-xs font-semibold text-gray-800">{formatMoney(itemForm.precio_venta || 0, simboloMoneda)}</p>
             </div>
             <div className="bg-green-50 rounded-lg p-2">
               <p className="text-[9px] text-gray-500 mb-0.5">Ganancia</p>
-              <p className="text-xs font-semibold text-green-700">{simboloMoneda} {(itemForm.ganancia || 0).toFixed(2)}</p>
+              <p className="text-xs font-semibold text-green-700">{formatMoney(itemForm.ganancia || 0, simboloMoneda)}</p>
             </div>
             <div className="bg-gray-50 rounded-lg p-2">
               <p className="text-[9px] text-gray-500 mb-0.5">Subtotal</p>
-              <p className="text-xs font-semibold text-gray-800">{simboloMoneda} {(itemForm.subtotal || 0).toFixed(2)}</p>
+              <p className="text-xs font-semibold text-gray-800">{formatMoney(itemForm.subtotal || 0, simboloMoneda)}</p>
             </div>
           </div>
         </div>

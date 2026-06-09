@@ -41,6 +41,12 @@ interface Props {
   titulo: string;
   setTitulo: (v:string) => void;
 
+  formaPago: string;
+  setFormaPago: (v: string) => void;
+
+  clienteContacto: string;
+  setClienteContacto: (v: string) => void;
+
   plantillas: { id: number; nombre: string; incluye_igv: Boolean }[];
   plataformas: { id: number; nombre: string} [];
 }
@@ -70,6 +76,10 @@ export function CotizacionGeneralForm({
   plataformas,
   titulo,
   setTitulo,
+  formaPago,
+  setFormaPago,
+  clienteContacto,
+  setClienteContacto,
   disabled,
   cotizacion
 }: Props) {
@@ -78,6 +88,7 @@ export function CotizacionGeneralForm({
   const [showClienteDropdown, setShowClienteDropdown] = useState(false);
 
   const selectedCliente = clientes.find((c) => c.id === clienteId);
+  const clienteInputValue = clienteId ? searchClienteInput || selectedCliente?.nombre || '' : searchClienteInput;
 
   const [plantillaImposesMoneda, setPlantillaImposesMoneda] = useState(false);
 
@@ -112,6 +123,7 @@ export function CotizacionGeneralForm({
   const handleClienteSelect = (cliente: Cliente) => {
     setClienteId(cliente.id);
     setSearchClienteInput(cliente.nombre);
+    setClienteContacto(cliente.contacto || '');
     setShowClienteDropdown(false);
     if (cliente.moneda_id) {
       setMonedaId(cliente.moneda_id);
@@ -153,7 +165,7 @@ export function CotizacionGeneralForm({
                 <input 
                   disabled={disabled}
                   type="text"
-                  value={searchClienteInput || selectedCliente?.nombre || ''}
+                  value={clienteInputValue}
                   onChange={(e) => {
                     setSearchClienteInput(e.target.value);
                     setShowClienteDropdown(true);
@@ -190,6 +202,30 @@ export function CotizacionGeneralForm({
                 <div className="px-4 py-2 border rounded-lg bg-gray-50 text-gray-700">
                   {getEjecutivoNombre()}
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm mb-2 text-gray-700">Contacto del Cliente</label>
+                <input
+                  disabled={disabled}
+                  type="text"
+                  value={clienteContacto}
+                  onChange={(e) => setClienteContacto(e.target.value)}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="Nombre del contacto"
+                />
+              </div>
+              <div>
+                <label className="block text-sm mb-2 text-gray-700">Forma de Pago</label>
+                <select
+                  disabled={disabled}
+                  value={formaPago}
+                  onChange={(e) => setFormaPago(e.target.value)}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="AL CONTADO">AL CONTADO</option>
+                  <option value="CRÉDITO 15 DÍAS">CRÉDITO 15 DÍAS</option>
+                  <option value="CRÉDITO 30 DÍAS">CRÉDITO 30 DÍAS</option>
+                </select>
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm mb-2 text-gray-700">Título *</label>

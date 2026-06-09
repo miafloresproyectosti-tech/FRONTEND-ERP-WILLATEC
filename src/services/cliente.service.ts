@@ -4,6 +4,7 @@ export interface Cliente {
   id: number;
   nombre: string;
   ruc: string;
+  contacto?: string | null;
   correo: string | null;
   telefono: string | null;
   estado: "activo" | "inactivo";
@@ -14,6 +15,7 @@ export interface Cliente {
 export interface ClientePayload {
   nombre: string;
   ruc?: string;
+  contacto?: string;
   correo?: string;
   telefono?: string;
   estado?: "activo" | "inactivo";

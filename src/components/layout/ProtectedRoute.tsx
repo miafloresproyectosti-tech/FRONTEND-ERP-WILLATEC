@@ -14,23 +14,13 @@ export function ProtectedRoute({ children, requiredPermission }: Props) {
     return null;
   }
 
-  console.log('🔒 ProtectedRoute:', {
-    user: user?.email,
-    role: user?.role,
-    permission: requiredPermission,
-    hasAccess: requiredPermission ? hasPermission(requiredPermission) : true,
-  });
-
   if (!user) {
-    console.log('🚪 Sin login → /login');
     return <Navigate to="/login" replace />;
   }
 
   if (requiredPermission && !hasPermission(requiredPermission)) {
-    console.log('⛔ Sin permiso → /not-authorized');
     return <Navigate to="/not-authorized" replace />;
   }
 
-  console.log('✅ Acceso OK');
   return <>{children}</>;
 }

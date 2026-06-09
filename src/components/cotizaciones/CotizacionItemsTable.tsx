@@ -1,5 +1,6 @@
 import type { CotizacionItem, } from "../../types/cotizaciones.type";
 import { CheckCircle, Trash2, Plus, Pencil } from "lucide-react";
+import { formatMoney } from "../../utils/formatNumber";
 interface Props{
   items: CotizacionItem[];
   simboloMoneda: string;
@@ -170,15 +171,15 @@ return (
                     </>
                   )}
 
-                  <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{simboloMoneda} {costoUnitario.toFixed(2)}</td>
-                  <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{simboloMoneda} {costoTotal.toFixed(2)}</td>
+                  <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{formatMoney(costoUnitario, simboloMoneda)}</td>
+                  <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{formatMoney(costoTotal, simboloMoneda)}</td>
                   <td className="py-3 px-2 font-medium text-xs">{(margen ?? 0).toFixed(1)} % </td>
-                  <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{simboloMoneda} {precioVenta.toFixed(2)}</td>
+                  <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{formatMoney(precioVenta, simboloMoneda)}</td>
                   {isOwnCotizacion && <td className={`py-2.5 px-2 text-center tabular-nums font-medium ${ganancia > 0 ? 'text-green-700' : 'text-red-700'}`}>
-                    {simboloMoneda} {ganancia.toFixed(2)}
+                    {formatMoney(ganancia, simboloMoneda)}
                   </td>}
                   <td className="py-2.5 px-2 text-center tabular-nums font-medium text-gray-800">
-                    {simboloMoneda} {subtotal.toFixed(2)}
+                    {formatMoney(subtotal, simboloMoneda)}
                   </td>
                   <td className="py-2.5 px-2">
                     {!readOnly && (

@@ -10,6 +10,8 @@ export interface CotizacionItem {
   cantidad: number;
   costo_base: number;
   imagen: string;
+  imagen_url?: string | null;
+  imagen_path?: string | null;
   margen: number;
   marca?: string;
   codigo?: string;
@@ -101,6 +103,7 @@ export interface Cotizacion {
   numero: string;
   fecha: string;
   titulo: string;
+  forma_pago?: string;
   tipo_cambio: number;
   cliente_id: number;
   plantilla_id: number;
@@ -109,6 +112,7 @@ export interface Cotizacion {
   plataforma_id:number;
   user_id: number;
   delegado_id?: number | null;
+  delegado_cotizacion_id?: number | null;
   modo_distribucion: "POR_ITEM" | "POR_CANTIDAD";
   subtotal: number;
   igv: number;
@@ -133,6 +137,13 @@ export interface Cotizacion {
   delegado?: {
     id: number;
     nombres?: string;
+    email?: string;
+    name?: string;
+  };
+  delegado_cotizacion?: {
+    id: number;
+    nombres?: string;
+    apellidos?: string;
     email?: string;
     name?: string;
   };
@@ -162,6 +173,8 @@ export interface CreateCotizacionData {
   plantilla_id: number;
   plataforma_id: number;
   titulo?: string;
+  forma_pago?: string;
+  cliente_contacto?: string;
   modo_distribucion?: "POR_ITEM" | "POR_CANTIDAD";
   moneda_id: number;
   estado_cotizacion_id?: number;
@@ -179,7 +192,13 @@ export interface UpdateCotizacionData {
   fecha?: string;
   validez_dias?: number;
   titulo?: string;
+  forma_pago?: string;
+  cliente_contacto?: string;
   delegado_id?: number | null;
+}
+
+export interface DelegarCotizacionData {
+  delegado_cotizacion_id: number;
 }
 
 export interface CreateItemData {
@@ -197,9 +216,148 @@ export interface CreateItemData {
   proveedor?: string | undefined;
   link_proveedor?: string | undefined;
   imagen?: string | null;
+  imagen_path?: string | null;
 }
 
 export interface UpdateItemData extends CreateItemData {}
+
+function base64ToFile(dataUrl: string, filename: string): File {
+  const [header, data] = dataUrl.split(",");
+  const mime = header.match(/:(.*?);/)?.[1] ?? "image/jpeg";
+  const binary = atob(data);
+  const array = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i++) {
+    array[i] = binary.charCodeAt(i);
+  }
+
+  return new File([array], filename, { type: mime });
+}
+
+function buildItemFormData(data: CreateItemData | UpdateItemData): FormData {
+  const formData = new FormData();
+
+  Object.entries(data).forEach(([key, value]) => {
+    if (key === "imagen" || value === undefined || value === null) return;
+    formData.append(key, String(value));
+  });
+
+  if (data.imagen?.startsWith("data:")) {
+    formData.append("imagen", base64ToFile(data.imagen, "cotizacion-item.jpg"));
+  }
+
+  return formData;
+}
+
+function hasNewItemImage(data: CreateItemData | UpdateItemData): boolean {
+  return Boolean(data.imagen?.startsWith("data:"));
+}
+
+function appendCotizacionFormValue(formData: FormData, key: string, value: any): void {
+  if (value === undefined || value === null) return;
+
+  if (key.endsWith("[imagen]")) {
+    if (typeof value === "string" && value.startsWith("data:")) {
+      formData.append(key, base64ToFile(value, "cotizacion-item.jpg"));
+    } else if (typeof value === "string" && value.trim()) {
+      formData.append(key, normalizeImagePath(value) || value);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      Object.entries(item ?? {}).forEach(([childKey, childValue]) => {
+        appendCotizacionFormValue(formData, `${key}[${index}][${childKey}]`, childValue);
+      });
+    });
+    return;
+  }
+
+  if (typeof value === "object") {
+    Object.entries(value).forEach(([childKey, childValue]) => {
+      appendCotizacionFormValue(formData, `${key}[${childKey}]`, childValue);
+    });
+    return;
+  }
+
+  formData.append(key, String(value));
+}
+
+function hasNewCotizacionItemImage(data: any): boolean {
+  return (data.items ?? []).some((item: any) => typeof item?.imagen === "string" && item.imagen.startsWith("data:"));
+}
+
+function getApiOrigin(): string {
+  const baseUrl = api.defaults.baseURL || window.location.origin;
+
+  try {
+    return new URL(baseUrl, window.location.origin).origin;
+  } catch {
+    return window.location.origin;
+  }
+}
+
+function normalizeImageUrl(value: string | null | undefined): string {
+  if (!value) return "";
+  if (value.startsWith("data:")) return value;
+
+  const apiOrigin = getApiOrigin();
+
+  try {
+    const url = new URL(value);
+    const apiUrl = new URL(apiOrigin);
+
+    if (url.hostname === apiUrl.hostname && url.port !== apiUrl.port) {
+      url.protocol = apiUrl.protocol;
+      url.port = apiUrl.port;
+      return url.toString();
+    }
+
+    return value;
+  } catch {
+    const cleanValue = value.replace(/^\/+/, "");
+    const storagePath = cleanValue.startsWith("storage/")
+      ? cleanValue
+      : `storage/${cleanValue}`;
+
+    return `${apiOrigin}/${storagePath}`;
+  }
+}
+
+function normalizeImagePath(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (value.startsWith("data:")) return value;
+
+  try {
+    const url = new URL(value);
+    return url.pathname.replace(/^\/storage\/?/, "");
+  } catch {
+    return value.replace(/^\/?storage\/?/, "");
+  }
+}
+
+function buildCotizacionFormData(data: any): FormData {
+  const formData = new FormData();
+
+  Object.entries(data).forEach(([key, value]) => {
+    appendCotizacionFormValue(formData, key, value);
+  });
+
+  return formData;
+}
+
+function prepareCotizacionData(data: any): any {
+  if (!Array.isArray(data.items)) return data;
+
+  return {
+    ...data,
+    items: data.items.map((item: any) => ({
+      ...item,
+      imagen: normalizeImagePath(item.imagen),
+    })),
+  };
+}
 
 export interface AddCostoData {
   tipo: string;
@@ -249,17 +407,25 @@ export async function getCotizacion(id: string | number): Promise<Cotizacion> {
     data.total_gasto = parseFloat(data.total_gasto) || 0;
     data.tipo_cambio = parseFloat(data.tipo_cambio) || 1;
 
-    data.items = (data.items ?? []).map((item: any) => ({
-      ...item,
-      cantidad:         parseInt(item.cantidad)          || 0,
-      costo_base:       parseFloat(item.costo_base)      || 0,
-      costo_unitario:   parseFloat(item.costo_unitario)  || 0,
-      costo_total:      parseFloat(item.costo_total)     || 0,
-      precio_venta:     parseFloat(item.precio_venta)    || 0,
-      subtotal:         parseFloat(item.subtotal)        || 0,
-      ganancia:         parseFloat(item.ganancia)        || 0,
-      margen:           parseFloat(item.margen)          || 0,
-    }));
+    data.items = (data.items ?? []).map((item: any) => {
+      const rawImage = item.imagen_url || item.imagen || item.imagen_path || "";
+      const imageForPreview = normalizeImageUrl(rawImage);
+
+      return {
+        ...item,
+        imagen: imageForPreview,
+        imagen_url: imageForPreview || null,
+        imagen_path: item.imagen_path || item.imagen || null,
+        cantidad:         parseInt(item.cantidad)          || 0,
+        costo_base:       parseFloat(item.costo_base)      || 0,
+        costo_unitario:   parseFloat(item.costo_unitario)  || 0,
+        costo_total:      parseFloat(item.costo_total)     || 0,
+        precio_venta:     parseFloat(item.precio_venta)    || 0,
+        subtotal:         parseFloat(item.subtotal)        || 0,
+        ganancia:         parseFloat(item.ganancia)        || 0,
+        margen:           parseFloat(item.margen)          || 0,
+      };
+    });
 
     const costos = (data.costosAdicionales ?? data.costos_adicionales ?? []).map((c: any) => ({
       ...c,
@@ -299,7 +465,16 @@ export async function createCotizacion(
   data: CreateCotizacionData,
 ): Promise<Cotizacion> {
   try {
-    const response = await api.post("/cotizaciones/completa", data);
+    const payload = prepareCotizacionData(data);
+
+    if (hasNewCotizacionItemImage(data)) {
+      const response = await api.post("/cotizaciones/completa", buildCotizacionFormData(payload), {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return response.data.cotizacion;
+    }
+
+    const response = await api.post("/cotizaciones/completa", payload);
     return response.data.cotizacion;
   } catch (error) {
     console.error("Error al crear cotización:", error);
@@ -315,7 +490,19 @@ export async function updateCotizacion(
   data: any,
 ): Promise<Cotizacion> {
   try {
-    const response = await api.put(`/cotizaciones/${id}/completa`, data);
+    const payload = prepareCotizacionData(data);
+
+    if (hasNewCotizacionItemImage(data)) {
+      const formData = buildCotizacionFormData(payload);
+      formData.append("_method", "PUT");
+
+      const response = await api.post(`/cotizaciones/${id}/completa`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return response.data.cotizacion;
+    }
+
+    const response = await api.put(`/cotizaciones/${id}/completa`, payload);
     return response.data.cotizacion;
   } catch (error) {
     console.error("Error al actualizar cotización:", error);
@@ -363,6 +550,21 @@ export async function rechazarCotizacion(
   }
 }
 
+export async function delegarCotizacion(
+  id: number,
+  delegadoCotizacionId: number,
+): Promise<Cotizacion> {
+  try {
+    const response = await api.patch(`/cotizaciones/${id}/delegar`, {
+      delegado_cotizacion_id: delegadoCotizacionId,
+    });
+    return response.data?.cotizacion || response.data?.data || response.data;
+  } catch (error) {
+    console.error("Error al delegar cotización:", error);
+    throw error;
+  }
+}
+
 export async function getCotizacionHistorial(
   id: number,
 ): Promise<CotizacionHistorial[]> {
@@ -401,6 +603,13 @@ export async function addItem(
   data: CreateItemData,
 ): Promise<void> {
   try {
+    if (hasNewItemImage(data)) {
+      await api.post(`/cotizaciones/${cotizacionId}/items`, buildItemFormData(data), {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return;
+    }
+
     await api.post(`/cotizaciones/${cotizacionId}/items`, data);
   } catch (error) {
     console.error("Error al agregar item:", error);
@@ -416,6 +625,16 @@ export async function updateItem(
   data: UpdateItemData,
 ): Promise<void> {
   try {
+    if (hasNewItemImage(data)) {
+      const formData = buildItemFormData(data);
+      formData.append("_method", "PUT");
+
+      await api.post(`/cotizaciones/items/${itemId}`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return;
+    }
+
     await api.put(`/cotizaciones/items/${itemId}`, data);
   } catch (error) {
     console.error("Error al actualizar item:", error);
@@ -507,15 +726,39 @@ export async function recalcularCotizacion(id: number): Promise<Cotizacion> {
   }
 }
 
+export interface CotizacionPdfExport {
+  blob: Blob;
+  filename: string | null;
+}
+
+function getFilenameFromContentDisposition(value?: string): string | null {
+  if (!value) return null;
+
+  const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1].replace(/"/g, ""));
+  }
+
+  const filenameMatch = value.match(/filename="?([^";]+)"?/i);
+  return filenameMatch?.[1] || null;
+}
+
 /**
  * Exportar cotización a PDF
  */
-export async function exportarCotizacionPdf(id: number): Promise<Blob> {
+export async function exportarCotizacionPdf(id: number): Promise<CotizacionPdfExport> {
   try {
     const response = await api.get(`/cotizaciones/${id}/exportar-pdf`, {
       responseType: "blob",
     });
-    return response.data;
+
+    return {
+      blob: response.data,
+      filename:
+        response.headers["x-suggested-filename"] ||
+        getFilenameFromContentDisposition(response.headers["content-disposition"]) ||
+        null,
+    };
   } catch (error) {
     console.error("Error al exportar PDF:", error);
     throw error;
@@ -526,13 +769,15 @@ export async function exportarCotizacionPdf(id: number): Promise<Blob> {
  * Descargar PDF de cotización
  */
 export function descargarPdfCotizacion(
-  cotizacionNumero: string,
+  nombreArchivo: string,
   blob: Blob,
 ): void {
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `Cotizacion-${cotizacionNumero}.pdf`;
+  link.download = nombreArchivo.toLowerCase().endsWith(".pdf")
+    ? nombreArchivo
+    : `${nombreArchivo}.pdf`;
   link.click();
   window.URL.revokeObjectURL(url);
 }

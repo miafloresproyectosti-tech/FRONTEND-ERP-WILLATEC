@@ -24,6 +24,7 @@ import {
   updateCotizacion,
   aprobarCotizacion,
   rechazarCotizacion,
+  delegarCotizacion,
   getCotizacionHistorial,
   // deleteItem,
   exportarCotizacionPdf,
@@ -82,6 +83,8 @@ const isViewMode = location.pathname.includes('/view');
   const [tipoCambioDolarASoles, setTipoCambioDolarASoles] = useState<number>(3.5);
   const [modoDistribucion, setModoDistribucion] = useState<'POR_ITEM' | 'POR_CANTIDAD'>('POR_ITEM');
   const [titulo, setTitulo] = useState('');
+  const [formaPago, setFormaPago] = useState('AL CONTADO');
+  const [clienteContacto, setClienteContacto] = useState('');
   const simboloMoneda = monedaId === 2 ? '$' : 'S/';
 
   // Listas
@@ -96,12 +99,21 @@ const isViewMode = location.pathname.includes('/view');
   const [delegadoId, setDelegadoId] = useState<number | null>(null);
   const [delegadoSelectionId, setDelegadoSelectionId] = useState<number | null>(null);
   const [showDelegacionModal, setShowDelegacionModal] = useState(false);
+  const [delegadoCotizacionId, setDelegadoCotizacionId] = useState<number | null>(null);
+  const [delegadoCotizacionSelectionId, setDelegadoCotizacionSelectionId] = useState<number | null>(null);
+  const [showDelegacionEdicionModal, setShowDelegacionEdicionModal] = useState(false);
 
   useEffect(() => {
     if (showDelegacionModal) {
       setDelegadoSelectionId(delegadoId);
     }
   }, [showDelegacionModal, delegadoId]);
+
+  useEffect(() => {
+    if (showDelegacionEdicionModal) {
+      setDelegadoCotizacionSelectionId(delegadoCotizacionId);
+    }
+  }, [showDelegacionEdicionModal, delegadoCotizacionId]);
 
   // UI State
   const [editingItem, setEditingItem] = useState<CotizacionItem | null>(null);
@@ -120,6 +132,13 @@ const isViewMode = location.pathname.includes('/view');
 
   // Verificar si el usuario actual es el propietario de la cotización
   const isOwnCotizacion = cotizacion && user ? cotizacion.user_id === user.id : true;
+  const currentDelegadoCotizacionId =
+    cotizacion?.delegado_cotizacion_id ?? (cotizacion as any)?.delegadoCotizacionId ?? delegadoCotizacionId;
+  const isCotizacionCreator = Boolean(cotizacion && user && cotizacion.user_id === user.id);
+  const isCotizacionEditDelegate = Boolean(cotizacion && user && currentDelegadoCotizacionId === user.id);
+  const canEditCotizacion = !cotizacion || isCotizacionCreator || isCotizacionEditDelegate;
+  const canDelegateCotizacionEdit = Boolean(currentCotizacionId && cotizacion && isCotizacionCreator);
+  const isCotizacionReadOnly = isViewMode || !canEditCotizacion;
 
   useEffect(() => {
     if (!cotizacion) return;
@@ -134,7 +153,7 @@ const isViewMode = location.pathname.includes('/view');
       setMonedaId(id);
       return;
     }
-    if (isViewMode) { setMonedaId(id); return; }
+    if (isCotizacionReadOnly) { setMonedaId(id); return; }
 
     // convertir todos los montos usando el tipo de cambio correcto según dirección
     const convertirMultiplicador = (() => {
@@ -223,7 +242,7 @@ const isViewMode = location.pathname.includes('/view');
   });
 
   const handleOpenNewItem = () => {
-    if (isViewMode) return;
+    if (isCotizacionReadOnly) return;
 
     setEditingItemId(null);
 
@@ -235,14 +254,17 @@ const isViewMode = location.pathname.includes('/view');
   };
 
   const handleOpenEditItem = (item: CotizacionItem) => {
-    if (isViewMode) return;
+    if (isCotizacionReadOnly) return;
 
     setEditingItem(item);
   
     setEditingItemId(item.id);
 
     setItemForm({
-      ...item
+      ...item,
+      imagen: item.imagen || item.imagen_url || '',
+      imagen_url: item.imagen_url,
+      imagen_path: item.imagen_path,
     });
 
   setShowItemFormModal(true);
@@ -256,9 +278,6 @@ const isViewMode = location.pathname.includes('/view');
       try {
         const data = await getClientes();
         setClientes(data);
-        if (data.length > 0 && !clienteId) {
-          setClienteId(data[0].id);
-        }
       } catch (error) {
         addNotification({
           title: 'Error',
@@ -286,7 +305,7 @@ const isViewMode = location.pathname.includes('/view');
 
   //Cargar Productos:
   useEffect(() => {
-    if (isViewMode || !showProductModal || productos.length > 0) return;
+    if (isCotizacionReadOnly || !showProductModal || productos.length > 0) return;
 
     const fetchProductos = async () => {
       try {
@@ -378,10 +397,13 @@ const isViewMode = location.pathname.includes('/view');
       setClienteId(data.cliente_id);
       setPlantillaId(data.plantilla_id);
       setPlataformaId(data.plataforma_id);
-      setMonedaId(data.cliente?.moneda_id || 1);
+      setMonedaId(data.moneda_id || 1);
       setModoDistribucion(data.modo_distribucion);
       setTitulo(data.titulo);
+      setFormaPago(data.forma_pago || 'AL CONTADO');
+      setClienteContacto(data.cliente_contacto || data.cliente?.contacto || '');
       setDelegadoId(data.delegado_id || null);
+      setDelegadoCotizacionId(data.delegado_cotizacion_id ?? (data as any).delegadoCotizacionId ?? null);
       setItems(data.items || []);
       setCostos(data.costosAdicionales || data.costos_adicionales || []);
       const historialData = data.historial || data.cotizacion_historial || [];
@@ -586,6 +608,50 @@ const isViewMode = location.pathname.includes('/view');
     }
   };
 
+  const handleDelegarEdicionCotizacion = async () => {
+    if (!currentCotizacionId) return;
+    if (!canDelegateCotizacionEdit) {
+      showToast({
+        title: 'Acción no permitida',
+        description: 'Solo el creador puede delegar la edición de esta cotización',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
+    if (!delegadoCotizacionSelectionId) {
+      showToast({
+        title: 'Selecciona un delegado',
+        description: 'Selecciona un usuario de ventas para delegar la edición',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const data = await delegarCotizacion(currentCotizacionId, delegadoCotizacionSelectionId);
+      setCotizacion(data);
+      setDelegadoCotizacionId(data.delegado_cotizacion_id ?? (data as any).delegadoCotizacionId ?? delegadoCotizacionSelectionId);
+      setShowDelegacionEdicionModal(false);
+      showToast({
+        title: 'Edición delegada',
+        description: 'La cotización fue delegada para que otro usuario de ventas pueda terminarla.',
+        type: 'success',
+      });
+    } catch (error: any) {
+      showToast({
+        title: 'Error al delegar edición',
+        description: error?.response?.data?.message || 'Error al delegar la edición de la cotización',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const buildCotizacionPayload = (estadoId = estadoCotizacionId) => {
     // NO enviar cotizacion_id en items - el backend lo asigna automáticamente del URL
     const itemsLimpios = items.map(({ cotizacion_id, ...item }) => item);
@@ -598,6 +664,8 @@ const isViewMode = location.pathname.includes('/view');
       moneda_id: monedaId,
       modo_distribucion: modoDistribucion,
       titulo: titulo,
+      forma_pago: formaPago,
+      cliente_contacto: clienteContacto,
       tipo_cambio_soles_a_usd: tipoCambioSolesADolar,
       tipo_cambio_usd_a_soles: tipoCambioDolarASoles,
       validez_dias: validezDias,
@@ -616,7 +684,7 @@ const isViewMode = location.pathname.includes('/view');
   };
 
   const handleSaveCotizacion = async () => {
-    if (isViewMode) return;
+    if (isCotizacionReadOnly) return;
 
     if (!clienteId || !plantillaId) {
       showToast({
@@ -637,6 +705,7 @@ const isViewMode = location.pathname.includes('/view');
         // sincronizar estado local con respuesta del servidor
         setCotizacion(updated);
         setDelegadoId(updated.delegado_id || null);
+        setDelegadoCotizacionId(updated.delegado_cotizacion_id ?? (updated as any).delegadoCotizacionId ?? null);
         showToast({
           title: 'Cotización actualizada',
           description: 'La cotización ha sido actualizada exitosamente.',
@@ -667,7 +736,7 @@ const isViewMode = location.pathname.includes('/view');
   };
 
 const handleAddItem = async () => {
-    if (isViewMode) return;
+    if (isCotizacionReadOnly) return;
 
     if (!itemForm.descripcion || itemForm.cantidad <= 0) {
       addNotification({
@@ -710,6 +779,8 @@ const handleAddItem = async () => {
       stock: 0,
 
       imagen: itemForm.imagen || null,
+      imagen_url: itemForm.imagen_url,
+      imagen_path: itemForm.imagen_path,
 
     };
 
@@ -732,7 +803,7 @@ const handleAddItem = async () => {
   };
 
   const handleUpdateItem = () => {
-    if (isViewMode) return;
+    if (isCotizacionReadOnly) return;
 
     if (!editingItemId) return;
 
@@ -764,6 +835,8 @@ const handleAddItem = async () => {
           link_proveedor: itemForm.link_proveedor,
           stock: 0,
           imagen: itemForm.imagen ||"",
+          imagen_url: itemForm.imagen_url,
+          imagen_path: itemForm.imagen_path,
         }
       : item
     )
@@ -784,7 +857,7 @@ const handleAddItem = async () => {
 };
 
   const handleDeleteItem = async (itemId: number) => {
-    if (isViewMode) return;
+    if (isCotizacionReadOnly) return;
 
     if (!confirm('¿Eliminar item?')) return;
 
@@ -809,18 +882,12 @@ const handleAddItem = async () => {
   // 🆕 CONTROL DE EXPORTACIÓN
   const puedeExportar = () => {
     if (!user?.role) return false;
-    
-    if (user.role === 'SUPERADMIN') return true;
-    
-    if (user.role === 'VENTAS') {
-      return estadoCotizacionId === 4;
-    }
-    
-    return true;
+
+    return estadoCotizacionId === 4;
   };
 
   const handleAddCosto = async () => {
-    if (isViewMode) return;
+    if (isCotizacionReadOnly) return;
 
     if (!costoForm.descripcion || costoForm.monto <= 0 || !costoForm.tipo) {
       addNotification({
@@ -865,7 +932,7 @@ const handleAddItem = async () => {
 
 
   const handleDeleteCosto = async (id: number) => {
-    if (isViewMode) return;
+    if (isCotizacionReadOnly) return;
 
     setCostos((prev) =>
       prev.filter((costo) => costo.id !== id)
@@ -874,7 +941,7 @@ const handleAddItem = async () => {
 
   //PRUEBA
   const handleItemTypeSelection = (tipo: 'catalogo' | 'personalizado') => {
-    if (isViewMode) return;
+    if (isCotizacionReadOnly) return;
 
     setShowItemTypeModal(false);
 
@@ -916,7 +983,7 @@ const handleAddItem = async () => {
   };
 
   const handleProductSelection = (producto: any) => {
-  if (isViewMode) return;
+  if (isCotizacionReadOnly) return;
 
   setShowProductModal(false);
 
@@ -935,7 +1002,9 @@ const handleAddItem = async () => {
     costo_total: producto.costo || 0,
     ganancia: (producto.precio || 0) - (producto.costo || 0),
     subtotal: producto.precio || 0,
-    imagen: producto.imagen || '',
+    imagen: producto.imagen || producto.imagen_url || '',
+    imagen_url: producto.imagen_url || producto.imagen || null,
+    imagen_path: producto.imagen_path || producto.imagen || null,
     orden: 1,
     cotizacion_id: currentCotizacionId || 0,
     producto_id: producto.id,
@@ -967,7 +1036,7 @@ const todosItemsAprobados =   items.every(item =>
 );
 
 const handleIntercambiarMoneda = () => {
-  if (isViewMode) return;
+  if (isCotizacionReadOnly) return;
 
   const esSoles = monedaId === 1;
 
@@ -981,18 +1050,50 @@ const handleIntercambiarMoneda = () => {
   }));
 };
 
+const sanitizePdfFilePart = (value: unknown, fallback: string) => {
+  const text = String(value || fallback)
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return text || fallback;
+};
+
+const formatPdfFileDate = (value?: string) => {
+  const date = value ? new Date(value) : new Date();
+
+  if (Number.isNaN(date.getTime())) {
+    return new Date().toLocaleDateString("es-PE").replace(/\//g, "-");
+  }
+
+  return date.toLocaleDateString("es-PE").replace(/\//g, "-");
+};
+
+const buildCotizacionPdfFileName = (cotizacionData: Cotizacion) => {
+  const clienteSeleccionado = clientes.find((cliente) => cliente.id === cotizacionData.cliente_id);
+  const fechaCreacion = formatPdfFileDate(cotizacionData.created_at);
+  const numeroCotizacion = sanitizePdfFilePart(cotizacionData.numero || cotizacionData.id, "SIN-NUMERO");
+  const clienteCotizacion = sanitizePdfFilePart(
+    cotizacionData.cliente_nombre || cotizacionData.cliente?.nombre || clienteSeleccionado?.nombre,
+    "SIN-CLIENTE"
+  );
+  const tituloCotizacion = sanitizePdfFilePart(cotizacionData.titulo, "SIN-TITULO");
+
+  return `${fechaCreacion} COT. N°${numeroCotizacion} - ${clienteCotizacion} - ${tituloCotizacion}.pdf`;
+};
+
 const handleExportarPdf = async () => {
-  if (isViewMode) return;
+  if (!puedeExportar()) return;
 
   if (!cotizacion?.id) return;
 
   setExportandoPdf(true);
 
   try {
-    const blob = await exportarCotizacionPdf(cotizacion.id);
+    const { blob, filename } = await exportarCotizacionPdf(cotizacion.id);
 
   descargarPdfCotizacion(
-    cotizacion.numero || cotizacion.id.toString(),
+    filename || buildCotizacionPdfFileName(cotizacion),
     blob
   );
 
@@ -1038,6 +1139,15 @@ const ventasUsuarios = usuarios.filter((u) =>
 const nombreDelegado = (() => {
   const delegado = cotizacion?.delegado || usuarios.find((u) => u.id === delegadoId);
   if (!delegado) return 'No delegado';
+  const nombres = (delegado as any).nombres || (delegado as any).name || '';
+  const apellidos = (delegado as any).apellidos || '';
+  const nombreCompleto = `${nombres}${apellidos ? ` ${apellidos}` : ''}`.trim();
+  return nombreCompleto || 'Delegado desconocido';
+})();
+
+const nombreDelegadoCotizacion = (() => {
+  const delegado = cotizacion?.delegado_cotizacion || (cotizacion as any)?.delegadoCotizacion || usuarios.find((u) => u.id === currentDelegadoCotizacionId);
+  if (!delegado) return 'Sin delegado de edición';
   const nombres = (delegado as any).nombres || (delegado as any).name || '';
   const apellidos = (delegado as any).apellidos || '';
   const nombreCompleto = `${nombres}${apellidos ? ` ${apellidos}` : ''}`.trim();
@@ -1165,6 +1275,11 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
             titulo={titulo}
             setTitulo={setTitulo}
 
+            formaPago={formaPago}
+            setFormaPago={setFormaPago}
+            clienteContacto={clienteContacto}
+            setClienteContacto={setClienteContacto}
+
             plataformaId={plataformaId}
             setPlataformaId={setPlataformaId}
 
@@ -1183,12 +1298,12 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
             plantillas={plantillas}
             plataformas={plataformas}
 
-            disabled={isViewMode}
+            disabled={isCotizacionReadOnly}
           />
 
           {/* TABLA CON DISPONIBILIDAD */}
           <CotizacionItemsTable
-            items={itemsCalculados}
+            items={isEditing ?items : itemsCalculados}
             simboloMoneda={simboloMoneda}
             estadoCotizacionId={estadoCotizacionId}
             setEstadoCotizacionId={setEstadoCotizacionId}
@@ -1199,7 +1314,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
 
             onAddItem={handleOpenNewItem} // 🔥 AQUÍ
 
-            readOnly={isViewMode}
+            readOnly={isCotizacionReadOnly}
             isOwnCotizacion={isOwnCotizacion}
           />
 
@@ -1212,7 +1327,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
           <CotizacionResumen
             resumen={resumen}
             simboloMoneda={simboloMoneda}
-            items={itemsCalculados}
+            items={isEditing ? items : itemsCalculados}
             isOwnCotizacion={isOwnCotizacion}
           />
 
@@ -1253,6 +1368,33 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
               </p>
             )}
           </div>
+
+          {isEditing && (
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <h2 className="text-base font-semibold text-gray-800 mb-3">
+                Delegado de edición
+              </h2>
+              <p className="text-sm text-gray-600 mb-3">
+                {nombreDelegadoCotizacion}
+              </p>
+
+              {canDelegateCotizacionEdit && (
+                <button
+                  type="button"
+                  onClick={() => setShowDelegacionEdicionModal(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                >
+                  <UserCheck className="w-5 h-5" /> Delegar edición
+                </button>
+              )}
+
+              {isCotizacionEditDelegate && (
+                <p className="text-xs text-indigo-600 mt-3">
+                  Puedes editar esta cotización porque fue delegada a tu usuario.
+                </p>
+              )}
+            </div>
+          )}
 
           {comentariosRevision.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
@@ -1338,9 +1480,23 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
               >
                 <DollarSign className="w-5 h-5" /> Costos Adicionales
               </button>
+
+              {puedeExportar() && (
+                <button
+                  onClick={() => setShowExportModal(true)}
+                  disabled={items.length === 0}
+                  className={`w-full flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${
+                    items.length > 0
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  <FileSpreadsheet className="w-5 h-5" /> Exportar Documento
+                </button>
+              )}
             </div>
           )}
-          {!isViewMode && (
+          {!isCotizacionReadOnly && (
           <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
             <button
               onClick={handleSaveCotizacion}
@@ -1388,14 +1544,14 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
 
       {/* 1. Modal Selección de Tipo de Item */}
       <ItemTypeModal
-        open={!isViewMode && showItemTypeModal}
+        open={!isCotizacionReadOnly && showItemTypeModal}
         onClose={() => setShowItemTypeModal(false)}
         onSelect={handleItemTypeSelection}
       />
 
       {/* 2. Modal Catálogo de Productos */}
       <ProductModal
-        open={!isViewMode && showProductModal}
+        open={!isCotizacionReadOnly && showProductModal}
         onClose={() => setShowProductModal(false)}
         productos={productos}
         simboloMoneda={simboloMoneda}
@@ -1404,7 +1560,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
 
       {/* 3. Modal Formulario de Item */}
       <ItemFormModal
-        open={!isViewMode && showItemFormModal}
+        open={!isCotizacionReadOnly && showItemFormModal}
         onClose={() => setShowItemFormModal(false)}
         itemForm={itemForm}
         setItemForm={setItemForm}
@@ -1425,7 +1581,8 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
         setCostoForm={setCostoForm}
         onAddCosto={handleAddCosto}
         onDeleteCosto={handleDeleteCosto}
-        readOnly={isViewMode}
+        readOnly={isCotizacionReadOnly}
+        simboloMoneda={simboloMoneda}
         />
 
       {showRechazoModal && (
@@ -1504,9 +1661,47 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
         </div>
       )}
 
+      {/* 6. Modal Delegación de Edición */}
+      {showDelegacionEdicionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl">
+            <h3 className="text-xl font-bold mb-4">Delegar edición</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Selecciona el usuario de ventas que podrá editar y terminar esta cotización.
+            </p>
+            <select
+              value={delegadoCotizacionSelectionId ?? ''}
+              onChange={(e) => setDelegadoCotizacionSelectionId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 mb-4"
+            >
+              <option value="">Seleccionar delegado de edición</option>
+              {ventasUsuarios.map((usuario) => (
+                <option key={usuario.id} value={usuario.id}>
+                  {`${usuario.nombres || (usuario as any).name || 'Usuario'} ${(usuario as any).apellidos || ''}`.trim()}
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDelegacionEdicionModal(false)}
+                className="flex-1 px-4 py-3 border rounded-lg text-gray-700 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDelegarEdicionCotizacion}
+                className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              >
+                Delegar edición
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 5. Modal Exportación */}
       <ExportModal
-        open={!isViewMode && showExportModal}
+        open={puedeExportar() && showExportModal}
         onClose={() => setShowExportModal(false)}
         onExportPdf={handleExportarPdf}
         exportandoPdf={exportandoPdf}

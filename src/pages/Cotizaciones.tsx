@@ -337,9 +337,11 @@ export default function Cotizaciones() {
                 {paginatedCotizaciones.length > 0 ? (
                   paginatedCotizaciones.map((cotizacion) => {
                     const estadoBadge = getEstadoBadge(cotizacion.estado_cotizacion_id);
+                    const delegadoCotizacionId =
+                      cotizacion.delegado_cotizacion_id ?? (cotizacion as any).delegadoCotizacionId ?? null;
                     const puedeEditar =
-                      // user?.role === 'SUPERADMIN' ||
-                      cotizacion.user_id === user?.id;
+                      cotizacion.user_id === user?.id ||
+                      delegadoCotizacionId === user?.id;
 
                     return (
                       <tr

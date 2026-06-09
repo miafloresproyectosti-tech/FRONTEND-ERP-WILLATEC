@@ -6,6 +6,7 @@ export interface Cotizacion {
     modo_distribucion: "POR_ITEM" | "POR_CANTIDAD";
     tipo_cambio: number;
     titulo: string;
+    forma_pago?: string;
     subtotal: number;
     igv: number;
     total: number;
@@ -22,6 +23,7 @@ export interface Cotizacion {
     plataforma_id: number;
     user_id: number;
     moneda_id: number;
+    delegado_cotizacion_id?: number | null;
     items: CotizacionItem[];
     costosAdicionales: CotizacionCostosAdicional[];
     historial?: CotizacionHistorial[];
@@ -41,6 +43,8 @@ export type CotizacionItem ={
     cantidad: number;
     costo_base: number;
     imagen: string;
+    imagen_url?: string | null;
+    imagen_path?: string | null;
     margen: number;
     marca?: string;
     codigo?: string;
@@ -110,6 +114,8 @@ export interface ItemForm {
     cantidad: number;
     costo_base: number;
     imagen: string;
+    imagen_url?: string | null;
+    imagen_path?: string | null;
     margen: number;
     marca?: string;
     codigo?: string;
@@ -137,6 +143,7 @@ export interface Cliente {
     id: number;
     nombre: string;
     ruc: string;
+    contacto?: string | null;
     correo: string | null;
     telefono: string | null;
     estado: "activo" | "inactivo";

@@ -14,8 +14,7 @@ export default function ChangePasswordPage() {
   const { login } = useAuth();
 
   const storedEmail = sessionStorage.getItem("temp_user_email") || "";
-  const storedPassword = sessionStorage.getItem("temp_user_password") || "";
-  const [currentPassword, setCurrentPassword] = useState(storedPassword);
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [loading, setLoading] = useState(false);
@@ -73,7 +72,6 @@ export default function ChangePasswordPage() {
       });
       sessionStorage.removeItem("temp_user_email");
       sessionStorage.removeItem("temp_user_id");
-      sessionStorage.removeItem("temp_user_password");
       navigate("/");
     } catch (err: unknown) {
       const message =
@@ -95,15 +93,13 @@ export default function ChangePasswordPage() {
         {error && <div className="text-sm text-red-600 mb-3">{error}</div>}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!storedPassword && (
-            <input
-              type="password"
-              placeholder="Contrasena actual"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-4 py-3 border rounded-2xl"
-            />
-          )}
+          <input
+            type="password"
+            placeholder="Contrasena actual"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            className="w-full px-4 py-3 border rounded-2xl"
+          />
 
           <input
             type="password"

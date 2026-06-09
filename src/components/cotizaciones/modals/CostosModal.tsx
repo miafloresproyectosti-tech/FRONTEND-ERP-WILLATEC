@@ -1,5 +1,6 @@
 import type { CotizacionCostosAdicional } from "../../../services/cotizacion.service";
 import { X, DollarSign, Trash2 } from "lucide-react";
+import { formatMoney } from "../../../utils/formatNumber";
 
 interface Props{
   open: boolean;
@@ -20,6 +21,7 @@ interface Props{
   onAddCosto: () => void;
   onDeleteCosto: (id: number) => void;
   readOnly?: boolean;
+  simboloMoneda?: string;
 }
 
 export function CostosModal({ 
@@ -30,7 +32,8 @@ export function CostosModal({
   setCostoForm, 
   onAddCosto, 
   onDeleteCosto,
-  readOnly = false
+  readOnly = false,
+  simboloMoneda = "S/",
 }: Props) {
   if (!open) return null;
 
@@ -67,7 +70,7 @@ export function CostosModal({
               </p>
 
               <p className="text-xs text-gray-500">
-                S/ {costo.monto.toFixed(2)}
+                {formatMoney(costo.monto, simboloMoneda)}
               </p>
               {costo.descripcion && (
                 <p className="text-xs text-gray-400">
