@@ -1,9 +1,12 @@
 import type { CotizacionItem, } from "../../types/cotizaciones.type";
-import { CheckCircle, Trash2, Plus, Pencil } from "lucide-react";
+import { CheckCircle, Trash2, Plus, Pencil, Eye } from "lucide-react";
 import { formatMoney } from "../../utils/formatNumber";
+import { resolveItemImageUrl } from "../../utils/storageImage";
 interface Props{
   items: CotizacionItem[];
   simboloMoneda: string;
+  monedaId: number;
+  tipoCambioSolesADolar: number;
 
   readOnly: boolean;
 
@@ -22,6 +25,8 @@ interface Props{
 export function CotizacionItemsTable ({ 
   items, 
   simboloMoneda, 
+  monedaId,
+  tipoCambioSolesADolar,
   estadoCotizacionId, 
   setEstadoCotizacionId,
   onDeleteItem, 
@@ -32,6 +37,11 @@ export function CotizacionItemsTable ({
   readOnly,
   isOwnCotizacion = true
 }: Props){
+const formatGananciaSoles = (ganancia: number) => {
+  const tipoCambio = tipoCambioSolesADolar || 1;
+  return formatMoney(Number((ganancia * tipoCambio).toFixed(2)), "S/");
+};
+
 // CotizacionItemsTable.tsx — reemplaza el return completo
 return (
   <div className="bg-white rounded-xl shadow-sm border p-6">
@@ -62,7 +72,7 @@ return (
           <col style={{ width: '76px' }} />
           <col style={{ width: '60px' }} />
           <col style={{ width: '76px' }} />
-          {isOwnCotizacion && <col style={{ width: '76px' }} />}
+          {isOwnCotizacion && <col style={{ width: monedaId === 2 ? '98px' : '76px' }} />}
           <col style={{ width: '84px' }} />
           <col style={{ width: '56px' }} />
         </colgroup>
@@ -103,6 +113,7 @@ return (
               const ganancia      = parseFloat(item.ganancia as any)       || 0;
               const subtotal      = parseFloat(item.subtotal as any)       || 0;
               const margen        = parseFloat(item.margen as any)         || 0;
+              const itemImage     = resolveItemImageUrl(item.imagen_url, item.imagen);
 
               return (
                 <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
@@ -111,7 +122,17 @@ return (
                     style={{ maxWidth: 140, textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                     title={item.descripcion}
                   >
-                    {item.descripcion}
+                    <div className="flex items-center gap-2 min-w-0">
+                      {itemImage && (
+                        <img
+                          src={itemImage}
+                          alt=""
+                          className="w-8 h-8 rounded border border-gray-200 object-contain bg-white flex-shrink-0"
+                          loading="lazy"
+                        />
+                      )}
+                      <span className="truncate">{item.descripcion}</span>
+                    </div>
                   </td>
                   <td className="py-2.5 px-2 text-center text-gray-700">{item.cantidad}</td>
                   <td className="py-2.5 px-2 text-center">
@@ -176,13 +197,28 @@ return (
                   <td className="py-3 px-2 font-medium text-xs">{(margen ?? 0).toFixed(1)} % </td>
                   <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{formatMoney(precioVenta, simboloMoneda)}</td>
                   {isOwnCotizacion && <td className={`py-2.5 px-2 text-center tabular-nums font-medium ${ganancia > 0 ? 'text-green-700' : 'text-red-700'}`}>
-                    {formatMoney(ganancia, simboloMoneda)}
+                    <div>{formatMoney(ganancia, simboloMoneda)}</div>
+                    {monedaId === 2 && (
+                      <div className="mt-0.5 text-[10px] leading-none text-emerald-600">
+                        {formatGananciaSoles(ganancia)}
+                      </div>
+                    )}
                   </td>}
                   <td className="py-2.5 px-2 text-center tabular-nums font-medium text-gray-800">
                     {formatMoney(subtotal, simboloMoneda)}
                   </td>
                   <td className="py-2.5 px-2">
-                    {!readOnly && (
+                    {readOnly ? (
+                      <div className="flex items-center justify-center">
+                        <button
+                          onClick={() => onOpenEdit(item)}
+                          className="p-1 rounded hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors"
+                          title="Ver detalle"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
                       <div className="flex items-center justify-center gap-1">
                       <button
                         onClick={() => onDeleteItem(item.id)}

@@ -51,6 +51,8 @@ const monedaOptions = [
   { id: 3, label: "EUR" },
 ];
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function Clientes() {
   const { addNotification } = useNotifications();
 
@@ -75,6 +77,8 @@ export default function Clientes() {
   });
 
   const [clienteAEliminar, setClienteAEliminar] = useState<Cliente | null>(null);
+  const correoActual = String(clienteSeleccionado.correo || "").trim();
+  const nombreActual = String(clienteSeleccionado.nombre || "").trim();
 
   // Filtrar clientes por búsqueda
   const clientesFiltrados = clientesData.filter(
@@ -166,13 +170,28 @@ export default function Clientes() {
   };
 
   const handleGuardar = async () => {
-    if (!clienteSeleccionado.nombre || !clienteSeleccionado.correo) return;
+    const nombre = String(clienteSeleccionado.nombre || "").trim();
+    const correo = String(clienteSeleccionado.correo || "").trim();
+    const telefono = String(clienteSeleccionado.telefono || "").trim();
+
+    if (!nombre) return;
+
+    if (correo && !EMAIL_REGEX.test(correo)) {
+      addNotification({
+        title: "Correo inválido",
+        description: "Ingresa un correo válido, por ejemplo cliente@empresa.com.",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/clientes",
+      });
+      return;
+    }
 
     const payload = {
-      nombre: clienteSeleccionado.nombre,
-      ruc: clienteSeleccionado.ruc || "",
-      correo: clienteSeleccionado.correo || "",
-      telefono: clienteSeleccionado.telefono || "",
+      nombre,
+      ruc: String(clienteSeleccionado.ruc || "").trim(),
+      correo: correo || null,
+      telefono: telefono || null,
       estado: clienteSeleccionado.estado || "activo",
       tipo_cliente_id: clienteSeleccionado.tipo_cliente_id || 1,
       moneda_id: clienteSeleccionado.moneda_id || 1,
@@ -204,11 +223,11 @@ export default function Clientes() {
       }
 
       setOpenModal(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
       addNotification({
         title: modoEdicion ? "Error al actualizar cliente" : "Error al crear cliente",
-        description: "Hubo un problema al guardar los datos. Intenta nuevamente.",
+        description: error?.response?.data?.message || "Hubo un problema al guardar los datos. Intenta nuevamente.",
         type: "warning",
         icon: "MessageCircle",
         route: "/clientes",
@@ -227,6 +246,37 @@ export default function Clientes() {
       ...prev,
       [field]: value
     }));
+  };
+
+  const getTipoClienteLabel = (cliente: Cliente) => {
+    const tipoId = Number(
+      cliente.tipo_cliente_id ??
+      (cliente as any).tipoClienteId ??
+      (cliente as any).tipo_cliente?.id
+    );
+
+    return (
+      (cliente as any).tipo_cliente?.nombre ||
+      (cliente as any).tipo_cliente?.label ||
+      tipoClienteOptions.find((tipo) => tipo.id === tipoId)?.label ||
+      "-"
+    );
+  };
+
+  const getMonedaLabel = (cliente: Cliente) => {
+    const monedaId = Number(
+      cliente.moneda_id ??
+      (cliente as any).monedaId ??
+      (cliente as any).moneda?.id
+    );
+
+    return (
+      (cliente as any).moneda?.codigo ||
+      (cliente as any).moneda?.nombre ||
+      (cliente as any).moneda?.label ||
+      monedaOptions.find((moneda) => moneda.id === monedaId)?.label ||
+      "-"
+    );
   };
 
   return (
@@ -329,14 +379,14 @@ export default function Clientes() {
                   <td className="px-6 py-5">
                     <div className="flex items-center gap-2 text-gray-600">
                       <Mail size={16} />
-                      <span className="truncate max-w-[200px]">{cliente.correo}</span>
+                      <span className="truncate max-w-[200px]">{cliente.correo || "-"}</span>
                     </div>
                   </td>
 
                   <td className="px-6 py-5">
                     <div className="flex items-center gap-2 text-gray-600">
                       <Phone size={16} />
-                      {cliente.telefono}
+                      {cliente.telefono || "-"}
                     </div>
                   </td>
 
@@ -356,11 +406,11 @@ export default function Clientes() {
                   </td>
 
                   <td className="px-6 py-5 text-gray-600">
-                    {tipoClienteOptions.find((tipo) => tipo.id === cliente.tipo_cliente_id)?.label ?? "-"}
+                    {getTipoClienteLabel(cliente)}
                   </td>
 
                   <td className="px-6 py-5 text-gray-600">
-                    {monedaOptions.find((moneda) => moneda.id === cliente.moneda_id)?.label ?? "-"}
+                    {getMonedaLabel(cliente)}
                   </td>
 
                   <td className="px-6 py-5">
@@ -539,6 +589,7 @@ export default function Clientes() {
                     type="email"
                     value={clienteSeleccionado.correo || ""}
                     onChange={(e) => handleInputChange('correo', e.target.value)}
+                    onBlur={() => handleInputChange('correo', correoActual)}
                     className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
                     placeholder="cliente@empresa.com"
                   />
@@ -637,7 +688,7 @@ export default function Clientes() {
                 </button>
                 <button
                   onClick={handleGuardar}
-                  disabled={!clienteSeleccionado.nombre || !clienteSeleccionado.correo}
+                  disabled={!nombreActual || saving}
                   className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-4 px-6 rounded-2xl transition-all duration-200 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm"
                 >
                   {modoEdicion ? "Actualizar Cliente" : "Crear Cliente"}

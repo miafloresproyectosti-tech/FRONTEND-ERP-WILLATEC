@@ -40,6 +40,15 @@ export default function Sidebar({
   const [commercialOpen, setCommercialOpen] = useState(true);
 
   const dropdownTimeoutRef = useRef<number | null>(null);
+  const lastLoginAt = user?.last_login_at ? new Date(user.last_login_at) : null;
+  const formattedLastLogin =
+    lastLoginAt && !Number.isNaN(lastLoginAt.getTime())
+      ? lastLoginAt.toLocaleString("es-PE", {
+          dateStyle: "long",
+          timeStyle: "short",
+          timeZone: "America/Lima",
+        })
+      : "No disponible";
 
   // ✅ LOGOUT
   const handleLogout = async () => {
@@ -491,7 +500,7 @@ export default function Sidebar({
                   </p>
 
                   <p className="text-sm font-medium text-gray-800">
-                    Hoy a las 14:32
+                    {formattedLastLogin}
                   </p>
                 </div>
               </div>

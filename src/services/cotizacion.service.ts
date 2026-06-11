@@ -1,4 +1,5 @@
 import api from "./api";
+import { normalizeStorageImagePath, normalizeStorageImageUrl } from "../utils/storageImage";
 
 // ========================
 // INTERFACES
@@ -33,6 +34,17 @@ export interface CotizacionItem {
   tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados
   proveedor?: string; // Nuevo campo para proveedor
   link_proveedor?: string; // Nuevo campo para link del proveedor
+  proveedores?: CotizacionItemProveedor[];
+}
+
+export interface CotizacionItemProveedor {
+  id?: number;
+  cotizacion_item_id?: number;
+  nombre: string;
+  link?: string | null;
+  precio?: number | null;
+  notas?: string | null;
+  orden?: number;
 }
 
 export interface ItemFormState {
@@ -53,6 +65,7 @@ export interface ItemFormState {
   disponibilidad_dias: number;
   proveedor?: string;
   link_proveedor?: string;
+  proveedores?: CotizacionItemProveedor[];
 }
 
 export interface CotizacionCostosAdicional {
@@ -215,6 +228,7 @@ export interface CreateItemData {
   disponibilidad_dias: number;
   proveedor?: string | undefined;
   link_proveedor?: string | undefined;
+  proveedores?: CotizacionItemProveedor[];
   imagen?: string | null;
   imagen_path?: string | null;
 }
@@ -239,6 +253,18 @@ function buildItemFormData(data: CreateItemData | UpdateItemData): FormData {
 
   Object.entries(data).forEach(([key, value]) => {
     if (key === "imagen" || value === undefined || value === null) return;
+
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => {
+        Object.entries(item ?? {}).forEach(([childKey, childValue]) => {
+          if (childValue !== undefined && childValue !== null) {
+            formData.append(`${key}[${index}][${childKey}]`, String(childValue));
+          }
+        });
+      });
+      return;
+    }
+
     formData.append(key, String(value));
   });
 
@@ -260,7 +286,7 @@ function appendCotizacionFormValue(formData: FormData, key: string, value: any):
     if (typeof value === "string" && value.startsWith("data:")) {
       formData.append(key, base64ToFile(value, "cotizacion-item.jpg"));
     } else if (typeof value === "string" && value.trim()) {
-      formData.append(key, normalizeImagePath(value) || value);
+      formData.append(key, normalizeStorageImagePath(value) || value);
     }
     return;
   }
@@ -288,55 +314,6 @@ function hasNewCotizacionItemImage(data: any): boolean {
   return (data.items ?? []).some((item: any) => typeof item?.imagen === "string" && item.imagen.startsWith("data:"));
 }
 
-function getApiOrigin(): string {
-  const baseUrl = api.defaults.baseURL || window.location.origin;
-
-  try {
-    return new URL(baseUrl, window.location.origin).origin;
-  } catch {
-    return window.location.origin;
-  }
-}
-
-function normalizeImageUrl(value: string | null | undefined): string {
-  if (!value) return "";
-  if (value.startsWith("data:")) return value;
-
-  const apiOrigin = getApiOrigin();
-
-  try {
-    const url = new URL(value);
-    const apiUrl = new URL(apiOrigin);
-
-    if (url.hostname === apiUrl.hostname && url.port !== apiUrl.port) {
-      url.protocol = apiUrl.protocol;
-      url.port = apiUrl.port;
-      return url.toString();
-    }
-
-    return value;
-  } catch {
-    const cleanValue = value.replace(/^\/+/, "");
-    const storagePath = cleanValue.startsWith("storage/")
-      ? cleanValue
-      : `storage/${cleanValue}`;
-
-    return `${apiOrigin}/${storagePath}`;
-  }
-}
-
-function normalizeImagePath(value: string | null | undefined): string | null {
-  if (!value) return null;
-  if (value.startsWith("data:")) return value;
-
-  try {
-    const url = new URL(value);
-    return url.pathname.replace(/^\/storage\/?/, "");
-  } catch {
-    return value.replace(/^\/?storage\/?/, "");
-  }
-}
-
 function buildCotizacionFormData(data: any): FormData {
   const formData = new FormData();
 
@@ -352,10 +329,19 @@ function prepareCotizacionData(data: any): any {
 
   return {
     ...data,
-    items: data.items.map((item: any) => ({
-      ...item,
-      imagen: normalizeImagePath(item.imagen),
-    })),
+    items: data.items.map((item: any) => {
+      const imageSource = item.imagen || item.imagen_path || item.imagen_url;
+      const imagePathSource = item.imagen_path || imageSource;
+
+      return {
+        ...item,
+        imagen: normalizeStorageImagePath(imageSource),
+        imagen_path:
+          typeof imagePathSource === "string" && imagePathSource.startsWith("data:")
+            ? item.imagen_path || null
+            : normalizeStorageImagePath(imagePathSource),
+      };
+    }),
   };
 }
 
@@ -409,7 +395,7 @@ export async function getCotizacion(id: string | number): Promise<Cotizacion> {
 
     data.items = (data.items ?? []).map((item: any) => {
       const rawImage = item.imagen_url || item.imagen || item.imagen_path || "";
-      const imageForPreview = normalizeImageUrl(rawImage);
+      const imageForPreview = normalizeStorageImageUrl(rawImage);
 
       return {
         ...item,
@@ -471,11 +457,11 @@ export async function createCotizacion(
       const response = await api.post("/cotizaciones/completa", buildCotizacionFormData(payload), {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      return response.data.cotizacion;
+      return response.data?.cotizacion || response.data?.data || response.data;
     }
 
     const response = await api.post("/cotizaciones/completa", payload);
-    return response.data.cotizacion;
+    return response.data?.cotizacion || response.data?.data || response.data;
   } catch (error) {
     console.error("Error al crear cotización:", error);
     throw error;
@@ -499,13 +485,23 @@ export async function updateCotizacion(
       const response = await api.post(`/cotizaciones/${id}/completa`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      return response.data.cotizacion;
+      return response.data?.cotizacion || response.data?.data || response.data;
     }
 
     const response = await api.put(`/cotizaciones/${id}/completa`, payload);
-    return response.data.cotizacion;
+    return response.data?.cotizacion || response.data?.data || response.data;
   } catch (error) {
     console.error("Error al actualizar cotización:", error);
+    throw error;
+  }
+}
+
+export async function enviarCotizacionRevision(id: number): Promise<Cotizacion> {
+  try {
+    const response = await api.patch(`/cotizaciones/${id}/enviar-revision`);
+    return response.data?.cotizacion || response.data?.data || response.data;
+  } catch (error) {
+    console.error("Error al enviar cotización a revisión:", error);
     throw error;
   }
 }
@@ -546,6 +542,15 @@ export async function rechazarCotizacion(
     return response.data?.cotizacion || response.data?.data || response.data;
   } catch (error) {
     console.error("Error al rechazar cotizaciÃ³n:", error);
+    throw error;
+  }
+}
+
+export async function deleteCotizacion(id: number): Promise<void> {
+  try {
+    await api.delete(`/cotizaciones/${id}`);
+  } catch (error) {
+    console.error("Error al eliminar cotización:", error);
     throw error;
   }
 }
@@ -731,6 +736,23 @@ export interface CotizacionPdfExport {
   filename: string | null;
 }
 
+declare global {
+  interface Window {
+    showSaveFilePicker?: (options?: {
+      suggestedName?: string;
+      types?: Array<{
+        description?: string;
+        accept: Record<string, string[]>;
+      }>;
+    }) => Promise<{
+      createWritable: () => Promise<{
+        write: (data: Blob) => Promise<void>;
+        close: () => Promise<void>;
+      }>;
+    }>;
+  }
+}
+
 function getFilenameFromContentDisposition(value?: string): string | null {
   if (!value) return null;
 
@@ -768,18 +790,45 @@ export async function exportarCotizacionPdf(id: number): Promise<CotizacionPdfEx
 /**
  * Descargar PDF de cotización
  */
-export function descargarPdfCotizacion(
+export async function descargarPdfCotizacion(
   nombreArchivo: string,
   blob: Blob,
-): void {
+): Promise<boolean> {
+  const filename = nombreArchivo.toLowerCase().endsWith(".pdf")
+    ? nombreArchivo
+    : `${nombreArchivo}.pdf`;
+
+  if (window.showSaveFilePicker) {
+    try {
+      const fileHandle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [
+          {
+            description: "Documento PDF",
+            accept: { "application/pdf": [".pdf"] },
+          },
+        ],
+      });
+      const writable = await fileHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return true;
+    } catch (error: any) {
+      if (error?.name === "AbortError") {
+        return false;
+      }
+
+      console.warn("No se pudo usar el selector de archivos. Se usará la descarga normal.", error);
+    }
+  }
+
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = nombreArchivo.toLowerCase().endsWith(".pdf")
-    ? nombreArchivo
-    : `${nombreArchivo}.pdf`;
+  link.download = filename;
   link.click();
-  window.URL.revokeObjectURL(url);
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+  return true;
 }
 
 // ========================

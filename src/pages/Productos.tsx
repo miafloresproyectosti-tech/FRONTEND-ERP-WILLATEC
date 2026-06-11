@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Search,
   Plus,
@@ -11,7 +12,14 @@ import {
 } from "lucide-react";
 
 import { getProductos, getExternalItems, createProducto, updateProducto, deleteProducto, updateCotizacionItem, type Producto, type ProductoPayload, type CotizacionItem } from "../services/producto.service";
+import {
+  getCotizacion,
+  getCotizaciones,
+  updateCotizacion,
+  type Cotizacion,
+} from "../services/cotizacion.service";
 import { useNotifications } from "../NotificationContext";
+import { normalizeStorageImageUrl } from "../utils/storageImage";
 // import { Plus as PlusIcon } from "lucide-react";
 
 const categoriaOptions = [
@@ -71,15 +79,14 @@ const mapProducto = (producto: Producto): ProductoUI => ({
   stock: String(producto.stock),
   precio_referencial: String(producto.precio_referencial),
   descripcion: producto.descripcion ?? "",
-  imagen: producto.imagen
-    ? `http://127.0.0.1:8000/storage/${producto.imagen}`
-    : "",
+  imagen: normalizeStorageImageUrl(producto.imagen_url || producto.imagen || producto.imagen_path),
   activo: producto.activo ? "true" : "false",
   unidad_medida: producto.unidad_medida ?? "unidad",
 });
 
 export default function Productos() {
   const { addNotification } = useNotifications();
+  const navigate = useNavigate();
 
   const [productos, setProductos] = useState<ProductoUI[]>([]);
   const [openModal, setOpenModal] = useState(false);
@@ -99,6 +106,12 @@ export default function Productos() {
     total: 0,
     per_page: 10,
   });
+  const [showAddToCotizacionModal, setShowAddToCotizacionModal] = useState(false);
+  const [selectedExternalItem, setSelectedExternalItem] = useState<ExternalItem | null>(null);
+  const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
+  const [cotizacionSearchTerm, setCotizacionSearchTerm] = useState("");
+  const [loadingCotizaciones, setLoadingCotizaciones] = useState(false);
+  const [addingToCotizacion, setAddingToCotizacion] = useState(false);
   const nextCodigo = useMemo(() => {
     const maxCodigo = productos.reduce((max, producto) => {
       const value = parseInt(producto.codigo ?? "", 10);
@@ -147,6 +160,9 @@ export default function Productos() {
     garantia_meses: "",
     proveedor: "",
     link_proveedor: "",
+    imagen: "",
+    imagen_url: "",
+    imagen_path: "",
     stock: "",
     producto_id: "",
   });
@@ -186,7 +202,30 @@ export default function Productos() {
   );
 
   const isStockTab = activeTab === "stock";
-  const tableItems = isStockTab ? currentItems : externalItems;
+  const cotizacionesFiltradas = cotizaciones.filter((cotizacion) => {
+    const search = cotizacionSearchTerm.trim().toLowerCase();
+    if (!search) return true;
+
+    return [
+      cotizacion.numero,
+      cotizacion.titulo,
+      cotizacion.cliente_nombre,
+      cotizacion.cliente?.nombre,
+    ].some((value) => String(value || "").toLowerCase().includes(search));
+  });
+  const externalItemsFiltrados = externalItems.filter((item) => {
+    const search = searchTerm.trim().toLowerCase();
+    if (!search) return true;
+
+    return [
+      item.descripcion,
+      item.codigo,
+      item.marca,
+      item.proveedor,
+      item.link_proveedor,
+    ].some((value) => String(value || "").toLowerCase().includes(search));
+  });
+  const tableItems = isStockTab ? currentItems : externalItemsFiltrados;
   const totalItems = isStockTab
     ? productosFiltrados.length
     : externalMeta.total;
@@ -206,7 +245,10 @@ export default function Productos() {
   // RESETEAR PAGINA EN BUSQUEDA
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+    if (activeTab === "externos") {
+      setExternalPage(1);
+    }
+  }, [searchTerm, activeTab]);
 
   useEffect(() => {
     const fetchProductos = async () => {
@@ -232,10 +274,10 @@ export default function Productos() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchExternalItems = async (page = 1) => {
+  const fetchExternalItems = async (page = 1, search = searchTerm) => {
     try {
       setExternalLoading(true);
-      const response = await getExternalItems(page);
+      const response = await getExternalItems(page, search);
       setExternalItems(response.data.map((item) => item));
       setExternalMeta(response.meta);
     } catch (error) {
@@ -255,10 +297,10 @@ export default function Productos() {
 
   useEffect(() => {
     if (activeTab === "externos") {
-      fetchExternalItems(externalPage);
+      fetchExternalItems(externalPage, searchTerm);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, externalPage]);
+  }, [activeTab, externalPage, searchTerm]);
 
   const handleTabChange = (tab: "stock" | "externos") => {
     setActiveTab(tab);
@@ -473,12 +515,10 @@ export default function Productos() {
   };
 
   // AGREGAR ITEM EXTERNO A COTIZACIÓN
-  const handleAddExternalItem = (externalItem: ExternalItem) => {
-    // Guardar en localStorage para que CotizacionDetail lo pueda recuperar
-    const itemData = {
-      tipo: "personalizado",
+  const buildExternalItemForCotizacion = (externalItem: ExternalItem) => ({
+      tipo: "externo",
       descripcion: externalItem.descripcion,
-      cantidad: externalItem.cantidad,
+      cantidad: 1,
       costo_base: externalItem.costo_unitario || 0,
       margen: externalItem.margen || 0,
       marca: externalItem.marca,
@@ -489,18 +529,117 @@ export default function Productos() {
       garantia_meses: externalItem.garantia_meses,
       proveedor: externalItem.proveedor,
       link_proveedor: externalItem.link_proveedor,
+      proveedores: externalItem.proveedores,
+      imagen: externalItem.imagen || externalItem.imagen_url || "",
+      imagen_url: externalItem.imagen_url || externalItem.imagen || null,
+      imagen_path: externalItem.imagen_path || externalItem.imagen || null,
       stock: 0, // Stock en 0 para items externos
-    };
+    });
+
+  const loadCotizacionesForExternalItem = async () => {
+    try {
+      setLoadingCotizaciones(true);
+      const data = await getCotizaciones();
+      setCotizaciones(data);
+    } catch (error) {
+      console.error(error);
+      addNotification({
+        title: "Error al cargar cotizaciones",
+        description: "No se pudo obtener la lista de cotizaciones.",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/productos",
+      });
+    } finally {
+      setLoadingCotizaciones(false);
+    }
+  };
+
+  const handleExternalItemImageFile = (file: File) => {
+    readImageFile(file, (dataUrl) => {
+      setExternalItemForm((prev) => ({
+        ...prev,
+        imagen: dataUrl,
+      }));
+    });
+  };
+
+  const handleAddExternalItem = (externalItem: ExternalItem) => {
+    setSelectedExternalItem(externalItem);
+    setCotizacionSearchTerm("");
+    setShowAddToCotizacionModal(true);
+
+    if (cotizaciones.length === 0) {
+      void loadCotizacionesForExternalItem();
+    }
+  };
+
+  const handleCreateCotizacionWithExternalItem = () => {
+    if (!selectedExternalItem) return;
+
+    const itemData = buildExternalItemForCotizacion(selectedExternalItem);
 
     localStorage.setItem("itemToAdd", JSON.stringify(itemData));
     
     addNotification({
       title: "Item preparado",
-      description: `Item "${externalItem.descripcion}" listo para agregar a cotización.`,
+      description: `Item "${selectedExternalItem.descripcion}" listo para agregar a cotización.`,
       type: "success",
       icon: "CheckCircle",
       route: "/productos",
     });
+    setShowAddToCotizacionModal(false);
+    navigate("/cotizaciones/new");
+  };
+
+  const handleAddExternalItemToCotizacion = async (cotizacionId: number) => {
+    if (!selectedExternalItem) return;
+
+    try {
+      setAddingToCotizacion(true);
+      const cotizacion = await getCotizacion(cotizacionId);
+      const itemData = buildExternalItemForCotizacion(selectedExternalItem);
+      const items = [
+        ...(cotizacion.items || []),
+        {
+          ...itemData,
+          orden: (cotizacion.items || []).length + 1,
+        },
+      ];
+
+      await updateCotizacion(cotizacionId, {
+        ...cotizacion,
+        cliente_id: cotizacion.cliente_id,
+        plantilla_id: cotizacion.plantilla_id,
+        plataforma_id: cotizacion.plataforma_id,
+        moneda_id: cotizacion.moneda_id,
+        estado_cotizacion_id: cotizacion.estado_cotizacion_id,
+        items,
+        costos: cotizacion.costosAdicionales || (cotizacion as any).costos_adicionales || [],
+        costos_adicionales: cotizacion.costosAdicionales || (cotizacion as any).costos_adicionales || [],
+      });
+
+      addNotification({
+        title: "Item agregado",
+        description: `Item "${selectedExternalItem.descripcion}" agregado a la cotización.`,
+        type: "success",
+        icon: "CheckCircle",
+        route: `/cotizaciones/${cotizacionId}/edit`,
+      });
+      setShowAddToCotizacionModal(false);
+      navigate(`/cotizaciones/${cotizacionId}/edit`);
+    } catch (error: any) {
+      console.error(error);
+      addNotification({
+        title: "Error al agregar item",
+        description: error?.response?.data?.message || "No se pudo agregar el item a la cotización seleccionada.",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/productos",
+      });
+    } finally {
+      setAddingToCotizacion(false);
+    }
   };
 
   const resetExternalItemForm = () => {
@@ -518,6 +657,9 @@ export default function Productos() {
       garantia_meses: "",
       proveedor: "",
       link_proveedor: "",
+      imagen: "",
+      imagen_url: "",
+      imagen_path: "",
       stock: "",
       producto_id: "",
     });
@@ -539,6 +681,9 @@ export default function Productos() {
       garantia_meses: String(item.garantia_meses || ""),
       proveedor: item.proveedor || "",
       link_proveedor: item.link_proveedor || "",
+      imagen: item.imagen || item.imagen_url || "",
+      imagen_url: item.imagen_url || item.imagen || "",
+      imagen_path: item.imagen_path || item.imagen || "",
       stock: String(item.stock ?? ""),
       producto_id: item.producto_id ? String(item.producto_id) : "",
     });
@@ -576,6 +721,9 @@ export default function Productos() {
         unidad_medida: externalItemForm.unidad_medida,
         proveedor: externalItemForm.proveedor,
         link_proveedor: externalItemForm.link_proveedor,
+        imagen: externalItemForm.imagen?.startsWith("data:")
+          ? externalItemForm.imagen
+          : undefined,
         stock: externalItemForm.stock
           ? parseInt(externalItemForm.stock, 10)
           : undefined,
@@ -658,7 +806,7 @@ export default function Productos() {
       </div>
 
       {/* BUSCADOR */}
-      {isStockTab && (
+      {(isStockTab || activeTab === "externos") && (
         <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-200">
           <div className="flex items-center gap-3 bg-gray-100 px-4 py-3 rounded-2xl w-full md:w-96">
             <Search
@@ -668,7 +816,11 @@ export default function Productos() {
 
             <input
               type="text"
-              placeholder="Buscar producto por nombre, código o categoría..."
+              placeholder={
+                isStockTab
+                  ? "Buscar producto por nombre, código o categoría..."
+                  : "Buscar externo por nombre, código, marca o proveedor..."
+              }
               value={searchTerm}
               onChange={handleSearch}
               className="bg-transparent outline-none w-full text-sm"
@@ -966,6 +1118,88 @@ export default function Productos() {
               >
                 Eliminar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAddToCotizacionModal && selectedExternalItem && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+            <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Agregar a cotización
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  {selectedExternalItem.descripcion}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAddToCotizacionModal(false)}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <button
+                onClick={handleCreateCotizacionWithExternalItem}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                <Plus size={16} />
+                Crear cotización nueva con este item
+              </button>
+
+              <div className="flex items-center gap-3 bg-gray-100 px-4 py-3 rounded-2xl">
+                <Search size={18} className="text-gray-500 flex-shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Buscar cotización por número, cliente o título..."
+                  value={cotizacionSearchTerm}
+                  onChange={(e) => setCotizacionSearchTerm(e.target.value)}
+                  className="bg-transparent outline-none w-full text-sm"
+                />
+              </div>
+
+              <div className="max-h-80 overflow-y-auto rounded-xl border border-gray-100">
+                {loadingCotizaciones ? (
+                  <div className="flex items-center justify-center gap-3 py-10 text-sm text-gray-500">
+                    <Loader2 className="animate-spin" size={18} />
+                    Cargando cotizaciones...
+                  </div>
+                ) : cotizacionesFiltradas.length > 0 ? (
+                  cotizacionesFiltradas.map((cotizacion) => (
+                    <button
+                      key={cotizacion.id}
+                      onClick={() => handleAddExternalItemToCotizacion(cotizacion.id)}
+                      disabled={addingToCotizacion}
+                      className="w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-blue-50 disabled:opacity-60"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-gray-800">
+                            {cotizacion.numero || `Cotización #${cotizacion.id}`}
+                          </p>
+                          <p className="truncate text-xs text-gray-500">
+                            {[cotizacion.cliente_nombre || cotizacion.cliente?.nombre, cotizacion.titulo]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-medium text-gray-600">
+                          {(cotizacion as any).estado_cotizacion?.nombre || `Estado ${cotizacion.estado_cotizacion_id}`}
+                        </span>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="py-10 text-center text-sm text-gray-500">
+                    No se encontraron cotizaciones
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1305,6 +1539,56 @@ export default function Productos() {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <hr className="border-gray-100" />
+
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">
+                  Imagen
+                </p>
+                <label
+                  htmlFor="external-item-imagen"
+                  onDragOver={(e: React.DragEvent<HTMLLabelElement>) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) handleExternalItemImageFile(file);
+                  }}
+                  onPaste={(e) => {
+                    const imageItem = Array.from(e.clipboardData.items).find((item) =>
+                      item.type.startsWith("image/")
+                    );
+                    const file = imageItem?.getAsFile();
+                    if (file) handleExternalItemImageFile(file);
+                  }}
+                  className="block cursor-pointer rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-3 text-center transition-colors hover:border-blue-400 hover:bg-blue-50"
+                >
+                  <input
+                    id="external-item-imagen"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleExternalItemImageFile(file);
+                    }}
+                  />
+                  {externalItemForm.imagen ? (
+                    <div className="space-y-2">
+                      <img
+                        src={externalItemForm.imagen}
+                        alt="Imagen del item externo"
+                        className="mx-auto h-28 w-auto object-contain rounded-lg border border-gray-200 bg-white"
+                      />
+                      <p className="text-xs text-gray-500">Haz clic, arrastra o pega para cambiar la imagen</p>
+                    </div>
+                  ) : (
+                    <div className="py-5 text-xs text-gray-500">
+                      Haz clic, arrastra o pega una imagen
+                    </div>
+                  )}
+                </label>
               </div>
 
               <hr className="border-gray-100" />

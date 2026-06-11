@@ -12,13 +12,38 @@ import {
   FileText,
   ShoppingCart,
   Loader2,
+  AlertTriangle,
+  X,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
 
 import { useAuth } from "../AuthContext";
 import { useNotifications } from "../NotificationContext";
-import { getCotizaciones, type Cotizacion as ApiCotizacion } from "../services/cotizacion.service";
+import { deleteCotizacion, getCotizaciones, type Cotizacion as ApiCotizacion } from "../services/cotizacion.service";
+import { formatMoney } from "../utils/formatNumber";
+
+function formatCotizacionDate(value?: string | null): string {
+  if (!value) return "N/A";
+
+  const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch;
+    return `${day}/${month}/${year}`;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "N/A";
+
+  return date.toLocaleDateString("es-PE", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "America/Lima",
+  });
+}
 
 export default function Cotizaciones() {
   const { user } = useAuth();
@@ -36,6 +61,9 @@ export default function Cotizaciones() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterEstado, setFilterEstado] = useState("todos");
   const [currentPage, setCurrentPage] = useState(1);
+  const [cotizacionToDelete, setCotizacionToDelete] = useState<ApiCotizacion | null>(null);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
+  const [deletingCotizacionId, setDeletingCotizacionId] = useState<number | null>(null);
   const itemsPerPage = 5;
 
   // Cargar cotizaciones al montar el componente
@@ -132,6 +160,10 @@ export default function Cotizaciones() {
     return cotizacion.user_id ? `Usuario #${cotizacion.user_id}` : 'N/A';
   };
 
+  const getSimboloMoneda = (cotizacion: ApiCotizacion) => {
+    return Number(cotizacion.moneda_id) === 2 ? "$" : "S/";
+  };
+
   const totalPorEstado = {
     borrador: cotizaciones.filter((c) => Number(c.estado_cotizacion_id) === 1).length,
     enviada: cotizaciones.filter((c) => Number(c.estado_cotizacion_id) === 2).length,
@@ -144,6 +176,43 @@ export default function Cotizaciones() {
   const porRevisar = cotizaciones.filter(
     (c) => Number(c.estado_cotizacion_id) === 2
   ).length;
+
+  const closeDeleteModal = () => {
+    if (deletingCotizacionId) return;
+    setCotizacionToDelete(null);
+    setDeleteConfirmationText("");
+  };
+
+  const handleDeleteCotizacion = async () => {
+    if (!cotizacionToDelete) return;
+
+    const cotizacionId = Number(cotizacionToDelete.id);
+    setDeletingCotizacionId(cotizacionId);
+
+    try {
+      await deleteCotizacion(cotizacionId);
+      setCotizaciones((prev) => prev.filter((cotizacion) => Number(cotizacion.id) !== cotizacionId));
+      addNotification({
+        title: "Cotización eliminada",
+        description: `La cotización ${cotizacionToDelete.numero} fue eliminada correctamente`,
+        type: "success",
+        icon: "CheckCircle",
+        route: "/cotizaciones",
+      });
+      setCotizacionToDelete(null);
+      setDeleteConfirmationText("");
+    } catch (error: any) {
+      addNotification({
+        title: "Error al eliminar cotización",
+        description: error?.response?.data?.message || "No se pudo eliminar la cotización",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/cotizaciones",
+      });
+    } finally {
+      setDeletingCotizacionId(null);
+    }
+  };
 
 
   return (
@@ -337,11 +406,14 @@ export default function Cotizaciones() {
                 {paginatedCotizaciones.length > 0 ? (
                   paginatedCotizaciones.map((cotizacion) => {
                     const estadoBadge = getEstadoBadge(cotizacion.estado_cotizacion_id);
-                    const delegadoCotizacionId =
-                      cotizacion.delegado_cotizacion_id ?? (cotizacion as any).delegadoCotizacionId ?? null;
+                    const userId = Number(user?.id);
+                    const cotizacionUserId = Number(cotizacion.user_id);
+                    const delegadoCotizacionId = Number(
+                      cotizacion.delegado_cotizacion_id ?? (cotizacion as any).delegadoCotizacionId ?? 0
+                    );
                     const puedeEditar =
-                      cotizacion.user_id === user?.id ||
-                      delegadoCotizacionId === user?.id;
+                      Boolean(user?.id) &&
+                      (cotizacionUserId === userId || delegadoCotizacionId === userId);
 
                     return (
                       <tr
@@ -358,14 +430,7 @@ export default function Cotizaciones() {
                           <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
                             <Calendar size={16} />
 
-                            {new Date(cotizacion.fecha).toLocaleDateString(
-                              "es-PE",
-                              {
-                                day: "2-digit",
-                                month: "short",
-                                year: "numeric",
-                              }
-                            )}
+                            {formatCotizacionDate(cotizacion.fecha)}
                           </div>
                         </td>
 
@@ -384,10 +449,7 @@ export default function Cotizaciones() {
                         </td>
 
                         <td className="px-6 py-5 font-semibold text-slate-900 dark:text-slate-100">
-                          S/. {Number(cotizacion.total).toLocaleString("es-PE", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                          {formatMoney(cotizacion.total, getSimboloMoneda(cotizacion))}
                         </td>
 
                         <td className="px-6 py-5">
@@ -430,25 +492,18 @@ export default function Cotizaciones() {
                             {puedeEditar && (
                             <button
                               onClick={() => {
-                                if (
-                                  window.confirm(
-                                    `¿Eliminar cotización ${cotizacion.numero}?`
-                                  )
-                                ) {
-                                  // TODO: Implementar eliminación desde API
-                                  addNotification({
-                                    title: 'Función no disponible',
-                                    description: 'La eliminación de cotizaciones aún no está implementada',
-                                    type: 'info',
-                                    icon: 'MessageCircle',
-                                    route: '/cotizaciones',
-                                  });
-                                }
+                                setCotizacionToDelete(cotizacion);
+                                setDeleteConfirmationText("");
                               }}
-                              className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition"
+                              disabled={deletingCotizacionId === Number(cotizacion.id)}
+                              className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
                               title="Eliminar cotización"
                             >
-                              <Trash2 size={18} />
+                              {deletingCotizacionId === Number(cotizacion.id) ? (
+                                <Loader2 size={18} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={18} />
+                              )}
                             </button>
                             )}
                             
@@ -539,6 +594,84 @@ export default function Cotizaciones() {
           </div>
         )}
       </div>
+
+      {cotizacionToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl dark:bg-slate-950">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 p-6 dark:border-slate-800">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-red-100 p-2 text-red-600">
+                  <AlertTriangle size={22} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                    Eliminar cotización
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Esta acción eliminará la cotización y sus datos asociados.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeDeleteModal}
+                disabled={Boolean(deletingCotizacionId)}
+                className="rounded-lg p-2 text-slate-400 hover:bg-gray-100 hover:text-slate-600 disabled:opacity-50 dark:hover:bg-slate-900"
+                title="Cerrar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-6">
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+                <p className="font-semibold">{cotizacionToDelete.numero}</p>
+                <p>{cotizacionToDelete.cliente_nombre || "Cliente no disponible"}</p>
+                <p>{formatMoney(cotizacionToDelete.total, getSimboloMoneda(cotizacionToDelete))}</p>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">
+                  Escribe ELIMINAR para confirmar
+                </label>
+                <input
+                  value={deleteConfirmationText}
+                  onChange={(event) => setDeleteConfirmationText(event.target.value)}
+                  disabled={Boolean(deletingCotizacionId)}
+                  className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm text-slate-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 disabled:bg-gray-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  placeholder="ELIMINAR"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 border-t border-gray-200 p-6 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={closeDeleteModal}
+                disabled={Boolean(deletingCotizacionId)}
+                className="flex-1 rounded-xl border border-gray-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-gray-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteCotizacion}
+                disabled={deleteConfirmationText.trim().toUpperCase() !== "ELIMINAR" || Boolean(deletingCotizacionId)}
+                className="flex-1 rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deletingCotizacionId ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 size={16} className="animate-spin" /> Eliminando...
+                  </span>
+                ) : (
+                  "Eliminar definitivamente"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

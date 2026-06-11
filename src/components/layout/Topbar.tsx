@@ -23,6 +23,50 @@ interface TopbarProps {
   onMenuClick?: () => void;
 }
 
+const NOTIFICATION_POLL_INTERVAL_MS = 10_000;
+
+type WebkitAudioWindow = Window & {
+  webkitAudioContext?: typeof AudioContext;
+};
+
+async function playNotificationSound() {
+  const AudioContextConstructor =
+    window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
+
+  if (!AudioContextConstructor) return;
+
+  const audioContext = new AudioContextConstructor();
+
+  try {
+    if (audioContext.state === "suspended") {
+      await audioContext.resume();
+    }
+
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    const now = audioContext.currentTime;
+
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(1046.5, now);
+    oscillator.frequency.exponentialRampToValueAtTime(784, now + 0.18);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.22, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.34);
+
+    oscillator.onended = () => {
+      void audioContext.close();
+    };
+  } catch {
+    void audioContext.close();
+  }
+}
+
 export default function Topbar({
   onNotificationClick,
   onMenuClick,
@@ -35,18 +79,42 @@ export default function Topbar({
   );
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const originalTitleRef = useRef(document.title);
+  const knownUnreadIdsRef = useRef<Set<string>>(new Set());
+  const hasLoadedNotificationsRef = useRef(false);
   const { refreshing, refresh } = useRefresh();
 
   const unreadCount = notifications.filter(
     (notification) => !notification.read_at
   ).length;
 
+  const applyNotifications = (
+    data: DatabaseNotification[],
+    notifyNewUnread = false
+  ) => {
+    const unreadIds = data
+      .filter((notification) => !notification.read_at)
+      .map((notification) => notification.id);
+    const hasNewUnread = unreadIds.some(
+      (id) => !knownUnreadIdsRef.current.has(id)
+    );
+
+    knownUnreadIdsRef.current = new Set(unreadIds);
+    setNotifications(data);
+
+    if (hasLoadedNotificationsRef.current && notifyNewUnread && hasNewUnread) {
+      void playNotificationSound();
+    }
+
+    hasLoadedNotificationsRef.current = true;
+  };
+
   const loadNotifications = async () => {
     try {
       setNotificationsLoading(true);
       setNotificationsError(null);
       const data = await notificationService.getNotifications();
-      setNotifications(data);
+      applyNotifications(data, true);
     } catch (error) {
       console.error("Error al cargar notificaciones:", error);
       setNotificationsError("No se pudieron cargar las notificaciones.");
@@ -58,21 +126,55 @@ export default function Topbar({
   useEffect(() => {
     let cancelled = false;
 
-    notificationService
-      .getNotifications()
-      .then((data) => {
-        if (!cancelled) {
-          setNotifications(data);
-        }
-      })
-      .catch((error) => {
-        console.error("Error al cargar notificaciones:", error);
-      });
+    const fetchNotifications = (notifyNewUnread = false) => {
+      notificationService
+        .getNotifications()
+        .then((data) => {
+          if (!cancelled) {
+            applyNotifications(data, notifyNewUnread);
+          }
+        })
+        .catch((error) => {
+          console.error("Error al cargar notificaciones:", error);
+        });
+    };
+
+    fetchNotifications(false);
+    const intervalId = window.setInterval(
+      () => fetchNotifications(true),
+      NOTIFICATION_POLL_INTERVAL_MS
+    );
+    const handleFocus = () => fetchNotifications(true);
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchNotifications(true);
+      }
+    };
+    const handleRefresh = () => fetchNotifications(true);
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("erp:refreshed", handleRefresh);
 
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("erp:refreshed", handleRefresh);
     };
   }, []);
+
+  useEffect(() => {
+    document.title =
+      unreadCount > 0
+        ? `(${unreadCount}) ${originalTitleRef.current}`
+        : originalTitleRef.current;
+
+    return () => {
+      document.title = originalTitleRef.current;
+    };
+  }, [unreadCount]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -131,7 +233,8 @@ export default function Topbar({
   };
 
   const getNotificationDescription = (notification: DatabaseNotification) => {
-    return notification.data.description || notification.data.message || "";
+    const description = notification.data.description || notification.data.message || "";
+    return description.replace(/\s+a las\s+\d{1,2}:\d{2}(?::\d{2})?\.?$/i, ".");
   };
 
   return (
@@ -248,6 +351,7 @@ export default function Topbar({
                             month: "short",
                             hour: "2-digit",
                             minute: "2-digit",
+                            timeZone: "America/Lima",
                           });
 
                       return (

@@ -9,7 +9,7 @@ import { useAuth } from './AuthContext';
 import type { UserRole } from './types/roles';
 import { ToastContainer } from './ToastContainer';
 
-export type NotificationType = 'success' | 'warning' | 'info';
+export type NotificationType = 'success' | 'warning' | 'info' | 'error';
 
 export type NotificationIcon =
   | 'CheckCircle'

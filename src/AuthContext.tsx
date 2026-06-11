@@ -15,11 +15,12 @@ interface User {
   email: string;
   role: UserRole;
   name: string;
+  last_login_at?: string | null;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (id: number, email: string, role: string) => void;
+  login: (id: number, email: string, role: string, lastLoginAt?: string | null) => void;
   logout: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
   loading: boolean;
@@ -32,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   // LOGIN
-  const login = (id: number, email: string, roleStr: string) => {
+  const login = (id: number, email: string, roleStr: string, lastLoginAt?: string | null) => {
     const role = roleStr as UserRole;
 
     const name =
@@ -44,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       role,
       name,
+      last_login_at: lastLoginAt || new Date().toISOString(),
     };
 
     setUser(userData);

@@ -1,4 +1,5 @@
 import api from "./api";
+import { normalizeStorageImagePath, normalizeStorageImageUrl } from "../utils/storageImage";
 
 export interface Producto {
     id: number;
@@ -17,6 +18,8 @@ export interface Producto {
     disponibilidad_tipo: "stock" | "importacion";
     disponibilidad_dias: number;
     imagen?: string | null;
+    imagen_url?: string | null;
+    imagen_path?: string | null;
 }
 
 export interface CotizacionItem {
@@ -41,7 +44,18 @@ export interface CotizacionItem {
     estado_cotizacion_item_id: number;
     proveedor?: string;
     link_proveedor?: string;
+    proveedores?: {
+        id?: number;
+        cotizacion_item_id?: number;
+        nombre: string;
+        link?: string | null;
+        precio?: number | null;
+        notas?: string | null;
+        orden?: number;
+    }[];
     imagen?: string | null;
+    imagen_url?: string | null;
+    imagen_path?: string | null;
     producto_id?: number | null;
     stock: number;
     created_at: string;
@@ -60,6 +74,57 @@ export interface ProductoPayload {
     activo: boolean;
     stock: number;
     categoria_id: number;
+}
+
+function buildCotizacionItemFormData(payload: Partial<CotizacionItem>): FormData {
+    const formData = new FormData();
+
+    Object.entries(payload).forEach(([key, value]) => {
+        if (key === "imagen" || value === undefined || value === null) return;
+
+        if (Array.isArray(value)) {
+            value.forEach((item, index) => {
+                Object.entries(item ?? {}).forEach(([childKey, childValue]) => {
+                    if (childValue !== undefined && childValue !== null) {
+                        formData.append(`${key}[${index}][${childKey}]`, String(childValue));
+                    }
+                });
+            });
+            return;
+        }
+
+        formData.append(key, String(value));
+    });
+
+    if (payload.imagen?.startsWith("data:")) {
+        formData.append("imagen", base64ToFile(payload.imagen, "cotizacion-item.jpg"));
+    }
+
+    return formData;
+}
+
+function normalizeProducto(producto: Producto): Producto {
+    const rawImage = producto.imagen_url || producto.imagen || producto.imagen_path;
+    const imageUrl = normalizeStorageImageUrl(rawImage);
+
+    return {
+        ...producto,
+        imagen: imageUrl || producto.imagen || null,
+        imagen_url: imageUrl || null,
+        imagen_path: normalizeStorageImagePath(rawImage),
+    };
+}
+
+function normalizeCotizacionItem(item: CotizacionItem): CotizacionItem {
+    const rawImage = (item as any).imagen_url || item.imagen;
+    const imageUrl = normalizeStorageImageUrl(rawImage);
+
+    return {
+        ...item,
+        imagen: imageUrl || item.imagen || null,
+        ...(imageUrl ? { imagen_url: imageUrl } : {}),
+        ...(rawImage ? { imagen_path: normalizeStorageImagePath(rawImage) } : {}),
+    } as CotizacionItem;
 }
 
 // Convierte una imagen base64 dataURL a File
@@ -105,10 +170,11 @@ function buildFormData(payload: ProductoPayload): FormData {
 //Backend devuelve productos paginados
 export const getProductos = async (): Promise<Producto[]> => {
     const res = await api.get("/productos");
-    return res.data?.data ?? [];
+    const productos = res.data?.data ?? [];
+    return Array.isArray(productos) ? productos.map(normalizeProducto) : [];
 };
 
-export const getExternalItems = async (page = 1): Promise<{
+export const getExternalItems = async (page = 1, search = ""): Promise<{
     data: CotizacionItem[];
     meta: {
         current_page: number;
@@ -118,12 +184,12 @@ export const getExternalItems = async (page = 1): Promise<{
     };
 }> => {
     const res = await api.get("/cotizaciones/items/all", {
-        params: { page },
+        params: { page, search: search.trim() || undefined },
     });
     const raw = res.data ?? {};
 
     return {
-        data: Array.isArray(raw.data) ? raw.data : [],
+        data: Array.isArray(raw.data) ? raw.data.map(normalizeCotizacionItem) : [],
         meta: {
             current_page: raw.current_page ?? page,
             last_page: raw.last_page ?? 1,
@@ -135,7 +201,7 @@ export const getExternalItems = async (page = 1): Promise<{
 
 export const getProducto = async (id: number): Promise<Producto> => {
     const res = await api.get(`/productos/${id}`);
-    return res.data;
+    return normalizeProducto(res.data);
 };
 
 export const createProducto = async (
@@ -146,7 +212,7 @@ export const createProducto = async (
     const res = await api.post("/productos", formData, {
         headers: { "Content-Type": "multipart/form-data" },
     });
-    return res.data.producto;
+    return normalizeProducto(res.data.producto);
 };
 
 export const updateProducto = async (
@@ -162,7 +228,7 @@ export const updateProducto = async (
     const res = await api.post(`/productos/${id}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
     });
-    return res.data.producto;
+    return normalizeProducto(res.data.producto);
 };
 
 export const deleteProducto = async (id: number): Promise<void> => {
@@ -173,7 +239,12 @@ export const updateCotizacionItem = async (
     id: number,
     payload: Partial<CotizacionItem>,
 ): Promise<CotizacionItem> => {
-    const res = await api.put(`/cotizaciones/items/${id}`, payload);
-    return res.data?.data || res.data;
+    const hasNewImage = typeof payload.imagen === "string" && payload.imagen.startsWith("data:");
+    const res = hasNewImage
+        ? await api.post(`/cotizaciones/items/${id}`, buildCotizacionItemFormData(payload), {
+            headers: { "Content-Type": "multipart/form-data" },
+        })
+        : await api.put(`/cotizaciones/items/${id}`, payload);
+    return normalizeCotizacionItem(res.data?.data || res.data);
 };
 

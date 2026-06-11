@@ -43,7 +43,7 @@ export default function LoginComponent() {
     setLoading(true);
 
     try {
-      const { role, id, requires_password_change } = await loginRequest(email, password);
+      const { role, id, requires_password_change, last_login_at } = await loginRequest(email, password);
       // Si el backend indica que la contraseña es temporal, redirigir a cambio de contraseña
       if (requires_password_change) {
         // Guardar credenciales temporales en sessionStorage para el cambio
@@ -54,8 +54,7 @@ export default function LoginComponent() {
         return;
       }
 
-      login(id, email, role);
-      setLoading(false);
+      login(id, email, role, last_login_at);
 
       const targetRoute =
         role === 'SUPERADMIN'
@@ -70,6 +69,8 @@ export default function LoginComponent() {
       navigate(targetRoute);
     } catch (err:any) {
       setError(err instanceof Error ? err.message : 'Error al iniciar sesión, revise sus credenciales');
+    } finally {
+      setPassword('');
       setLoading(false);
     }
   };
@@ -79,9 +80,11 @@ export default function LoginComponent() {
       {/* Hero Section */}
       <div className="hidden lg:flex lg:w-1/2 items-center justify-center p-12">
         <div className="max-w-md text-white">
-          <h1 className="text-5xl font-black mb-6 bg-gradient-to-r from-white to-blue-100 bg-clip-text">
-            ERP WILLATEC S.A.C
-          </h1>
+          <img
+                  src="/logoWILLATEC-white.png"
+                  alt="Willatec"
+                  className="max-w-45 max-h-45 object-contain"
+                />
           <p className="text-xl text-blue-100 mb-8 leading-relaxed">
             Sistema integral de gestión. Cotizaciones, clientes, inventario y reportes en tiempo real.
           </p>
@@ -114,7 +117,11 @@ export default function LoginComponent() {
           <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/50">
             <div className="text-center mb-10">
               <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl">
-                <span className="text-white text-3xl font-black">W</span>
+                <img
+                  src="/logo_willatec.png"
+                  alt="Willatec"
+                  className="max-w-10 max-h-10 object-contain"
+                />
               </div>
               <h2 className="text-4xl font-black text-gray-900 mb-2">Bienvenido(a)</h2>
               <p className="text-gray-600 text-lg">Inicia sesión para continuar</p>
@@ -136,6 +143,7 @@ export default function LoginComponent() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="username"
                     className="w-full pl-12 pr-4 py-4 border-2 border-gray-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-lg placeholder-gray-400"
                     placeholder="xxxxxx@willatec.com"
                     disabled={loading}
@@ -151,6 +159,7 @@ export default function LoginComponent() {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
                     className="w-full pl-12 pr-14 py-4 border-2 border-gray-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-lg placeholder-gray-400"
                     placeholder="••••••••"
                     disabled={loading}

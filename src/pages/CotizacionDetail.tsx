@@ -4,7 +4,7 @@ import { useNotifications } from '../NotificationContext';
 import { useAuth } from '../AuthContext';
 import { useLocation } from 'react-router-dom';
 import { getClientes, type Cliente } from '../services/cliente.service';
-import { getProductos, type Producto} from "../services/producto.service";
+import { getExternalItems, getProductos, type Producto} from "../services/producto.service";
 import { getPlantillas } from '../services/plantilla.service';
 import { getPlataformas } from '../services/plataforma.service';
 import { getUsers, type User as ApiUser } from '../services/usuario.service';
@@ -22,6 +22,7 @@ import {
   getCotizacion,
   createCotizacion,
   updateCotizacion,
+  enviarCotizacionRevision,
   aprobarCotizacion,
   rechazarCotizacion,
   delegarCotizacion,
@@ -37,6 +38,7 @@ import {
 import {
   ArrowLeft,
   Save,
+  Send,
   CheckCircle,
   FileSpreadsheet,
   Loader2,
@@ -45,6 +47,55 @@ import {
   XCircle,
   UserCheck,
 } from 'lucide-react';
+
+const getLocalDateString = (value?: string | null) => {
+  const date = value ? new Date(value) : new Date();
+
+  if (Number.isNaN(date.getTime())) {
+    return new Date().toLocaleDateString('en-CA');
+  }
+
+  return date.toLocaleDateString('en-CA');
+};
+
+const detectPlantillaMonedaId = (plantilla?: {
+  nombre?: string;
+  formato_pdf?: string;
+  moneda_id?: number;
+  codigo_moneda?: string;
+}): number | null => {
+  if (!plantilla) return null;
+  if (plantilla.moneda_id === 1 || plantilla.moneda_id === 2) return plantilla.moneda_id;
+
+  const descriptor = [
+    plantilla.nombre,
+    plantilla.formato_pdf,
+    plantilla.codigo_moneda,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+
+  if (descriptor.includes('DOLAR') || descriptor.includes('USD')) return 2;
+  if (descriptor.includes('SOLES') || descriptor.includes('PEN') || descriptor.includes('S/')) return 1;
+
+  return null;
+};
+
+const PLANTILLA_IDS_CON_IGV = new Set([3, 5]);
+const PLANTILLA_IDS_CON_REGLA_IGV = new Set([1, 2, 3, 4, 5]);
+
+const plantillaIncluyeIgv = (plantillaId: number, plantilla?: { incluye_igv?: boolean }) => {
+  const id = Number(plantillaId);
+
+  if (PLANTILLA_IDS_CON_REGLA_IGV.has(id)) {
+    return PLANTILLA_IDS_CON_IGV.has(id);
+  }
+
+  return Boolean(plantilla?.incluye_igv);
+};
 
 
 export function CotizacionDetail() {
@@ -59,9 +110,10 @@ export function CotizacionDetail() {
 
   // ====== STATE MANAGEMENT ======
   const [loading, setLoading] = useState(isEditing);
-  const [, setSaving] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
+  const [isSendingReview, setIsSendingReview] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   //LOCALIZACIÓN
@@ -76,7 +128,14 @@ const isViewMode = location.pathname.includes('/view');
   const [plataformaId, setPlataformaId] = useState<number>(1);
   const [fecha, setFecha] = useState('');
   const [validezDias, setValidezDias] = useState<number | undefined>(30);
-  const [plantillas, setPlantillas] = useState<{id:number,nombre:string, incluye_igv: Boolean}[]>([]);
+  const [plantillas, setPlantillas] = useState<{
+    id: number;
+    nombre: string;
+    incluye_igv: boolean;
+    formato_pdf?: string;
+    moneda_id?: number;
+    codigo_moneda?: string;
+  }[]>([]);
   const [plataformas, setPlataformas] = useState<{id:number,nombre:string}[]>([]);
   const [monedaId, setMonedaId] = useState<number>(1); // 1=PEN, 2=USD
   const [tipoCambioSolesADolar, setTipoCambioSolesADolar] = useState<number>(3.3);
@@ -85,7 +144,11 @@ const isViewMode = location.pathname.includes('/view');
   const [titulo, setTitulo] = useState('');
   const [formaPago, setFormaPago] = useState('AL CONTADO');
   const [clienteContacto, setClienteContacto] = useState('');
-  const simboloMoneda = monedaId === 2 ? '$' : 'S/';
+  const selectedPlantilla = plantillas.find((plantilla) => Number(plantilla.id) === Number(plantillaId));
+  const plantillaMonedaId = detectPlantillaMonedaId(selectedPlantilla);
+  const currentMonedaId = plantillaMonedaId ?? monedaId;
+  const currentIncludeIgv = plantillaIncluyeIgv(plantillaId, selectedPlantilla);
+  const simboloMoneda = currentMonedaId === 2 ? '$' : 'S/';
 
   // Listas
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -94,6 +157,7 @@ const isViewMode = location.pathname.includes('/view');
   const [historial, setHistorial] = useState<CotizacionHistorial[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [usuarios, setUsuarios] = useState<ApiUser[]>([]);
+  const [externalItemSuggestions, setExternalItemSuggestions] = useState<CotizacionItem[]>([]);
 
   // Estado de delegación
   const [delegadoId, setDelegadoId] = useState<number | null>(null);
@@ -130,20 +194,41 @@ const isViewMode = location.pathname.includes('/view');
 
   // tipoCambio es ahora estado editable por el usuario
 
-  // Verificar si el usuario actual es el propietario de la cotización
-  const isOwnCotizacion = cotizacion && user ? cotizacion.user_id === user.id : true;
+  // Verificar permisos del usuario actual sobre la cotización
+  const userRole = user?.role?.toUpperCase();
+  const isSuperAdmin = userRole === 'SUPERADMIN';
+  const currentEstadoCotizacionId = Number(estadoCotizacionId);
+  const currentDelegadoId = delegadoId === null || delegadoId === undefined ? null : Number(delegadoId);
   const currentDelegadoCotizacionId =
     cotizacion?.delegado_cotizacion_id ?? (cotizacion as any)?.delegadoCotizacionId ?? delegadoCotizacionId;
-  const isCotizacionCreator = Boolean(cotizacion && user && cotizacion.user_id === user.id);
-  const isCotizacionEditDelegate = Boolean(cotizacion && user && currentDelegadoCotizacionId === user.id);
+  const currentDelegadoCotizacionIdNumber =
+    currentDelegadoCotizacionId === null || currentDelegadoCotizacionId === undefined
+      ? null
+      : Number(currentDelegadoCotizacionId);
+  const isCotizacionCreator = Boolean(cotizacion && user && Number(cotizacion.user_id) === Number(user.id));
+  const isCotizacionEditDelegate = Boolean(cotizacion && user && currentDelegadoCotizacionIdNumber === Number(user.id));
+  const canViewGanancia = !cotizacion || isCotizacionCreator || isSuperAdmin;
   const canEditCotizacion = !cotizacion || isCotizacionCreator || isCotizacionEditDelegate;
   const canDelegateCotizacionEdit = Boolean(currentCotizacionId && cotizacion && isCotizacionCreator);
+  const canSendCotizacionToReview = Boolean(
+    currentCotizacionId &&
+    currentEstadoCotizacionId === 1 &&
+    canEditCotizacion
+  );
+  const canReviewCotizacion = Boolean(
+    currentEstadoCotizacionId === 2 &&
+    user &&
+    (isSuperAdmin || currentDelegadoId === Number(user.id))
+  );
+  const canChangeReviewEstado = Boolean(
+    user && (isSuperAdmin || currentDelegadoId === Number(user.id))
+  );
   const isCotizacionReadOnly = isViewMode || !canEditCotizacion;
 
   useEffect(() => {
     if (!cotizacion) return;
 
-    setEstadoCotizacionId(cotizacion.estado_cotizacion_id);
+    setEstadoCotizacionId(Number(cotizacion.estado_cotizacion_id));
   }, [cotizacion]);
 
   const handleSetMonedaId = (id: number) => {
@@ -182,6 +267,69 @@ const isViewMode = location.pathname.includes('/view');
     setMonedaId(id);
   };
 
+  const normalizeItemProveedores = (item: {
+    proveedores?: ItemForm['proveedores'];
+    proveedor?: string | null;
+    link_proveedor?: string | null;
+  } = {}) => {
+    const proveedores = Array.isArray(item.proveedores) && item.proveedores.length > 0
+      ? item.proveedores
+      : [{ nombre: item.proveedor || '', link: item.link_proveedor || '', precio: null, notas: '' }];
+
+    return proveedores.map((proveedor, index) => ({
+      ...proveedor,
+      nombre: proveedor.nombre || '',
+      link: proveedor.link || '',
+      precio: proveedor.precio ?? null,
+      notas: proveedor.notas || '',
+      orden: proveedor.orden ?? index + 1,
+    }));
+  };
+
+  const getPrimaryProveedor = (proveedores: ItemForm['proveedores'] = []) => {
+    const primary = proveedores[0];
+
+    return {
+      proveedor: primary?.nombre || '',
+      link_proveedor: primary?.link || '',
+    };
+  };
+
+  const buildItemFromExternalSource = (source: Partial<CotizacionItem>): CotizacionItem => {
+    const proveedores = normalizeItemProveedores(source);
+    const primaryProveedor = getPrimaryProveedor(proveedores);
+    const image = source.imagen || source.imagen_url || source.imagen_path || '';
+
+    return {
+      id: Date.now(),
+      cotizacion_id: currentCotizacionId || 0,
+      descripcion: source.descripcion || '',
+      cantidad: 1,
+      costo_base: Number(source.costo_base ?? source.costo_unitario ?? 0),
+      costo_unitario: Number(source.costo_unitario ?? source.costo_base ?? 0),
+      costo_total: Number(source.costo_unitario ?? source.costo_base ?? 0),
+      precio_venta: Number(source.precio_venta || 0),
+      subtotal: Number(source.precio_venta || 0),
+      ganancia: Number(source.ganancia || 0),
+      margen: Number(source.margen || 0),
+      marca: source.marca || '',
+      codigo: source.codigo || '',
+      unidad_medida: source.unidad_medida || 'UND',
+      garantia_meses: Number(source.garantia_meses || 12),
+      disponibilidad_tipo: source.disponibilidad_tipo || 'stock',
+      disponibilidad_dias: Number(source.disponibilidad_dias || 4),
+      orden: items.length + 1,
+      producto_id: source.producto_id,
+      estado_cotizacion_item_id: undefined,
+      tipo: 'externo',
+      ...primaryProveedor,
+      proveedores,
+      imagen: image,
+      imagen_url: source.imagen_url || image || null,
+      imagen_path: source.imagen_path || image || null,
+    };
+  };
+
   // Formularios
   const [itemForm, setItemForm] = useState<ItemForm>({
     id: 1,
@@ -208,30 +356,52 @@ const isViewMode = location.pathname.includes('/view');
     disponibilidad_dias: 4,
     proveedor: '',
     link_proveedor: '',
+    proveedores: [{ nombre: '', link: '', precio: null, notas: '' }],
   });
 
   useEffect(() => {
-  const precioVenta =
-    itemForm.costo_base / (1 - itemForm.margen / 100);
+    const cantidad = Number(itemForm.cantidad || 0);
+    const costoBase = Number(itemForm.costo_base || 0);
+    const margen = Number(itemForm.margen || 0);
+    const costosTotal = costos.reduce((acc, costo) => acc + Number(costo.monto || 0), 0);
+    const previewItems = showItemFormModal
+      ? editingItemId
+        ? items.map(item =>
+          item.id === editingItemId ? { ...item, cantidad } : item
+        )
+        : [...items, { cantidad } as CotizacionItem]
+      : items;
+    const totalCantidad = previewItems.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
+    const costoDistribuido =
+      modoDistribucion === 'POR_ITEM'
+        ? previewItems.length > 0 ? costosTotal / previewItems.length : 0
+        : totalCantidad > 0 ? costosTotal / totalCantidad : 0;
+    const costoUnitario = costoBase + costoDistribuido;
+    const precioVenta = margen < 100 ? costoUnitario / (1 - margen / 100) : costoUnitario;
+    const subtotal = precioVenta * cantidad;
+    const costoTotal = costoUnitario * cantidad;
+    const gananciaItem = subtotal - costoTotal;
+    const ganancia = currentIncludeIgv ? gananciaItem / 1.18 : gananciaItem;
 
-  const subtotal =
-    precioVenta * itemForm.cantidad;
-
-  const ganancia =
-    (precioVenta - itemForm.costo_base) *
-    itemForm.cantidad;
-
-  setItemForm(prev => ({
-    ...prev,
-    precio_venta: Number(precioVenta.toFixed(2)),
-    subtotal: Number(subtotal.toFixed(2)),
-    ganancia: Number(ganancia.toFixed(2)),
-  }));
-}, [
-  itemForm.costo_base,
-  itemForm.margen,
-  itemForm.cantidad,
-]);
+    setItemForm(prev => ({
+      ...prev,
+      costo_unitario: Number(costoUnitario.toFixed(2)),
+      costo_total: Number(costoTotal.toFixed(2)),
+      precio_venta: Number(precioVenta.toFixed(2)),
+      subtotal: Number(subtotal.toFixed(2)),
+      ganancia: Number(ganancia.toFixed(2)),
+    }));
+  }, [
+    itemForm.costo_base,
+    itemForm.margen,
+    itemForm.cantidad,
+    costos,
+    items,
+    editingItemId,
+    showItemFormModal,
+    modoDistribucion,
+    currentIncludeIgv,
+  ]);
 
   const [costoForm, setCostoForm] = useState({
     id: 0,
@@ -254,14 +424,16 @@ const isViewMode = location.pathname.includes('/view');
   };
 
   const handleOpenEditItem = (item: CotizacionItem) => {
-    if (isCotizacionReadOnly) return;
-
+    const proveedores = normalizeItemProveedores(item);
+    const primaryProveedor = getPrimaryProveedor(proveedores);
     setEditingItem(item);
   
     setEditingItemId(item.id);
 
     setItemForm({
       ...item,
+      ...primaryProveedor,
+      proveedores,
       imagen: item.imagen || item.imagen_url || '',
       imagen_url: item.imagen_url,
       imagen_path: item.imagen_path,
@@ -323,6 +495,51 @@ const isViewMode = location.pathname.includes('/view');
     };
     fetchProductos();
   }, [isViewMode, showProductModal, productos.length]);
+
+  useEffect(() => {
+    if (isCotizacionReadOnly) return;
+
+    const fetchExternalSuggestions = async () => {
+      try {
+        const response = await getExternalItems(1);
+        setExternalItemSuggestions(response.data as unknown as CotizacionItem[]);
+      } catch (error) {
+        console.warn('Error al cargar sugerencias de items externos:', error);
+      }
+    };
+
+    fetchExternalSuggestions();
+  }, [isCotizacionReadOnly]);
+
+  useEffect(() => {
+    if (isEditing || isCotizacionReadOnly) return;
+
+    const storedItem = localStorage.getItem('itemToAdd');
+    if (!storedItem) return;
+
+    try {
+      const parsedItem = JSON.parse(storedItem);
+      const newItem = buildItemFromExternalSource(parsedItem);
+
+      setItems((prev) => [...prev, { ...newItem, orden: prev.length + 1 }]);
+      localStorage.removeItem('itemToAdd');
+      showToast({
+        title: 'Item agregado',
+        description: `Se agregó "${newItem.descripcion}" a la cotización.`,
+        type: 'success',
+        duration: 3000,
+      } as any);
+    } catch (error) {
+      console.error('Error al recuperar item externo para cotización:', error);
+      localStorage.removeItem('itemToAdd');
+      showToast({
+        title: 'No se pudo agregar el item',
+        description: 'El item externo preparado no tenía un formato válido.',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+    }
+  }, [isEditing, isCotizacionReadOnly]);
 
   // Cargar cotización si es edición
   useEffect(() => {
@@ -393,11 +610,13 @@ const isViewMode = location.pathname.includes('/view');
       setLoading(true);
       const data = await getCotizacion(currentCotizacionId);
       setCotizacion(data);
-      setEstadoCotizacionId(data.estado_cotizacion_id);
-      setClienteId(data.cliente_id);
-      setPlantillaId(data.plantilla_id);
-      setPlataformaId(data.plataforma_id);
-      setMonedaId(data.moneda_id || 1);
+      setEstadoCotizacionId(Number(data.estado_cotizacion_id));
+      setClienteId(Number(data.cliente_id));
+      setPlantillaId(Number(data.plantilla_id));
+      setPlataformaId(Number(data.plataforma_id));
+      setFecha(getLocalDateString(data.fecha || data.created_at));
+      setValidezDias(Number(data.validez_dias) || 30);
+      setMonedaId(Number(data.moneda_id || 1));
       setModoDistribucion(data.modo_distribucion);
       setTitulo(data.titulo);
       setFormaPago(data.forma_pago || 'AL CONTADO');
@@ -433,17 +652,61 @@ const isViewMode = location.pathname.includes('/view');
     }
   };
 
+  const handleEnviarRevision = async () => {
+    const cotizacionId = cotizacion?.id || currentCotizacionId;
+    if (!cotizacionId || !canSendCotizacionToReview || isSendingReview) return;
+
+    if (itemsCalculados.length === 0) {
+      showToast({
+        title: 'Datos incompletos',
+        description: 'Agregue al menos un ítem antes de enviar la cotización a aprobación',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
+
+    setIsSendingReview(true);
+    try {
+      const data = await enviarCotizacionRevision(cotizacionId);
+      const historialApi = await getCotizacionHistorial(cotizacionId);
+
+      setCotizacion(data);
+      setEstadoCotizacionId(Number(data.estado_cotizacion_id || 2));
+      setDelegadoId(data.delegado_id || null);
+      setDelegadoCotizacionId(data.delegado_cotizacion_id ?? (data as any).delegadoCotizacionId ?? null);
+      setHistorial(historialApi);
+
+      showToast({
+        title: 'Cotización enviada',
+        description: 'La cotización fue enviada para aprobación.',
+        message: 'Cotización enviada para aprobación',
+        type: 'success',
+        duration: 4000,
+      } as any);
+    } catch (error: any) {
+      showToast({
+        title: 'Error',
+        description: error?.response?.data?.message || 'No se pudo enviar la cotización a aprobación',
+        message: error?.response?.data?.message || 'No se pudo enviar la cotización a aprobación',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    } finally {
+      setIsSendingReview(false);
+    }
+  };
+
   const handleAprobarCotizacion = async () => {
     const cotizacionId = cotizacion?.id || currentCotizacionId;
     if (!cotizacionId) return;
     if (isApproving || isRejecting) return; // Prevenir doble click y acciones cruzadas
 
-    // Si la cotización fue delegada, solo el delegado puede aprobarla
-    if (cotizacion?.delegado_id && user?.id !== cotizacion.delegado_id) {
+    if (!canReviewCotizacion) {
       showToast({
         title: 'Error',
-        description: 'No estás autorizado: esta cotización fue delegada a otro usuario',
-        message: 'No estás autorizado: esta cotización fue delegada a otro usuario',
+        description: 'Solo SUPERADMIN o el delegado de aprobación puede aprobar esta cotización',
+        message: 'Solo SUPERADMIN o el delegado de aprobación puede aprobar esta cotización',
         type: 'warning',
         duration: 4000,
       } as any);
@@ -461,12 +724,11 @@ const isViewMode = location.pathname.includes('/view');
       setHistorial(historialApi);
 
       const approverName = user?.name || 'Superadministrador';
-      const approvedAt = new Date().toLocaleString('es-PE');
       const targetUserId = cotizacion?.user?.id || cotizacion?.user_id;
 
       showToast({
         title: 'Cotización aprobada',
-        description: `Aprobada por ${approverName} a las ${approvedAt}`,
+        description: `Aprobada por ${approverName}`,
         type: 'success',
         icon: 'CheckCircle',
         route: `/cotizaciones/${cotizacionId}/view`,
@@ -475,7 +737,7 @@ const isViewMode = location.pathname.includes('/view');
       if (targetUserId) {
         addNotification({
           title: 'Tu cotización fue aprobada',
-          description: `La cotización ${cotizacionId} fue aprobada por ${approverName} a las ${approvedAt}`,
+          description: `La cotización ${cotizacionId} fue aprobada por ${approverName}`,
           type: 'success',
           icon: 'CheckCircle',
           route: `/cotizaciones/${cotizacionId}/view`,
@@ -512,11 +774,10 @@ const isViewMode = location.pathname.includes('/view');
     }
 
     setIsRejecting(true);
-    // Si la cotización fue delegada, solo el delegado puede rechazarla
-    if (cotizacion?.delegado_id && user?.id !== cotizacion.delegado_id) {
+    if (!canReviewCotizacion) {
       showToast({
         title: 'Error',
-        description: 'No estás autorizado: esta cotización fue delegada a otro usuario',
+        description: 'Solo SUPERADMIN o el delegado de aprobación puede rechazar esta cotización',
         type: 'warning',
         duration: 4000,
       } as any);
@@ -534,12 +795,11 @@ const isViewMode = location.pathname.includes('/view');
       setComentarioRechazo('');
 
       const approverName = user?.name || 'Superadministrador';
-      const rejectedAt = new Date().toLocaleString('es-PE');
       const targetUserId = cotizacion?.user?.id || cotizacion?.user_id;
 
       showToast({
         title: 'Cotización rechazada',
-        description: `Rechazada por ${approverName} a las ${rejectedAt}`,
+        description: `Rechazada por ${approverName}`,
         type: 'warning',
         icon: 'MessageCircle',
         route: `/cotizaciones/${cotizacionId}/view`,
@@ -548,7 +808,7 @@ const isViewMode = location.pathname.includes('/view');
       if (targetUserId) {
         addNotification({
           title: 'Tu cotización fue rechazada',
-          description: `La cotización ${cotizacionId} fue rechazada por ${approverName} a las ${rejectedAt}`,
+          description: `La cotización ${cotizacionId} fue rechazada por ${approverName}`,
           type: 'warning',
           icon: 'MessageCircle',
           route: `/cotizaciones/${cotizacionId}/view`,
@@ -652,24 +912,96 @@ const isViewMode = location.pathname.includes('/view');
     }
   };
 
+  const getGananciaGuardable = (ganancia: number | string | null | undefined) => {
+    const valor = Number(ganancia || 0);
+    const tipoCambio = tipoCambioSolesADolar || 1;
+
+    return Number((currentMonedaId === 2 ? valor * tipoCambio : valor).toFixed(2));
+  };
+
+  const toMoneyValue = (value: number | string | null | undefined) =>
+    Number(Number(value || 0).toFixed(2));
+
+  const getCotizacionSaveErrorMessage = (error: any) => {
+    const status = error?.response?.status;
+    const data = error?.response?.data;
+    const backendMessage = data?.message;
+    const validationErrors = data?.errors && typeof data.errors === 'object'
+      ? Object.values(data.errors)
+        .flat()
+        .filter(Boolean)
+        .map(String)
+      : [];
+
+    if (validationErrors.length > 0) {
+      const visibleErrors = validationErrors.slice(0, 3).join(' ');
+      return `${visibleErrors}${validationErrors.length > 3 ? ' Revise los demás campos marcados por el backend.' : ''}`;
+    }
+
+    if (status === 413) {
+      return 'El archivo o una imagen es demasiado pesada. Revisa las imágenes de los ítems e intenta nuevamente.';
+    }
+
+    if (status === 422) {
+      return backendMessage || 'Hay datos inválidos en la cotización. Revisa los ítems, proveedores, precios e imágenes.';
+    }
+
+    if (backendMessage) {
+      return backendMessage;
+    }
+
+    if (error?.request && !error?.response) {
+      return 'No hubo respuesta del servidor. Revisa tu conexión o intenta nuevamente en unos segundos.';
+    }
+
+    return 'No se pudo guardar la cotización. Revisa las imágenes de los ítems y vuelve a intentarlo.';
+  };
+
   const buildCotizacionPayload = (estadoId = estadoCotizacionId) => {
+    const requestedEstadoId = Number(estadoId);
+    const estadoGuardable =
+      !canChangeReviewEstado && [3, 4, 5, 6].includes(requestedEstadoId)
+        ? Number(cotizacion?.estado_cotizacion_id || 2)
+        : requestedEstadoId;
+
     // NO enviar cotizacion_id en items - el backend lo asigna automáticamente del URL
-    const itemsLimpios = items.map(({ cotizacion_id, ...item }) => item);
+    const itemsLimpios = itemsCalculados.map(({ cotizacion_id, ...item }) => {
+      const proveedores = item.tipo === 'externo' ? normalizeItemProveedores(item) : [];
+      const primaryProveedor = getPrimaryProveedor(proveedores);
+
+      return {
+        ...item,
+        ...primaryProveedor,
+        proveedores,
+        costo_unitario: toMoneyValue(item.costo_unitario),
+        precio_venta: toMoneyValue(item.precio_venta),
+        costo_total: toMoneyValue(item.costo_total),
+        subtotal: toMoneyValue(item.subtotal),
+        ganancia: getGananciaGuardable(item.ganancia),
+      };
+    });
+    const clienteContactoValue = clienteContacto.trim();
 
     const payload: any = {
       id: currentCotizacionId,
       cliente_id: clienteId ?? 0,
       plantilla_id: plantillaId,
       plataforma_id: plataformaId,
-      moneda_id: monedaId,
+      moneda_id: currentMonedaId,
       modo_distribucion: modoDistribucion,
+      fecha: fecha || getLocalDateString(),
       titulo: titulo,
       forma_pago: formaPago,
-      cliente_contacto: clienteContacto,
+      cliente_contacto: clienteContactoValue,
       tipo_cambio_soles_a_usd: tipoCambioSolesADolar,
       tipo_cambio_usd_a_soles: tipoCambioDolarASoles,
-      validez_dias: validezDias,
-      estado_cotizacion_id: estadoId,
+      validez_dias: Number(validezDias) || 30,
+      estado_cotizacion_id: estadoGuardable,
+      subtotal: toMoneyValue(resumen.subtotal),
+      igv: toMoneyValue(resumen.igv),
+      total: toMoneyValue(resumen.total),
+      total_gasto: toMoneyValue(resumen.costoCompraTotal),
+      ganancia: getGananciaGuardable(resumen.ganancia),
       items: itemsLimpios,
       costos,
       costos_adicionales: costos,
@@ -685,6 +1017,7 @@ const isViewMode = location.pathname.includes('/view');
 
   const handleSaveCotizacion = async () => {
     if (isCotizacionReadOnly) return;
+    if (saving) return;
 
     if (!clienteId || !plantillaId) {
       showToast({
@@ -695,6 +1028,26 @@ const isViewMode = location.pathname.includes('/view');
       return;
     }
 
+    if (!titulo.trim()) {
+      showToast({
+        title: 'Datos incompletos',
+        description: 'Ingrese un título para la cotización',
+        type: 'warning',
+      });
+      return;
+    }
+
+    if (items.length === 0) {
+      showToast({
+        title: 'Datos incompletos',
+        description: 'Agregue al menos un ítem antes de guardar la cotización',
+        type: 'warning',
+      });
+      return;
+    }
+
+    const shouldSendRejectedToReview =
+      isEditing && currentCotizacionId && currentEstadoCotizacionId === 5 && canEditCotizacion;
     const payload = buildCotizacionPayload();
 
     setSaving(true);
@@ -702,22 +1055,36 @@ const isViewMode = location.pathname.includes('/view');
       if (isEditing && currentCotizacionId ) {
         // Actualizar
         const updated = await updateCotizacion(currentCotizacionId, payload);
+        const finalCotizacion = shouldSendRejectedToReview
+          ? await enviarCotizacionRevision(currentCotizacionId)
+          : updated;
+        const historialApi = shouldSendRejectedToReview
+          ? await getCotizacionHistorial(currentCotizacionId)
+          : null;
+
         // sincronizar estado local con respuesta del servidor
-        setCotizacion(updated);
-        setDelegadoId(updated.delegado_id || null);
-        setDelegadoCotizacionId(updated.delegado_cotizacion_id ?? (updated as any).delegadoCotizacionId ?? null);
+        setCotizacion(finalCotizacion);
+        setEstadoCotizacionId(Number(finalCotizacion.estado_cotizacion_id || estadoCotizacionId));
+        setDelegadoId(finalCotizacion.delegado_id || null);
+        setDelegadoCotizacionId(finalCotizacion.delegado_cotizacion_id ?? (finalCotizacion as any).delegadoCotizacionId ?? null);
+        if (historialApi) {
+          setHistorial(historialApi);
+        }
         showToast({
-          title: 'Cotización actualizada',
-          description: 'La cotización ha sido actualizada exitosamente.',
-          message: 'Cotización actualizada',
+          title: shouldSendRejectedToReview ? 'Cotización enviada' : 'Cotización actualizada',
+          description: shouldSendRejectedToReview
+            ? 'La cotización fue corregida y enviada nuevamente a aprobación.'
+            : 'La cotización ha sido actualizada exitosamente.',
+          message: shouldSendRejectedToReview ? 'Cotización enviada' : 'Cotización actualizada',
           type: 'success',
           duration: 4000,
         } as any);
       } else {
         // Crear
         const newCotizacion = await createCotizacion(payload);
-        addNotification({
-          message: 'Cotización creada',
+        showToast({
+          title: 'Cotización creada',
+          description: 'La cotización fue guardada correctamente como borrador.',
           type: 'success',
           duration: 4000,
         } as any);
@@ -725,10 +1092,12 @@ const isViewMode = location.pathname.includes('/view');
       }
       navigate('/cotizaciones');
     } catch (error: any) {
-      addNotification({
-        message: error?.response?.data?.message || 'Error al guardar',
+      console.error('Error al guardar cotización:', error);
+      showToast({
+        title: 'Error al guardar cotización',
+        description: getCotizacionSaveErrorMessage(error),
         type: 'error',
-        duration: 4000,
+        duration: 6000,
       } as any);
     } finally {
       setSaving(false);
@@ -747,6 +1116,9 @@ const handleAddItem = async () => {
     
       return;
     }
+    const proveedores = itemForm.tipo === 'externo' ? normalizeItemProveedores(itemForm) : [];
+    const primaryProveedor = getPrimaryProveedor(proveedores);
+
     // ===== NUEVO ITEM =====
     const nuevoItem: any = {
       id: Date.now(),
@@ -770,9 +1142,10 @@ const handleAddItem = async () => {
 
       garantia_meses: itemForm.garantia_meses,
 
-      proveedor: itemForm.proveedor,
+      proveedor: primaryProveedor.proveedor,
 
-      link_proveedor: itemForm.link_proveedor,
+      link_proveedor: primaryProveedor.link_proveedor,
+      proveedores,
 
       tipo: itemForm.tipo,
 
@@ -816,6 +1189,9 @@ const handleAddItem = async () => {
       return;
     }
 
+  const proveedores = itemForm.tipo === 'externo' ? normalizeItemProveedores(itemForm) : [];
+  const primaryProveedor = getPrimaryProveedor(proveedores);
+
   setItems((prev) =>
   prev.map((item) =>
     item.id === editingItemId
@@ -831,8 +1207,9 @@ const handleAddItem = async () => {
           disponibilidad_tipo: itemForm.disponibilidad_tipo,
           disponibilidad_dias: itemForm.disponibilidad_dias,
           garantia_meses: itemForm.garantia_meses ?? 12,
-          proveedor: itemForm.proveedor,
-          link_proveedor: itemForm.link_proveedor,
+          proveedor: primaryProveedor.proveedor,
+          link_proveedor: primaryProveedor.link_proveedor,
+          proveedores,
           stock: 0,
           imagen: itemForm.imagen ||"",
           imagen_url: itemForm.imagen_url,
@@ -883,7 +1260,7 @@ const handleAddItem = async () => {
   const puedeExportar = () => {
     if (!user?.role) return false;
 
-    return estadoCotizacionId === 4;
+    return currentEstadoCotizacionId === 4;
   };
 
   const handleAddCosto = async () => {
@@ -976,7 +1353,8 @@ const handleAddItem = async () => {
       disponibilidad_tipo: 'stock',
       disponibilidad_dias: 4,
       proveedor: '',
-      link_proveedor: ''
+      link_proveedor: '',
+      proveedores: [{ nombre: '', link: '', precio: null, notas: '' }],
     });
 
     setShowItemFormModal(true);
@@ -1018,7 +1396,8 @@ const handleAddItem = async () => {
     disponibilidad_tipo: producto.disponibilidad_tipo || 'stock',
     disponibilidad_dias: producto.disponibilidad_dias || 4,
     proveedor: '',
-    link_proveedor: ''
+    link_proveedor: '',
+    proveedores: [],
   });
 
   addNotification({
@@ -1030,6 +1409,28 @@ const handleAddItem = async () => {
   setShowItemFormModal(true);
 };
 
+const handleExternalSuggestionSelection = (suggestion: ItemForm) => {
+  const proveedores = normalizeItemProveedores(suggestion);
+  const primaryProveedor = getPrimaryProveedor(proveedores);
+  const image = suggestion.imagen || suggestion.imagen_url || suggestion.imagen_path || '';
+
+  setItemForm((prev) => ({
+    ...prev,
+    descripcion: suggestion.descripcion || prev.descripcion,
+    marca: suggestion.marca || '',
+    codigo: suggestion.codigo || '',
+    costo_base: Number(suggestion.costo_base ?? suggestion.costo_unitario ?? prev.costo_base ?? 0),
+    margen: Number(suggestion.margen ?? prev.margen ?? 0),
+    proveedor: primaryProveedor.proveedor,
+    link_proveedor: primaryProveedor.link_proveedor,
+    proveedores,
+    imagen: image,
+    imagen_url: suggestion.imagen_url || image || null,
+    imagen_path: suggestion.imagen_path || image || null,
+    tipo: 'externo',
+  }));
+};
+
 
 const todosItemsAprobados =   items.every(item => 
     item.estado_cotizacion_item_id === 2 //  = aprobado
@@ -1038,7 +1439,7 @@ const todosItemsAprobados =   items.every(item =>
 const handleIntercambiarMoneda = () => {
   if (isCotizacionReadOnly) return;
 
-  const esSoles = monedaId === 1;
+  const esSoles = currentMonedaId === 1;
 
   const nuevoCosto = esSoles
     ? itemForm.costo_base / tipoCambioSolesADolar
@@ -1048,38 +1449,6 @@ const handleIntercambiarMoneda = () => {
     ...prev,
     costo_base: Number(nuevoCosto.toFixed(2)),
   }));
-};
-
-const sanitizePdfFilePart = (value: unknown, fallback: string) => {
-  const text = String(value || fallback)
-    .replace(/[\\/:*?"<>|]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return text || fallback;
-};
-
-const formatPdfFileDate = (value?: string) => {
-  const date = value ? new Date(value) : new Date();
-
-  if (Number.isNaN(date.getTime())) {
-    return new Date().toLocaleDateString("es-PE").replace(/\//g, "-");
-  }
-
-  return date.toLocaleDateString("es-PE").replace(/\//g, "-");
-};
-
-const buildCotizacionPdfFileName = (cotizacionData: Cotizacion) => {
-  const clienteSeleccionado = clientes.find((cliente) => cliente.id === cotizacionData.cliente_id);
-  const fechaCreacion = formatPdfFileDate(cotizacionData.created_at);
-  const numeroCotizacion = sanitizePdfFilePart(cotizacionData.numero || cotizacionData.id, "SIN-NUMERO");
-  const clienteCotizacion = sanitizePdfFilePart(
-    cotizacionData.cliente_nombre || cotizacionData.cliente?.nombre || clienteSeleccionado?.nombre,
-    "SIN-CLIENTE"
-  );
-  const tituloCotizacion = sanitizePdfFilePart(cotizacionData.titulo, "SIN-TITULO");
-
-  return `${fechaCreacion} COT. N°${numeroCotizacion} - ${clienteCotizacion} - ${tituloCotizacion}.pdf`;
 };
 
 const handleExportarPdf = async () => {
@@ -1092,13 +1461,24 @@ const handleExportarPdf = async () => {
   try {
     const { blob, filename } = await exportarCotizacionPdf(cotizacion.id);
 
-  descargarPdfCotizacion(
-    filename || buildCotizacionPdfFileName(cotizacion),
+  const descargado = await descargarPdfCotizacion(
+    filename || 'cotizacion.pdf',
     blob
   );
 
-  addNotification({
-    message: 'PDF exportado correctamente',
+  if (!descargado) {
+    showToast({
+      title: 'Descarga cancelada',
+      description: 'No se guardó el PDF porque se canceló la selección de ubicación.',
+      type: 'info',
+      duration: 3000,
+    } as any);
+    return;
+  }
+
+  showToast({
+    title: 'PDF exportado correctamente',
+    description: 'El documento fue generado con el nombre enviado por el backend.',
     type: 'success',
     duration: 3000,
   } as any);
@@ -1106,8 +1486,9 @@ const handleExportarPdf = async () => {
   setShowExportModal(false);
 
   } catch (error: any) {
-    addNotification({
-      message: 'Error al exportar PDF',
+    showToast({
+      title: 'Error al exportar PDF',
+      description: error?.response?.data?.message || 'No se pudo generar o descargar el PDF.',
       type: 'error',
       duration: 4000,
   } as any);
@@ -1179,7 +1560,8 @@ const nombreDelegadoCotizacion = (() => {
       estado_cotizacion_item_id: undefined,
       tipo: 'externo' as 'catalogo' | 'externo',
       proveedor: '',
-      link_proveedor: ''
+      link_proveedor: '',
+      proveedores: [{ nombre: '', link: '', precio: null, notas: '' }],
     });
   };
 
@@ -1188,16 +1570,13 @@ const {
   items: itemsCalculados,
   resumen
 } = useMemo(() => {
-    const plantilla = plantillas.find(p => p.id === plantillaId);
-    const includeIgv = Boolean((plantilla as any)?.incluye_igv);
-
     return recalcularItems(
       items,
       costos,
       modoDistribucion,
-      includeIgv
+      currentIncludeIgv
     );
-}, [items, costos, modoDistribucion, plantillaId, plantillas]);
+}, [items, costos, modoDistribucion, currentIncludeIgv]);
 
 const estadoLabels: Record<number, string> = {
   1: 'Borrador',
@@ -1265,7 +1644,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
             plantillaId={plantillaId}
             setPlantillaId={setPlantillaId}
 
-            monedaId={monedaId}
+            monedaId={currentMonedaId}
             setMonedaId={handleSetMonedaId}
             tipoCambioSolesADolar={tipoCambioSolesADolar}
             setTipoCambioSolesADolar={setTipoCambioSolesADolar}
@@ -1284,7 +1663,6 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
             setPlataformaId={setPlataformaId}
 
             estado_cotizacion_id={estadoCotizacionId}
-            setEstadoCotizacionId={setEstadoCotizacionId}
 
             modoDistribucion={modoDistribucion}
             setModoDistribucion={setModoDistribucion}
@@ -1303,8 +1681,10 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
 
           {/* TABLA CON DISPONIBILIDAD */}
           <CotizacionItemsTable
-            items={isEditing ?items : itemsCalculados}
+            items={itemsCalculados}
             simboloMoneda={simboloMoneda}
+            monedaId={currentMonedaId}
+            tipoCambioSolesADolar={tipoCambioSolesADolar}
             estadoCotizacionId={estadoCotizacionId}
             setEstadoCotizacionId={setEstadoCotizacionId}
             onDeleteItem={handleDeleteItem}
@@ -1315,7 +1695,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
             onAddItem={handleOpenNewItem} // 🔥 AQUÍ
 
             readOnly={isCotizacionReadOnly}
-            isOwnCotizacion={isOwnCotizacion}
+            isOwnCotizacion={canViewGanancia}
           />
 
         </div>
@@ -1327,8 +1707,11 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
           <CotizacionResumen
             resumen={resumen}
             simboloMoneda={simboloMoneda}
-            items={isEditing ? items : itemsCalculados}
-            isOwnCotizacion={isOwnCotizacion}
+            monedaId={currentMonedaId}
+            tipoCambioSolesADolar={tipoCambioSolesADolar}
+            items={itemsCalculados}
+            isOwnCotizacion={canViewGanancia}
+            includeIgv={currentIncludeIgv}
           />
 
           <div className="bg-white rounded-xl shadow-sm border p-6">
@@ -1339,7 +1722,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
               {nombreDelegado}
             </p>
 
-            {user?.role === 'SUPERADMIN' && !isViewMode && (
+            {isSuperAdmin && !isViewMode && (
               <div>
                 <label className="block text-sm text-gray-700 mb-2">
                   Seleccionar delegado
@@ -1362,7 +1745,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
               </div>
             )}
 
-            {user?.role === 'SUPERADMIN' && isViewMode && (
+            {isSuperAdmin && isViewMode && (
               <p className="text-xs text-gray-500">
                 Solo un SUPERADMIN puede cambiar el delegado desde esta vista.
               </p>
@@ -1428,8 +1811,26 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
           {/* BOTONES */}
           {isViewMode && (
             <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
+              {canSendCotizacionToReview && (
+                <button
+                  onClick={handleEnviarRevision}
+                  disabled={isSendingReview || itemsCalculados.length === 0}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSendingReview ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" /> Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-5 h-5" /> Enviar para aprobación
+                    </>
+                  )}
+                </button>
+              )}
+
               {/* Mostrar si es SUPERADMIN O si es VENTAS y es delegado */}
-                  {estadoCotizacionId === 2 && ((delegadoId ? delegadoId === user?.id : user?.role === 'SUPERADMIN')) && (
+                  {canReviewCotizacion && (
                 <>
                   <button
                     onClick={handleAprobarCotizacion}
@@ -1465,7 +1866,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
               )}
 
               {/* Botón para asignar delegado - solo SUPERADMIN */}
-              {user?.role === 'SUPERADMIN' && estadoCotizacionId === 2 && (
+              {isSuperAdmin && currentEstadoCotizacionId === 2 && (
                 <button
                   onClick={() => setShowDelegacionModal(true)}
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -1484,9 +1885,9 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
               {puedeExportar() && (
                 <button
                   onClick={() => setShowExportModal(true)}
-                  disabled={items.length === 0}
+                  disabled={itemsCalculados.length === 0}
                   className={`w-full flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${
-                    items.length > 0
+                    itemsCalculados.length > 0
                       ? 'bg-blue-600 text-white hover:bg-blue-700'
                       : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   }`}
@@ -1500,20 +1901,37 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
           <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
             <button
               onClick={handleSaveCotizacion}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+              disabled={saving}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <Save className="w-5 h-5" /> Guardar
+              {saving ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" /> Guardando...
+                </>
+              ) : (
+                <>
+                  <Save className="w-5 h-5" /> Guardar
+                </>
+              )}
             </button>
 
-            {/* {[1, 5].includes(estadoCotizacionId) && currentCotizacionId && (
+            {canSendCotizacionToReview && (
               <button
-                onClick={handleEnviarAprobacion}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                onClick={handleEnviarRevision}
+                disabled={isSendingReview || saving || itemsCalculados.length === 0}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <Send className="w-5 h-5" />
-                {estadoCotizacionId === 5 ? 'Reenviar a aprobacion' : 'Enviar a aprobacion'}
+                {isSendingReview ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" /> Enviando...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-5 h-5" /> Enviar para aprobación
+                  </>
+                )}
               </button>
-            )} */}
+            )}
 
             <button
               onClick={() => setShowCostosModal(true)}
@@ -1524,7 +1942,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
 
             <button
               onClick={() => setShowExportModal(true)}
-              disabled={!puedeExportar() || items.length === 0}
+              disabled={!puedeExportar() || itemsCalculados.length === 0}
               className={`w-full flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${
                 puedeExportar()
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
@@ -1560,16 +1978,21 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
 
       {/* 3. Modal Formulario de Item */}
       <ItemFormModal
-        open={!isCotizacionReadOnly && showItemFormModal}
+        open={showItemFormModal}
         onClose={() => setShowItemFormModal(false)}
         itemForm={itemForm}
         setItemForm={setItemForm}
-        monedaId={monedaId}
+        monedaId={currentMonedaId}
         simboloMoneda={simboloMoneda}
+        tipoCambioSolesADolar={tipoCambioSolesADolar}
+        canViewGanancia={canViewGanancia}
         onSave={handleAddItem}
         onUpdate={() =>editingItem && handleUpdateItem()} // 🔥 AQUÍ
         editingItem={editingItem}
         handleIntercambiarMoneda={handleIntercambiarMoneda}
+        readOnly={isCotizacionReadOnly}
+        externalItemSuggestions={externalItemSuggestions as unknown as ItemForm[]}
+        onSelectExternalSuggestion={handleExternalSuggestionSelection}
       />
 
       {/* 4. Modal Costos Adicionales */}

@@ -55,12 +55,11 @@ export function recalcularItems(
     // Costo total del ítem = cuánto costó comprarlo
     const costoTotal = costoUnitario * cantidad;
 
-     // Ganancia por ítem
-    // - includeIgv=false: ganancia = subtotal - costoTotal          (todo sin IGV)
-    // - includeIgv=true:  ganancia = subtotal/1.18 - costoTotal/1.18 (bases sin IGV)
-    const ganancia = includeIgv
-      ? (subtotalItem  / 1.18) - (costoTotal / 1.18)
-      : subtotalItem - costoTotal;
+    // Ganancia por ítem
+    // - includeIgv=false: ganancia = subtotalItem - costoTotal
+    // - includeIgv=true:  ganancia = (subtotalItem - costoTotal) / 1.18
+    const gananciaItem = subtotalItem - costoTotal;
+    const ganancia = includeIgv ? gananciaItem / 1.18 : gananciaItem;
 
       return {
       ...item,
@@ -73,6 +72,8 @@ export function recalcularItems(
   });
 // ── 5. Totales de la cotización ──────────────────────────────
   const costoCompraTotal = itemsRecalculados.reduce((acc, i) => acc + i.costo_total, 0);
+  const igvCostos       = Number((costoCompraTotal * 0.18).toFixed(2));
+  const totalCostos     = Number((costoCompraTotal + igvCostos).toFixed(2));
   const gananciaItems    = itemsRecalculados.reduce((acc, i) => acc + i.ganancia,    0);
   const sumSubtotales    = itemsRecalculados.reduce((acc, i) => acc + i.subtotal,    0);
 
@@ -96,6 +97,8 @@ export function recalcularItems(
         total,           // subtotal + igv
         costosTotal,
         costoCompraTotal: Number(costoCompraTotal.toFixed(2)),
+        igvCostos,
+        totalInversion: totalCostos,
         ganancia,
       },
     };
@@ -106,12 +109,12 @@ export function recalcularItems(
   // total               = suma de subtotales de ítems  (YA incluye IGV)
   // igv                 = total - total / 1.18          (IGV extraído)
   // subtotal cotización = total - igv  = total / 1.18   (base sin IGV)
-  // ganancia            = (total / 1.18) - costoCompraTotal
+  // ganancia            = suma de ganancias calculadas por item
   //
   const total    = Number(sumSubtotales.toFixed(2));
   const igv      = Number((total - total / 1.18).toFixed(2));
   const subtotal = Number((total / 1.18).toFixed(2));  // = total - igv
-  const ganancia = Number((subtotal - costoCompraTotal).toFixed(2));
+  const ganancia = Number((gananciaItems).toFixed(2));
 
   return {
     items: itemsRecalculados,
@@ -121,7 +124,9 @@ export function recalcularItems(
       total,           // suma subtotales ítems, ya con IGV
       costosTotal,
       costoCompraTotal: Number(costoCompraTotal.toFixed(2)),
-      ganancia,        // (total/1.18) - costoCompraTotal
+      igvCostos,
+      totalInversion: totalCostos,
+      ganancia,
     },
   };
 }

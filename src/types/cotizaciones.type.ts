@@ -36,6 +36,16 @@ export interface Cotizacion {
     fechaAprobacion?: string;
 }
 
+export interface CotizacionItemProveedor {
+    id?: number;
+    cotizacion_item_id?: number;
+    nombre: string;
+    link?: string | null;
+    precio?: number | null;
+    notas?: string | null;
+    orden?: number;
+}
+
 export type CotizacionItem ={
     id: number;
     cotizacion_id: number;
@@ -66,6 +76,7 @@ export type CotizacionItem ={
     tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados
     proveedor?: string; // Nuevo campo para proveedor
     link_proveedor?: string; // Nuevo campo para link del proveedor
+    proveedores?: CotizacionItemProveedor[];
 }
 
 export interface CotizacionCostosAdicional {
@@ -137,6 +148,7 @@ export interface ItemForm {
     tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados
     proveedor?: string; // Nuevo campo para proveedor
     link_proveedor?: string; // Nuevo campo para link del proveedor
+    proveedores?: CotizacionItemProveedor[];
 }
 
 export interface Cliente {

@@ -27,7 +27,6 @@ interface Props {
   setPlataformaId: (id:number) =>void;
 
   estado_cotizacion_id: number;
-  setEstadoCotizacionId: (id: number) => void;
 
   modoDistribucion: 'POR_ITEM' | 'POR_CANTIDAD';
   setModoDistribucion: (v: 'POR_ITEM' | 'POR_CANTIDAD') => void;
@@ -47,7 +46,14 @@ interface Props {
   clienteContacto: string;
   setClienteContacto: (v: string) => void;
 
-  plantillas: { id: number; nombre: string; incluye_igv: Boolean }[];
+  plantillas: {
+    id: number;
+    nombre: string;
+    incluye_igv: boolean;
+    formato_pdf?: string;
+    moneda_id?: number;
+    codigo_moneda?: string;
+  }[];
   plataformas: { id: number; nombre: string} [];
 }
 
@@ -67,7 +73,6 @@ export function CotizacionGeneralForm({
   plataformaId,
   setPlataformaId,
   estado_cotizacion_id,
-  setEstadoCotizacionId,
   modoDistribucion,
   setModoDistribucion,
   validezDias,
@@ -87,14 +92,33 @@ export function CotizacionGeneralForm({
   const [searchClienteInput, setSearchClienteInput] = useState('');
   const [showClienteDropdown, setShowClienteDropdown] = useState(false);
 
-  const selectedCliente = clientes.find((c) => c.id === clienteId);
-  const clienteInputValue = clienteId ? searchClienteInput || selectedCliente?.nombre || '' : searchClienteInput;
+  const selectedCliente = clientes.find((c) => Number(c.id) === Number(clienteId));
+  const clienteInputValue = clienteId
+    ? searchClienteInput || selectedCliente?.nombre || cotizacion?.cliente_nombre || cotizacion?.cliente?.nombre || ''
+    : searchClienteInput;
 
   const [plantillaImposesMoneda, setPlantillaImposesMoneda] = useState(false);
 
-  const detectMonedaFromPlantilla = (nombre?: string): number | null => {
-    if (!nombre) return null;
-    const up = nombre.toUpperCase();
+  const detectMonedaFromPlantilla = (plantilla?: {
+    nombre?: string;
+    formato_pdf?: string;
+    moneda_id?: number;
+    codigo_moneda?: string;
+  }): number | null => {
+    if (!plantilla) return null;
+    if (plantilla.moneda_id === 1 || plantilla.moneda_id === 2) return plantilla.moneda_id;
+
+    const up = [
+      plantilla.nombre,
+      plantilla.formato_pdf,
+      plantilla.codigo_moneda,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase();
+
     if (up.includes('DOLAR') || up.includes('DÓLAR') || up.includes('USD')) return 2;
     if (up.includes('SOLES') || up.includes('S/')) return 1;
     return null;
@@ -125,7 +149,7 @@ export function CotizacionGeneralForm({
     setSearchClienteInput(cliente.nombre);
     setClienteContacto(cliente.contacto || '');
     setShowClienteDropdown(false);
-    if (cliente.moneda_id) {
+    if (!plantillaImposesMoneda && cliente.moneda_id) {
       setMonedaId(cliente.moneda_id);
     }
   };
@@ -134,7 +158,7 @@ export function CotizacionGeneralForm({
     const id = Number(e.target.value);
     setPlantillaId(id);
     const plantilla = plantillas.find(p => p.id === id);
-    const moneda = detectMonedaFromPlantilla(plantilla?.nombre);
+    const moneda = detectMonedaFromPlantilla(plantilla);
     if (moneda) {
       setMonedaId(moneda);
       setPlantillaImposesMoneda(true);
@@ -146,7 +170,7 @@ export function CotizacionGeneralForm({
   // Inicializar bloqueo de moneda si la plantilla actual impone moneda
   useEffect(() => {
     const plantilla = plantillas.find(p => p.id === plantillaId);
-    const moneda = detectMonedaFromPlantilla(plantilla?.nombre);
+    const moneda = detectMonedaFromPlantilla(plantilla);
     if (moneda) {
       setMonedaId(moneda);
       setPlantillaImposesMoneda(true);
@@ -336,10 +360,9 @@ export function CotizacionGeneralForm({
               </div>
               <div>
                 <label className="block text-sm mb-2 text-gray-700">Estado</label>
-                <select disabled={disabled}
+                <select disabled
                   value={estado_cotizacion_id}
-                  onChange={(e) => setEstadoCotizacionId(Number(e.target.value))}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border rounded-lg bg-gray-50 text-gray-600 cursor-not-allowed"
                 >
                   <option value={1}>Borrador</option>
                   <option value={2}>Enviada</option>

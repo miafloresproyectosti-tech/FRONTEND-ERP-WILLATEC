@@ -1,5 +1,5 @@
 import React from "react";
-import { CheckCircle, AlertTriangle, Info } from "lucide-react";
+import { CheckCircle, AlertTriangle, Info, XCircle } from "lucide-react";
 import type { Toast, NotificationType } from "./NotificationContext";
 
 const config: Record<
@@ -14,6 +14,11 @@ const config: Record<
   warning: {
     icon: <AlertTriangle size={18} className="text-amber-500" />,
     bar: "bg-amber-500",
+    bg: "bg-white",
+  },
+  error: {
+    icon: <XCircle size={18} className="text-red-500" />,
+    bar: "bg-red-500",
     bg: "bg-white",
   },
   info: {

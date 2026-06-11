@@ -10,5 +10,5 @@ export interface Plantilla {
 
 export const getPlantillas = async (): Promise<Plantilla[]> => {
     const response = await api.get('/plantillas');
-    return response.data;
+    return response.data?.data || response.data;
 };

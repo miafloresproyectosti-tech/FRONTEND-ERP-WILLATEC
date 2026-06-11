@@ -82,7 +82,8 @@ export default function Notificaciones() {
   };
 
   const getNotificationDescription = (notification: DatabaseNotification) => {
-    return notification.data.description || notification.data.message || "";
+    const description = notification.data.description || notification.data.message || "";
+    return description.replace(/\s+a las\s+\d{1,2}:\d{2}(?::\d{2})?\.?$/i, ".");
   };
 
   return (
@@ -193,6 +194,7 @@ export default function Notificaciones() {
                           day: "numeric",
                           hour: "2-digit",
                           minute: "2-digit",
+                          timeZone: "America/Lima",
                         }
                       )}
                     </p>
