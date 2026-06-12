@@ -3,19 +3,20 @@ import type { ItemForm } from "../../../types/cotizaciones.type";
 import { ArrowLeftRight, Copy, Plus, Trash2, X } from "lucide-react";
 import { formatMoney } from "../../../utils/formatNumber";
 import { resolveItemImageUrl } from "../../../utils/storageImage";
+import api from "../../../services/api";
 
-interface Props{
+interface Props {
   open: boolean;
   onClose: () => void;
 
   itemForm: ItemForm;
   setItemForm: React.Dispatch<React.SetStateAction<ItemForm>>;
-  
+
   monedaId: number;
   simboloMoneda: string;
   tipoCambioSolesADolar: number;
   canViewGanancia?: boolean;
-  
+
   onSave: () => void;
   onUpdate: () => void;
   editingItem?: ItemForm | null;
@@ -27,17 +28,17 @@ interface Props{
 }
 
 export function ItemFormModal({
-  open, 
-  onClose, 
-  itemForm, 
-  setItemForm, 
-  monedaId, 
-  simboloMoneda, 
+  open,
+  onClose,
+  itemForm,
+  setItemForm,
+  monedaId,
+  simboloMoneda,
   tipoCambioSolesADolar,
   canViewGanancia = true,
-  onSave, 
-  onUpdate, 
-  editingItem, 
+  onSave,
+  onUpdate,
+  editingItem,
   handleIntercambiarMoneda,
   readOnly = false,
   externalItemSuggestions = [],
@@ -68,13 +69,25 @@ export function ItemFormModal({
     reader.readAsDataURL(file);
   };
 
-  const handleImageFile = (file: File) => {
+  const handleImageFile = async (file: File) => {
+    // Preview local inmediato
     readImageFile(file, (dataUrl) => {
-      setItemForm({
-        ...itemForm,
-        imagen: dataUrl,
-      });
+      setItemForm(prev => ({ ...prev, imagen: dataUrl }));
     });
+
+    // Subir al servidor en segundo plano
+    try {
+      const formData = new FormData();
+      formData.append("imagen", file);
+      const res = await api.post("/upload-imagen", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      // Reemplazar base64 con la URL del servidor
+      setItemForm(prev => ({ ...prev, imagen: res.data.url }));
+    } catch (error) {
+      console.error("Error al subir imagen", error);
+      // Si falla, se queda con el base64 como fallback
+    }
   };
 
   const handleDrop: React.DragEventHandler<HTMLLabelElement> = (event) => {
@@ -331,7 +344,7 @@ export function ItemFormModal({
               )}
             </div>
             <div className="grid grid-cols-3 gap-2">
-              {field(`Costo (${monedaId === 1 ? 'S/.' : '$'})`, 
+              {field(`Costo (${monedaId === 1 ? 'S/.' : '$'})`,
                 <div className="flex gap-1">
                   <input className={`${inp} flex-1`} type="number"
                     disabled={readOnly}
@@ -482,7 +495,7 @@ export function ItemFormModal({
                   </p>
                 )}
               </div>
-              )}
+            )}
             <div className="bg-gray-50 rounded-lg p-2">
               <p className="text-[9px] text-gray-500 mb-0.5">Subtotal</p>
               <p className="text-xs font-semibold text-gray-800">{formatMoney(itemForm.subtotal || 0, simboloMoneda)}</p>
@@ -508,4 +521,4 @@ export function ItemFormModal({
   );
 }
 
-        
+
