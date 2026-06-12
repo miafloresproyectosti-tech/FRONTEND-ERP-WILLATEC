@@ -16,6 +16,7 @@ import Auditoria from "../pages/Auditoria";
 import OrdenesCompraPage from "../pages/OrdenesCompraPage";
 import OrdenCompraDetail from "../pages/OrdenCompraDetail";
 import Notificaciones from "../pages/Notificaciones";
+import TwoFactorChallengePage from "../pages/TwoFactorChallengePage";
 
 export default function AppRoutes() {
   return (
@@ -24,7 +25,9 @@ export default function AppRoutes() {
 
         {/* LOGIN */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/two-factor" element={<TwoFactorChallengePage />} />
         <Route path="/change-password" element={<ChangePasswordPage />} />
+        
 
         {/* RUTAS PROTEGIDAS */}
         <Route

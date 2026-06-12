@@ -13,7 +13,7 @@ export default function LoginComponent() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
-  
+
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -43,7 +43,16 @@ export default function LoginComponent() {
     setLoading(true);
 
     try {
-      const { role, id, requires_password_change, last_login_at } = await loginRequest(email, password);
+      const result = await loginRequest(email, password);
+
+      if (result.requires_2fa) {
+        sessionStorage.setItem("two_factor_login_token", result.login_token);
+        sessionStorage.setItem("two_factor_email", email);
+        navigate("/two-factor");
+        return;
+      }
+
+      const { role, id, requires_password_change, last_login_at } = result;
       // Si el backend indica que la contraseña es temporal, redirigir a cambio de contraseña
       if (requires_password_change) {
         // Guardar credenciales temporales en sessionStorage para el cambio
@@ -60,14 +69,14 @@ export default function LoginComponent() {
         role === 'SUPERADMIN'
           ? '/'
           : role === 'ADMIN'
-          ? '/clientes'
-          : role === 'VENTAS'
-          ? '/cotizaciones'
-          : role === 'SOPORTE'
-          ? '/productos'
-          : '/login';
+            ? '/clientes'
+            : role === 'VENTAS'
+              ? '/cotizaciones'
+              : role === 'SOPORTE'
+                ? '/productos'
+                : '/login';
       navigate(targetRoute);
-    } catch (err:any) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Error al iniciar sesión, revise sus credenciales');
     } finally {
       setPassword('');
@@ -81,10 +90,10 @@ export default function LoginComponent() {
       <div className="hidden lg:flex lg:w-1/2 items-center justify-center p-12">
         <div className="max-w-md text-white">
           <img
-                  src="/logoWILLATEC-white.png"
-                  alt="Willatec"
-                  className="max-w-45 max-h-45 object-contain"
-                />
+            src="/logoWILLATEC-white.png"
+            alt="Willatec"
+            className="max-w-45 max-h-45 object-contain"
+          />
           <p className="text-xl text-blue-100 mb-8 leading-relaxed">
             Sistema integral de gestión. Cotizaciones, clientes, inventario y reportes en tiempo real.
           </p>

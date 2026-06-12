@@ -1,5 +1,11 @@
 import { useState } from 'react';
 import { Save, Building, Settings, Shield, Bell } from 'lucide-react';
+import {
+  enableTwoFactorRequest,
+  getTwoFactorQrRequest,
+  confirmTwoFactorRequest,
+  disableTwoFactorRequest,
+} from "../services/auth.service";
 
 export default function Configuracion() {
   const [activeTab, setActiveTab] = useState('empresa');
@@ -10,6 +16,30 @@ export default function Configuracion() {
     { id: 'seguridad', name: 'Seguridad', icon: Shield },
     { id: 'notificaciones', name: 'Notificaciones', icon: Bell },
   ];
+
+  //VERIFICACION DE 2 PASOS
+  const [qr, setQr] = useState("");
+  const [code, setCode] = useState("");
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+
+  const enable2FA = async () => {
+    await enableTwoFactorRequest();
+    const data = await getTwoFactorQrRequest();
+    setQr(data.svg);
+  };
+
+  const confirm2FA = async () => {
+    const data = await confirmTwoFactorRequest(code);
+    setRecoveryCodes(data.recovery_codes || []);
+  };
+
+  const disable2FA = async () => {
+    const password = prompt("Ingrese su contraseña actual");
+    if (!password) return;
+    await disableTwoFactorRequest(password);
+    setQr("");
+    setRecoveryCodes([]);
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -128,14 +158,42 @@ export default function Configuracion() {
                 </div>
               </div>
             </div>
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4 pb-3 border-b border-gray-200">Autenticación de Dos Factores</h3>
-                <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
-                  <input type="checkbox" id="2fa" className="w-5 h-5 text-blue-600" />
-                  <label htmlFor="2fa" className="text-sm font-medium text-gray-700">Habilitar 2FA para todos los usuarios</label>
+            <div className="bg-white rounded-2xl p-6 shadow">
+              <h2 className="text-xl font-bold mb-4">Autenticación 2FA</h2>
+
+              <button onClick={enable2FA} className="bg-blue-600 text-white px-4 py-2 rounded-xl">
+                Activar 2FA
+              </button>
+
+              {qr && (
+                <div className="mt-4">
+                  <div dangerouslySetInnerHTML={{ __html: qr }} />
+
+                  <input
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="Código de 6 dígitos"
+                    className="border p-3 rounded-xl mt-4"
+                  />
+
+                  <button onClick={confirm2FA} className="ml-2 bg-green-600 text-white px-4 py-2 rounded-xl">
+                    Confirmar
+                  </button>
                 </div>
-              </div>
+              )}
+
+              {recoveryCodes.length > 0 && (
+                <div className="mt-4 bg-slate-100 p-4 rounded-xl">
+                  <h3 className="font-bold mb-2">Códigos de recuperación</h3>
+                  {recoveryCodes.map((code) => (
+                    <div key={code}>{code}</div>
+                  ))}
+                </div>
+              )}
+
+              <button onClick={disable2FA} className="mt-4 bg-red-600 text-white px-4 py-2 rounded-xl">
+                Desactivar 2FA
+              </button>
             </div>
           </div>
         );
@@ -204,11 +262,10 @@ export default function Configuracion() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all duration-200 whitespace-nowrap ${
-                    activeTab === tab.id
+                  className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all duration-200 whitespace-nowrap ${activeTab === tab.id
                       ? 'border-b-2 border-blue-500 text-blue-600 bg-blue-50'
                       : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                  }`}
+                    }`}
                 >
                   <Icon size={16} />
                   {tab.name}
