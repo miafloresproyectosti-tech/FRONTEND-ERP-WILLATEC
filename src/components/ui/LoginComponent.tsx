@@ -52,7 +52,13 @@ export default function LoginComponent() {
         return;
       }
 
-      const { role, id, requires_password_change, last_login_at } = result;
+      const {
+        role,
+        id,
+        requires_password_change,
+        last_login_at,
+        two_factor_enabled,
+      } = result;
       // Si el backend indica que la contraseña es temporal, redirigir a cambio de contraseña
       if (requires_password_change) {
         // Guardar credenciales temporales en sessionStorage para el cambio
@@ -63,7 +69,7 @@ export default function LoginComponent() {
         return;
       }
 
-      login(id, email, role, last_login_at);
+      login(id, email, role, last_login_at, two_factor_enabled);
 
       const targetRoute =
         role === 'SUPERADMIN'

@@ -52,8 +52,9 @@ export default function ChangePasswordPage() {
       );
 
       if (storedEmail) {
-        const { role, id, last_login_at } = await loginRequest(storedEmail, password);
-        login(id, storedEmail, role, last_login_at);
+        const { role, id, last_login_at, two_factor_enabled } =
+          await loginRequest(storedEmail, password);
+        login(id, storedEmail, role, last_login_at, two_factor_enabled);
       } else {
         const me = await meRequest();
         const role =
@@ -62,7 +63,13 @@ export default function ChangePasswordPage() {
             : "VENTAS";
         const id = me.data?.id;
         const email = me.data?.email || "";
-        login(id, email, role, me.data?.last_login_at || null);
+        login(
+          id,
+          email,
+          role,
+          me.data?.last_login_at || null,
+          !!me.data?.two_factor_confirmed_at
+        );
       }
 
       showToast({

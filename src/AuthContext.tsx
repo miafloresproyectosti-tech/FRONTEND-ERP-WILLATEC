@@ -16,13 +16,21 @@ interface User {
   role: UserRole;
   name: string;
   last_login_at?: string | null;
+  two_factor_enabled?: boolean;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (id: number, email: string, role: string, lastLoginAt?: string | null) => void;
+  login: (
+    id: number,
+    email: string,
+    role: string,
+    lastLoginAt?: string | null,
+    twoFactorEnabled?: boolean
+  ) => void;
   logout: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
+  updateTwoFactorEnabled: (enabled: boolean) => void;
   loading: boolean;
 }
 
@@ -33,7 +41,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   // LOGIN
-  const login = (id: number, email: string, roleStr: string, lastLoginAt?: string | null) => {
+  const login = (
+    id: number,
+    email: string,
+    roleStr: string,
+    lastLoginAt?: string | null,
+    twoFactorEnabled = false
+  ) => {
     const role = roleStr as UserRole;
 
     const name =
@@ -46,10 +60,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role,
       name,
       last_login_at: lastLoginAt || new Date().toISOString(),
+      two_factor_enabled: twoFactorEnabled,
     };
 
     setUser(userData);
     localStorage.setItem("user", JSON.stringify(userData));
+  };
+
+  const updateTwoFactorEnabled = (enabled: boolean) => {
+    setUser((currentUser) => {
+      if (!currentUser) return currentUser;
+
+      const updatedUser = {
+        ...currentUser,
+        two_factor_enabled: enabled,
+      };
+
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      return updatedUser;
+    });
   };
 
   // LOGOUT
@@ -106,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         hasPermission,
+        updateTwoFactorEnabled,
         loading,
       }}
     >

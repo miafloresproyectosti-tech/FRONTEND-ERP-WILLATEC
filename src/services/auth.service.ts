@@ -60,6 +60,7 @@ export const loginRequest = async (email: string, password: string) => {
       id,
       requires_password_change,
       last_login_at,
+      two_factor_enabled: response.data.two_factor_enabled || false,
       requires_2fa: false,
     };
   } catch {
@@ -113,6 +114,7 @@ export const twoFactorChallengeRequest = async (
     role,
     requires_password_change: response.data.requires_password_change,
     last_login_at: user.last_login_at || null,
+    two_factor_enabled: true,
   };
 };
 

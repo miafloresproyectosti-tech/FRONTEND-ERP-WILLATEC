@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState,useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import { twoFactorChallengeRequest } from "../services/auth.service";
@@ -37,7 +37,13 @@ export default function TwoFactorChallengePage() {
       sessionStorage.removeItem("two_factor_login_token");
       sessionStorage.removeItem("two_factor_email");
 
-      login(result.id, result.email || email, result.role, result.last_login_at);
+      login(
+        result.id,
+        result.email || email,
+        result.role,
+        result.last_login_at,
+        result.two_factor_enabled
+      );
 
       navigate(
         result.role === "SUPERADMIN"

@@ -25,16 +25,21 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error?.response?.status === 401) {
-            localStorage.removeItem("user");
-            localStorage.removeItem("token");
+        const currentPath = window.location.pathname;
 
-            if (window.location.pathname !== "/login") {
-                window.location.assign("/login");
-            }
-        }
+    const isAuthFlow =
+        currentPath === "/login" ||
+        currentPath === "/two-factor" ||
+        currentPath === "/change-password";
 
-        return Promise.reject(error);
+    if (error?.response?.status === 401 && !isAuthFlow) {
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+
+        
+    }
+
+    return Promise.reject(error);
     }
 );
 
