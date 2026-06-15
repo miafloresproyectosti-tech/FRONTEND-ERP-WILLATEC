@@ -24,9 +24,16 @@ export interface ClientePayload {
 }
 
 // Tu backend devuelve respuesta paginada con array en data
-export const getClientes = async (): Promise<Cliente[]> => {
-  const res = await api.get("/clientes");
-  return res.data?.data ?? [];
+export const getClientes = async (page = 1, search = "", perPage = 10) => {
+  const response = await api.get("/clientes", {
+    params: {
+      page,
+      search,
+      per_page: perPage,
+    },
+  });
+
+  return response.data;
 };
 
 export const getCliente = async (id: number): Promise<Cliente> => {

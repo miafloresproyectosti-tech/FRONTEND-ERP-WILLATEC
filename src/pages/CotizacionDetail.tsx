@@ -4,7 +4,7 @@ import { useNotifications } from '../NotificationContext';
 import { useAuth } from '../AuthContext';
 import { useLocation } from 'react-router-dom';
 import { getClientes, type Cliente } from '../services/cliente.service';
-import { getExternalItems, getProductos, type Producto} from "../services/producto.service";
+import { getExternalItems, getProductos, type Producto } from "../services/producto.service";
 import { getPlantillas } from '../services/plantilla.service';
 import { getPlataformas } from '../services/plataforma.service';
 import { getUsers, type User as ApiUser } from '../services/usuario.service';
@@ -97,12 +97,11 @@ const plantillaIncluyeIgv = (plantillaId: number, plantilla?: { incluye_igv?: bo
   return Boolean(plantilla?.incluye_igv);
 };
 
-
 export function CotizacionDetail() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
-  const { showToast ,addNotification } = useNotifications();
+  const { showToast, addNotification } = useNotifications();
 
   const isEditing = id !== 'new' && id !== undefined;
   const currentCotizacionId = id ? parseInt(id) : null;
@@ -117,9 +116,9 @@ export function CotizacionDetail() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   //LOCALIZACIÓN
-const location = useLocation();
+  const location = useLocation();
 
-const isViewMode = location.pathname.includes('/view');
+  const isViewMode = location.pathname.includes('/view');
 
   // Cotización header
   const [cotizacion, setCotizacion] = useState<Cotizacion | null>(null);
@@ -136,7 +135,7 @@ const isViewMode = location.pathname.includes('/view');
     moneda_id?: number;
     codigo_moneda?: string;
   }[]>([]);
-  const [plataformas, setPlataformas] = useState<{id:number,nombre:string}[]>([]);
+  const [plataformas, setPlataformas] = useState<{ id: number, nombre: string }[]>([]);
   const [monedaId, setMonedaId] = useState<number>(1); // 1=PEN, 2=USD
   const [tipoCambioSolesADolar, setTipoCambioSolesADolar] = useState<number>(3.3);
   const [tipoCambioDolarASoles, setTipoCambioDolarASoles] = useState<number>(3.5);
@@ -181,7 +180,7 @@ const isViewMode = location.pathname.includes('/view');
 
   // UI State
   const [editingItem, setEditingItem] = useState<CotizacionItem | null>(null);
-  const [editingItemId, setEditingItemId] = useState<number | null> (null);
+  const [editingItemId, setEditingItemId] = useState<number | null>(null);
   const [showItemFormModal, setShowItemFormModal] = useState(false);
   const [showItemTypeModal, setShowItemTypeModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
@@ -427,7 +426,7 @@ const isViewMode = location.pathname.includes('/view');
     const proveedores = normalizeItemProveedores(item);
     const primaryProveedor = getPrimaryProveedor(proveedores);
     setEditingItem(item);
-  
+
     setEditingItemId(item.id);
 
     setItemForm({
@@ -439,26 +438,24 @@ const isViewMode = location.pathname.includes('/view');
       imagen_path: item.imagen_path,
     });
 
-  setShowItemFormModal(true);
-};
+    setShowItemFormModal(true);
+  };
 
   // ====== EFECTOS ======
-
   // Cargar clientes
   useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
     const fetchClientes = async () => {
       try {
-        const data = await getClientes();
-        setClientes(data);
+        const data = await getClientes(1, "", 500);
+        setClientes(Array.isArray(data) ? data : data.data || []);
       } catch (error) {
-        addNotification({
-          title: 'Error',
-          description: 'Error al cargar clientes',
-          type: 'error',
-          duration: 4000,
-        } as any);
+        console.error(error);
       }
     };
+
     fetchClientes();
   }, []);
 
@@ -545,62 +542,62 @@ const isViewMode = location.pathname.includes('/view');
   useEffect(() => {
     if (isEditing && currentCotizacionId) {
       loadCotizacion();
-    }else{
+    } else {
       setIsInitialLoad(false);
     }
   }, [isEditing, currentCotizacionId]);
 
   //Cargar plataformas
   useEffect(() => {
-  const fetchPlataformas = async () => {
-    try {
-      const data = await getPlataformas();
+    const fetchPlataformas = async () => {
+      try {
+        const data = await getPlataformas();
 
-      setPlataformas(data);
+        setPlataformas(data);
 
-      if (data.length > 0 && !plataformaId) {
-        setPlataformaId(data[0].id);
+        if (data.length > 0 && !plataformaId) {
+          setPlataformaId(data[0].id);
+        }
+
+      } catch (error) {
+        addNotification({
+          title: 'Error',
+          description: 'Error al cargar plataformas',
+          message: 'Error al cargar plataformas',
+          type: 'error',
+          duration: 4000,
+        } as any);
       }
+    };
 
-    } catch (error) {
-      addNotification({
-        title: 'Error',
-        description: 'Error al cargar plataformas',
-        message: 'Error al cargar plataformas',
-        type: 'error',
-        duration: 4000,
-      } as any);
-    }
-  };
-
-  fetchPlataformas();
-}, []);
+    fetchPlataformas();
+  }, []);
 
   //Cargar plantillas
   useEffect(() => {
-  const fetchPlantillas = async () => {
-    try {
-      const data = await getPlantillas();
+    const fetchPlantillas = async () => {
+      try {
+        const data = await getPlantillas();
 
-      setPlantillas(data);
+        setPlantillas(data);
 
-      if (data.length > 0 && !plantillaId) {
-        setPlantillaId(data[0].id);
+        if (data.length > 0 && !plantillaId) {
+          setPlantillaId(data[0].id);
+        }
+
+      } catch (error) {
+        addNotification({
+          title: 'Error',
+          description: 'Error al cargar plantillas',
+          message: 'Error al cargar plantillas',
+          type: 'error',
+          duration: 4000,
+        } as any);
       }
+    };
 
-    } catch (error) {
-      addNotification({
-        title: 'Error',
-        description: 'Error al cargar plantillas',
-        message: 'Error al cargar plantillas',
-        type: 'error',
-        duration: 4000,
-      } as any);
-    }
-  };
-
-  fetchPlantillas();
-}, []);
+    fetchPlantillas();
+  }, []);
 
   // ====== FUNCIONES API ======
 
@@ -1052,7 +1049,7 @@ const isViewMode = location.pathname.includes('/view');
 
     setSaving(true);
     try {
-      if (isEditing && currentCotizacionId ) {
+      if (isEditing && currentCotizacionId) {
         // Actualizar
         const updated = await updateCotizacion(currentCotizacionId, payload);
         const finalCotizacion = shouldSendRejectedToReview
@@ -1104,7 +1101,7 @@ const isViewMode = location.pathname.includes('/view');
     }
   };
 
-const handleAddItem = async () => {
+  const handleAddItem = async () => {
     if (isCotizacionReadOnly) return;
 
     if (!itemForm.descripcion || itemForm.cantidad <= 0) {
@@ -1113,7 +1110,7 @@ const handleAddItem = async () => {
         type: 'warning',
         duration: 4000,
       } as any);
-    
+
       return;
     }
     const proveedores = itemForm.tipo === 'externo' ? normalizeItemProveedores(itemForm) : [];
@@ -1157,22 +1154,22 @@ const handleAddItem = async () => {
 
     };
 
-  // ===== AGREGAR AL STATE =====
-  setItems((prev) => [...prev, nuevoItem]);
+    // ===== AGREGAR AL STATE =====
+    setItems((prev) => [...prev, nuevoItem]);
 
-  setEditingItem(null);
-  setEditingItemId(null);
+    setEditingItem(null);
+    setEditingItemId(null);
 
-  // ===== UI =====
-  setShowItemFormModal(false);
+    // ===== UI =====
+    setShowItemFormModal(false);
 
-  resetItemForm();
+    resetItemForm();
 
-  addNotification({
-    message: 'Item agregado',
-    type: 'success',
-    duration: 4000,
-  } as any);
+    addNotification({
+      message: 'Item agregado',
+      type: 'success',
+      duration: 4000,
+    } as any);
   };
 
   const handleUpdateItem = () => {
@@ -1189,49 +1186,49 @@ const handleAddItem = async () => {
       return;
     }
 
-  const proveedores = itemForm.tipo === 'externo' ? normalizeItemProveedores(itemForm) : [];
-  const primaryProveedor = getPrimaryProveedor(proveedores);
+    const proveedores = itemForm.tipo === 'externo' ? normalizeItemProveedores(itemForm) : [];
+    const primaryProveedor = getPrimaryProveedor(proveedores);
 
-  setItems((prev) =>
-  prev.map((item) =>
-    item.id === editingItemId
-      ? {
-          ...item,
-          descripcion: itemForm.descripcion,
-          cantidad: Number(itemForm.cantidad),
-          costo_base: Number(itemForm.costo_base),
-          margen: Number(itemForm.margen),
-          marca: itemForm.marca,
-          codigo: itemForm.codigo,
-          unidad_medida: itemForm.unidad_medida ?? 'UND',
-          disponibilidad_tipo: itemForm.disponibilidad_tipo,
-          disponibilidad_dias: itemForm.disponibilidad_dias,
-          garantia_meses: itemForm.garantia_meses ?? 12,
-          proveedor: primaryProveedor.proveedor,
-          link_proveedor: primaryProveedor.link_proveedor,
-          proveedores,
-          stock: 0,
-          imagen: itemForm.imagen ||"",
-          imagen_url: itemForm.imagen_url,
-          imagen_path: itemForm.imagen_path,
-        }
-      : item
-    )
-  );
-  setShowItemFormModal(false);
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === editingItemId
+          ? {
+            ...item,
+            descripcion: itemForm.descripcion,
+            cantidad: Number(itemForm.cantidad),
+            costo_base: Number(itemForm.costo_base),
+            margen: Number(itemForm.margen),
+            marca: itemForm.marca,
+            codigo: itemForm.codigo,
+            unidad_medida: itemForm.unidad_medida ?? 'UND',
+            disponibilidad_tipo: itemForm.disponibilidad_tipo,
+            disponibilidad_dias: itemForm.disponibilidad_dias,
+            garantia_meses: itemForm.garantia_meses ?? 12,
+            proveedor: primaryProveedor.proveedor,
+            link_proveedor: primaryProveedor.link_proveedor,
+            proveedores,
+            stock: 0,
+            imagen: itemForm.imagen || "",
+            imagen_url: itemForm.imagen_url,
+            imagen_path: itemForm.imagen_path,
+          }
+          : item
+      )
+    );
+    setShowItemFormModal(false);
 
-  setEditingItem(null);
+    setEditingItem(null);
 
-  setEditingItemId(null);
+    setEditingItemId(null);
 
-  resetItemForm();
+    resetItemForm();
 
-  addNotification({
-    message: 'Item actualizado',
-    type: 'success',
-    duration: 4000,
-  } as any);
-};
+    addNotification({
+      message: 'Item actualizado',
+      type: 'success',
+      duration: 4000,
+    } as any);
+  };
 
   const handleDeleteItem = async (itemId: number) => {
     if (isCotizacionReadOnly) return;
@@ -1240,7 +1237,7 @@ const handleAddItem = async () => {
 
     try {
       setItems(prev =>
-      prev.filter(item => item.id !== itemId)
+        prev.filter(item => item.id !== itemId)
       );
       addNotification({
         message: 'Item eliminado',
@@ -1277,34 +1274,34 @@ const handleAddItem = async () => {
     }
 
     const nuevoCosto = {
-    id: Date.now(),
+      id: Date.now(),
 
-    tipo: costoForm.tipo,
+      tipo: costoForm.tipo,
 
-    cotizacion_id: currentCotizacionId,
+      cotizacion_id: currentCotizacionId,
 
-    monto: Number(costoForm.monto),
+      monto: Number(costoForm.monto),
 
-    descripcion: costoForm.descripcion || '',
-  };
+      descripcion: costoForm.descripcion || '',
+    };
 
-  setCostos((prev) => [...prev, nuevoCosto]);
+    setCostos((prev) => [...prev, nuevoCosto]);
 
-  addNotification({
-    message: 'Costo agregado',
-    type: 'success',
-    duration: 4000,
-  } as any);
+    addNotification({
+      message: 'Costo agregado',
+      type: 'success',
+      duration: 4000,
+    } as any);
 
-  setCostoForm({
-    id: 0,
-    cotizacion_id: null,
-    tipo: 'viaje',
-    monto: 0,
-    descripcion: '',
-  });
+    setCostoForm({
+      id: 0,
+      cotizacion_id: null,
+      tipo: 'viaje',
+      monto: 0,
+      descripcion: '',
+    });
 
-  // setShowCostosModal(false);
+    // setShowCostosModal(false);
   };
 
 
@@ -1361,179 +1358,179 @@ const handleAddItem = async () => {
   };
 
   const handleProductSelection = (producto: any) => {
-  if (isCotizacionReadOnly) return;
+    if (isCotizacionReadOnly) return;
 
-  setShowProductModal(false);
+    setShowProductModal(false);
 
-  const margen =
-    producto.precio > 0
-      ? ((producto.precio - producto.costo) / producto.precio) * 100
-      : 0;
+    const margen =
+      producto.precio > 0
+        ? ((producto.precio - producto.costo) / producto.precio) * 100
+        : 0;
 
-  setItemForm({
-    id: 1,
-    descripcion: producto.nombre || '',
-    cantidad: 1,
-    costo_base: producto.costo || 0,
-    precio_venta: producto.precio || 0,
-    costo_unitario: producto.costo || 0,
-    costo_total: producto.costo || 0,
-    ganancia: (producto.precio || 0) - (producto.costo || 0),
-    subtotal: producto.precio || 0,
-    imagen: producto.imagen || producto.imagen_url || '',
-    imagen_url: producto.imagen_url || producto.imagen || null,
-    imagen_path: producto.imagen_path || producto.imagen || null,
-    orden: 1,
-    cotizacion_id: currentCotizacionId || 0,
-    producto_id: producto.id,
-    estado_cotizacion_item_id: undefined,
-    tipo: 'catalogo',
-    margen: Number(margen.toFixed(2)),
-    marca: producto.marca || '',
-    codigo: producto.codigo || '',
-    unidad_medida: producto.unidad_medida || 'UND',
-    garantia_meses: producto.garantia_meses || 12,
-    disponibilidad_tipo: producto.disponibilidad_tipo || 'stock',
-    disponibilidad_dias: producto.disponibilidad_dias || 4,
-    proveedor: '',
-    link_proveedor: '',
-    proveedores: [],
-  });
+    setItemForm({
+      id: 1,
+      descripcion: producto.nombre || '',
+      cantidad: 1,
+      costo_base: producto.costo || 0,
+      precio_venta: producto.precio || 0,
+      costo_unitario: producto.costo || 0,
+      costo_total: producto.costo || 0,
+      ganancia: (producto.precio || 0) - (producto.costo || 0),
+      subtotal: producto.precio || 0,
+      imagen: producto.imagen || producto.imagen_url || '',
+      imagen_url: producto.imagen_url || producto.imagen || null,
+      imagen_path: producto.imagen_path || producto.imagen || null,
+      orden: 1,
+      cotizacion_id: currentCotizacionId || 0,
+      producto_id: producto.id,
+      estado_cotizacion_item_id: undefined,
+      tipo: 'catalogo',
+      margen: Number(margen.toFixed(2)),
+      marca: producto.marca || '',
+      codigo: producto.codigo || '',
+      unidad_medida: producto.unidad_medida || 'UND',
+      garantia_meses: producto.garantia_meses || 12,
+      disponibilidad_tipo: producto.disponibilidad_tipo || 'stock',
+      disponibilidad_dias: producto.disponibilidad_dias || 4,
+      proveedor: '',
+      link_proveedor: '',
+      proveedores: [],
+    });
 
-  addNotification({
-    message: `Producto "${producto.nombre}" seleccionado`,
-    type: 'success',
-    duration: 3000,
-  } as any);
-
-  setShowItemFormModal(true);
-};
-
-const handleExternalSuggestionSelection = (suggestion: ItemForm) => {
-  const proveedores = normalizeItemProveedores(suggestion);
-  const primaryProveedor = getPrimaryProveedor(proveedores);
-  const image = suggestion.imagen || suggestion.imagen_url || suggestion.imagen_path || '';
-
-  setItemForm((prev) => ({
-    ...prev,
-    descripcion: suggestion.descripcion || prev.descripcion,
-    marca: suggestion.marca || '',
-    codigo: suggestion.codigo || '',
-    costo_base: Number(suggestion.costo_base ?? suggestion.costo_unitario ?? prev.costo_base ?? 0),
-    margen: Number(suggestion.margen ?? prev.margen ?? 0),
-    proveedor: primaryProveedor.proveedor,
-    link_proveedor: primaryProveedor.link_proveedor,
-    proveedores,
-    imagen: image,
-    imagen_url: suggestion.imagen_url || image || null,
-    imagen_path: suggestion.imagen_path || image || null,
-    tipo: 'externo',
-  }));
-};
-
-
-const todosItemsAprobados =   items.every(item => 
-    item.estado_cotizacion_item_id === 2 //  = aprobado
-);
-
-const handleIntercambiarMoneda = () => {
-  if (isCotizacionReadOnly) return;
-
-  const esSoles = currentMonedaId === 1;
-
-  const nuevoCosto = esSoles
-    ? itemForm.costo_base / tipoCambioSolesADolar
-    : itemForm.costo_base * tipoCambioDolarASoles;
-
-  setItemForm(prev => ({
-    ...prev,
-    costo_base: Number(nuevoCosto.toFixed(2)),
-  }));
-};
-
-const handleExportarPdf = async () => {
-  if (!puedeExportar()) return;
-
-  if (!cotizacion?.id) return;
-
-  setExportandoPdf(true);
-
-  try {
-    const { blob, filename } = await exportarCotizacionPdf(cotizacion.id);
-
-  const descargado = await descargarPdfCotizacion(
-    filename || 'cotizacion.pdf',
-    blob
-  );
-
-  if (!descargado) {
-    showToast({
-      title: 'Descarga cancelada',
-      description: 'No se guardó el PDF porque se canceló la selección de ubicación.',
-      type: 'info',
+    addNotification({
+      message: `Producto "${producto.nombre}" seleccionado`,
+      type: 'success',
       duration: 3000,
     } as any);
-    return;
-  }
 
-  showToast({
-    title: 'PDF exportado correctamente',
-    description: 'El documento fue generado con el nombre enviado por el backend.',
-    type: 'success',
-    duration: 3000,
-  } as any);
+    setShowItemFormModal(true);
+  };
 
-  setShowExportModal(false);
+  const handleExternalSuggestionSelection = (suggestion: ItemForm) => {
+    const proveedores = normalizeItemProveedores(suggestion);
+    const primaryProveedor = getPrimaryProveedor(proveedores);
+    const image = suggestion.imagen || suggestion.imagen_url || suggestion.imagen_path || '';
 
-  } catch (error: any) {
-    showToast({
-      title: 'Error al exportar PDF',
-      description: error?.response?.data?.message || 'No se pudo generar o descargar el PDF.',
-      type: 'error',
-      duration: 4000,
-  } as any);
+    setItemForm((prev) => ({
+      ...prev,
+      descripcion: suggestion.descripcion || prev.descripcion,
+      marca: suggestion.marca || '',
+      codigo: suggestion.codigo || '',
+      costo_base: Number(suggestion.costo_base ?? suggestion.costo_unitario ?? prev.costo_base ?? 0),
+      margen: Number(suggestion.margen ?? prev.margen ?? 0),
+      proveedor: primaryProveedor.proveedor,
+      link_proveedor: primaryProveedor.link_proveedor,
+      proveedores,
+      imagen: image,
+      imagen_url: suggestion.imagen_url || image || null,
+      imagen_path: suggestion.imagen_path || image || null,
+      tipo: 'externo',
+    }));
+  };
 
-  console.error(error);
-  }finally {
-    setExportandoPdf(false);
-  }
-};
 
-// ====== HELPERS ======
+  const todosItemsAprobados = items.every(item =>
+    item.estado_cotizacion_item_id === 2 //  = aprobado
+  );
 
-const nombreUsuario = (() => {
-  const ejecutivo = (cotizacion?.user || cotizacion?.usuario) as any;
-  const nombres = ejecutivo?.profile?.nombres || ejecutivo?.nombres || ejecutivo?.name;
-  const apellidos = ejecutivo?.profile?.apellidos || ejecutivo?.apellidos;
+  const handleIntercambiarMoneda = () => {
+    if (isCotizacionReadOnly) return;
 
-  if (nombres) {
-    return `${nombres}${apellidos ? ` ${apellidos}` : ''}`;
-  }
+    const esSoles = currentMonedaId === 1;
 
-  return 'Sin asignar';
-})();
+    const nuevoCosto = esSoles
+      ? itemForm.costo_base / tipoCambioSolesADolar
+      : itemForm.costo_base * tipoCambioDolarASoles;
 
-const ventasUsuarios = usuarios.filter((u) =>
-  u.roles?.some((role) => role.name?.toUpperCase() === 'VENTAS')
-);
+    setItemForm(prev => ({
+      ...prev,
+      costo_base: Number(nuevoCosto.toFixed(2)),
+    }));
+  };
 
-const nombreDelegado = (() => {
-  const delegado = cotizacion?.delegado || usuarios.find((u) => u.id === delegadoId);
-  if (!delegado) return 'No delegado';
-  const nombres = (delegado as any).nombres || (delegado as any).name || '';
-  const apellidos = (delegado as any).apellidos || '';
-  const nombreCompleto = `${nombres}${apellidos ? ` ${apellidos}` : ''}`.trim();
-  return nombreCompleto || 'Delegado desconocido';
-})();
+  const handleExportarPdf = async () => {
+    if (!puedeExportar()) return;
 
-const nombreDelegadoCotizacion = (() => {
-  const delegado = cotizacion?.delegado_cotizacion || (cotizacion as any)?.delegadoCotizacion || usuarios.find((u) => u.id === currentDelegadoCotizacionId);
-  if (!delegado) return 'Sin delegado de edición';
-  const nombres = (delegado as any).nombres || (delegado as any).name || '';
-  const apellidos = (delegado as any).apellidos || '';
-  const nombreCompleto = `${nombres}${apellidos ? ` ${apellidos}` : ''}`.trim();
-  return nombreCompleto || 'Delegado desconocido';
-})();
+    if (!cotizacion?.id) return;
+
+    setExportandoPdf(true);
+
+    try {
+      const { blob, filename } = await exportarCotizacionPdf(cotizacion.id);
+
+      const descargado = await descargarPdfCotizacion(
+        filename || 'cotizacion.pdf',
+        blob
+      );
+
+      if (!descargado) {
+        showToast({
+          title: 'Descarga cancelada',
+          description: 'No se guardó el PDF porque se canceló la selección de ubicación.',
+          type: 'info',
+          duration: 3000,
+        } as any);
+        return;
+      }
+
+      showToast({
+        title: 'PDF exportado correctamente',
+        description: 'El documento fue generado con el nombre enviado por el backend.',
+        type: 'success',
+        duration: 3000,
+      } as any);
+
+      setShowExportModal(false);
+
+    } catch (error: any) {
+      showToast({
+        title: 'Error al exportar PDF',
+        description: error?.response?.data?.message || 'No se pudo generar o descargar el PDF.',
+        type: 'error',
+        duration: 4000,
+      } as any);
+
+      console.error(error);
+    } finally {
+      setExportandoPdf(false);
+    }
+  };
+
+  // ====== HELPERS ======
+
+  const nombreUsuario = (() => {
+    const ejecutivo = (cotizacion?.user || cotizacion?.usuario) as any;
+    const nombres = ejecutivo?.profile?.nombres || ejecutivo?.nombres || ejecutivo?.name;
+    const apellidos = ejecutivo?.profile?.apellidos || ejecutivo?.apellidos;
+
+    if (nombres) {
+      return `${nombres}${apellidos ? ` ${apellidos}` : ''}`;
+    }
+
+    return 'Sin asignar';
+  })();
+
+  const ventasUsuarios = usuarios.filter((u) =>
+    u.roles?.some((role) => role.name?.toUpperCase() === 'VENTAS')
+  );
+
+  const nombreDelegado = (() => {
+    const delegado = cotizacion?.delegado || usuarios.find((u) => u.id === delegadoId);
+    if (!delegado) return 'No delegado';
+    const nombres = (delegado as any).nombres || (delegado as any).name || '';
+    const apellidos = (delegado as any).apellidos || '';
+    const nombreCompleto = `${nombres}${apellidos ? ` ${apellidos}` : ''}`.trim();
+    return nombreCompleto || 'Delegado desconocido';
+  })();
+
+  const nombreDelegadoCotizacion = (() => {
+    const delegado = cotizacion?.delegado_cotizacion || (cotizacion as any)?.delegadoCotizacion || usuarios.find((u) => u.id === currentDelegadoCotizacionId);
+    if (!delegado) return 'Sin delegado de edición';
+    const nombres = (delegado as any).nombres || (delegado as any).name || '';
+    const apellidos = (delegado as any).apellidos || '';
+    const nombreCompleto = `${nombres}${apellidos ? ` ${apellidos}` : ''}`.trim();
+    return nombreCompleto || 'Delegado desconocido';
+  })();
 
   const resetItemForm = () => {
     setItemForm({
@@ -1565,41 +1562,41 @@ const nombreDelegadoCotizacion = (() => {
     });
   };
 
-//RECALCULO DE ITEMS
-const {
-  items: itemsCalculados,
-  resumen
-} = useMemo(() => {
+  //RECALCULO DE ITEMS
+  const {
+    items: itemsCalculados,
+    resumen
+  } = useMemo(() => {
     return recalcularItems(
       items,
       costos,
       modoDistribucion,
       currentIncludeIgv
     );
-}, [items, costos, modoDistribucion, currentIncludeIgv]);
+  }, [items, costos, modoDistribucion, currentIncludeIgv]);
 
-const estadoLabels: Record<number, string> = {
-  1: 'Borrador',
-  2: 'Enviada',
-  3: 'Parcialmente aprobada',
-  4: 'Aprobada',
-  5: 'Rechazada',
-  6: 'OC registrada',
-};
+  const estadoLabels: Record<number, string> = {
+    1: 'Borrador',
+    2: 'Enviada',
+    3: 'Parcialmente aprobada',
+    4: 'Aprobada',
+    5: 'Rechazada',
+    6: 'OC registrada',
+  };
 
-const comentariosRevision = historial
-  .filter((h) => h.comentario?.trim())
-  .slice()
-  .sort((a, b) => {
-    const fechaA = a.created_at ? new Date(a.created_at).getTime() : 0;
-    const fechaB = b.created_at ? new Date(b.created_at).getTime() : 0;
-    return fechaB - fechaA;
-  });
+  const comentariosRevision = historial
+    .filter((h) => h.comentario?.trim())
+    .slice()
+    .sort((a, b) => {
+      const fechaA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const fechaB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return fechaB - fechaA;
+    });
 
-const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
-  const usuario = movimiento.usuario || movimiento.user;
-  return usuario?.nombres || usuario?.email || 'Usuario no identificado';
-};
+  const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
+    const usuario = movimiento.usuario || movimiento.user;
+    return usuario?.nombres || usuario?.email || 'Usuario no identificado';
+  };
 
   // ====== RENDER ======
 
@@ -1622,12 +1619,12 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
             <ArrowLeft className="w-6 h-6 text-gray-600" />
           </button>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-              {cotizacion?.estado_cotizacion_id === 1 && (
-                <CheckCircle className="text-green-500 w-6 h-6" />
-              )}
+            {cotizacion?.estado_cotizacion_id === 1 && (
+              <CheckCircle className="text-green-500 w-6 h-6" />
+            )}
 
-              {isEditing ? 'Editar Cotización' : 'Nueva Cotización'}
-            </h1>
+            {isEditing ? 'Editar Cotización' : 'Nueva Cotización'}
+          </h1>
         </div>
       </div>
 
@@ -1650,7 +1647,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
             setTipoCambioSolesADolar={setTipoCambioSolesADolar}
             tipoCambioDolarASoles={tipoCambioDolarASoles}
             setTipoCambioDolarASoles={setTipoCambioDolarASoles}
-            
+
             titulo={titulo}
             setTitulo={setTitulo}
 
@@ -1830,7 +1827,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
               )}
 
               {/* Mostrar si es SUPERADMIN O si es VENTAS y es delegado */}
-                  {canReviewCotizacion && (
+              {canReviewCotizacion && (
                 <>
                   <button
                     onClick={handleAprobarCotizacion}
@@ -1886,11 +1883,10 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
                 <button
                   onClick={() => setShowExportModal(true)}
                   disabled={itemsCalculados.length === 0}
-                  className={`w-full flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${
-                    itemsCalculados.length > 0
-                      ? 'bg-blue-600 text-white hover:bg-blue-700'
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  }`}
+                  className={`w-full flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${itemsCalculados.length > 0
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
                 >
                   <FileSpreadsheet className="w-5 h-5" /> Exportar Documento
                 </button>
@@ -1898,66 +1894,65 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
             </div>
           )}
           {!isCotizacionReadOnly && (
-          <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
-            <button
-              onClick={handleSaveCotizacion}
-              disabled={saving}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" /> Guardando...
-                </>
-              ) : (
-                <>
-                  <Save className="w-5 h-5" /> Guardar
-                </>
-              )}
-            </button>
-
-            {canSendCotizacionToReview && (
+            <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
               <button
-                onClick={handleEnviarRevision}
-                disabled={isSendingReview || saving || itemsCalculados.length === 0}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                onClick={handleSaveCotizacion}
+                disabled={saving}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {isSendingReview ? (
+                {saving ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" /> Enviando...
+                    <Loader2 className="w-5 h-5 animate-spin" /> Guardando...
                   </>
                 ) : (
                   <>
-                    <Send className="w-5 h-5" /> Enviar para aprobación
+                    <Save className="w-5 h-5" /> Guardar
                   </>
                 )}
               </button>
-            )}
 
-            <button
-              onClick={() => setShowCostosModal(true)}
-              className="w-full flex items-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-            >
-              <DollarSign className="w-5 h-5" /> Costos Adicionales
-            </button>
+              {canSendCotizacionToReview && (
+                <button
+                  onClick={handleEnviarRevision}
+                  disabled={isSendingReview || saving || itemsCalculados.length === 0}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSendingReview ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" /> Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-5 h-5" /> Enviar para aprobación
+                    </>
+                  )}
+                </button>
+              )}
 
-            <button
-              onClick={() => setShowExportModal(true)}
-              disabled={!puedeExportar() || itemsCalculados.length === 0}
-              className={`w-full flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${
-                puedeExportar()
+              <button
+                onClick={() => setShowCostosModal(true)}
+                className="w-full flex items-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+              >
+                <DollarSign className="w-5 h-5" /> Costos Adicionales
+              </button>
+
+              <button
+                onClick={() => setShowExportModal(true)}
+                disabled={!puedeExportar() || itemsCalculados.length === 0}
+                className={`w-full flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${puedeExportar()
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              <FileSpreadsheet className="w-5 h-5" /> Exportar Documento
-            </button>
-          </div>
+                  }`}
+              >
+                <FileSpreadsheet className="w-5 h-5" /> Exportar Documento
+              </button>
+            </div>
           )}
 
 
         </div>
       </div>
-      
+
       {/* --- MODALES --- */}
 
       {/* 1. Modal Selección de Tipo de Item */}
@@ -1987,7 +1982,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
         tipoCambioSolesADolar={tipoCambioSolesADolar}
         canViewGanancia={canViewGanancia}
         onSave={handleAddItem}
-        onUpdate={() =>editingItem && handleUpdateItem()} // 🔥 AQUÍ
+        onUpdate={() => editingItem && handleUpdateItem()} // 🔥 AQUÍ
         editingItem={editingItem}
         handleIntercambiarMoneda={handleIntercambiarMoneda}
         readOnly={isCotizacionReadOnly}
@@ -2006,7 +2001,7 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
         onDeleteCosto={handleDeleteCosto}
         readOnly={isCotizacionReadOnly}
         simboloMoneda={simboloMoneda}
-        />
+      />
 
       {showRechazoModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -2128,8 +2123,8 @@ const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
         onClose={() => setShowExportModal(false)}
         onExportPdf={handleExportarPdf}
         exportandoPdf={exportandoPdf}
-        />
-        
+      />
+
     </div>
   );
 }

@@ -47,13 +47,14 @@ export function recalcularItems(
     const precioVenta =
       margen < 100 ? costoUnitario / (1 - margen / 100) : costoUnitario;
 
+    const precioVentaRedondeado = Number(precioVenta.toFixed(2));
     // Subtotal del ítem = precio_venta × cantidad
     // - includeIgv=false: subtotal SIN IGV
     // - includeIgv=true:  subtotal CON IGV
-    const subtotalItem = precioVenta * cantidad;
+    const subtotalItem = Number((precioVentaRedondeado * cantidad).toFixed(2));
 
     // Costo total del ítem = cuánto costó comprarlo
-    const costoTotal = costoUnitario * cantidad;
+    const costoTotal = Number((costoUnitario * cantidad).toFixed(2));
 
     // Ganancia por ítem
     // - includeIgv=false: ganancia = subtotalItem - costoTotal
@@ -64,7 +65,7 @@ export function recalcularItems(
       return {
       ...item,
       costo_unitario: Number(costoUnitario.toFixed(2)),
-      precio_venta:   Number(precioVenta.toFixed(2)),
+      precio_venta:   precioVentaRedondeado,
       costo_total:    Number(costoTotal.toFixed(2)),
       subtotal:       Number(subtotalItem.toFixed(2)),
       ganancia:       Number(ganancia.toFixed(2)),

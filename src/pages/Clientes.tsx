@@ -12,7 +12,7 @@ import {
   Loader2,
 } from "lucide-react";
 
-import { getClientes, createCliente, updateCliente, deleteCliente, type Cliente} from "../services/cliente.service";
+import { getClientes, createCliente, updateCliente, deleteCliente, type Cliente } from "../services/cliente.service";
 import { useNotifications } from "../NotificationContext";
 
 // Formulario vacío tipado según la API
@@ -57,14 +57,20 @@ export default function Clientes() {
   const { addNotification } = useNotifications();
 
   const [clientesData, setClientesData] = useState<Cliente[]>([]);
-  const [loading, setLoading]               = useState(true);
-  const [saving, setSaving]                 = useState(false);
-  const [openModal, setOpenModal]           = useState(false);
-  const [modoEdicion, setModoEdicion]       = useState(false);
-  const [editandoId, setEditandoId]         = useState<number | null>(null);
-  const [form, setForm]                     = useState<ClienteForm>(FORM_VACIO);
-  const [searchTerm, setSearchTerm]         = useState('');
-  const [currentPage, setCurrentPage]       = useState(1);
+  const currentItems = clientesData;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalClientes, setTotalClientes] = useState(0);
+  const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
+  const [perPage] = useState(10);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [openModal, setOpenModal] = useState(false);
+  const [modoEdicion, setModoEdicion] = useState(false);
+  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [form, setForm] = useState<ClienteForm>(FORM_VACIO);
+  const [searchTerm, setSearchTerm] = useState('');
+
 
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Partial<Cliente>>({
     nombre: "",
@@ -87,19 +93,18 @@ export default function Clientes() {
       cliente.ruc.includes(searchTerm)
   );
 
-  // PAGINACION
-  const indexOfLastItem = currentPage * ITEMS_PER_PAGE;
-  const indexOfFirstItem = indexOfLastItem - ITEMS_PER_PAGE;
-  const currentItems = clientesFiltrados.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(clientesFiltrados.length / ITEMS_PER_PAGE);
-  const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
+
 
   useEffect(() => {
     const fetchClientes = async () => {
       try {
         setLoading(true);
-        const clientes = await getClientes();
-        setClientesData(clientes);
+
+        const response = await getClientes(currentPage, searchTerm, perPage);
+
+        setClientesData(response.data);
+        setTotalPages(response.last_page);
+        setTotalClientes(response.total);
       } catch (error) {
         console.error(error);
         addNotification({
@@ -115,10 +120,7 @@ export default function Clientes() {
     };
 
     fetchClientes();
-    // El efecto debe ejecutarse solo una vez al montar el componente.
-    // `addNotification` proviene del contexto y puede cambiar de referencia.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [currentPage, searchTerm]);
 
   const handleNuevo = () => {
     setClienteSeleccionado({
@@ -238,8 +240,9 @@ export default function Clientes() {
   };
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value);
-  };
+  setSearchTerm(e.target.value);
+  setCurrentPage(1);
+};
 
   const handleInputChange = (field: keyof Partial<Cliente>, value: string | number) => {
     setClienteSeleccionado(prev => ({
@@ -288,7 +291,7 @@ export default function Clientes() {
             Clientes
           </h1>
           <p className="text-gray-500 mt-1">
-            Gestión de clientes del sistema ({clientesData.length} total)
+            Gestión de clientes del sistema ({totalClientes} total)
           </p>
         </div>
 
@@ -394,10 +397,9 @@ export default function Clientes() {
                     <span
                       className={`
                         px-3 py-1 rounded-full text-xs font-medium
-                        ${
-                          cliente.estado === "activo"
-                            ? "bg-green-100 text-green-700 border border-green-200"
-                            : "bg-red-100 text-red-700 border border-red-200"
+                        ${cliente.estado === "activo"
+                          ? "bg-green-100 text-green-700 border border-green-200"
+                          : "bg-red-100 text-red-700 border border-red-200"
                         }
                       `}
                     >
@@ -415,7 +417,7 @@ export default function Clientes() {
 
                   <td className="px-6 py-5">
                     <div className="flex items-center justify-center gap-2">
-                      <button 
+                      <button
                         onClick={() => handleEditar(cliente)}
                         className="w-11 h-11 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
                         title="Editar"
@@ -423,7 +425,7 @@ export default function Clientes() {
                         <Pencil size={18} />
                       </button>
 
-                      <button 
+                      <button
                         onClick={() => setClienteAEliminar(cliente)}
                         className="w-11 h-11 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
                         title="Eliminar"
@@ -449,9 +451,9 @@ export default function Clientes() {
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-600">
-                Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, clientesFiltrados.length)} de {clientesFiltrados.length} clientes
+                Mostrando página {currentPage} de {totalPages} — {totalClientes} clientes
               </div>
-              
+
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
@@ -460,21 +462,20 @@ export default function Clientes() {
                 >
                   <ChevronLeft size={18} />
                 </button>
-                
+
                 {pages.map((page) => (
                   <button
                     key={page}
                     onClick={() => setCurrentPage(page)}
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 font-medium ${
-                      currentPage === page
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 font-medium ${currentPage === page
                         ? "bg-blue-600 text-white shadow-md hover:shadow-lg"
                         : "text-gray-600 hover:bg-gray-200 hover:shadow-sm"
-                    }`}
+                      }`}
                   >
                     {page}
                   </button>
                 ))}
-                
+
                 <button
                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                   disabled={currentPage === totalPages}
