@@ -4,6 +4,7 @@ import { formatMoney } from "../../utils/formatNumber";
 import { resolveItemImageUrl } from "../../utils/storageImage";
 interface Props{
   items: CotizacionItem[];
+  modoDistribucion: "POR_ITEM" | "POR_CANTIDAD";
   simboloMoneda: string;
   monedaId: number;
   tipoCambioSolesADolar: number;
@@ -15,6 +16,7 @@ interface Props{
 
   onDeleteItem: (id: number) => void;
   onOpenEdit: (item: CotizacionItem) => void;
+  onToggleAplicaCostosAdicionales?: (id: number, checked: boolean) => void;
 
   onApproveAll?: () => void;
   todosItemsAprobados?: boolean;
@@ -24,6 +26,7 @@ interface Props{
 
 export function CotizacionItemsTable ({ 
   items, 
+  modoDistribucion,
   simboloMoneda, 
   monedaId,
   tipoCambioSolesADolar,
@@ -31,12 +34,21 @@ export function CotizacionItemsTable ({
   setEstadoCotizacionId,
   onDeleteItem, 
   onOpenEdit, 
+  onToggleAplicaCostosAdicionales,
   onApproveAll,
   todosItemsAprobados,
   onAddItem,
   readOnly,
   isOwnCotizacion = true
 }: Props){
+const showCostosAdicionalesToggle = modoDistribucion !== "POR_CANTIDAD";
+const emptyColSpan =
+  5 +
+  (showCostosAdicionalesToggle ? 1 : 0) +
+  (estadoCotizacionId === 3 ? 2 : 0) +
+  4 +
+  (isOwnCotizacion ? 1 : 0) +
+  2;
 const formatGananciaSoles = (ganancia: number) => {
   const tipoCambio = tipoCambioSolesADolar || 1;
   return formatMoney(Number((ganancia * tipoCambio).toFixed(2)), "S/");
@@ -67,6 +79,7 @@ return (
           <col style={{ width: '52px' }} />
           <col style={{ width: '50px' }} />
           <col style={{ width: '74px' }} />
+          {showCostosAdicionalesToggle && <col style={{ width: '76px' }} />}
           {estadoCotizacionId === 3 && <><col style={{ width: '60px' }} /><col style={{ width: '74px' }} /></>}
           <col style={{ width: '76px' }} />
           <col style={{ width: '76px' }} />
@@ -83,6 +96,9 @@ return (
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Tipo</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Días</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Garantía</th>
+            {showCostosAdicionalesToggle && (
+              <th className="py-2.5 px-2 text-center font-medium text-gray-500">Costos add.</th>
+            )}
             {estadoCotizacionId === 3 && (
               <>
                 <th className="py-2.5 px-2 text-center font-medium text-gray-500">Aprobada</th>
@@ -101,7 +117,7 @@ return (
         <tbody>
           {items.length === 0 ? (
             <tr>
-              <td colSpan={isOwnCotizacion ? 14 : 13} className="py-10 text-center text-gray-400">
+              <td colSpan={emptyColSpan} className="py-10 text-center text-gray-400">
                 Sin ítems — agrega el primero
               </td>
             </tr>
@@ -150,6 +166,21 @@ return (
                       {item.garantia_meses}m
                     </span>
                   </td>
+
+                  {showCostosAdicionalesToggle && (
+                    <td className="py-2.5 px-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={item.aplica_costos_adicionales !== false}
+                        disabled={readOnly}
+                        onChange={(event) =>
+                          onToggleAplicaCostosAdicionales?.(item.id, event.target.checked)
+                        }
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Aplicar costos adicionales"
+                      />
+                    </td>
+                  )}
 
                   {estadoCotizacionId === 3 && (
                     <>

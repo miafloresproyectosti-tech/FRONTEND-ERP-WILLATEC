@@ -14,6 +14,7 @@ interface Resumen {
 
 interface Props {
   resumen: Resumen;
+  modoDistribucion: "POR_ITEM" | "POR_CANTIDAD";
   simboloMoneda: string;
   monedaId: number;
   tipoCambioSolesADolar: number;
@@ -24,6 +25,7 @@ interface Props {
 
 export function CotizacionResumen({
   resumen,
+  modoDistribucion,
   simboloMoneda,
   monedaId,
   tipoCambioSolesADolar,
@@ -31,7 +33,29 @@ export function CotizacionResumen({
   isOwnCotizacion = true,
   includeIgv = false,
 }: Props) {
-  const costosPorItem = items.length > 0 ? (resumen.costosTotal ?? 0) / items.length : 0;
+  const totalCostosAdicionales = resumen.costosTotal ?? 0;
+  const totalUnidades = items.reduce((sum, item) => sum + Number(item.cantidad || 0), 0);
+  const itemsConCostos = modoDistribucion === "POR_CANTIDAD"
+    ? items
+    : items.filter((item) => item.aplica_costos_adicionales !== false);
+  const itemsSeleccionados = itemsConCostos.length > 0 ? itemsConCostos : items;
+  const totalUnidadesSeleccionadas = itemsSeleccionados.reduce(
+    (sum, item) => sum + Number(item.cantidad || 0),
+    0
+  );
+  const divisor =
+    modoDistribucion === "POR_CANTIDAD"
+      ? totalUnidades > 0 ? totalUnidades : 1
+      : totalUnidadesSeleccionadas > 0 ? totalUnidadesSeleccionadas : 1;
+  const costoExtraUnitario = totalCostosAdicionales / divisor;
+  const selectedItemsLabel =
+    modoDistribucion === "POR_CANTIDAD"
+      ? `${items.length} items`
+      : `${itemsSeleccionados.length} de ${items.length} items`;
+  const distributionLabel =
+    modoDistribucion === "POR_CANTIDAD"
+      ? `Distribuido por Cantidad (${totalUnidades} unidades)`
+      : `Distribuido por items marcados (${selectedItemsLabel}, ${totalUnidadesSeleccionadas} unidades)`;
   const gananciaSoles =
     monedaId === 2
       ? Number((Number(resumen.ganancia ?? 0) * (tipoCambioSolesADolar || 1)).toFixed(2))
@@ -43,24 +67,16 @@ export function CotizacionResumen({
             <h2 className="text-xl mb-4 pt-3 flex justify-between text-lg font-bold">Resumen de Adicionales</h2>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
-                Total Costos Adicionales: <span>{formatMoney(resumen.costosTotal ?? 0, simboloMoneda)}</span>
+                Total Costos Adicionales: <span>{formatMoney(totalCostosAdicionales, simboloMoneda)}</span>
               </div>
               <div className="flex justify-between text-sm text-gray-600">
-                Distribuido por Item ({items.length} items): <span>{formatMoney(costosPorItem, simboloMoneda)}</span>
+                {distributionLabel}: <span>{formatMoney(costoExtraUnitario, simboloMoneda)}</span>
               </div>
-              <div className="flex justify-between text-sm text-gray-600">
-                {(() => {
-                  const totalUnidades = items.reduce((sum, item) => sum + Number(item.cantidad || 0), 0);
-                  return (
-                    <>
-                      Distribuido por Cantidad ({totalUnidades} unidades):
-                      <span>
-                        {formatMoney(totalUnidades > 0 ? (resumen.costosTotal ?? 0) / totalUnidades : 0, simboloMoneda)}
-                      </span>
-                    </>
-                  );
-                })()}
-              </div>
+              {modoDistribucion !== "POR_CANTIDAD" && itemsConCostos.length === 0 && items.length > 0 && (
+                <div className="text-xs text-amber-600">
+                  Ningun item esta marcado; se distribuye entre todos para mantener el calculo.
+                </div>
+              )}
               <h2 className="border-t pt-3 text-xl mb-4 flex justify-between font-bold">Resumen de Costos (Inversión)</h2>
               {includeIgv ? (
                 <div className="flex justify-between text-lg font-bold">

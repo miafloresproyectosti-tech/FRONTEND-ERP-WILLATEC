@@ -25,10 +25,21 @@ export function recalcularItems(
   // Extra UNITARIO según modo
   // POR_ITEM:     se divide entre número de líneas → mismo monto por línea
   // POR_CANTIDAD: se divide entre unidades totales → mismo monto por unidad
-  const costoDistribuido =
-    modoDistribucion === "POR_ITEM"
-      ? items.length > 0 ? costosTotal / items.length : 0
-      : totalCantidad > 0 ? costosTotal / totalCantidad  : 0;
+  const itemsConCostos =
+    modoDistribucion === "POR_CANTIDAD"
+      ? items
+      : items.filter((item) => item.aplica_costos_adicionales !== false);
+  const itemsSeleccionados = itemsConCostos.length > 0 ? itemsConCostos : items;
+  const itemsSeleccionadosSet = new Set(itemsSeleccionados);
+  const totalCantidadSeleccionada = itemsSeleccionados.reduce(
+    (acc, item) => acc + Number(item.cantidad || 0),
+    0,
+  );
+  const divisor =
+    modoDistribucion === "POR_CANTIDAD"
+      ? totalCantidad > 0 ? totalCantidad : 1
+      : totalCantidadSeleccionada > 0 ? totalCantidadSeleccionada : 1;
+  const costoExtraUnitario = costosTotal / divisor;
 
   // ===== ITEMS RECALCULADOS =====
   const itemsRecalculados = items.map((item) => {
@@ -38,8 +49,12 @@ export function recalcularItems(
 
     const margen = Number(item.margen || 0);
 
+    const aplicaCostoExtra =
+      modoDistribucion === "POR_CANTIDAD" ||
+      itemsSeleccionadosSet.has(item);
+
     // COSTO UNITARIO FINAL
-    const costoUnitario = costoBase + costoDistribuido;
+    const costoUnitario = costoBase + (aplicaCostoExtra ? costoExtraUnitario : 0);
 
     // Precio de venta unitario (fórmula igual en ambos casos)
     // - includeIgv=false: precio SIN IGV

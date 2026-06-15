@@ -25,7 +25,6 @@ import {
   enviarCotizacionRevision,
   aprobarCotizacion,
   rechazarCotizacion,
-  delegarCotizacion,
   getCotizacionHistorial,
   // deleteItem,
   exportarCotizacionPdf,
@@ -320,6 +319,7 @@ export function CotizacionDetail() {
       orden: items.length + 1,
       producto_id: source.producto_id,
       estado_cotizacion_item_id: undefined,
+      aplica_costos_adicionales: source.aplica_costos_adicionales ?? true,
       tipo: 'externo',
       ...primaryProveedor,
       proveedores,
@@ -345,6 +345,7 @@ export function CotizacionDetail() {
     cotizacion_id: currentCotizacionId || 0,
     producto_id: undefined,
     estado_cotizacion_item_id: undefined,
+    aplica_costos_adicionales: true,
     tipo: 'externo' as 'catalogo' | 'externo',
     margen: 20,
     marca: '',
@@ -366,16 +367,27 @@ export function CotizacionDetail() {
     const previewItems = showItemFormModal
       ? editingItemId
         ? items.map(item =>
-          item.id === editingItemId ? { ...item, cantidad } : item
+          item.id === editingItemId ? { ...item, cantidad, aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true } : item
         )
-        : [...items, { cantidad } as CotizacionItem]
+        : [...items, { cantidad, aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true } as CotizacionItem]
       : items;
     const totalCantidad = previewItems.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
-    const costoDistribuido =
-      modoDistribucion === 'POR_ITEM'
-        ? previewItems.length > 0 ? costosTotal / previewItems.length : 0
-        : totalCantidad > 0 ? costosTotal / totalCantidad : 0;
-    const costoUnitario = costoBase + costoDistribuido;
+    const itemsConCostos =
+      modoDistribucion === 'POR_CANTIDAD'
+        ? previewItems
+        : previewItems.filter((item) => item.aplica_costos_adicionales !== false);
+    const itemsSeleccionados = itemsConCostos.length > 0 ? itemsConCostos : previewItems;
+    const totalCantidadSeleccionada = itemsSeleccionados.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
+    const divisor =
+      modoDistribucion === 'POR_CANTIDAD'
+        ? totalCantidad > 0 ? totalCantidad : 1
+        : totalCantidadSeleccionada > 0 ? totalCantidadSeleccionada : 1;
+    const costoExtraUnitario = costosTotal / divisor;
+    const aplicaCostoExtra =
+      modoDistribucion === 'POR_CANTIDAD' ||
+      (itemForm.aplica_costos_adicionales ?? true) ||
+      itemsConCostos.length === 0;
+    const costoUnitario = costoBase + (aplicaCostoExtra ? costoExtraUnitario : 0);
     const precioVenta = margen < 100 ? costoUnitario / (1 - margen / 100) : costoUnitario;
     const subtotal = precioVenta * cantidad;
     const costoTotal = costoUnitario * cantidad;
@@ -394,6 +406,7 @@ export function CotizacionDetail() {
     itemForm.costo_base,
     itemForm.margen,
     itemForm.cantidad,
+    itemForm.aplica_costos_adicionales,
     costos,
     items,
     editingItemId,
@@ -436,6 +449,7 @@ export function CotizacionDetail() {
       imagen: item.imagen || item.imagen_url || '',
       imagen_url: item.imagen_url,
       imagen_path: item.imagen_path,
+      aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
     });
 
     setShowItemFormModal(true);
@@ -620,7 +634,10 @@ export function CotizacionDetail() {
       setClienteContacto(data.cliente_contacto || data.cliente?.contacto || '');
       setDelegadoId(data.delegado_id || null);
       setDelegadoCotizacionId(data.delegado_cotizacion_id ?? (data as any).delegadoCotizacionId ?? null);
-      setItems(data.items || []);
+      setItems((data.items || []).map((item) => ({
+        ...item,
+        aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
+      })));
       setCostos(data.costosAdicionales || data.costos_adicionales || []);
       const historialData = data.historial || data.cotizacion_historial || [];
       setHistorial(historialData);
@@ -888,7 +905,11 @@ export function CotizacionDetail() {
 
     try {
       setSaving(true);
-      const data = await delegarCotizacion(currentCotizacionId, delegadoCotizacionSelectionId);
+      const payload = buildCotizacionPayload(estadoCotizacionId);
+      const data = await updateCotizacion(currentCotizacionId, {
+        ...payload,
+        delegado_cotizacion_id: delegadoCotizacionSelectionId,
+      });
       setCotizacion(data);
       setDelegadoCotizacionId(data.delegado_cotizacion_id ?? (data as any).delegadoCotizacionId ?? delegadoCotizacionSelectionId);
       setShowDelegacionEdicionModal(false);
@@ -975,6 +996,7 @@ export function CotizacionDetail() {
         costo_total: toMoneyValue(item.costo_total),
         subtotal: toMoneyValue(item.subtotal),
         ganancia: getGananciaGuardable(item.ganancia),
+        aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
       };
     });
     const clienteContactoValue = clienteContacto.trim();
@@ -1145,6 +1167,7 @@ export function CotizacionDetail() {
       proveedores,
 
       tipo: itemForm.tipo,
+      aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true,
 
       stock: 0,
 
@@ -1207,6 +1230,7 @@ export function CotizacionDetail() {
             proveedor: primaryProveedor.proveedor,
             link_proveedor: primaryProveedor.link_proveedor,
             proveedores,
+            aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true,
             stock: 0,
             imagen: itemForm.imagen || "",
             imagen_url: itemForm.imagen_url,
@@ -1254,6 +1278,18 @@ export function CotizacionDetail() {
   };
 
   // 🆕 CONTROL DE EXPORTACIÓN
+  const handleToggleAplicaCostosAdicionales = (itemId: number, checked: boolean) => {
+    if (isCotizacionReadOnly || modoDistribucion === 'POR_CANTIDAD') return;
+
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? { ...item, aplica_costos_adicionales: checked }
+          : item
+      )
+    );
+  };
+
   const puedeExportar = () => {
     if (!user?.role) return false;
 
@@ -1341,6 +1377,7 @@ export function CotizacionDetail() {
       cotizacion_id: currentCotizacionId || 0,
       producto_id: undefined,
       estado_cotizacion_item_id: undefined,
+      aplica_costos_adicionales: true,
       tipo: 'externo',
       margen: 20,
       marca: '',
@@ -1384,6 +1421,7 @@ export function CotizacionDetail() {
       cotizacion_id: currentCotizacionId || 0,
       producto_id: producto.id,
       estado_cotizacion_item_id: undefined,
+      aplica_costos_adicionales: true,
       tipo: 'catalogo',
       margen: Number(margen.toFixed(2)),
       marca: producto.marca || '',
@@ -1425,6 +1463,7 @@ export function CotizacionDetail() {
       imagen_url: suggestion.imagen_url || image || null,
       imagen_path: suggestion.imagen_path || image || null,
       tipo: 'externo',
+      aplica_costos_adicionales: suggestion.aplica_costos_adicionales ?? true,
     }));
   };
 
@@ -1555,6 +1594,7 @@ export function CotizacionDetail() {
       cotizacion_id: currentCotizacionId || 0,
       producto_id: undefined,
       estado_cotizacion_item_id: undefined,
+      aplica_costos_adicionales: true,
       tipo: 'externo' as 'catalogo' | 'externo',
       proveedor: '',
       link_proveedor: '',
@@ -1679,6 +1719,7 @@ export function CotizacionDetail() {
           {/* TABLA CON DISPONIBILIDAD */}
           <CotizacionItemsTable
             items={itemsCalculados}
+            modoDistribucion={modoDistribucion}
             simboloMoneda={simboloMoneda}
             monedaId={currentMonedaId}
             tipoCambioSolesADolar={tipoCambioSolesADolar}
@@ -1686,6 +1727,7 @@ export function CotizacionDetail() {
             setEstadoCotizacionId={setEstadoCotizacionId}
             onDeleteItem={handleDeleteItem}
             onOpenEdit={handleOpenEditItem}
+            onToggleAplicaCostosAdicionales={handleToggleAplicaCostosAdicionales}
             todosItemsAprobados={todosItemsAprobados}
             onApproveAll={() => setEstadoCotizacionId(4)}
 
@@ -1703,6 +1745,7 @@ export function CotizacionDetail() {
           {/* RESUMEN */}
           <CotizacionResumen
             resumen={resumen}
+            modoDistribucion={modoDistribucion}
             simboloMoneda={simboloMoneda}
             monedaId={currentMonedaId}
             tipoCambioSolesADolar={tipoCambioSolesADolar}

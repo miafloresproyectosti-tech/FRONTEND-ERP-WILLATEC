@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
-import { Save, Building, Settings, Shield, Bell } from "lucide-react";
+import { useState } from "react";
+import { Save, Building, Settings, Shield, Bell, Eye, EyeOff } from "lucide-react";
 import {
   enableTwoFactorRequest,
   getTwoFactorQrRequest,
   confirmTwoFactorRequest,
   disableTwoFactorRequest,
+  changePasswordRequest,
 } from "../services/auth.service";
 import { useNotifications } from "../NotificationContext";
 import { useAuth } from "../AuthContext";
@@ -13,13 +14,7 @@ export default function Configuracion() {
   const [activeTab, setActiveTab] = useState("empresa");
   const { showToast } = useNotifications();
   const { user, updateTwoFactorEnabled } = useAuth();
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(
-    !!user?.two_factor_enabled
-  );
-
-  useEffect(() => {
-    setTwoFactorEnabled(!!user?.two_factor_enabled);
-  }, [user?.two_factor_enabled]);
+  const twoFactorEnabled = !!user?.two_factor_enabled;
 
   const tabs = [
     { id: "empresa", name: "Empresa", icon: Building },
@@ -35,6 +30,86 @@ export default function Configuracion() {
   const [enabling2FA, setEnabling2FA] = useState(false);
   const [confirming2FA, setConfirming2FA] = useState(false);
   const [disabling2FA, setDisabling2FA] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    current_password: "",
+    password: "",
+    password_confirmation: "",
+  });
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const handlePasswordFormChange = (field: keyof typeof passwordForm, value: string) => {
+    setPasswordForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const changePassword = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!passwordForm.current_password.trim()) {
+      showToast({
+        title: "Datos incompletos",
+        description: "Ingresa tu contrasena actual",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (passwordForm.password.length < 6) {
+      showToast({
+        title: "Nueva contrasena invalida",
+        description: "La nueva contrasena debe tener minimo 6 caracteres",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (passwordForm.password !== passwordForm.password_confirmation) {
+      showToast({
+        title: "Confirmacion incorrecta",
+        description: "La confirmacion debe coincidir con la nueva contraseña",
+        type: "warning",
+      });
+      return;
+    }
+
+    try {
+      setChangingPassword(true);
+      await changePasswordRequest(
+        passwordForm.current_password,
+        passwordForm.password,
+        passwordForm.password_confirmation
+      );
+
+      setPasswordForm({
+        current_password: "",
+        password: "",
+        password_confirmation: "",
+      });
+
+      showToast({
+        title: "Contrasena actualizada",
+        description: "Tu contrasena fue cambiada correctamente",
+        type: "success",
+      });
+    } catch (error: unknown) {
+      const backendMessage =
+        (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+
+      showToast({
+        title: "Error al cambiar contrasena",
+        description:
+          backendMessage ||
+          "No se pudo cambiar la contrasena. Revisa los datos ingresados",
+        type: "error",
+      });
+    } finally {
+      setChangingPassword(false);
+    }
+  };
 
   const enable2FA = async () => {
     try {
@@ -60,7 +135,6 @@ export default function Configuracion() {
       const data = await confirmTwoFactorRequest(code);
       setRecoveryCodes(data.recovery_codes || []);
       setQr("");
-      setTwoFactorEnabled(true);
       updateTwoFactorEnabled(true);
       showToast({
         title: "2FA activado",
@@ -97,7 +171,6 @@ export default function Configuracion() {
       setQr("");
       setCode("");
       setRecoveryCodes([]);
-      setTwoFactorEnabled(false);
       updateTwoFactorEnabled(false);
 
       showToast({
@@ -280,6 +353,90 @@ ${recoveryCodes.join("\n")}
                 </div>
               </div>
             </div>
+            <div className="bg-white rounded-2xl p-6 shadow">
+              <h2 className="text-xl font-bold mb-4">Cambiar contraseña</h2>
+
+              <form onSubmit={changePassword} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">
+                    Contrasena actual
+                  </label>
+                  <input
+                    type="password"
+                    value={passwordForm.current_password}
+                    onChange={(event) =>
+                      handlePasswordFormChange("current_password", event.target.value)
+                    }
+                    className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
+                    autoComplete="current-password"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">
+                    Nueva contrasena
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? "text" : "password"}
+                      value={passwordForm.password}
+                      onChange={(event) =>
+                        handlePasswordFormChange("password", event.target.value)
+                      }
+                      className="w-full px-4 py-3 pr-12 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
+                      autoComplete="new-password"
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword((current) => !current)}
+                      className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700"
+                      title={showNewPassword ? "Ocultar contrasena" : "Ver contrasena"}
+                    >
+                      {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">
+                    Confirmar nueva contrasena
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={passwordForm.password_confirmation}
+                      onChange={(event) =>
+                        handlePasswordFormChange("password_confirmation", event.target.value)
+                      }
+                      className="w-full px-4 py-3 pr-12 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
+                      autoComplete="new-password"
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((current) => !current)}
+                      className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700"
+                      title={showConfirmPassword ? "Ocultar contrasena" : "Ver contrasena"}
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="lg:col-span-3 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={changingPassword}
+                    className="inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Save className="w-4 h-4" />
+                    {changingPassword ? "Guardando..." : "Guardar nueva contrasena"}
+                  </button>
+                </div>
+              </form>
+            </div>
+
             <div className="bg-white rounded-2xl p-6 shadow">
               <h2 className="text-xl font-bold mb-4">Autenticación 2FA</h2>
 

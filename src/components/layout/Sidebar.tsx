@@ -40,15 +40,34 @@ export default function Sidebar({
   const [commercialOpen, setCommercialOpen] = useState(true);
 
   const dropdownTimeoutRef = useRef<number | null>(null);
-  const lastLoginAt = user?.last_login_at ? new Date(user.last_login_at) : null;
-  const formattedLastLogin =
-    lastLoginAt && !Number.isNaN(lastLoginAt.getTime())
-      ? lastLoginAt.toLocaleString("es-PE", {
+  const formatLastLogin = (value?: string | null) => {
+    if (!value) return "No disponible";
+
+    const localDateTimeMatch = value.match(
+      /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/
+    );
+
+    if (localDateTimeMatch) {
+      const [, year, month, day, hour, minute] = localDateTimeMatch;
+      const date = new Date(Number(year), Number(month) - 1, Number(day));
+      const formattedDate = date.toLocaleDateString("es-PE", {
+        dateStyle: "long",
+      });
+
+      return `${formattedDate} a las ${hour}:${minute}`;
+    }
+
+    const date = new Date(value);
+
+    return !Number.isNaN(date.getTime())
+      ? date.toLocaleString("es-PE", {
           dateStyle: "long",
           timeStyle: "short",
           timeZone: "America/Lima",
         })
       : "No disponible";
+  };
+  const formattedLastLogin = formatLastLogin(user?.last_login_at);
 
   // ✅ LOGOUT
   const handleLogout = async () => {

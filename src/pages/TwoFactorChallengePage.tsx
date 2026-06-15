@@ -1,4 +1,4 @@
-import { useState,useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import { twoFactorChallengeRequest } from "../services/auth.service";
@@ -6,6 +6,7 @@ import { useAuth } from "../AuthContext";
 
 export default function TwoFactorChallengePage() {
   const [code, setCode] = useState("");
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -24,15 +25,26 @@ export default function TwoFactorChallengePage() {
       return;
     }
 
-    if (code.length !== 6) {
-      setError("Ingrese el código de 6 dígitos");
+    const trimmedCode = code.trim();
+
+    if (!useRecoveryCode && trimmedCode.length !== 6) {
+      setError("Ingrese el codigo de 6 digitos");
+      return;
+    }
+
+    if (useRecoveryCode && trimmedCode.length !== 10) {
+      setError("Ingrese un codigo de recuperacion valido");
       return;
     }
 
     try {
       setLoading(true);
 
-      const result = await twoFactorChallengeRequest(loginToken, code);
+      const result = await twoFactorChallengeRequest(
+        loginToken,
+        useRecoveryCode ? undefined : trimmedCode,
+        useRecoveryCode ? trimmedCode : undefined
+      );
 
       sessionStorage.removeItem("two_factor_login_token");
       sessionStorage.removeItem("two_factor_email");
@@ -55,7 +67,7 @@ export default function TwoFactorChallengePage() {
           : "/"
       );
     } catch {
-      setError("Código inválido o expirado");
+      setError("Codigo invalido o expirado");
     } finally {
       setLoading(false);
     }
@@ -71,11 +83,13 @@ export default function TwoFactorChallengePage() {
         </div>
 
         <h1 className="text-2xl font-black text-center mb-2">
-          Verificación en dos pasos
+          Verificacion en dos pasos
         </h1>
 
         <p className="text-center text-gray-600 mb-6">
-          Ingresa el código de 6 dígitos de tu app autenticadora.
+          {useRecoveryCode
+            ? "Ingresa uno de tus codigos de recuperacion."
+            : "Ingresa el codigo de 6 digitos de tu app autenticadora."}
         </p>
 
         {error && (
@@ -87,9 +101,19 @@ export default function TwoFactorChallengePage() {
         <form onSubmit={handleSubmit}>
           <input
             value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            className="w-full text-center text-3xl tracking-[0.5em] border-2 border-gray-200 rounded-2xl py-4 mb-5"
-            placeholder="000000"
+            onChange={(e) =>
+              setCode(
+                useRecoveryCode
+                  ? e.target.value.replace(/\s/g, "").slice(0, 10)
+                  : e.target.value.replace(/\D/g, "").slice(0, 6)
+              )
+            }
+            className={`w-full text-center border-2 border-gray-200 rounded-2xl py-4 mb-5 ${
+              useRecoveryCode
+                ? "text-xl font-mono"
+                : "text-3xl tracking-[0.5em]"
+            }`}
+            placeholder={useRecoveryCode ? "codigo de recuperacion" : "000000"}
             autoFocus
           />
 
@@ -98,6 +122,20 @@ export default function TwoFactorChallengePage() {
             className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold disabled:opacity-50"
           >
             {loading ? "Verificando..." : "Verificar"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setUseRecoveryCode((current) => !current);
+              setCode("");
+              setError("");
+            }}
+            className="w-full mt-4 text-sm font-semibold text-blue-700 hover:text-blue-900"
+          >
+            {useRecoveryCode
+              ? "Usar codigo de la app autenticadora"
+              : "Usar codigo de recuperacion"}
           </button>
         </form>
       </div>

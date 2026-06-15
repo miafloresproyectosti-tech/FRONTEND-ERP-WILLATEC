@@ -29,6 +29,7 @@ export interface CotizacionItem {
   ganancia?: number;
   producto_id?: number;
   estado_cotizacion_item_id?: number;
+  aplica_costos_adicionales?: boolean;
   created_at?: string;
   updated_at?: string;
   tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados
@@ -63,6 +64,7 @@ export interface ItemFormState {
   garantia_meses: number;
   disponibilidad_tipo: 'stock' | 'importacion';
   disponibilidad_dias: number;
+  aplica_costos_adicionales?: boolean;
   proveedor?: string;
   link_proveedor?: string;
   proveedores?: CotizacionItemProveedor[];
@@ -208,6 +210,7 @@ export interface UpdateCotizacionData {
   forma_pago?: string;
   cliente_contacto?: string;
   delegado_id?: number | null;
+  delegado_cotizacion_id?: number | null;
 }
 
 export interface DelegarCotizacionData {
@@ -231,6 +234,7 @@ export interface CreateItemData {
   proveedores?: CotizacionItemProveedor[];
   imagen?: string | null;
   imagen_path?: string | null;
+  aplica_costos_adicionales?: boolean;
 }
 
 export interface UpdateItemData extends CreateItemData {}
@@ -335,6 +339,7 @@ function prepareCotizacionData(data: any): any {
 
       return {
         ...item,
+        aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
         imagen: normalizeStorageImagePath(imageSource),
         imagen_path:
           typeof imagePathSource === "string" && imagePathSource.startsWith("data:")
@@ -356,6 +361,24 @@ export interface Plantilla{
   incluye_igv: boolean
 }
 
+export interface CotizacionesPaginatedResponse {
+  data: Cotizacion[];
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+  from?: number | null;
+  to?: number | null;
+}
+
+export interface GetCotizacionesParams {
+  clienteId?: number;
+  page?: number;
+  search?: string;
+  perPage?: number;
+  estadoCotizacionId?: number;
+}
+
 // ========================
 // FUNCIONES API
 // ========================
@@ -373,6 +396,31 @@ export async function getCotizaciones(
     return response.data.data || response.data;
   } catch (error) {
     console.error("Error al obtener cotizaciones:", error);
+    throw error;
+  }
+}
+
+export async function getCotizacionesPaginated({
+  clienteId,
+  page = 1,
+  search = "",
+  perPage = 10,
+  estadoCotizacionId,
+}: GetCotizacionesParams = {}): Promise<CotizacionesPaginatedResponse> {
+  try {
+    const response = await api.get("/cotizaciones", {
+      params: {
+        page,
+        search: search.trim() || undefined,
+        per_page: perPage,
+        cliente_id: clienteId,
+        estado_cotizacion_id: estadoCotizacionId,
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error("Error al obtener cotizaciones paginadas:", error);
     throw error;
   }
 }

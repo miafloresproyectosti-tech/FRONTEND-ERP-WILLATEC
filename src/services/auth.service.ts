@@ -91,11 +91,13 @@ export const changePasswordRequest = async (current_password: string, password: 
 
 export const twoFactorChallengeRequest = async (
   login_token: string,
-  code: string
+  code?: string,
+  recovery_code?: string
 ) => {
   const response = await api.post("/two-factor/challenge", {
     login_token,
-    code,
+    ...(code ? { code } : {}),
+    ...(recovery_code ? { recovery_code } : {}),
   });
 
   const { token, user } = response.data;

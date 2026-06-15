@@ -71,6 +71,7 @@ export type CotizacionItem ={
     ganancia?: number;
     producto_id?: number;
     estado_cotizacion_item_id?: number;
+    aplica_costos_adicionales?: boolean;
     created_at?: string;
     updated_at?: string;
     tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados
@@ -143,6 +144,7 @@ export interface ItemForm {
     ganancia?: number;
     producto_id?: number;
     estado_cotizacion_item_id?: number;
+    aplica_costos_adicionales?: boolean;
     created_at?: string;
     updated_at?: string;
     tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados

@@ -20,7 +20,7 @@ import {
 
 import { useAuth } from "../AuthContext";
 import { useNotifications } from "../NotificationContext";
-import { deleteCotizacion, getCotizaciones, type Cotizacion as ApiCotizacion } from "../services/cotizacion.service";
+import { deleteCotizacion, getCotizacionesPaginated, type Cotizacion as ApiCotizacion } from "../services/cotizacion.service";
 import { formatMoney } from "../utils/formatNumber";
 
 function formatCotizacionDate(value?: string | null): string {
@@ -61,21 +61,43 @@ export default function Cotizaciones() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterEstado, setFilterEstado] = useState("todos");
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCotizaciones, setTotalCotizaciones] = useState(0);
+  const [paginationFrom, setPaginationFrom] = useState(0);
+  const [paginationTo, setPaginationTo] = useState(0);
   const [cotizacionToDelete, setCotizacionToDelete] = useState<ApiCotizacion | null>(null);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
   const [deletingCotizacionId, setDeletingCotizacionId] = useState<number | null>(null);
-  const itemsPerPage = 5;
+  const itemsPerPage = 10;
+
+  const estadoFilterMap = {
+    borrador: 1,
+    enviada: 2,
+    parcialmente_aprobada: 3,
+    aprobada: 4,
+    rechazada: 5,
+    oc_registrada: 6,
+  } as Record<string, number>;
 
   // Cargar cotizaciones al montar el componente
   useEffect(() => {
     loadCotizaciones();
-  }, []);
+  }, [currentPage, searchTerm, filterEstado]);
 
   const loadCotizaciones = async () => {
     try {
       setLoading(true);
-      const data = await getCotizaciones();
-      setCotizaciones(data);
+      const response = await getCotizacionesPaginated({
+        page: currentPage,
+        search: searchTerm,
+        perPage: itemsPerPage,
+        estadoCotizacionId: estadoFilterMap[filterEstado],
+      });
+      setCotizaciones(response.data || []);
+      setTotalPages(response.last_page || 1);
+      setTotalCotizaciones(response.total || 0);
+      setPaginationFrom(response.from || 0);
+      setPaginationTo(response.to || 0);
     } catch (error) {
       console.error('Error al cargar cotizaciones:', error);
       addNotification({
@@ -90,38 +112,7 @@ export default function Cotizaciones() {
     }
   };
 
-  const filteredCotizaciones = cotizaciones.filter((cot) => {
-    const matchesSearch =
-      cot.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cot.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const mapEstado = {
-      '1': 'borrador',
-      '2': 'enviada',
-      '3': 'parcialmente_aprobada',
-      '4': 'aprobada',
-      '5': 'rechazada',
-      '6': 'oc_registrada',
-    } as Record<string, string>;
-
-    const cotEstado = mapEstado[cot.estado_cotizacion_id?.toString() || '1'] || 'borrador';
-
-    const matchesEstado =
-      filterEstado === "todos" || cotEstado === filterEstado;
-
-    return matchesSearch && matchesEstado;
-  });
-
-  // Resetear página cuando cambian los filtros
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, filterEstado]);
-
-  // Calcular paginación
-  const totalPages = Math.ceil(filteredCotizaciones.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedCotizaciones = filteredCotizaciones.slice(startIndex, endIndex);
+  const paginatedCotizaciones = cotizaciones;
 
   // ✅ BADGES
   const getEstadoBadge = (estadoId: number) => {
@@ -339,22 +330,28 @@ export default function Cotizaciones() {
               type="text"
               placeholder="Buscar por código o cliente..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full pl-12 pr-4 py-3 bg-slate-100 dark:bg-slate-900 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
             />
           </div>
 
           <select
             value={filterEstado}
-            onChange={(e) => setFilterEstado(e.target.value)}
+            onChange={(e) => {
+              setFilterEstado(e.target.value);
+              setCurrentPage(1);
+            }}
             className="px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
           >
             <option value="todos">Todos los estados</option>
             <option value="borrador">Borrador</option>
             <option value="enviada">Enviada</option>
-            <option value="aprobada">Parcialmente Aprobada</option>
+            <option value="parcialmente_aprobada">Parcialmente Aprobada</option>
             <option value="aprobada">Aprobada</option>
-            <option value="aprobada">OC_Registrada</option>
+            <option value="oc_registrada">OC_Registrada</option>
           </select>
         </div>
 
@@ -550,10 +547,10 @@ export default function Cotizaciones() {
         </div>
 
         {/* PAGINACIÓN */}
-        {filteredCotizaciones.length > 0 && (
+        {totalCotizaciones > 0 && (
           <div className="px-6 py-4 border-t border-gray-200 dark:border-slate-800 flex items-center justify-between">
             <div className="text-sm text-slate-600 dark:text-slate-400">
-              Mostrando {startIndex + 1} a {Math.min(endIndex, filteredCotizaciones.length)} de {filteredCotizaciones.length} cotizaciones
+              Mostrando {paginationFrom} a {paginationTo} de {totalCotizaciones} cotizaciones
             </div>
 
             <div className="flex items-center gap-2">

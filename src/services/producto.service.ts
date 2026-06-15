@@ -42,6 +42,7 @@ export interface CotizacionItem {
     disponibilidad_dias: number;
     garantia_meses: number;
     estado_cotizacion_item_id: number;
+    aplica_costos_adicionales?: boolean;
     proveedor?: string;
     link_proveedor?: string;
     proveedores?: {
@@ -121,6 +122,7 @@ function normalizeCotizacionItem(item: CotizacionItem): CotizacionItem {
 
     return {
         ...item,
+        aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
         imagen: imageUrl || item.imagen || null,
         ...(imageUrl ? { imagen_url: imageUrl } : {}),
         ...(rawImage ? { imagen_path: normalizeStorageImagePath(rawImage) } : {}),

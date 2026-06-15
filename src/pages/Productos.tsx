@@ -527,6 +527,7 @@ export default function Productos() {
       disponibilidad_tipo: externalItem.disponibilidad_tipo,
       disponibilidad_dias: externalItem.disponibilidad_dias,
       garantia_meses: externalItem.garantia_meses,
+      aplica_costos_adicionales: externalItem.aplica_costos_adicionales ?? true,
       proveedor: externalItem.proveedor,
       link_proveedor: externalItem.link_proveedor,
       proveedores: externalItem.proveedores,
