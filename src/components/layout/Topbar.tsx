@@ -29,6 +29,23 @@ type WebkitAudioWindow = Window & {
   webkitAudioContext?: typeof AudioContext;
 };
 
+const getNotificationTitle = (notification: DatabaseNotification) => {
+  if (notification.data.title) {
+    return notification.data.title;
+  }
+
+  if (notification.type.includes("PasswordResetRequestedNotification")) {
+    return "Solicitud de restablecimiento";
+  }
+
+  return "Notificacion";
+};
+
+const getNotificationDescription = (notification: DatabaseNotification) => {
+  const description = notification.data.description || notification.data.message || "";
+  return description.replace(/\s+a las\s+\d{1,2}:\d{2}(?::\d{2})?\.?$/i, ".");
+};
+
 async function playNotificationSound() {
   const AudioContextConstructor =
     window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
@@ -43,21 +60,37 @@ async function playNotificationSound() {
     }
 
     const oscillator = audioContext.createOscillator();
+    const secondOscillator = audioContext.createOscillator();
     const gain = audioContext.createGain();
+    const compressor = audioContext.createDynamicsCompressor();
     const now = audioContext.currentTime;
 
     oscillator.type = "triangle";
     oscillator.frequency.setValueAtTime(1046.5, now);
-    oscillator.frequency.exponentialRampToValueAtTime(784, now + 0.18);
+    oscillator.frequency.exponentialRampToValueAtTime(1318.5, now + 0.12);
+
+    secondOscillator.type = "sine";
+    secondOscillator.frequency.setValueAtTime(1568, now + 0.16);
+    secondOscillator.frequency.exponentialRampToValueAtTime(1174.7, now + 0.42);
 
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.22, now + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+    gain.gain.exponentialRampToValueAtTime(0.75, now + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.52);
+
+    compressor.threshold.setValueAtTime(-16, now);
+    compressor.knee.setValueAtTime(18, now);
+    compressor.ratio.setValueAtTime(8, now);
+    compressor.attack.setValueAtTime(0.003, now);
+    compressor.release.setValueAtTime(0.18, now);
 
     oscillator.connect(gain);
-    gain.connect(audioContext.destination);
+    secondOscillator.connect(gain);
+    gain.connect(compressor);
+    compressor.connect(audioContext.destination);
     oscillator.start(now);
-    oscillator.stop(now + 0.34);
+    secondOscillator.start(now + 0.16);
+    oscillator.stop(now + 0.54);
+    secondOscillator.stop(now + 0.54);
 
     oscillator.onended = () => {
       void audioContext.close();
@@ -65,6 +98,41 @@ async function playNotificationSound() {
   } catch {
     void audioContext.close();
   }
+}
+
+async function requestNativeNotificationPermission() {
+  if (!("Notification" in window) || Notification.permission !== "default") {
+    return;
+  }
+
+  try {
+    await Notification.requestPermission();
+  } catch (error) {
+    console.warn("No se pudo solicitar permiso de notificaciones nativas:", error);
+  }
+}
+
+function showNativeNotification(notification: DatabaseNotification) {
+  if (!("Notification" in window) || Notification.permission !== "granted") {
+    return;
+  }
+
+  const title = getNotificationTitle(notification);
+  const body = getNotificationDescription(notification);
+  const nativeNotification = new Notification(title, {
+    body,
+    icon: "/logo_willatec.png",
+    badge: "/favicon.svg",
+    tag: notification.id,
+    requireInteraction: false,
+    silent: false,
+  });
+
+  nativeNotification.onclick = () => {
+    window.focus();
+    window.location.assign(notification.data.action_url || "/notificaciones");
+    nativeNotification.close();
+  };
 }
 
 export default function Topbar({
@@ -95,15 +163,18 @@ export default function Topbar({
     const unreadIds = data
       .filter((notification) => !notification.read_at)
       .map((notification) => notification.id);
-    const hasNewUnread = unreadIds.some(
-      (id) => !knownUnreadIdsRef.current.has(id)
+    const newUnreadNotifications = data.filter(
+      (notification) =>
+        !notification.read_at && !knownUnreadIdsRef.current.has(notification.id)
     );
+    const hasNewUnread = newUnreadNotifications.length > 0;
 
     knownUnreadIdsRef.current = new Set(unreadIds);
     setNotifications(data);
 
     if (hasLoadedNotificationsRef.current && notifyNewUnread && hasNewUnread) {
       void playNotificationSound();
+      showNativeNotification(newUnreadNotifications[0]);
     }
 
     hasLoadedNotificationsRef.current = true;
@@ -166,13 +237,15 @@ export default function Topbar({
   }, []);
 
   useEffect(() => {
+    const originalTitle = originalTitleRef.current;
+
     document.title =
       unreadCount > 0
-        ? `(${unreadCount}) ${originalTitleRef.current}`
-        : originalTitleRef.current;
+        ? `(${unreadCount}) ${originalTitle}`
+        : originalTitle;
 
     return () => {
-      document.title = originalTitleRef.current;
+      document.title = originalTitle;
     };
   }, [unreadCount]);
 
@@ -220,23 +293,6 @@ export default function Topbar({
     window.location.assign(route);
   };
 
-  const getNotificationTitle = (notification: DatabaseNotification) => {
-    if (notification.data.title) {
-      return notification.data.title;
-    }
-
-    if (notification.type.includes("PasswordResetRequestedNotification")) {
-      return "Solicitud de restablecimiento";
-    }
-
-    return "Notificacion";
-  };
-
-  const getNotificationDescription = (notification: DatabaseNotification) => {
-    const description = notification.data.description || notification.data.message || "";
-    return description.replace(/\s+a las\s+\d{1,2}:\d{2}(?::\d{2})?\.?$/i, ".");
-  };
-
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
       <div className="flex items-center gap-3">
@@ -268,6 +324,7 @@ export default function Topbar({
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => {
+              void requestNativeNotificationPermission();
               const nextOpen = !notificationsOpen;
 
               if (nextOpen) {

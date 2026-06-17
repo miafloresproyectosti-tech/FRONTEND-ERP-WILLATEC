@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRefresh } from "../RefreshContext";
 import { useNavigate } from "react-router-dom";
 
@@ -53,6 +53,68 @@ interface EjecutivoOption {
   total: number;
 }
 
+type CotizacionListItem = ApiCotizacion & {
+  delegadoCotizacionId?: number | null;
+  items_count?: number | null;
+};
+
+type ApiErrorResponse = {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+};
+
+type EjecutivoCotizacion = {
+  id: number;
+  nombres?: string;
+  name?: string;
+  email?: string;
+  profile?: {
+    nombres?: string;
+    apellidos?: string;
+  };
+};
+
+type EstadoResumenKey =
+  | "borrador"
+  | "enviada"
+  | "parcialmente_aprobada"
+  | "aprobada"
+  | "rechazada"
+  | "oc_registrada";
+
+const ESTADO_FILTER_MAP: Record<EstadoResumenKey, number> = {
+  borrador: 1,
+  enviada: 2,
+  parcialmente_aprobada: 3,
+  aprobada: 4,
+  rechazada: 5,
+  oc_registrada: 6,
+};
+
+const EMPTY_TOTAL_POR_ESTADO: Record<EstadoResumenKey, number> = {
+  borrador: 0,
+  enviada: 0,
+  parcialmente_aprobada: 0,
+  aprobada: 0,
+  rechazada: 0,
+  oc_registrada: 0,
+};
+
+const getApiErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === "object" && error !== null && "response" in error) {
+    const response = (error as ApiErrorResponse).response;
+
+    if (typeof response?.data?.message === "string") {
+      return response.data.message;
+    }
+  }
+
+  return fallback;
+};
+
 export default function Cotizaciones() {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
@@ -71,6 +133,7 @@ export default function Cotizaciones() {
   const [filterEstado, setFilterEstado] = useState("todos");
   const [filterEjecutivo, setFilterEjecutivo] = useState("todos");
   const [ejecutivoOptions, setEjecutivoOptions] = useState<EjecutivoOption[]>([]);
+  const [totalPorEstado, setTotalPorEstado] = useState<Record<EstadoResumenKey, number>>(EMPTY_TOTAL_POR_ESTADO);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCotizaciones, setTotalCotizaciones] = useState(0);
@@ -81,32 +144,14 @@ export default function Cotizaciones() {
   const [deletingCotizacionId, setDeletingCotizacionId] = useState<number | null>(null);
   const itemsPerPage = 10;
 
-  const estadoFilterMap = {
-    borrador: 1,
-    enviada: 2,
-    parcialmente_aprobada: 3,
-    aprobada: 4,
-    rechazada: 5,
-    oc_registrada: 6,
-  } as Record<string, number>;
-
-  // Cargar cotizaciones al montar el componente
-  useEffect(() => {
-    loadCotizaciones();
-  }, [currentPage, searchTerm, filterEstado, filterEjecutivo]);
-
-  useEffect(() => {
-    loadEjecutivosResumen();
-  }, [searchTerm, filterEstado]);
-
-  const loadCotizaciones = async () => {
+  const loadCotizaciones = useCallback(async () => {
     try {
       setLoading(true);
       const response = await getCotizacionesPaginated({
         page: currentPage,
         search: searchTerm,
         perPage: itemsPerPage,
-        estadoCotizacionId: estadoFilterMap[filterEstado],
+        estadoCotizacionId: ESTADO_FILTER_MAP[filterEstado as EstadoResumenKey],
         ejecutivoId: filterEjecutivo === "todos" ? undefined : Number(filterEjecutivo),
       });
       setCotizaciones(response.data || []);
@@ -126,7 +171,7 @@ export default function Cotizaciones() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [addNotification, currentPage, filterEjecutivo, filterEstado, searchTerm]);
 
   const paginatedCotizaciones = cotizaciones;
 
@@ -155,8 +200,8 @@ export default function Cotizaciones() {
     };
   };
 
-  const getEjecutivoNombre = (cotizacion: ApiCotizacion) => {
-    const ejecutivo = (cotizacion.user || cotizacion.usuario) as any;
+  const getEjecutivoNombre = useCallback((cotizacion: ApiCotizacion) => {
+    const ejecutivo = (cotizacion.user || cotizacion.usuario) as EjecutivoCotizacion | undefined;
     const nombres = ejecutivo?.profile?.nombres || ejecutivo?.nombres || ejecutivo?.name;
     const apellidos = ejecutivo?.profile?.apellidos;
 
@@ -165,23 +210,23 @@ export default function Cotizaciones() {
     }
 
     return cotizacion.user_id ? `Usuario #${cotizacion.user_id}` : 'N/A';
-  };
+  }, []);
 
-  const getApiUserNombre = (apiUser: ApiUser) => {
-    const nombres = apiUser.nombres || (apiUser as any).name || "";
+  const getApiUserNombre = useCallback((apiUser: ApiUser) => {
+    const nombres = apiUser.nombres || "";
     const apellidos = apiUser.apellidos || "";
     const nombreCompleto = `${nombres} ${apellidos}`.trim();
 
     return nombreCompleto || apiUser.email || `Usuario #${apiUser.id}`;
-  };
+  }, []);
 
-  const isVentasUser = (apiUser: ApiUser) => {
+  const isVentasUser = useCallback((apiUser: ApiUser) => {
     const roleNames = (apiUser.roles || []).map((role) => role.name.toUpperCase());
 
     return roleNames.length === 0 || roleNames.includes("VENTAS");
-  };
+  }, []);
 
-  const loadEjecutivosResumen = async () => {
+  const loadEjecutivosResumen = useCallback(async () => {
     try {
       setLoadingEjecutivos(true);
       const users = await getUsers();
@@ -193,7 +238,7 @@ export default function Cotizaciones() {
             page: 1,
             perPage: 1,
             search: searchTerm,
-            estadoCotizacionId: estadoFilterMap[filterEstado],
+            estadoCotizacionId: ESTADO_FILTER_MAP[filterEstado as EstadoResumenKey],
             ejecutivoId: apiUser.id,
           });
 
@@ -210,43 +255,57 @@ export default function Cotizaciones() {
           .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre))
       );
     } catch (error) {
-      const fallback = new Map<number, EjecutivoOption>();
-
-      cotizaciones.forEach((cotizacion) => {
-        if (!cotizacion.user_id) return;
-
-        const id = Number(cotizacion.user_id);
-        const current = fallback.get(id);
-
-        fallback.set(id, {
-          id,
-          nombre: getEjecutivoNombre(cotizacion),
-          total: (current?.total || 0) + 1,
-        });
-      });
-
-      setEjecutivoOptions(Array.from(fallback.values()).sort((a, b) => b.total - a.total));
+      console.warn("Error al cargar resumen de ejecutivos:", error);
+      setEjecutivoOptions([]);
     } finally {
       setLoadingEjecutivos(false);
     }
-  };
+  }, [filterEstado, getApiUserNombre, isVentasUser, searchTerm]);
+
+  const loadResumenEstados = useCallback(async () => {
+    try {
+      const ejecutivoId = filterEjecutivo === "todos" ? undefined : Number(filterEjecutivo);
+      const resumen = await Promise.all(
+        Object.entries(ESTADO_FILTER_MAP).map(async ([key, estadoCotizacionId]) => {
+          const response = await getCotizacionesPaginated({
+            page: 1,
+            perPage: 1,
+            search: searchTerm,
+            estadoCotizacionId,
+            ejecutivoId,
+          });
+
+          return [key, response.total || 0] as const;
+        })
+      );
+
+      setTotalPorEstado({
+        ...EMPTY_TOTAL_POR_ESTADO,
+        ...Object.fromEntries(resumen),
+      });
+    } catch (error) {
+      console.error("Error al cargar resumen de cotizaciones por estado:", error);
+    }
+  }, [filterEjecutivo, searchTerm]);
+
+  // Cargar cotizaciones al montar el componente
+  useEffect(() => {
+    void Promise.resolve().then(() => loadCotizaciones());
+  }, [loadCotizaciones]);
+
+  useEffect(() => {
+    void Promise.resolve().then(() => loadResumenEstados());
+  }, [loadResumenEstados]);
+
+  useEffect(() => {
+    void Promise.resolve().then(() => loadEjecutivosResumen());
+  }, [loadEjecutivosResumen]);
 
   const getSimboloMoneda = (cotizacion: ApiCotizacion) => {
     return Number(cotizacion.moneda_id) === 2 ? "$" : "S/";
   };
 
-  const totalPorEstado = {
-    borrador: cotizaciones.filter((c) => Number(c.estado_cotizacion_id) === 1).length,
-    enviada: cotizaciones.filter((c) => Number(c.estado_cotizacion_id) === 2).length,
-    parcialmente_aprobada: cotizaciones.filter((c) => Number(c.estado_cotizacion_id) === 3).length,
-    aprobada: cotizaciones.filter((c) => Number(c.estado_cotizacion_id) === 4).length,
-    rechazada: cotizaciones.filter((c) => Number(c.estado_cotizacion_id) === 5).length,
-    oc_registrada: cotizaciones.filter((c) => Number(c.estado_cotizacion_id) === 6).length,
-  };
-
-  const porRevisar = cotizaciones.filter(
-    (c) => Number(c.estado_cotizacion_id) === 2
-  ).length;
+  const porRevisar = totalPorEstado.enviada;
 
   const selectedEjecutivo = ejecutivoOptions.find((ejecutivo) => String(ejecutivo.id) === filterEjecutivo);
 
@@ -274,10 +333,10 @@ export default function Cotizaciones() {
       });
       setCotizacionToDelete(null);
       setDeleteConfirmationText("");
-    } catch (error: any) {
+    } catch (error: unknown) {
       addNotification({
         title: "Error al eliminar cotización",
-        description: error?.response?.data?.message || "No se pudo eliminar la cotización",
+        description: getApiErrorMessage(error, "No se pudo eliminar la cotización"),
         type: "warning",
         icon: "MessageCircle",
         route: "/cotizaciones",
@@ -552,11 +611,12 @@ export default function Cotizaciones() {
               <tbody>
                 {paginatedCotizaciones.length > 0 ? (
                   paginatedCotizaciones.map((cotizacion) => {
+                    const cotizacionListItem = cotizacion as CotizacionListItem;
                     const estadoBadge = getEstadoBadge(cotizacion.estado_cotizacion_id);
                     const userId = Number(user?.id);
                     const cotizacionUserId = Number(cotizacion.user_id);
                     const delegadoCotizacionId = Number(
-                      cotizacion.delegado_cotizacion_id ?? (cotizacion as any).delegadoCotizacionId ?? 0
+                      cotizacionListItem.delegado_cotizacion_id ?? cotizacionListItem.delegadoCotizacionId ?? 0
                     );
                     const puedeEditar =
                       Boolean(user?.id) &&
@@ -592,7 +652,7 @@ export default function Cotizaciones() {
                         </td>
 
                         <td className="px-6 py-5 text-slate-600 dark:text-slate-300">
-                          {(cotizacion as any).items_count ?? 0}
+                          {cotizacionListItem.items_count ?? 0}
                         </td>
 
                         <td className="px-6 py-5 font-semibold text-slate-900 dark:text-slate-100">

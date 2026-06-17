@@ -461,10 +461,34 @@ export function CotizacionDetail() {
     const token = localStorage.getItem("token");
     if (!token) return;
 
+    const fetchAllActiveClientes = async () => {
+      const perPage = 100;
+      const firstPage = await getClientes({
+        page: 1,
+        perPage,
+        estado: "activo",
+      });
+
+      const allClientes = Array.isArray(firstPage) ? firstPage : firstPage.data || [];
+      const lastPage = Array.isArray(firstPage) ? 1 : Number(firstPage.last_page || 1);
+
+      for (let page = 2; page <= lastPage; page += 1) {
+        const response = await getClientes({
+          page,
+          perPage,
+          estado: "activo",
+        });
+
+        allClientes.push(...(Array.isArray(response) ? response : response.data || []));
+      }
+
+      return allClientes;
+    };
+
     const fetchClientes = async () => {
       try {
-        const data = await getClientes(1, "", 500);
-        setClientes(Array.isArray(data) ? data : data.data || []);
+        const data = await fetchAllActiveClientes();
+        setClientes(data);
       } catch (error) {
         console.error(error);
       }
