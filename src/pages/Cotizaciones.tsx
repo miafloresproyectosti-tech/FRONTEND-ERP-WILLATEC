@@ -16,11 +16,13 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Users,
 } from "lucide-react";
 
 import { useAuth } from "../AuthContext";
 import { useNotifications } from "../NotificationContext";
 import { deleteCotizacion, getCotizacionesPaginated, type Cotizacion as ApiCotizacion } from "../services/cotizacion.service";
+import { getUsers, type User as ApiUser } from "../services/usuario.service";
 import { formatMoney } from "../utils/formatNumber";
 
 function formatCotizacionDate(value?: string | null): string {
@@ -45,6 +47,12 @@ function formatCotizacionDate(value?: string | null): string {
   });
 }
 
+interface EjecutivoOption {
+  id: number;
+  nombre: string;
+  total: number;
+}
+
 export default function Cotizaciones() {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
@@ -58,8 +66,11 @@ export default function Cotizaciones() {
 
 
   const [loading, setLoading] = useState(true);
+  const [loadingEjecutivos, setLoadingEjecutivos] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterEstado, setFilterEstado] = useState("todos");
+  const [filterEjecutivo, setFilterEjecutivo] = useState("todos");
+  const [ejecutivoOptions, setEjecutivoOptions] = useState<EjecutivoOption[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCotizaciones, setTotalCotizaciones] = useState(0);
@@ -82,7 +93,11 @@ export default function Cotizaciones() {
   // Cargar cotizaciones al montar el componente
   useEffect(() => {
     loadCotizaciones();
-  }, [currentPage, searchTerm, filterEstado]);
+  }, [currentPage, searchTerm, filterEstado, filterEjecutivo]);
+
+  useEffect(() => {
+    loadEjecutivosResumen();
+  }, [searchTerm, filterEstado]);
 
   const loadCotizaciones = async () => {
     try {
@@ -92,6 +107,7 @@ export default function Cotizaciones() {
         search: searchTerm,
         perPage: itemsPerPage,
         estadoCotizacionId: estadoFilterMap[filterEstado],
+        ejecutivoId: filterEjecutivo === "todos" ? undefined : Number(filterEjecutivo),
       });
       setCotizaciones(response.data || []);
       setTotalPages(response.last_page || 1);
@@ -151,6 +167,70 @@ export default function Cotizaciones() {
     return cotizacion.user_id ? `Usuario #${cotizacion.user_id}` : 'N/A';
   };
 
+  const getApiUserNombre = (apiUser: ApiUser) => {
+    const nombres = apiUser.nombres || (apiUser as any).name || "";
+    const apellidos = apiUser.apellidos || "";
+    const nombreCompleto = `${nombres} ${apellidos}`.trim();
+
+    return nombreCompleto || apiUser.email || `Usuario #${apiUser.id}`;
+  };
+
+  const isVentasUser = (apiUser: ApiUser) => {
+    const roleNames = (apiUser.roles || []).map((role) => role.name.toUpperCase());
+
+    return roleNames.length === 0 || roleNames.includes("VENTAS");
+  };
+
+  const loadEjecutivosResumen = async () => {
+    try {
+      setLoadingEjecutivos(true);
+      const users = await getUsers();
+      const ventasUsers = users.filter((apiUser) => apiUser.activo !== false && isVentasUser(apiUser));
+
+      const resumen = await Promise.all(
+        ventasUsers.map(async (apiUser) => {
+          const response = await getCotizacionesPaginated({
+            page: 1,
+            perPage: 1,
+            search: searchTerm,
+            estadoCotizacionId: estadoFilterMap[filterEstado],
+            ejecutivoId: apiUser.id,
+          });
+
+          return {
+            id: apiUser.id,
+            nombre: getApiUserNombre(apiUser),
+            total: response.total || 0,
+          };
+        })
+      );
+
+      setEjecutivoOptions(
+        resumen
+          .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre))
+      );
+    } catch (error) {
+      const fallback = new Map<number, EjecutivoOption>();
+
+      cotizaciones.forEach((cotizacion) => {
+        if (!cotizacion.user_id) return;
+
+        const id = Number(cotizacion.user_id);
+        const current = fallback.get(id);
+
+        fallback.set(id, {
+          id,
+          nombre: getEjecutivoNombre(cotizacion),
+          total: (current?.total || 0) + 1,
+        });
+      });
+
+      setEjecutivoOptions(Array.from(fallback.values()).sort((a, b) => b.total - a.total));
+    } finally {
+      setLoadingEjecutivos(false);
+    }
+  };
+
   const getSimboloMoneda = (cotizacion: ApiCotizacion) => {
     return Number(cotizacion.moneda_id) === 2 ? "$" : "S/";
   };
@@ -167,6 +247,8 @@ export default function Cotizaciones() {
   const porRevisar = cotizaciones.filter(
     (c) => Number(c.estado_cotizacion_id) === 2
   ).length;
+
+  const selectedEjecutivo = ejecutivoOptions.find((ejecutivo) => String(ejecutivo.id) === filterEjecutivo);
 
   const closeDeleteModal = () => {
     if (deletingCotizacionId) return;
@@ -319,10 +401,60 @@ export default function Cotizaciones() {
         )}
       </div>
 
+      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-200 dark:border-slate-800">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="bg-indigo-100 dark:bg-indigo-900 p-3 rounded-2xl">
+              <Users className="w-6 h-6 text-indigo-600 dark:text-indigo-200" />
+            </div>
+            <div>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Cotizaciones por ejecutivo
+              </p>
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+                {filterEjecutivo === "todos"
+                  ? `${totalCotizaciones} en total`
+                  : `${totalCotizaciones} de ${selectedEjecutivo?.nombre || "este ejecutivo"}`}
+              </h2>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {loadingEjecutivos ? (
+              <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                <Loader2 size={14} className="animate-spin" /> Calculando...
+              </span>
+            ) : ejecutivoOptions.length > 0 ? (
+              ejecutivoOptions.slice(0, 6).map((ejecutivo) => (
+                <button
+                  key={ejecutivo.id}
+                  type="button"
+                  onClick={() => {
+                    setFilterEjecutivo(String(ejecutivo.id));
+                    setCurrentPage(1);
+                  }}
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                    filterEjecutivo === String(ejecutivo.id)
+                      ? "bg-indigo-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  {ejecutivo.nombre}: {ejecutivo.total}
+                </button>
+              ))
+            ) : (
+              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                Sin datos de ejecutivos
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* TABLA */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden">
         {/* FILTROS */}
-        <div className="p-6 border-b border-gray-200 dark:border-slate-800 flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
+        <div className="p-6 border-b border-gray-200 dark:border-slate-800 flex flex-col xl:flex-row gap-4 xl:items-center xl:justify-between">
           <div className="relative w-full md:w-96">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-5 h-5" />
 
@@ -338,21 +470,39 @@ export default function Cotizaciones() {
             />
           </div>
 
-          <select
-            value={filterEstado}
-            onChange={(e) => {
-              setFilterEstado(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-          >
-            <option value="todos">Todos los estados</option>
-            <option value="borrador">Borrador</option>
-            <option value="enviada">Enviada</option>
-            <option value="parcialmente_aprobada">Parcialmente Aprobada</option>
-            <option value="aprobada">Aprobada</option>
-            <option value="oc_registrada">OC_Registrada</option>
-          </select>
+          <div className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto">
+            <select
+              value={filterEjecutivo}
+              onChange={(e) => {
+                setFilterEjecutivo(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white sm:w-64"
+            >
+              <option value="todos">Todos los ejecutivos</option>
+              {ejecutivoOptions.map((ejecutivo) => (
+                <option key={ejecutivo.id} value={ejecutivo.id}>
+                  {ejecutivo.nombre} ({ejecutivo.total})
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterEstado}
+              onChange={(e) => {
+                setFilterEstado(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white sm:w-56"
+            >
+              <option value="todos">Todos los estados</option>
+              <option value="borrador">Borrador</option>
+              <option value="enviada">Enviada</option>
+              <option value="parcialmente_aprobada">Parcialmente Aprobada</option>
+              <option value="aprobada">Aprobada</option>
+              <option value="oc_registrada">OC_Registrada</option>
+            </select>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -536,8 +686,8 @@ export default function Cotizaciones() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                      {searchTerm || filterEstado !== "todos" ? "No se encontraron cotizaciones" : "No hay cotizaciones"}
+                    <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
+                      {searchTerm || filterEstado !== "todos" || filterEjecutivo !== "todos" ? "No se encontraron cotizaciones" : "No hay cotizaciones"}
                     </td>
                   </tr>
                 )}

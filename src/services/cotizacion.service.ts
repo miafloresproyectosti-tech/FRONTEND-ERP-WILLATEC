@@ -373,6 +373,7 @@ export interface CotizacionesPaginatedResponse {
 
 export interface GetCotizacionesParams {
   clienteId?: number;
+  ejecutivoId?: number;
   page?: number;
   search?: string;
   perPage?: number;
@@ -402,6 +403,7 @@ export async function getCotizaciones(
 
 export async function getCotizacionesPaginated({
   clienteId,
+  ejecutivoId,
   page = 1,
   search = "",
   perPage = 10,
@@ -414,6 +416,7 @@ export async function getCotizacionesPaginated({
         search: search.trim() || undefined,
         per_page: perPage,
         cliente_id: clienteId,
+        user_id: ejecutivoId,
         estado_cotizacion_id: estadoCotizacionId,
       },
     });

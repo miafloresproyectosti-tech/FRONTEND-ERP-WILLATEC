@@ -57,7 +57,6 @@ export default function Clientes() {
   const { addNotification } = useNotifications();
 
   const [clientesData, setClientesData] = useState<Cliente[]>([]);
-  const currentItems = clientesData;
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalClientes, setTotalClientes] = useState(0);
@@ -70,6 +69,8 @@ export default function Clientes() {
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [form, setForm] = useState<ClienteForm>(FORM_VACIO);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterEstado, setFilterEstado] = useState<"todos" | "activo" | "inactivo">("todos");
+  const [filterTipoCliente, setFilterTipoCliente] = useState("todos");
 
 
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Partial<Cliente>>({
@@ -87,11 +88,17 @@ export default function Clientes() {
   const nombreActual = String(clienteSeleccionado.nombre || "").trim();
 
   // Filtrar clientes por búsqueda
-  const clientesFiltrados = clientesData.filter(
-    (cliente) =>
-      cliente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cliente.ruc.includes(searchTerm)
-  );
+  const currentItems = clientesData.filter((cliente) => {
+    const matchesEstado = filterEstado === "todos" || cliente.estado === filterEstado;
+    const tipoId = Number(
+      cliente.tipo_cliente_id ??
+      (cliente as any).tipoClienteId ??
+      (cliente as any).tipo_cliente?.id
+    );
+    const matchesTipo = filterTipoCliente === "todos" || tipoId === Number(filterTipoCliente);
+
+    return matchesEstado && matchesTipo;
+  });
 
 
 
@@ -100,7 +107,13 @@ export default function Clientes() {
       try {
         setLoading(true);
 
-        const response = await getClientes(currentPage, searchTerm, perPage);
+        const response = await getClientes({
+          page: currentPage,
+          search: searchTerm,
+          perPage,
+          estado: filterEstado === "todos" ? undefined : filterEstado,
+          tipoClienteId: filterTipoCliente === "todos" ? undefined : Number(filterTipoCliente),
+        });
 
         setClientesData(response.data);
         setTotalPages(response.last_page);
@@ -120,7 +133,7 @@ export default function Clientes() {
     };
 
     fetchClientes();
-  }, [currentPage, searchTerm]);
+  }, [currentPage, searchTerm, filterEstado, filterTipoCliente]);
 
   const handleNuevo = () => {
     setClienteSeleccionado({
@@ -244,6 +257,16 @@ export default function Clientes() {
   setCurrentPage(1);
 };
 
+  const handleEstadoFilterChange = (value: "todos" | "activo" | "inactivo") => {
+    setFilterEstado(value);
+    setCurrentPage(1);
+  };
+
+  const handleTipoClienteFilterChange = (value: string) => {
+    setFilterTipoCliente(value);
+    setCurrentPage(1);
+  };
+
   const handleInputChange = (field: keyof Partial<Cliente>, value: string | number) => {
     setClienteSeleccionado(prev => ({
       ...prev,
@@ -306,16 +329,48 @@ export default function Clientes() {
 
       {/* Buscador */}
       <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-200">
-        <div className="flex items-center gap-3 bg-gray-100 px-4 py-3 rounded-2xl w-full md:w-96">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="w-full xl:max-w-md">
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Buscar
+            </label>
+        <div className="flex h-12 items-center gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 transition focus-within:border-blue-500 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-100">
           <Search size={18} className="text-gray-500 flex-shrink-0" />
           <input
             type="text"
             placeholder="Buscar cliente por nombre, email o teléfono..."
             value={searchTerm}
             onChange={handleSearch}
-            className="bg-transparent outline-none w-full text-sm"
+            className="w-full bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
           />
         </div>
+          </div>
+
+        <div className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto xl:justify-end">
+          <select
+            value={filterEstado}
+            onChange={(event) => handleEstadoFilterChange(event.target.value as "todos" | "activo" | "inactivo")}
+            className="h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 outline-none transition hover:border-gray-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:w-52"
+          >
+            <option value="todos">Todos los estados</option>
+            <option value="activo">Activo</option>
+            <option value="inactivo">Inactivo</option>
+          </select>
+
+          <select
+            value={filterTipoCliente}
+            onChange={(event) => handleTipoClienteFilterChange(event.target.value)}
+            className="h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 outline-none transition hover:border-gray-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:w-56"
+          >
+            <option value="todos">Todos los tipos</option>
+            {tipoClienteOptions.map((tipo) => (
+              <option key={tipo.id} value={tipo.id}>
+                {tipo.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
       </div>
 
       {/* Tabla */}
@@ -439,7 +494,7 @@ export default function Clientes() {
             ) : (
               <tr>
                 <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
-                  {searchTerm ? "No se encontraron clientes" : "No hay clientes"}
+                  {searchTerm || filterEstado !== "todos" || filterTipoCliente !== "todos" ? "No se encontraron clientes" : "No hay clientes"}
                 </td>
               </tr>
             )}

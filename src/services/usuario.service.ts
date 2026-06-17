@@ -59,7 +59,13 @@ export interface UpdateUserData {
 // Funciones del servicio
 export const getUsers = async (): Promise<User[]> => {
   const response = await api.get("/users");
-  return response.data;
+  const payload = response.data;
+
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.users)) return payload.users;
+
+  return [];
 };
 
 export const getUser = async (id: number): Promise<User> => {

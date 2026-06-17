@@ -23,13 +23,36 @@ export interface ClientePayload {
   moneda_id?: number;
 }
 
+export interface GetClientesParams {
+  page?: number;
+  search?: string;
+  perPage?: number;
+  estado?: "activo" | "inactivo";
+  tipoClienteId?: number;
+}
+
 // Tu backend devuelve respuesta paginada con array en data
-export const getClientes = async (page = 1, search = "", perPage = 10) => {
+export const getClientes = async (
+  pageOrParams: number | GetClientesParams = 1,
+  search = "",
+  perPage = 10,
+) => {
+  const params =
+    typeof pageOrParams === "object"
+      ? pageOrParams
+      : {
+          page: pageOrParams,
+          search,
+          perPage,
+        };
+
   const response = await api.get("/clientes", {
     params: {
-      page,
-      search,
-      per_page: perPage,
+      page: params.page ?? 1,
+      search: params.search?.trim() || undefined,
+      per_page: params.perPage ?? 10,
+      estado: params.estado,
+      tipo_cliente_id: params.tipoClienteId,
     },
   });
 
