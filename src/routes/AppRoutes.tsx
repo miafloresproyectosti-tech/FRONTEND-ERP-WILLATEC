@@ -17,6 +17,7 @@ import OrdenesCompraPage from "../pages/OrdenesCompraPage";
 import OrdenCompraDetail from "../pages/OrdenCompraDetail";
 import Notificaciones from "../pages/Notificaciones";
 import TwoFactorChallengePage from "../pages/TwoFactorChallengePage";
+import NotAuthorized from "../pages/NotAuthorized";
 
 export default function AppRoutes() {
   return (
@@ -39,7 +40,16 @@ export default function AppRoutes() {
         >
 
           {/* DASHBOARD */}
-          <Route path="/" element={<Dashboard />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute requiredRole="SUPERADMIN">
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route path="/not-authorized" element={<NotAuthorized />} />
 
           {/* NOTIFICACIONES */}
           <Route path="/notificaciones" element={<Notificaciones />} />

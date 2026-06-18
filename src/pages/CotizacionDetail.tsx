@@ -318,6 +318,7 @@ export function CotizacionDetail() {
       disponibilidad_dias: Number(source.disponibilidad_dias || 4),
       orden: items.length + 1,
       producto_id: source.producto_id,
+      producto_externo_id: source.producto_externo_id,
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: source.aplica_costos_adicionales ?? true,
       tipo: 'externo',
@@ -344,6 +345,7 @@ export function CotizacionDetail() {
     orden: 1,
     cotizacion_id: currentCotizacionId || 0,
     producto_id: undefined,
+    producto_externo_id: undefined,
     estado_cotizacion_item_id: undefined,
     aplica_costos_adicionales: true,
     tipo: 'externo' as 'catalogo' | 'externo',
@@ -530,6 +532,23 @@ export function CotizacionDetail() {
     };
     fetchProductos();
   }, [isViewMode, showProductModal, productos.length]);
+
+  useEffect(() => {
+    if (isCotizacionReadOnly || !showItemFormModal || itemForm.tipo !== 'externo') return;
+
+    const fetchExternalSuggestions = async () => {
+      try {
+        const response = await getExternalItems(1, itemForm.descripcion);
+        setExternalItemSuggestions(response.data as unknown as CotizacionItem[]);
+      } catch (error) {
+        console.warn('Error al cargar sugerencias de items externos:', error);
+      }
+    };
+
+    const timeout = window.setTimeout(fetchExternalSuggestions, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [isCotizacionReadOnly, showItemFormModal, itemForm.tipo, itemForm.descripcion]);
 
   useEffect(() => {
     if (isCotizacionReadOnly) return;
@@ -1185,6 +1204,8 @@ export function CotizacionDetail() {
 
       garantia_meses: itemForm.garantia_meses,
 
+      producto_externo_id: itemForm.tipo === 'externo' ? itemForm.producto_externo_id : undefined,
+
       proveedor: primaryProveedor.proveedor,
 
       link_proveedor: primaryProveedor.link_proveedor,
@@ -1251,6 +1272,7 @@ export function CotizacionDetail() {
             disponibilidad_tipo: itemForm.disponibilidad_tipo,
             disponibilidad_dias: itemForm.disponibilidad_dias,
             garantia_meses: itemForm.garantia_meses ?? 12,
+            producto_externo_id: itemForm.tipo === 'externo' ? itemForm.producto_externo_id : undefined,
             proveedor: primaryProveedor.proveedor,
             link_proveedor: primaryProveedor.link_proveedor,
             proveedores,
@@ -1400,6 +1422,7 @@ export function CotizacionDetail() {
       orden: 1,
       cotizacion_id: currentCotizacionId || 0,
       producto_id: undefined,
+      producto_externo_id: undefined,
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
       tipo: 'externo',
@@ -1444,6 +1467,7 @@ export function CotizacionDetail() {
       orden: 1,
       cotizacion_id: currentCotizacionId || 0,
       producto_id: producto.id,
+      producto_externo_id: undefined,
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
       tipo: 'catalogo',
@@ -1480,6 +1504,8 @@ export function CotizacionDetail() {
       codigo: suggestion.codigo || '',
       costo_base: Number(suggestion.costo_base ?? suggestion.costo_unitario ?? prev.costo_base ?? 0),
       margen: Number(suggestion.margen ?? prev.margen ?? 0),
+      producto_id: undefined,
+      producto_externo_id: suggestion.producto_externo_id,
       proveedor: primaryProveedor.proveedor,
       link_proveedor: primaryProveedor.link_proveedor,
       proveedores,
@@ -1617,6 +1643,7 @@ export function CotizacionDetail() {
       orden: 1,
       cotizacion_id: currentCotizacionId || 0,
       producto_id: undefined,
+      producto_externo_id: undefined,
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
       tipo: 'externo' as 'catalogo' | 'externo',

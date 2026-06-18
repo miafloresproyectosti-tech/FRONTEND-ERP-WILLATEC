@@ -28,6 +28,7 @@ export interface CotizacionItem {
   costo_total?: number;
   ganancia?: number;
   producto_id?: number;
+  producto_externo_id?: number | null;
   estado_cotizacion_item_id?: number;
   aplica_costos_adicionales?: boolean;
   created_at?: string;
@@ -55,6 +56,7 @@ export interface ItemFormState {
   orden: number;
   cotizacion_id: number;
   producto_id?: number;
+  producto_externo_id?: number | null;
   estado_cotizacion_item_id?: number;
   tipo: 'catalogo' | 'externo';
   margen: number;
@@ -339,6 +341,7 @@ function prepareCotizacionData(data: any): any {
 
       return {
         ...item,
+        producto_externo_id: item.tipo === "externo" ? item.producto_externo_id : undefined,
         aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
         imagen: normalizeStorageImagePath(imageSource),
         imagen_path:

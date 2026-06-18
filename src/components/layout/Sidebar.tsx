@@ -130,25 +130,27 @@ export default function Sidebar({
           {/* MENU */}
           <nav className="flex flex-col gap-2">
             {/* DASHBOARD */}
-            <Link
-              to="/"
-              onClick={() => mobile && onClose?.()}
-              className={`
-                flex items-center gap-3
-                px-4 py-3
-                rounded-2xl
-                transition-all
-                text-sm sm:text-base
-                ${
-                  location.pathname === "/"
-                    ? "bg-blue-600 text-white shadow-lg"
-                    : "text-gray-300 hover:bg-gray-900 hover:text-white"
-                }
-              `}
-            >
-              <Home size={20} />
-              <span className="font-medium">Dashboard</span>
-            </Link>
+            {user?.role === "SUPERADMIN" && (
+              <Link
+                to="/"
+                onClick={() => mobile && onClose?.()}
+                className={`
+                  flex items-center gap-3
+                  px-4 py-3
+                  rounded-2xl
+                  transition-all
+                  text-sm sm:text-base
+                  ${
+                    location.pathname === "/"
+                      ? "bg-blue-600 text-white shadow-lg"
+                      : "text-gray-300 hover:bg-gray-900 hover:text-white"
+                  }
+                `}
+              >
+                <Home size={20} />
+                <span className="font-medium">Dashboard</span>
+              </Link>
+            )}
 
             {/* ✅ SUPERADMIN Y ADMIN */}
             {(user?.role === "SUPERADMIN" ||

@@ -70,6 +70,7 @@ export type CotizacionItem ={
     costo_total?: number;
     ganancia?: number;
     producto_id?: number;
+    producto_externo_id?: number | null;
     estado_cotizacion_item_id?: number;
     aplica_costos_adicionales?: boolean;
     created_at?: string;
@@ -78,6 +79,12 @@ export type CotizacionItem ={
     proveedor?: string; // Nuevo campo para proveedor
     link_proveedor?: string; // Nuevo campo para link del proveedor
     proveedores?: CotizacionItemProveedor[];
+    costo_base_referencial?: number;
+    ultimo_margen_usado?: number | null;
+    ultimo_precio_venta?: number | null;
+    ultima_fecha_cotizacion?: string | null;
+    veces_cotizado?: number;
+    activo?: boolean;
 }
 
 export interface CotizacionCostosAdicional {
@@ -143,6 +150,7 @@ export interface ItemForm {
     costo_total?: number;
     ganancia?: number;
     producto_id?: number;
+    producto_externo_id?: number | null;
     estado_cotizacion_item_id?: number;
     aplica_costos_adicionales?: boolean;
     created_at?: string;
@@ -151,6 +159,12 @@ export interface ItemForm {
     proveedor?: string; // Nuevo campo para proveedor
     link_proveedor?: string; // Nuevo campo para link del proveedor
     proveedores?: CotizacionItemProveedor[];
+    costo_base_referencial?: number;
+    ultimo_margen_usado?: number | null;
+    ultimo_precio_venta?: number | null;
+    ultima_fecha_cotizacion?: string | null;
+    veces_cotizado?: number;
+    activo?: boolean;
 }
 
 export interface Cliente {

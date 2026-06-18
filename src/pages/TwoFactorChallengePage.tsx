@@ -64,7 +64,9 @@ export default function TwoFactorChallengePage() {
           ? "/clientes"
           : result.role === "VENTAS"
           ? "/cotizaciones"
-          : "/"
+          : result.role === "SOPORTE"
+          ? "/productos"
+          : "/not-authorized"
       );
     } catch {
       setError("Codigo invalido o expirado");

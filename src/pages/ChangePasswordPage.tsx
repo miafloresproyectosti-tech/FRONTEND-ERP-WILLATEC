@@ -45,6 +45,8 @@ export default function ChangePasswordPage() {
 
     try {
       setLoading(true);
+      let nextRole = "VENTAS";
+
       await changePasswordRequest(
         currentPassword,
         password,
@@ -54,6 +56,7 @@ export default function ChangePasswordPage() {
       if (storedEmail) {
         const { role, id, last_login_at, two_factor_enabled } =
           await loginRequest(storedEmail, password);
+        nextRole = role;
         login(id, storedEmail, role, last_login_at, two_factor_enabled);
       } else {
         const me = await meRequest();
@@ -61,6 +64,7 @@ export default function ChangePasswordPage() {
           me.data?.roles && me.data.roles.length > 0
             ? me.data.roles[0].name.toUpperCase()
             : "VENTAS";
+        nextRole = role;
         const id = me.data?.id;
         const email = me.data?.email || "";
         login(
@@ -79,7 +83,17 @@ export default function ChangePasswordPage() {
       });
       sessionStorage.removeItem("temp_user_email");
       sessionStorage.removeItem("temp_user_id");
-      navigate("/");
+      navigate(
+        nextRole === "SUPERADMIN"
+          ? "/"
+          : nextRole === "ADMIN"
+          ? "/clientes"
+          : nextRole === "VENTAS"
+          ? "/cotizaciones"
+          : nextRole === "SOPORTE"
+          ? "/productos"
+          : "/not-authorized"
+      );
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Error al cambiar contrasena";

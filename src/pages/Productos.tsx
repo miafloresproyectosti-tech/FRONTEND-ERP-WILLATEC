@@ -517,10 +517,12 @@ export default function Productos() {
   // AGREGAR ITEM EXTERNO A COTIZACIÓN
   const buildExternalItemForCotizacion = (externalItem: ExternalItem) => ({
       tipo: "externo",
+      producto_externo_id: externalItem.producto_externo_id || externalItem.id,
+      producto_id: undefined,
       descripcion: externalItem.descripcion,
       cantidad: 1,
-      costo_base: externalItem.costo_unitario || 0,
-      margen: externalItem.margen || 0,
+      costo_base: externalItem.costo_base_referencial || externalItem.costo_base || externalItem.costo_unitario || 0,
+      margen: externalItem.ultimo_margen_usado ?? externalItem.margen ?? 0,
       marca: externalItem.marca,
       codigo: externalItem.codigo,
       unidad_medida: externalItem.unidad_medida,
@@ -667,6 +669,15 @@ export default function Productos() {
   };
 
   const handleOpenExternalEditModal = (item: ExternalItem) => {
+    addNotification({
+      title: "Catálogo externo",
+      description: "La edición directa de productos externos aún no está disponible.",
+      type: "warning",
+      icon: "MessageCircle",
+      route: "/productos",
+    });
+    return;
+
     setEditingExternalItem(item);
     setExternalItemForm({
       descripcion: item.descripcion || "",
@@ -791,7 +802,7 @@ export default function Productos() {
           <p className="text-gray-500 mt-1">
             {isStockTab
               ? `Gestión de productos del sistema (${productos.length} total)`
-              : `Items externos traídos desde la cotización (${externalMeta.total} total)`}
+              : `Catálogo de productos externos (${externalMeta.total} total)`}
           </p>
         </div>
 
@@ -974,10 +985,10 @@ export default function Productos() {
                         {item.stock}
                       </td>
                       <td className="px-6 py-5 font-semibold text-gray-800">
-                        S/. {Number(item.costo_unitario || "0").toLocaleString()}
+                        S/. {Number(item.costo_base_referencial || item.costo_base || item.costo_unitario || "0").toLocaleString()}
                       </td>
                       <td className="px-6 py-5 font-semibold text-gray-800">
-                        S/. {Number(item.precio_venta || "0").toLocaleString()}
+                        S/. {Number(item.ultimo_precio_venta || item.precio_venta || "0").toLocaleString()}
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex items-center justify-center">
