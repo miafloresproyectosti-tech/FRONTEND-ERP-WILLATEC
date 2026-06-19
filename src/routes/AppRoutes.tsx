@@ -61,6 +61,7 @@ export default function AppRoutes() {
           <Route path="/cotizaciones/new" element={<CotizacionDetail />} />
           <Route path="/cotizaciones/:id/edit" element={<CotizacionDetail />} />
           <Route path="/cotizaciones/:id/view" element={<CotizacionDetail />} />
+          <Route path="/cotizaciones/modificaciones/:modificacionId/edit" element={<CotizacionDetail />} />
 
           {/* ÓRDENES DE COMPRA */}
           <Route path="/ordenes-compra" element={<OrdenesCompraPage />} />

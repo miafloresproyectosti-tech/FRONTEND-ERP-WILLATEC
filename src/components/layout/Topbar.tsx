@@ -17,33 +17,21 @@ import {
   notificationService,
   type DatabaseNotification,
 } from "../../services/notification.service";
+import {
+  getNotificationDescription,
+  getNotificationTone,
+  getNotificationTitle,
+} from "../../utils/notificationText";
 
 interface TopbarProps {
   onNotificationClick?: (route: string) => void;
   onMenuClick?: () => void;
 }
 
-const NOTIFICATION_POLL_INTERVAL_MS = 10_000;
+const NOTIFICATION_POLL_INTERVAL_MS = 60_000;
 
 type WebkitAudioWindow = Window & {
   webkitAudioContext?: typeof AudioContext;
-};
-
-const getNotificationTitle = (notification: DatabaseNotification) => {
-  if (notification.data.title) {
-    return notification.data.title;
-  }
-
-  if (notification.type.includes("PasswordResetRequestedNotification")) {
-    return "Solicitud de restablecimiento";
-  }
-
-  return "Notificacion";
-};
-
-const getNotificationDescription = (notification: DatabaseNotification) => {
-  const description = notification.data.description || notification.data.message || "";
-  return description.replace(/\s+a las\s+\d{1,2}:\d{2}(?::\d{2})?\.?$/i, ".");
 };
 
 async function playNotificationSound() {
@@ -400,6 +388,7 @@ export default function Topbar({
                       const title = getNotificationTitle(notification);
                       const description =
                         getNotificationDescription(notification);
+                      const tone = getNotificationTone(notification);
                       const createdAt = new Date(notification.created_at);
                       const formattedDate = Number.isNaN(createdAt.getTime())
                         ? ""
@@ -424,12 +413,9 @@ export default function Topbar({
                             <div className="flex items-start gap-3 flex-1 min-w-0">
                               <div
                                 className={`p-3 rounded-2xl shadow-md flex-shrink-0 transition-all duration-300 ${
-                                  notification.type === "success"
+                                  tone === "success"
                                     ? "bg-emerald-100 text-emerald-600 border border-emerald-200"
-                                    : notification.type === "warning" ||
-                                      notification.type
-                                        .toLowerCase()
-                                        .includes("password")
+                                    : tone === "warning"
                                     ? "bg-orange-100 text-orange-600 border border-orange-200"
                                     : "bg-blue-100 text-blue-600 border border-blue-200"
                                 }`}

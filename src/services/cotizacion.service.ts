@@ -104,6 +104,15 @@ export interface CotizacionHistorial {
   };
 }
 
+export type EstadoModificacion = "borrador" | "en_revision" | "aprobada" | "rechazada";
+
+export interface UserLite {
+  id: number;
+  nombres: string;
+  apellidos: string;
+  email: string;
+}
+
 export interface Cliente {
   id: number;
   nombre: string;
@@ -183,6 +192,51 @@ export interface Cotizacion {
 
   
 };
+
+export type CotizacionEditablePayload = any;
+
+export interface CotizacionVersion {
+  id: number;
+  cotizacion_id: number;
+  version_number: number;
+  numero_version: string;
+  snapshot: {
+    cotizacion: Record<string, unknown>;
+    items: Array<Record<string, unknown> & { proveedores?: CotizacionItemProveedor[] }>;
+    costos: Array<Record<string, unknown>>;
+  };
+  created_by: number | null;
+  approved_by: number | null;
+  approved_at: string | null;
+  notas: string | null;
+}
+
+export interface CotizacionModificacion {
+  id: number;
+  cotizacion_id: number;
+  original_version_id: number | null;
+  version_number: number;
+  estado: EstadoModificacion;
+  motivo: string;
+  propuesta: CotizacionEditablePayload;
+  requested_by: number;
+  reviewed_by: number | null;
+  comentario_revision: string | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  cotizacion?: Cotizacion;
+  original_version?: CotizacionVersion;
+  solicitante?: UserLite;
+  revisor?: UserLite;
+}
+
+export interface CotizacionVersionesResponse {
+  cotizacion_id: number;
+  numero: string;
+  version_vigente: number;
+  versiones: CotizacionVersion[];
+  modificaciones: CotizacionModificacion[];
+}
 
 
 export interface CreateCotizacionData {
@@ -620,6 +674,112 @@ export async function delegarCotizacion(
     return response.data?.cotizacion || response.data?.data || response.data;
   } catch (error) {
     console.error("Error al delegar cotización:", error);
+    throw error;
+  }
+}
+
+export async function getCotizacionVersiones(
+  cotizacionId: number,
+): Promise<CotizacionVersionesResponse> {
+  try {
+    const response = await api.get(`/cotizaciones/${cotizacionId}/versiones`);
+    return response.data?.data || response.data;
+  } catch (error) {
+    console.error("Error al obtener versiones de cotizacion:", error);
+    throw error;
+  }
+}
+
+export async function solicitarModificacionCotizacion(
+  cotizacionId: number,
+  motivo: string,
+): Promise<CotizacionModificacion> {
+  try {
+    const response = await api.post(`/cotizaciones/${cotizacionId}/solicitar-modificacion`, {
+      motivo,
+    });
+    return response.data?.modificacion || response.data?.data || response.data;
+  } catch (error) {
+    console.error("Error al solicitar modificacion de cotizacion:", error);
+    throw error;
+  }
+}
+
+export async function getCotizacionModificacion(
+  modificacionId: number,
+): Promise<CotizacionModificacion> {
+  try {
+    const response = await api.get(`/cotizaciones/modificaciones/${modificacionId}`);
+    return response.data?.modificacion || response.data?.data || response.data;
+  } catch (error) {
+    console.error("Error al obtener modificacion de cotizacion:", error);
+    throw error;
+  }
+}
+
+export async function updateCotizacionModificacion(
+  modificacionId: number,
+  propuesta: CotizacionEditablePayload,
+): Promise<CotizacionModificacion> {
+  try {
+    const payload = prepareCotizacionData(propuesta);
+
+    if (hasNewCotizacionItemImage(propuesta)) {
+      const formData = buildCotizacionFormData(payload);
+      formData.append("_method", "PUT");
+
+      const response = await api.post(`/cotizaciones/modificaciones/${modificacionId}`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return response.data?.modificacion || response.data?.data || response.data;
+    }
+
+    const response = await api.put(`/cotizaciones/modificaciones/${modificacionId}`, payload);
+    return response.data?.modificacion || response.data?.data || response.data;
+  } catch (error) {
+    console.error("Error al guardar modificacion de cotizacion:", error);
+    throw error;
+  }
+}
+
+export async function enviarModificacionRevision(
+  modificacionId: number,
+): Promise<CotizacionModificacion> {
+  try {
+    const response = await api.patch(`/cotizaciones/modificaciones/${modificacionId}/enviar-revision`);
+    return response.data?.modificacion || response.data?.data || response.data;
+  } catch (error) {
+    console.error("Error al enviar modificacion a revision:", error);
+    throw error;
+  }
+}
+
+export async function aprobarModificacionCotizacion(
+  modificacionId: number,
+  comentario_revision?: string,
+): Promise<{ version: CotizacionVersion; cotizacion: Cotizacion; message?: string }> {
+  try {
+    const response = await api.patch(`/cotizaciones/modificaciones/${modificacionId}/aprobar`, {
+      comentario_revision,
+    });
+    return response.data?.data || response.data;
+  } catch (error) {
+    console.error("Error al aprobar modificacion de cotizacion:", error);
+    throw error;
+  }
+}
+
+export async function rechazarModificacionCotizacion(
+  modificacionId: number,
+  comentario_revision: string,
+): Promise<CotizacionModificacion> {
+  try {
+    const response = await api.patch(`/cotizaciones/modificaciones/${modificacionId}/rechazar`, {
+      comentario_revision,
+    });
+    return response.data?.modificacion || response.data?.data || response.data;
+  } catch (error) {
+    console.error("Error al rechazar modificacion de cotizacion:", error);
     throw error;
   }
 }

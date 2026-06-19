@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Bell, Loader, AlertCircle, CheckCircle2 } from "lucide-react";
 import { notificationService, type DatabaseNotification } from "../services/notification.service";
+import {
+  getNotificationDescription,
+  getNotificationTone,
+  getNotificationTitle,
+} from "../utils/notificationText";
 
 export default function Notificaciones() {
   const [notifications, setNotifications] = useState<DatabaseNotification[]>([]);
@@ -69,23 +74,6 @@ export default function Notificaciones() {
 
   const unreadCount = notifications.filter((n) => !n.read_at).length;
 
-  const getNotificationTitle = (notification: DatabaseNotification) => {
-    if (notification.data.title) {
-      return notification.data.title;
-    }
-
-    if (notification.type.includes("PasswordResetRequestedNotification")) {
-      return "Solicitud de restablecimiento";
-    }
-
-    return "Notificacion";
-  };
-
-  const getNotificationDescription = (notification: DatabaseNotification) => {
-    const description = notification.data.description || notification.data.message || "";
-    return description.replace(/\s+a las\s+\d{1,2}:\d{2}(?::\d{2})?\.?$/i, ".");
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -140,6 +128,25 @@ export default function Notificaciones() {
             const isRead = !!notification.read_at;
             const title = getNotificationTitle(notification);
             const description = getNotificationDescription(notification);
+            const tone = getNotificationTone(notification);
+            const unreadToneClasses =
+              tone === "success"
+                ? "bg-emerald-50 dark:bg-emerald-900/20 border-l-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
+                : tone === "warning"
+                  ? "bg-amber-50 dark:bg-amber-900/20 border-l-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                  : "bg-blue-50 dark:bg-blue-900/20 border-l-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30";
+            const unreadIconClass =
+              tone === "success"
+                ? "text-emerald-600 dark:text-emerald-400"
+                : tone === "warning"
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-blue-600 dark:text-blue-400";
+            const unreadDotClass =
+              tone === "success"
+                ? "bg-emerald-600"
+                : tone === "warning"
+                  ? "bg-amber-600"
+                  : "bg-blue-600";
             return (
               <div
                 key={notification.id}
@@ -147,14 +154,14 @@ export default function Notificaciones() {
                 className={`p-4 rounded-lg border-l-4 cursor-pointer transition-all ${
                   isRead
                     ? "bg-slate-50 dark:bg-slate-800 border-l-slate-300 dark:border-l-slate-600"
-                    : "bg-blue-50 dark:bg-blue-900/20 border-l-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                    : unreadToneClasses
                 }`}
               >
                 <div className="flex items-start gap-3">
                   {isRead ? (
                     <CheckCircle2 className="h-5 w-5 text-slate-400 dark:text-slate-500 flex-shrink-0 mt-0.5" />
                   ) : (
-                    <Bell className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                    <Bell className={`h-5 w-5 ${unreadIconClass} flex-shrink-0 mt-0.5`} />
                   )}
 
                   <div className="flex-1 min-w-0">
@@ -169,7 +176,7 @@ export default function Notificaciones() {
                         {title}
                       </h3>
                       {!isRead && (
-                        <span className="flex-shrink-0 inline-block h-2 w-2 rounded-full bg-blue-600" />
+                        <span className={`flex-shrink-0 inline-block h-2 w-2 rounded-full ${unreadDotClass}`} />
                       )}
                     </div>
 

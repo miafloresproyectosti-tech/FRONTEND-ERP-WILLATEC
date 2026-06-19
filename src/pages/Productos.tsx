@@ -20,6 +20,7 @@ import {
 } from "../services/cotizacion.service";
 import { useNotifications } from "../NotificationContext";
 import { normalizeStorageImageUrl } from "../utils/storageImage";
+import { getPaginationItems } from "../utils/pagination";
 // import { Plus as PlusIcon } from "lucide-react";
 
 const categoriaOptions = [
@@ -196,11 +197,6 @@ export default function Productos() {
     productosFiltrados.length / itemsPerPage
   );
 
-  const pages = Array.from(
-    { length: totalPages },
-    (_, i) => i + 1
-  );
-
   const isStockTab = activeTab === "stock";
   const cotizacionesFiltradas = cotizaciones.filter((cotizacion) => {
     const search = cotizacionSearchTerm.trim().toLowerCase();
@@ -231,6 +227,7 @@ export default function Productos() {
     : externalMeta.total;
   const pageNumber = isStockTab ? currentPage : externalMeta.current_page;
   const pageCount = isStockTab ? totalPages : externalMeta.last_page;
+  const paginationItems = getPaginationItems(pageNumber, pageCount);
   const showingFrom = totalItems === 0
     ? 0
     : isStockTab
@@ -1052,23 +1049,30 @@ export default function Productos() {
                   <ChevronLeft size={18} />
                 </button>
 
-                {(isStockTab ? pages : Array.from({ length: pageCount }, (_, i) => i + 1)).map(
-                  (page) => (
+                {paginationItems.map((item) =>
+                  typeof item === "number" ? (
                     <button
-                      key={page}
+                      key={item}
                       onClick={() =>
                         isStockTab
-                          ? setCurrentPage(page)
-                          : setExternalPage(page)
+                          ? setCurrentPage(item)
+                          : setExternalPage(item)
                       }
                       className={`w-10 h-10 rounded-xl flex items-center justify-center font-medium ${
-                        pageNumber === page
+                        pageNumber === item
                           ? "bg-blue-600 text-white"
                           : "text-gray-600 hover:bg-gray-200"
                       }`}
                     >
-                      {page}
+                      {item}
                     </button>
+                  ) : (
+                    <span
+                      key={item}
+                      className="w-10 h-10 flex items-center justify-center text-gray-400 select-none"
+                    >
+                      ...
+                    </span>
                   )
                 )}
 

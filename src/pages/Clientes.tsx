@@ -14,6 +14,7 @@ import {
 
 import { getClientes, createCliente, updateCliente, deleteCliente, type Cliente } from "../services/cliente.service";
 import { useNotifications } from "../NotificationContext";
+import { getPaginationItems } from "../utils/pagination";
 
 // Formulario vacío tipado según la API
 interface ClienteForm {
@@ -60,7 +61,7 @@ export default function Clientes() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalClientes, setTotalClientes] = useState(0);
-  const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
+  const paginationItems = getPaginationItems(currentPage, totalPages);
   const [perPage] = useState(10);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -518,18 +519,27 @@ export default function Clientes() {
                   <ChevronLeft size={18} />
                 </button>
 
-                {pages.map((page) => (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 font-medium ${currentPage === page
-                        ? "bg-blue-600 text-white shadow-md hover:shadow-lg"
-                        : "text-gray-600 hover:bg-gray-200 hover:shadow-sm"
-                      }`}
-                  >
-                    {page}
-                  </button>
-                ))}
+                {paginationItems.map((item) =>
+                  typeof item === "number" ? (
+                    <button
+                      key={item}
+                      onClick={() => setCurrentPage(item)}
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 font-medium ${currentPage === item
+                          ? "bg-blue-600 text-white shadow-md hover:shadow-lg"
+                          : "text-gray-600 hover:bg-gray-200 hover:shadow-sm"
+                        }`}
+                    >
+                      {item}
+                    </button>
+                  ) : (
+                    <span
+                      key={item}
+                      className="w-10 h-10 flex items-center justify-center text-gray-400 select-none"
+                    >
+                      ...
+                    </span>
+                  )
+                )}
 
                 <button
                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}

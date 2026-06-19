@@ -24,6 +24,7 @@ import { useNotifications } from "../NotificationContext";
 import { deleteCotizacion, getCotizacionesPaginated, type Cotizacion as ApiCotizacion } from "../services/cotizacion.service";
 import { getUsers, type User as ApiUser } from "../services/usuario.service";
 import { formatMoney } from "../utils/formatNumber";
+import { getPaginationItems } from "../utils/pagination";
 
 function formatCotizacionDate(value?: string | null): string {
   if (!value) return "N/A";
@@ -112,6 +113,10 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
     }
   }
 
+  if (typeof error === "object" && error !== null && "request" in error) {
+    return "No hubo respuesta del servidor. Revisa que el backend configurado en VITE_API_BASE_URL este disponible.";
+  }
+
   return fallback;
 };
 
@@ -143,6 +148,7 @@ export default function Cotizaciones() {
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
   const [deletingCotizacionId, setDeletingCotizacionId] = useState<number | null>(null);
   const itemsPerPage = 10;
+  const paginationItems = getPaginationItems(currentPage, totalPages);
 
   const loadCotizaciones = useCallback(async () => {
     try {
@@ -163,7 +169,7 @@ export default function Cotizaciones() {
       console.error('Error al cargar cotizaciones:', error);
       addNotification({
         title: 'Error al cargar cotizaciones',
-        description: 'Verifica tu conexión e intenta de nuevo',
+        description: getApiErrorMessage(error, 'Verifica tu conexion e intenta de nuevo'),
         type: 'warning',
         icon: 'MessageCircle',
         route: '/cotizaciones',
@@ -621,6 +627,8 @@ export default function Cotizaciones() {
                     const puedeEditar =
                       Boolean(user?.id) &&
                       (cotizacionUserId === userId || delegadoCotizacionId === userId);
+                    const esAprobada = Number(cotizacion.estado_cotizacion_id) === ESTADO_FILTER_MAP.aprobada;
+                    const puedeEditarDirecto = puedeEditar && !esAprobada;
 
                     return (
                       <tr
@@ -682,7 +690,7 @@ export default function Cotizaciones() {
                             </button>
 
                             {/* EDITAR */}
-                            {puedeEditar && (
+                            {puedeEditarDirecto && (
                               <button
                               onClick={() =>
                                 navigate(`/cotizaciones/${cotizacion.id}/edit`)
@@ -696,7 +704,7 @@ export default function Cotizaciones() {
                             
 
                             {/* ELIMINAR */}
-                            {puedeEditar && (
+                            {puedeEditarDirecto && (
                             <button
                               onClick={() => {
                                 setCotizacionToDelete(cotizacion);
@@ -774,19 +782,28 @@ export default function Cotizaciones() {
               </button>
 
               <div className="flex items-center gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={`px-3 py-2 rounded-lg font-medium transition ${
-                      currentPage === page
-                        ? "bg-blue-600 text-white"
-                        : "border border-gray-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-900"
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
+                {paginationItems.map((item) =>
+                  typeof item === "number" ? (
+                    <button
+                      key={item}
+                      onClick={() => setCurrentPage(item)}
+                      className={`px-3 py-2 rounded-lg font-medium transition ${
+                        currentPage === item
+                          ? "bg-blue-600 text-white"
+                          : "border border-gray-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-900"
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  ) : (
+                    <span
+                      key={item}
+                      className="px-2 py-2 text-slate-400 select-none"
+                    >
+                      ...
+                    </span>
+                  )
+                )}
               </div>
 
               <button

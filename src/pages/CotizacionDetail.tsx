@@ -26,6 +26,13 @@ import {
   aprobarCotizacion,
   rechazarCotizacion,
   getCotizacionHistorial,
+  getCotizacionVersiones,
+  solicitarModificacionCotizacion,
+  getCotizacionModificacion,
+  updateCotizacionModificacion,
+  enviarModificacionRevision,
+  aprobarModificacionCotizacion,
+  rechazarModificacionCotizacion,
   // deleteItem,
   exportarCotizacionPdf,
   descargarPdfCotizacion,
@@ -33,6 +40,9 @@ import {
   type CotizacionItem,
   type CotizacionCostosAdicional,
   type CotizacionHistorial,
+  type CotizacionModificacion,
+  type CotizacionVersion,
+  type CotizacionVersionesResponse,
 } from '../services/cotizacion.service';
 import {
   ArrowLeft,
@@ -45,7 +55,11 @@ import {
   Check,
   XCircle,
   UserCheck,
+  History,
+  GitBranch,
 } from 'lucide-react';
+
+const ESTADO_COTIZACION_APROBADA_ID = 4;
 
 const getLocalDateString = (value?: string | null) => {
   const date = value ? new Date(value) : new Date();
@@ -98,16 +112,18 @@ const plantillaIncluyeIgv = (plantillaId: number, plantilla?: { incluye_igv?: bo
 
 export function CotizacionDetail() {
   const navigate = useNavigate();
-  const { id } = useParams<{ id: string }>();
+  const { id, modificacionId } = useParams<{ id: string; modificacionId: string }>();
   const { user } = useAuth();
   const { showToast, addNotification } = useNotifications();
 
-  const isEditing = id !== 'new' && id !== undefined;
-  const currentCotizacionId = id ? parseInt(id) : null;
+  const isModificationMode = Boolean(modificacionId);
+  const currentModificacionId = modificacionId ? parseInt(modificacionId) : null;
+  const isEditing = !isModificationMode && id !== 'new' && id !== undefined;
+  const currentCotizacionId = id && !isModificationMode ? parseInt(id) : null;
   const [exportandoPdf, setExportandoPdf] = useState(false);
 
   // ====== STATE MANAGEMENT ======
-  const [loading, setLoading] = useState(isEditing);
+  const [loading, setLoading] = useState(isEditing || isModificationMode);
   const [saving, setSaving] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
@@ -187,6 +203,13 @@ export function CotizacionDetail() {
   const [showCostosModal, setShowCostosModal] = useState(false);
   const [showRechazoModal, setShowRechazoModal] = useState(false);
   const [comentarioRechazo, setComentarioRechazo] = useState('');
+  const [showSolicitudModificacionModal, setShowSolicitudModificacionModal] = useState(false);
+  const [motivoModificacion, setMotivoModificacion] = useState('');
+  const [solicitandoModificacion, setSolicitandoModificacion] = useState(false);
+  const [modificacion, setModificacion] = useState<CotizacionModificacion | null>(null);
+  const [versionesInfo, setVersionesInfo] = useState<CotizacionVersionesResponse | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<CotizacionVersion | null>(null);
+  const [comentarioRevisionModificacion, setComentarioRevisionModificacion] = useState('');
 
   const [estadoCotizacionId, setEstadoCotizacionId] = useState<number>(1);
 
@@ -207,7 +230,30 @@ export function CotizacionDetail() {
   const isCotizacionEditDelegate = Boolean(cotizacion && user && currentDelegadoCotizacionIdNumber === Number(user.id));
   const canViewGanancia = !cotizacion || isCotizacionCreator || isSuperAdmin;
   const canEditCotizacion = !cotizacion || isCotizacionCreator || isCotizacionEditDelegate;
-  const canDelegateCotizacionEdit = Boolean(currentCotizacionId && cotizacion && isCotizacionCreator);
+  const isCotizacionAprobada = currentEstadoCotizacionId === ESTADO_COTIZACION_APROBADA_ID;
+  const modificacionPendiente = versionesInfo?.modificaciones?.find((item) =>
+    item.estado === 'borrador' || item.estado === 'en_revision'
+  ) || null;
+  const canEditModificacion = Boolean(
+    isModificationMode &&
+    modificacion &&
+    modificacion.estado === 'borrador' &&
+    (isCotizacionCreator || isCotizacionEditDelegate || Number(modificacion.requested_by) === Number(user?.id))
+  );
+  const canReviewModificacion = Boolean(
+    isModificationMode &&
+    modificacion?.estado === 'en_revision' &&
+    user &&
+    (isSuperAdmin || userRole === 'ADMIN')
+  );
+  const canRequestModificacion = Boolean(
+    !isModificationMode &&
+    currentCotizacionId &&
+    isCotizacionAprobada &&
+    canEditCotizacion &&
+    !modificacionPendiente
+  );
+  const canDelegateCotizacionEdit = Boolean(currentCotizacionId && cotizacion && isCotizacionCreator && !isCotizacionAprobada);
   const canSendCotizacionToReview = Boolean(
     currentCotizacionId &&
     currentEstadoCotizacionId === 1 &&
@@ -221,7 +267,11 @@ export function CotizacionDetail() {
   const canChangeReviewEstado = Boolean(
     user && (isSuperAdmin || currentDelegadoId === Number(user.id))
   );
-  const isCotizacionReadOnly = isViewMode || !canEditCotizacion;
+  const isCotizacionReadOnly = selectedVersion
+    ? true
+    : isModificationMode
+    ? !canEditModificacion
+    : isViewMode || !canEditCotizacion || isCotizacionAprobada;
 
   useEffect(() => {
     if (!cotizacion) return;
@@ -291,6 +341,93 @@ export function CotizacionDetail() {
       proveedor: primary?.nombre || '',
       link_proveedor: primary?.link || '',
     };
+  };
+
+  const normalizeEditableItems = (rawItems: any[] = []) =>
+    rawItems.map((item, index) => {
+      const rawImage = item.imagen_url || item.imagen || item.imagen_path || '';
+
+      return {
+        ...item,
+        id: Number(item.id || Date.now() + index),
+        cotizacion_id: Number(item.cotizacion_id || currentCotizacionId || modificacion?.cotizacion_id || 0),
+        descripcion: item.descripcion || '',
+        cantidad: Number(item.cantidad || 0),
+        costo_base: Number(item.costo_base || 0),
+        costo_unitario: Number(item.costo_unitario || 0),
+        costo_total: Number(item.costo_total || 0),
+        precio_venta: Number(item.precio_venta || 0),
+        subtotal: Number(item.subtotal || 0),
+        ganancia: Number(item.ganancia || 0),
+        margen: Number(item.margen || 0),
+        garantia_meses: Number(item.garantia_meses || 12),
+        disponibilidad_tipo: item.disponibilidad_tipo || 'stock',
+        disponibilidad_dias: Number(item.disponibilidad_dias || 4),
+        orden: Number(item.orden || index + 1),
+        aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
+        tipo: item.tipo || (item.producto_id ? 'catalogo' : 'externo'),
+        imagen: rawImage,
+        imagen_url: item.imagen_url || rawImage || null,
+        imagen_path: item.imagen_path || item.imagen || null,
+        proveedores: item.proveedores || [],
+      };
+    });
+
+  const normalizeEditableCostos = (rawCostos: any[] = []) =>
+    rawCostos.map((costo, index) => ({
+      ...costo,
+      id: Number(costo.id || Date.now() + index),
+      cotizacion_id: costo.cotizacion_id ?? currentCotizacionId ?? modificacion?.cotizacion_id ?? null,
+      tipo: costo.tipo || 'viaje',
+      monto: Number(costo.monto || 0),
+      descripcion: costo.descripcion || '',
+    }));
+
+  const applyEditablePayload = (payload: any, baseCotizacion?: Cotizacion | null) => {
+    const source = payload || {};
+
+    setClienteId(Number(source.cliente_id ?? baseCotizacion?.cliente_id ?? 0) || null);
+    setPlantillaId(Number(source.plantilla_id ?? baseCotizacion?.plantilla_id ?? 1));
+    setPlataformaId(Number(source.plataforma_id ?? baseCotizacion?.plataforma_id ?? 1));
+    setFecha(getLocalDateString(source.fecha || baseCotizacion?.fecha || baseCotizacion?.created_at));
+    setValidezDias(Number(source.validez_dias ?? baseCotizacion?.validez_dias ?? 30));
+    setMonedaId(Number(source.moneda_id ?? baseCotizacion?.moneda_id ?? 1));
+    setModoDistribucion(source.modo_distribucion || baseCotizacion?.modo_distribucion || 'POR_ITEM');
+    setTitulo(source.titulo ?? baseCotizacion?.titulo ?? '');
+    setFormaPago(source.forma_pago ?? baseCotizacion?.forma_pago ?? 'AL CONTADO');
+    setClienteContacto(source.cliente_contacto ?? baseCotizacion?.cliente_contacto ?? baseCotizacion?.cliente?.contacto ?? '');
+    setDelegadoId(source.delegado_id ?? baseCotizacion?.delegado_id ?? null);
+    setDelegadoCotizacionId(source.delegado_cotizacion_id ?? baseCotizacion?.delegado_cotizacion_id ?? (baseCotizacion as any)?.delegadoCotizacionId ?? null);
+    setItems(normalizeEditableItems(source.items || baseCotizacion?.items || []));
+    setCostos(normalizeEditableCostos(source.costos || source.costos_adicionales || baseCotizacion?.costosAdicionales || baseCotizacion?.costos_adicionales || []));
+  };
+
+  const handleSelectVersion = (version: CotizacionVersion) => {
+    const snapshotCotizacion = version.snapshot?.cotizacion || {};
+    const snapshotPayload = {
+      ...snapshotCotizacion,
+      items: version.snapshot?.items || [],
+      costos: version.snapshot?.costos || [],
+      costos_adicionales: version.snapshot?.costos || [],
+    };
+
+    setSelectedVersion(version);
+    applyEditablePayload(snapshotPayload, cotizacion);
+    setEstadoCotizacionId(Number((snapshotCotizacion as any).estado_cotizacion_id || ESTADO_COTIZACION_APROBADA_ID));
+  };
+
+  const handleVolverVersionVigente = () => {
+    setSelectedVersion(null);
+
+    if (isModificationMode && modificacion) {
+      applyEditablePayload(modificacion.propuesta, cotizacion);
+      setEstadoCotizacionId(ESTADO_COTIZACION_APROBADA_ID);
+      return;
+    }
+
+    if (currentCotizacionId) {
+      loadCotizacion();
+    }
   };
 
   const buildItemFromExternalSource = (source: Partial<CotizacionItem>): CotizacionItem => {
@@ -597,12 +734,14 @@ export function CotizacionDetail() {
 
   // Cargar cotización si es edición
   useEffect(() => {
-    if (isEditing && currentCotizacionId) {
+    if (isModificationMode && currentModificacionId) {
+      loadModificacion();
+    } else if (isEditing && currentCotizacionId) {
       loadCotizacion();
     } else {
       setIsInitialLoad(false);
     }
-  }, [isEditing, currentCotizacionId]);
+  }, [isModificationMode, currentModificacionId, isEditing, currentCotizacionId]);
 
   //Cargar plataformas
   useEffect(() => {
@@ -662,6 +801,7 @@ export function CotizacionDetail() {
     if (!currentCotizacionId) return;
     try {
       setLoading(true);
+      setSelectedVersion(null);
       const data = await getCotizacion(currentCotizacionId);
       setCotizacion(data);
       setEstadoCotizacionId(Number(data.estado_cotizacion_id));
@@ -684,6 +824,17 @@ export function CotizacionDetail() {
       setCostos(data.costosAdicionales || data.costos_adicionales || []);
       const historialData = data.historial || data.cotizacion_historial || [];
       setHistorial(historialData);
+      if (Number(data.estado_cotizacion_id) === ESTADO_COTIZACION_APROBADA_ID) {
+        try {
+          const versionData = await getCotizacionVersiones(currentCotizacionId);
+          setVersionesInfo(versionData);
+        } catch (versionError) {
+          console.warn('No se pudo cargar versiones de la cotizacion', versionError);
+          setVersionesInfo(null);
+        }
+      } else {
+        setVersionesInfo(null);
+      }
       setLoading(false);
 
       if (historialData.length === 0) {
@@ -706,6 +857,42 @@ export function CotizacionDetail() {
     } finally {
       setLoading(false);
       setIsInitialLoad(false); // ← aquí se habilita la conversión para cambios manuales
+    }
+  };
+
+  const loadModificacion = async () => {
+    if (!currentModificacionId) return;
+
+    try {
+      setLoading(true);
+      setSelectedVersion(null);
+      const data = await getCotizacionModificacion(currentModificacionId);
+      const baseCotizacion = data.cotizacion || (data.original_version?.snapshot?.cotizacion as Cotizacion | undefined) || null;
+
+      setModificacion(data);
+      setCotizacion(baseCotizacion);
+      setEstadoCotizacionId(ESTADO_COTIZACION_APROBADA_ID);
+      applyEditablePayload(data.propuesta, baseCotizacion);
+      setHistorial(baseCotizacion?.historial || baseCotizacion?.cotizacion_historial || []);
+
+      try {
+        const versionData = await getCotizacionVersiones(Number(data.cotizacion_id));
+        setVersionesInfo(versionData);
+      } catch (versionError) {
+        console.warn('No se pudo cargar versiones de la cotizacion', versionError);
+        setVersionesInfo(null);
+      }
+    } catch (error: any) {
+      showToast({
+        title: 'Error',
+        description: error?.response?.data?.message || 'No se pudo cargar la modificacion',
+        type: 'error',
+        duration: 4000,
+      } as any);
+      navigate('/cotizaciones');
+    } finally {
+      setLoading(false);
+      setIsInitialLoad(false);
     }
   };
 
@@ -782,10 +969,11 @@ export function CotizacionDetail() {
 
       const approverName = user?.name || 'Superadministrador';
       const targetUserId = cotizacion?.user?.id || cotizacion?.user_id;
+      const cotizacionNumero = data.numero || cotizacion?.numero || `#${cotizacionId}`;
 
       showToast({
         title: 'Cotización aprobada',
-        description: `Aprobada por ${approverName}`,
+        description: `La cotizacion ${cotizacionNumero} fue aprobada por ${approverName}`,
         type: 'success',
         icon: 'CheckCircle',
         route: `/cotizaciones/${cotizacionId}/view`,
@@ -794,7 +982,7 @@ export function CotizacionDetail() {
       if (targetUserId) {
         addNotification({
           title: 'Tu cotización fue aprobada',
-          description: `La cotización ${cotizacionId} fue aprobada por ${approverName}`,
+          description: `La cotizacion ${cotizacionNumero} fue aprobada por ${approverName}`,
           type: 'success',
           icon: 'CheckCircle',
           route: `/cotizaciones/${cotizacionId}/view`,
@@ -853,10 +1041,11 @@ export function CotizacionDetail() {
 
       const approverName = user?.name || 'Superadministrador';
       const targetUserId = cotizacion?.user?.id || cotizacion?.user_id;
+      const cotizacionNumero = data.numero || cotizacion?.numero || `#${cotizacionId}`;
 
       showToast({
         title: 'Cotización rechazada',
-        description: `Rechazada por ${approverName}`,
+        description: `La cotizacion ${cotizacionNumero} fue rechazada por ${approverName}`,
         type: 'warning',
         icon: 'MessageCircle',
         route: `/cotizaciones/${cotizacionId}/view`,
@@ -865,7 +1054,7 @@ export function CotizacionDetail() {
       if (targetUserId) {
         addNotification({
           title: 'Tu cotización fue rechazada',
-          description: `La cotización ${cotizacionId} fue rechazada por ${approverName}`,
+          description: `La cotizacion ${cotizacionNumero} fue rechazada por ${approverName}`,
           type: 'warning',
           icon: 'MessageCircle',
           route: `/cotizaciones/${cotizacionId}/view`,
@@ -878,6 +1067,136 @@ export function CotizacionDetail() {
         description: error?.response?.data?.message || 'Error al rechazar la cotización',
         type: 'error',
         duration: 4000,
+      } as any);
+    } finally {
+      setIsRejecting(false);
+    }
+  };
+
+  const handleSolicitarModificacion = async () => {
+    const cotizacionId = cotizacion?.id || currentCotizacionId;
+    const motivo = motivoModificacion.trim();
+
+    if (!cotizacionId || !canRequestModificacion || solicitandoModificacion) return;
+
+    if (!motivo) {
+      showToast({
+        title: 'Motivo requerido',
+        description: 'Ingresa el motivo de la modificacion.',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
+
+    setSolicitandoModificacion(true);
+    try {
+      const nuevaModificacion = await solicitarModificacionCotizacion(cotizacionId, motivo);
+      setShowSolicitudModificacionModal(false);
+      setMotivoModificacion('');
+      showToast({
+        title: 'Modificacion creada',
+        description: 'Se creo una propuesta editable para esta cotizacion aprobada.',
+        type: 'success',
+        duration: 4000,
+      } as any);
+      navigate(`/cotizaciones/modificaciones/${nuevaModificacion.id}/edit`);
+    } catch (error: any) {
+      showToast({
+        title: 'Error al solicitar modificacion',
+        description: error?.response?.data?.message || 'No se pudo solicitar la modificacion.',
+        type: 'error',
+        duration: 5000,
+      } as any);
+    } finally {
+      setSolicitandoModificacion(false);
+    }
+  };
+
+  const handleEnviarModificacionRevision = async () => {
+    if (!currentModificacionId || !canEditModificacion || isSendingReview) return;
+
+    setIsSendingReview(true);
+    try {
+      const updated = await enviarModificacionRevision(currentModificacionId);
+      setModificacion(updated);
+      showToast({
+        title: 'Modificacion enviada',
+        description: 'La propuesta fue enviada para revision.',
+        type: 'success',
+        duration: 4000,
+      } as any);
+      navigate(`/cotizaciones/${updated.cotizacion_id}/view`);
+    } catch (error: any) {
+      showToast({
+        title: 'Error',
+        description: error?.response?.data?.message || 'No se pudo enviar la modificacion a revision.',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    } finally {
+      setIsSendingReview(false);
+    }
+  };
+
+  const handleAprobarModificacion = async () => {
+    if (!currentModificacionId || !canReviewModificacion || isApproving) return;
+
+    setIsApproving(true);
+    try {
+      const data = await aprobarModificacionCotizacion(
+        currentModificacionId,
+        comentarioRevisionModificacion.trim() || undefined
+      );
+      showToast({
+        title: 'Modificacion aprobada',
+        description: `Se aplico la propuesta como ${data.version?.numero_version || 'nueva version'}.`,
+        type: 'success',
+        duration: 4000,
+      } as any);
+      navigate(`/cotizaciones/${data.cotizacion.id}/view`);
+    } catch (error: any) {
+      showToast({
+        title: 'Error al aprobar modificacion',
+        description: error?.response?.data?.message || 'No se pudo aprobar la modificacion.',
+        type: 'error',
+        duration: 5000,
+      } as any);
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handleRechazarModificacion = async () => {
+    if (!currentModificacionId || !canReviewModificacion || isRejecting) return;
+
+    const comentario = comentarioRevisionModificacion.trim();
+    if (!comentario) {
+      showToast({
+        title: 'Comentario requerido',
+        description: 'Ingresa un comentario para rechazar la modificacion.',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
+
+    setIsRejecting(true);
+    try {
+      const updated = await rechazarModificacionCotizacion(currentModificacionId, comentario);
+      showToast({
+        title: 'Modificacion rechazada',
+        description: 'La cotizacion aprobada se mantiene sin cambios.',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      navigate(`/cotizaciones/${updated.cotizacion_id}/view`);
+    } catch (error: any) {
+      showToast({
+        title: 'Error al rechazar modificacion',
+        description: error?.response?.data?.message || 'No se pudo rechazar la modificacion.',
+        type: 'error',
+        duration: 5000,
       } as any);
     } finally {
       setIsRejecting(false);
@@ -1045,7 +1364,7 @@ export function CotizacionDetail() {
     const clienteContactoValue = clienteContacto.trim();
 
     const payload: any = {
-      id: currentCotizacionId,
+      id: currentCotizacionId ?? modificacion?.cotizacion_id,
       cliente_id: clienteId ?? 0,
       plantilla_id: plantillaId,
       plataforma_id: plataformaId,
@@ -1114,7 +1433,18 @@ export function CotizacionDetail() {
 
     setSaving(true);
     try {
-      if (isEditing && currentCotizacionId) {
+      if (isModificationMode && currentModificacionId) {
+        const updated = await updateCotizacionModificacion(currentModificacionId, payload);
+        setModificacion(updated);
+        showToast({
+          title: 'Modificacion enviada',
+          description: 'La propuesta fue guardada y enviada para revision.',
+          message: 'Modificacion enviada',
+          type: 'success',
+          duration: 4000,
+        } as any);
+        navigate(`/cotizaciones/${updated.cotizacion_id}/view`);
+      } else if (isEditing && currentCotizacionId) {
         // Actualizar
         const updated = await updateCotizacion(currentCotizacionId, payload);
         const finalCotizacion = shouldSendRejectedToReview
@@ -1338,6 +1668,7 @@ export function CotizacionDetail() {
 
   const puedeExportar = () => {
     if (!user?.role) return false;
+    if (isModificationMode) return false;
 
     return currentEstadoCotizacionId === 4;
   };
@@ -1719,6 +2050,73 @@ export function CotizacionDetail() {
         </div>
       </div>
 
+      {isCotizacionAprobada && !isModificationMode && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-semibold text-emerald-900">Cotizacion aprobada de solo lectura</p>
+            <p className="text-sm text-emerald-700">
+              Para cambiarla se debe crear una propuesta de modificacion y enviarla a revision.
+            </p>
+          </div>
+          {modificacionPendiente ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/cotizaciones/modificaciones/${modificacionPendiente.id}/edit`)}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700"
+            >
+              <GitBranch className="w-4 h-4" />
+              {modificacionPendiente.estado === 'borrador' ? 'Continuar modificacion' : 'Ver modificacion pendiente'}
+            </button>
+          ) : canRequestModificacion ? (
+            <button
+              type="button"
+              onClick={() => setShowSolicitudModificacionModal(true)}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+            >
+              <GitBranch className="w-4 h-4" /> Solicitar modificacion
+            </button>
+          ) : null}
+        </div>
+      )}
+
+      {isModificationMode && modificacion && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold text-blue-900">
+                Propuesta V{modificacion.version_number} - {modificacion.estado.replace('_', ' ')}
+              </p>
+              <p className="text-sm text-blue-700">{modificacion.motivo}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate(`/cotizaciones/${modificacion.cotizacion_id}/view`)}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-100"
+            >
+              <History className="w-4 h-4" /> Ver aprobada actual
+            </button>
+          </div>
+        </div>
+      )}
+
+      {selectedVersion && (
+        <div className="bg-slate-900 text-white rounded-xl p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-semibold">Viendo {selectedVersion.numero_version}</p>
+            <p className="text-sm text-slate-200">
+              Esta es una version historica guardada. Los campos estan bloqueados para evitar cambios accidentales.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleVolverVersionVigente}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white text-slate-900 hover:bg-slate-100"
+          >
+            Ver version vigente
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           {/* FORM INFO GENERAL */}
@@ -1870,6 +2268,44 @@ export function CotizacionDetail() {
             </div>
           )}
 
+          {versionesInfo && (
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <h2 className="text-base font-semibold text-gray-800 mb-3">
+                Versiones
+              </h2>
+              <div className="space-y-2">
+                {versionesInfo.versiones.map((version) => (
+                  <button
+                    key={version.id}
+                    type="button"
+                    onClick={() => handleSelectVersion(version)}
+                    className={`w-full flex items-center justify-between rounded-lg border px-3 py-2 text-sm text-left transition ${
+                      selectedVersion?.id === version.id
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                    }`}
+                  >
+                    <span className={`font-medium ${selectedVersion?.id === version.id ? 'text-white' : 'text-gray-700'}`}>
+                      {version.numero_version}
+                    </span>
+                    <span className={`text-xs ${selectedVersion?.id === version.id ? 'text-slate-200' : 'text-gray-500'}`}>
+                      {Number(version.version_number) === Number(versionesInfo.version_vigente) ? 'Vigente' : 'Historica'}
+                    </span>
+                  </button>
+                ))}
+                {versionesInfo.modificaciones.map((item) => (
+                  <div key={`mod-${item.id}`} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-amber-900">Propuesta V{item.version_number}</span>
+                      <span className="text-xs text-amber-700">{item.estado.replace('_', ' ')}</span>
+                    </div>
+                    <p className="text-xs text-amber-700 mt-1 line-clamp-2">{item.motivo}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {comentariosRevision.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
               <h2 className="text-base font-semibold text-amber-900 mb-3">
@@ -1896,6 +2332,48 @@ export function CotizacionDetail() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {isModificationMode && canReviewModificacion && (
+            <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
+              <h2 className="text-base font-semibold text-gray-800">Revision de modificacion</h2>
+              <textarea
+                value={comentarioRevisionModificacion}
+                onChange={(e) => setComentarioRevisionModificacion(e.target.value)}
+                className="w-full min-h-24 p-3 border rounded-lg resize-none focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="Comentario de revision"
+              />
+              <button
+                onClick={handleAprobarModificacion}
+                disabled={isApproving || isRejecting}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isApproving ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" /> Aprobando...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-5 h-5" /> Aprobar modificacion
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleRechazarModificacion}
+                disabled={isApproving || isRejecting}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isRejecting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" /> Rechazando...
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-5 h-5" /> Rechazar modificacion
+                  </>
+                )}
+              </button>
             </div>
           )}
 
@@ -2000,12 +2478,30 @@ export function CotizacionDetail() {
                   </>
                 ) : (
                   <>
-                    <Save className="w-5 h-5" /> Guardar
+                    <Save className="w-5 h-5" /> {isModificationMode ? 'Guardar y enviar a revision' : 'Guardar'}
                   </>
                 )}
               </button>
 
-              {canSendCotizacionToReview && (
+              {isModificationMode && canEditModificacion && (
+                <button
+                  onClick={handleEnviarModificacionRevision}
+                  disabled={isSendingReview || saving}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSendingReview ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" /> Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-5 h-5" /> Enviar sin cambios
+                    </>
+                  )}
+                </button>
+              )}
+
+              {!isModificationMode && canSendCotizacionToReview && (
                 <button
                   onClick={handleEnviarRevision}
                   disabled={isSendingReview || saving || itemsCalculados.length === 0}
@@ -2136,6 +2632,41 @@ export function CotizacionDetail() {
       )}
 
       {/* 5. Modal Delegación */}
+      {showSolicitudModificacionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
+            <h3 className="text-xl font-bold mb-4">Solicitar modificacion</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              La cotizacion aprobada no se editara directamente. Se creara una propuesta para revision.
+            </p>
+            <textarea
+              value={motivoModificacion}
+              onChange={(e) => setMotivoModificacion(e.target.value)}
+              className="w-full min-h-28 p-3 border rounded-lg resize-none focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Motivo de la modificacion"
+            />
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => {
+                  setShowSolicitudModificacionModal(false);
+                  setMotivoModificacion('');
+                }}
+                className="flex-1 px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSolicitarModificacion}
+                disabled={solicitandoModificacion}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {solicitandoModificacion ? 'Creando...' : 'Crear propuesta'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showDelegacionModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl">
