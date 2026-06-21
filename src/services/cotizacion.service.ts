@@ -318,14 +318,17 @@ function buildItemFormData(data: CreateItemData | UpdateItemData): FormData {
       value.forEach((item, index) => {
         Object.entries(item ?? {}).forEach(([childKey, childValue]) => {
           if (childValue !== undefined && childValue !== null) {
-            formData.append(`${key}[${index}][${childKey}]`, String(childValue));
+            formData.append(
+              `${key}[${index}][${childKey}]`,
+              typeof childValue === "boolean" ? (childValue ? "1" : "0") : String(childValue),
+            );
           }
         });
       });
       return;
     }
 
-    formData.append(key, String(value));
+    formData.append(key, typeof value === "boolean" ? (value ? "1" : "0") : String(value));
   });
 
   if (data.imagen?.startsWith("data:")) {
@@ -333,6 +336,18 @@ function buildItemFormData(data: CreateItemData | UpdateItemData): FormData {
   }
 
   return formData;
+}
+
+function toBackendBoolean(value: unknown, fallback = true): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "si", "sí", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+  }
+
+  return fallback;
 }
 
 function hasNewItemImage(data: CreateItemData | UpdateItemData): boolean {
@@ -367,7 +382,7 @@ function appendCotizacionFormValue(formData: FormData, key: string, value: any):
     return;
   }
 
-  formData.append(key, String(value));
+  formData.append(key, typeof value === "boolean" ? (value ? "1" : "0") : String(value));
 }
 
 function hasNewCotizacionItemImage(data: any): boolean {
@@ -396,7 +411,7 @@ function prepareCotizacionData(data: any): any {
       return {
         ...item,
         producto_externo_id: item.tipo === "externo" ? item.producto_externo_id : undefined,
-        aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
+        aplica_costos_adicionales: toBackendBoolean(item.aplica_costos_adicionales, true),
         imagen: normalizeStorageImagePath(imageSource),
         imagen_path:
           typeof imagePathSource === "string" && imagePathSource.startsWith("data:")

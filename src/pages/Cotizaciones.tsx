@@ -11,6 +11,8 @@ import {
   Calendar,
   FileText,
   ShoppingCart,
+  ClipboardCheck,
+  Send,
   Loader2,
   AlertTriangle,
   X,
@@ -145,6 +147,7 @@ export default function Cotizaciones() {
   const [paginationFrom, setPaginationFrom] = useState(0);
   const [paginationTo, setPaginationTo] = useState(0);
   const [cotizacionToDelete, setCotizacionToDelete] = useState<ApiCotizacion | null>(null);
+  const [cotizacionForOc, setCotizacionForOc] = useState<ApiCotizacion | null>(null);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
   const [deletingCotizacionId, setDeletingCotizacionId] = useState<number | null>(null);
   const itemsPerPage = 10;
@@ -350,6 +353,22 @@ export default function Cotizaciones() {
     } finally {
       setDeletingCotizacionId(null);
     }
+  };
+
+  const openOrdenCompraFlow = (modo: "recibir" | "emitir") => {
+    if (!cotizacionForOc) return;
+
+    const title = modo === "recibir" ? "Registrar OC recibida" : "Emitir OC";
+    navigate(`/ordenes-compra/nueva?cotizacion=${cotizacionForOc.id}&modo=${modo}`);
+    addNotification({
+      title,
+      description: `Flujo iniciado desde cotizacion ${cotizacionForOc.numero}`,
+      type: "info",
+      icon: "ShoppingCart",
+      route: "/ordenes-compra",
+      targetRole: "SUPERADMIN",
+    });
+    setCotizacionForOc(null);
   };
 
 
@@ -627,8 +646,14 @@ export default function Cotizaciones() {
                     const puedeEditar =
                       Boolean(user?.id) &&
                       (cotizacionUserId === userId || delegadoCotizacionId === userId);
-                    const esAprobada = Number(cotizacion.estado_cotizacion_id) === ESTADO_FILTER_MAP.aprobada;
-                    const puedeEditarDirecto = puedeEditar && !esAprobada;
+                    const estadoActualId = Number(cotizacion.estado_cotizacion_id);
+                    const bloqueaEdicion = [
+                      ESTADO_FILTER_MAP.parcialmente_aprobada,
+                      ESTADO_FILTER_MAP.aprobada,
+                      ESTADO_FILTER_MAP.oc_registrada,
+                    ].includes(estadoActualId);
+                    const puedeEditarDirecto = puedeEditar && !bloqueaEdicion;
+                    const puedeGenerarOc = puedeEditar && estadoActualId === ESTADO_FILTER_MAP.aprobada;
 
                     return (
                       <tr
@@ -724,22 +749,9 @@ export default function Cotizaciones() {
                             
 
                             {/* GENERAR OC */}
-                            {puedeEditar && (
+                            {puedeGenerarOc && (
                               <button
-                              onClick={() => {
-                                navigate(
-                                  `/ordenes-compra/nueva?cotizacion=${cotizacion.id}`
-                                );
-
-                                addNotification({
-                                  title: "Orden de compra generada",
-                                  description: `OC creada desde cotización ${cotizacion.numero}`,
-                                  type: "success",
-                                  icon: "CheckCircle",
-                                  route: "/ordenes-compra",
-                                  targetRole: "SUPERADMIN",
-                                });
-                              }}
+                              onClick={() => setCotizacionForOc(cotizacion)}
                               className="w-10 h-10 rounded-xl bg-green-100 text-green-600 flex items-center justify-center hover:bg-green-200 transition"
                               title="Generar Orden de Compra"
                             >
@@ -818,6 +830,63 @@ export default function Cotizaciones() {
           </div>
         )}
       </div>
+
+      {cotizacionForOc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl dark:bg-slate-950">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 p-6 dark:border-slate-800">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-green-100 p-2 text-green-600">
+                  <ShoppingCart size={22} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                    Orden de compra
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    {cotizacionForOc.numero} - {cotizacionForOc.cliente_nombre || "Cliente no disponible"}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCotizacionForOc(null)}
+                className="rounded-lg p-2 text-slate-400 hover:bg-gray-100 hover:text-slate-600 dark:hover:bg-slate-900"
+                title="Cerrar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 p-6 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => openOrdenCompraFlow("recibir")}
+                className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left transition hover:bg-emerald-100"
+              >
+                <ClipboardCheck className="mb-3 h-7 w-7 text-emerald-600" />
+                <p className="font-bold text-emerald-900">OC recibida</p>
+                <p className="mt-1 text-sm text-emerald-700">
+                  Registrar la orden enviada por el cliente.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openOrdenCompraFlow("emitir")}
+                className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-left transition hover:bg-blue-100"
+              >
+                <Send className="mb-3 h-7 w-7 text-blue-600" />
+                <p className="font-bold text-blue-900">Emitir OC</p>
+                <p className="mt-1 text-sm text-blue-700">
+                  Crear una orden para proveedor.
+                </p>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {cotizacionToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

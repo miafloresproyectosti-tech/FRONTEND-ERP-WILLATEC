@@ -65,6 +65,9 @@ export default function AppRoutes() {
 
           {/* ÓRDENES DE COMPRA */}
           <Route path="/ordenes-compra" element={<OrdenesCompraPage />} />
+          <Route path="/ordenes-compra/nueva" element={<OrdenesCompraPage />} />
+          <Route path="/ordenes-compra/recibidas/:ocId" element={<OrdenesCompraPage />} />
+          <Route path="/ordenes-compra/emitidas/:ocId" element={<OrdenesCompraPage />} />
           <Route path="/ordenes-compra/:id" element={<OrdenCompraDetail />} />
           {/* ADMIN */}
           <Route path="/usuarios" element={<Usuarios />} />

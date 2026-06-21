@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Bell, Loader, AlertCircle, CheckCircle2 } from "lucide-react";
 import { notificationService, type DatabaseNotification } from "../services/notification.service";
 import {
@@ -8,6 +9,7 @@ import {
 } from "../utils/notificationText";
 
 export default function Notificaciones() {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<DatabaseNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,13 +43,15 @@ export default function Notificaciones() {
     };
   }, []);
 
-  const handleMarkAsRead = async (id: string, isRead: boolean) => {
+  const handleNotificationClick = async (notification: DatabaseNotification) => {
+    const isRead = !!notification.read_at;
+
     if (!isRead) {
       try {
-        await notificationService.markAsRead(id);
+        await notificationService.markAsRead(notification.id);
         setNotifications((prev) =>
           prev.map((n) =>
-            n.id === id
+            n.id === notification.id
               ? { ...n, read_at: new Date().toISOString() }
               : n
           )
@@ -56,6 +60,8 @@ export default function Notificaciones() {
         console.error("Error marking notification as read:", err);
       }
     }
+
+    navigate(notification.data.action_url || "/notificaciones");
   };
 
   const handleMarkAllAsRead = async () => {
@@ -150,7 +156,7 @@ export default function Notificaciones() {
             return (
               <div
                 key={notification.id}
-                onClick={() => handleMarkAsRead(notification.id, isRead)}
+                onClick={() => handleNotificationClick(notification)}
                 className={`p-4 rounded-lg border-l-4 cursor-pointer transition-all ${
                   isRead
                     ? "bg-slate-50 dark:bg-slate-800 border-l-slate-300 dark:border-l-slate-600"

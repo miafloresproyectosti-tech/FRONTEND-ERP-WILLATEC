@@ -11,6 +11,8 @@ const getActorName = (notification: DatabaseNotification) => {
     notification.data.requested_by_name,
     notification.data.approved_by_name,
     notification.data.rejected_by_name,
+    notification.data.registered_by_name,
+    notification.data.issued_by_name,
   ];
 
   const value = fields.find((field) => typeof field === "string" && field.trim());
@@ -29,6 +31,16 @@ export const getNotificationTitle = (notification: DatabaseNotification) => {
   if (action === "rechazada") return "Cotizacion rechazada";
   if (action === "modificacion_solicitada") return "Solicitud de modificacion";
   if (action === "modificacion_en_revision") return "Modificacion enviada a revision";
+  if (action === "oc_recibida_registrada") return "OC recibida registrada";
+  if (action === "oc_emitida_registrada") return "OC emitida";
+
+  if (notification.type.includes("OcRecibidaRegistradaNotification")) {
+    return "OC recibida registrada";
+  }
+
+  if (notification.type.includes("OcEmitidaRegistradaNotification")) {
+    return "OC emitida";
+  }
 
   if (notification.type.includes("PasswordResetRequestedNotification")) {
     return "Solicitud de restablecimiento";
@@ -78,6 +90,27 @@ export const getNotificationDescription = (notification: DatabaseNotification) =
       : `Una modificacion de ${target} fue enviada para revision.`;
   }
 
+  if (action === "oc_recibida_registrada") {
+    const ocNumero = typeof notification.data.oc_recibida_numero === "string"
+      ? notification.data.oc_recibida_numero
+      : "OC recibida";
+    return actor
+      ? `${actor} registro ${ocNumero}${numero ? ` para la cotizacion ${numero}` : ""}.`
+      : `${ocNumero}${numero ? ` fue registrada para la cotizacion ${numero}` : " fue registrada"}.`;
+  }
+
+  if (action === "oc_emitida_registrada") {
+    const proveedor = typeof notification.data.proveedor === "string" && notification.data.proveedor.trim()
+      ? ` para el proveedor ${notification.data.proveedor.trim()}`
+      : "";
+    const ocNumero = typeof notification.data.oc_emitida_numero === "string"
+      ? notification.data.oc_emitida_numero
+      : "OC emitida";
+    return actor
+      ? `${actor} emitio ${ocNumero}${proveedor}${numero ? ` correspondiente a la cotizacion ${numero}` : ""}.`
+      : `${ocNumero}${proveedor}${numero ? ` correspondiente a la cotizacion ${numero}` : ""}.`;
+  }
+
   return "";
 };
 
@@ -85,6 +118,7 @@ export const getNotificationTone = (notification: DatabaseNotification) => {
   const action = String(notification.data.action || "");
 
   if (action === "aprobada") return "success";
+  if (action === "oc_recibida_registrada" || action === "oc_emitida_registrada") return "success";
   if (
     action === "rechazada" ||
     action === "modificacion_solicitada" ||
