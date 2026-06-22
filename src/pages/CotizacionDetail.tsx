@@ -171,7 +171,7 @@ export function CotizacionDetail() {
   const [historial, setHistorial] = useState<CotizacionHistorial[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [usuarios, setUsuarios] = useState<ApiUser[]>([]);
-  const [externalItemSuggestions, setExternalItemSuggestions] = useState<CotizacionItem[]>([]);
+  const [externalItemSuggestions, setExternalItemSuggestions] = useState<ItemForm[]>([]);
 
   // Estado de delegación
   const [delegadoId, setDelegadoId] = useState<number | null>(null);
@@ -676,7 +676,7 @@ export function CotizacionDetail() {
     const fetchExternalSuggestions = async () => {
       try {
         const response = await getExternalItems(1, itemForm.descripcion);
-        setExternalItemSuggestions(response.data as unknown as CotizacionItem[]);
+        setExternalItemSuggestions(response.data as ItemForm[]);
       } catch (error) {
         console.warn('Error al cargar sugerencias de items externos:', error);
       }
@@ -693,7 +693,7 @@ export function CotizacionDetail() {
     const fetchExternalSuggestions = async () => {
       try {
         const response = await getExternalItems(1);
-        setExternalItemSuggestions(response.data as unknown as CotizacionItem[]);
+        setExternalItemSuggestions(response.data as ItemForm[]);
       } catch (error) {
         console.warn('Error al cargar sugerencias de items externos:', error);
       }
@@ -2576,7 +2576,7 @@ export function CotizacionDetail() {
         editingItem={editingItem}
         handleIntercambiarMoneda={handleIntercambiarMoneda}
         readOnly={isCotizacionReadOnly}
-        externalItemSuggestions={externalItemSuggestions as unknown as ItemForm[]}
+        externalItemSuggestions={externalItemSuggestions}
         onSelectExternalSuggestion={handleExternalSuggestionSelection}
       />
 

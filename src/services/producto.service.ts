@@ -42,6 +42,7 @@ export interface CotizacionItem {
     disponibilidad_dias: number;
     garantia_meses: number;
     estado_cotizacion_item_id: number;
+    orden: number;
     aplica_costos_adicionales?: boolean;
     proveedor?: string;
     link_proveedor?: string;
@@ -190,6 +191,7 @@ function normalizeProductoExterno(item: ProductoExterno): CotizacionItem {
         disponibilidad_dias: Number(item.disponibilidad_dias || 4),
         garantia_meses: Number(item.garantia_meses || 12),
         estado_cotizacion_item_id: 0,
+        orden: 1,
         aplica_costos_adicionales: true,
         proveedor: item.proveedor || "",
         link_proveedor: item.link_proveedor || "",

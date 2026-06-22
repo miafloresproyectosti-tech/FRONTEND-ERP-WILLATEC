@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { useRefresh } from "../RefreshContext";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -19,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  RefreshCw,
 } from "lucide-react";
 
 import { useAuth } from "../AuthContext";
@@ -125,7 +125,6 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
 export default function Cotizaciones() {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
-  const { lastSync } = useRefresh();
 
   const navigate = useNavigate();
 
@@ -146,6 +145,7 @@ export default function Cotizaciones() {
   const [totalCotizaciones, setTotalCotizaciones] = useState(0);
   const [paginationFrom, setPaginationFrom] = useState(0);
   const [paginationTo, setPaginationTo] = useState(0);
+  const [cotizacionesLastSync, setCotizacionesLastSync] = useState<string | null>(null);
   const [cotizacionToDelete, setCotizacionToDelete] = useState<ApiCotizacion | null>(null);
   const [cotizacionForOc, setCotizacionForOc] = useState<ApiCotizacion | null>(null);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
@@ -168,6 +168,7 @@ export default function Cotizaciones() {
       setTotalCotizaciones(response.total || 0);
       setPaginationFrom(response.from || 0);
       setPaginationTo(response.to || 0);
+      setCotizacionesLastSync(new Date().toISOString());
     } catch (error) {
       console.error('Error al cargar cotizaciones:', error);
       addNotification({
@@ -310,6 +311,34 @@ export default function Cotizaciones() {
     void Promise.resolve().then(() => loadEjecutivosResumen());
   }, [loadEjecutivosResumen]);
 
+  useEffect(() => {
+    const refreshCotizacionesData = () => {
+      void Promise.all([
+        loadCotizaciones(),
+        loadResumenEstados(),
+        loadEjecutivosResumen(),
+      ]);
+    };
+
+    const handleGlobalRefresh = (event: Event) => {
+      const source = (event as CustomEvent<{ source?: string }>).detail?.source;
+
+      if (source !== "manual") return;
+
+      refreshCotizacionesData();
+    };
+
+    const handleCotizacionNotification = () => refreshCotizacionesData();
+
+    window.addEventListener("erp:refreshed", handleGlobalRefresh);
+    window.addEventListener("erp:cotizacion-notification", handleCotizacionNotification);
+
+    return () => {
+      window.removeEventListener("erp:refreshed", handleGlobalRefresh);
+      window.removeEventListener("erp:cotizacion-notification", handleCotizacionNotification);
+    };
+  }, [loadCotizaciones, loadResumenEstados, loadEjecutivosResumen]);
+
   const getSimboloMoneda = (cotizacion: ApiCotizacion) => {
     return Number(cotizacion.moneda_id) === 2 ? "$" : "S/";
   };
@@ -387,7 +416,14 @@ export default function Cotizaciones() {
         </div>
 
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Sincronizado: {lastSync ? new Date(lastSync).toLocaleTimeString('es-PE') : '—'}
+          Sincronizado: {cotizacionesLastSync
+            ? new Date(cotizacionesLastSync).toLocaleTimeString("es-PE", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              timeZone: "America/Lima",
+            })
+            : "—"}
         </p>
       </div>
 
@@ -586,6 +622,16 @@ export default function Cotizaciones() {
               <option value="aprobada">Aprobada</option>
               <option value="oc_registrada">OC_Registrada</option>
             </select>
+
+            <button
+              type="button"
+              onClick={loadCotizaciones}
+              disabled={loading}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-950 sm:w-auto"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+              Actualizar
+            </button>
           </div>
         </div>
 
@@ -654,6 +700,7 @@ export default function Cotizaciones() {
                     ].includes(estadoActualId);
                     const puedeEditarDirecto = puedeEditar && !bloqueaEdicion;
                     const puedeGenerarOc = puedeEditar && estadoActualId === ESTADO_FILTER_MAP.aprobada;
+                    const modificacionesPendientes = Number(cotizacion.modificaciones_pendientes_count || 0);
 
                     return (
                       <tr
@@ -708,10 +755,15 @@ export default function Cotizaciones() {
                                 navigate(`/cotizaciones/${cotizacion.id}/view`)
                               }
 
-                              className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-200 flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-800 transition"
-                              title="Ver detalle"
+                              className="relative w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-200 flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-800 transition"
+                              title={modificacionesPendientes > 0 ? `${modificacionesPendientes} modificacion pendiente` : "Ver detalle"}
                             >
                               <Eye size={18} />
+                              {modificacionesPendientes > 0 && (
+                                <span className="absolute -right-1 -top-1 min-w-[18px] h-[18px] rounded-full bg-red-600 px-1 text-[10px] font-bold leading-[18px] text-white ring-2 ring-white dark:ring-slate-950">
+                                  {modificacionesPendientes > 9 ? "9+" : modificacionesPendientes}
+                                </span>
+                              )}
                             </button>
 
                             {/* EDITAR */}

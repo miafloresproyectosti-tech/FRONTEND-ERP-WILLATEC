@@ -123,6 +123,17 @@ function showNativeNotification(notification: DatabaseNotification) {
   };
 }
 
+function isCotizacionNotification(notification: DatabaseNotification): boolean {
+  const actionUrl = String(notification.data.action_url || "");
+  const type = String(notification.type || "");
+
+  return Boolean(
+    notification.data.cotizacion_id ||
+      actionUrl.includes("/cotizaciones") ||
+      type.toLowerCase().includes("cotizacion")
+  );
+}
+
 export default function Topbar({
   onNotificationClick,
   onMenuClick,
@@ -161,6 +172,21 @@ export default function Topbar({
     setNotifications(data);
 
     if (hasLoadedNotificationsRef.current && notifyNewUnread && hasNewUnread) {
+      const cotizacionNotifications = newUnreadNotifications.filter(isCotizacionNotification);
+
+      if (cotizacionNotifications.length > 0) {
+        window.dispatchEvent(
+          new CustomEvent("erp:cotizacion-notification", {
+            detail: {
+              cotizacionIds: cotizacionNotifications
+                .map((notification) => notification.data.cotizacion_id)
+                .filter(Boolean),
+              notificationIds: cotizacionNotifications.map((notification) => notification.id),
+            },
+          })
+        );
+      }
+
       void playNotificationSound();
       showNativeNotification(newUnreadNotifications[0]);
     }

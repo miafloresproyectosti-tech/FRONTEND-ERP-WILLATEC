@@ -7,6 +7,14 @@ import RecentActivity from "../components/dashboard/RecentActivity";
 
 export default function Dashboard() {
   const { refreshCount, lastSync } = useRefresh();
+  const lastSyncLabel = lastSync
+    ? new Date(lastSync).toLocaleTimeString("es-PE", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZone: "America/Lima",
+    })
+    : "Nunca";
 
   return (
     <div className="space-y-6">
@@ -25,7 +33,7 @@ export default function Dashboard() {
           </div>
 
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Actualizado: {refreshCount === 0 ? "Nunca" : `${lastSync}`}
+            Actualizado: {refreshCount === 0 ? "Nunca" : lastSyncLabel}
           </p>
         </div>
       </div>

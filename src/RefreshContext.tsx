@@ -14,7 +14,7 @@ type RefreshSource = "manual" | "auto" | "focus" | "online";
 interface RefreshContextType {
   refreshing: boolean;
   refreshCount: number;
-  lastSync: string;
+  lastSync: string | null;
   refresh: () => Promise<void>;
 }
 
@@ -26,7 +26,7 @@ const RefreshContext = createContext<RefreshContextType | undefined>(undefined);
 export function RefreshProvider({ children }: { children: ReactNode }) {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshCount, setRefreshCount] = useState(0);
-  const [lastSync, setLastSync] = useState("Nunca");
+  const [lastSync, setLastSync] = useState<string | null>(null);
   const refreshingRef = useRef(false);
   const lastRefreshAtRef = useRef(0);
 
@@ -51,7 +51,7 @@ export function RefreshProvider({ children }: { children: ReactNode }) {
     }
 
     lastRefreshAtRef.current = Date.now();
-    setLastSync(new Date().toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "America/Lima" }));
+    setLastSync(new Date().toISOString());
     window.dispatchEvent(
       new CustomEvent("erp:refreshed", {
         detail: { source, timestamp: lastRefreshAtRef.current },

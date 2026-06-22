@@ -151,6 +151,7 @@ export interface Cotizacion {
   cliente_telefono: string;
   cliente_correo: string;
   estado_cotizacion_id: number;
+  modificaciones_pendientes_count?: number | null;
   created_at?: string;
   updated_at?: string;
   // Relaciones opcionales

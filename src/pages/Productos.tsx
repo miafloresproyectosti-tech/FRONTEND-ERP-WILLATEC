@@ -14,12 +14,13 @@ import {
 import { getProductos, getExternalItems, createProducto, updateProducto, deleteProducto, updateCotizacionItem, type Producto, type ProductoPayload, type CotizacionItem } from "../services/producto.service";
 import {
   getCotizacion,
-  getCotizaciones,
+  getCotizacionesPaginated,
   updateCotizacion,
   type Cotizacion,
 } from "../services/cotizacion.service";
 import { useNotifications } from "../NotificationContext";
-import { normalizeStorageImageUrl } from "../utils/storageImage";
+import { useAuth } from "../AuthContext";
+import { normalizeStorageImageUrl, resolveItemImageUrl } from "../utils/storageImage";
 import { getPaginationItems } from "../utils/pagination";
 // import { Plus as PlusIcon } from "lucide-react";
 
@@ -87,6 +88,7 @@ const mapProducto = (producto: Producto): ProductoUI => ({
 
 export default function Productos() {
   const { addNotification } = useNotifications();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const [productos, setProductos] = useState<ProductoUI[]>([]);
@@ -537,15 +539,44 @@ export default function Productos() {
     });
 
   const loadCotizacionesForExternalItem = async () => {
+    if (!user?.id) {
+      setCotizaciones([]);
+      return;
+    }
+
     try {
       setLoadingCotizaciones(true);
-      const data = await getCotizaciones();
-      setCotizaciones(data);
+      const perPage = 100;
+      const firstPage = await getCotizacionesPaginated({
+        page: 1,
+        perPage,
+        estadoCotizacionId: 1,
+        ejecutivoId: user.id,
+      });
+      const draftCotizaciones = [...(firstPage.data || [])];
+
+      for (let page = 2; page <= Number(firstPage.last_page || 1); page += 1) {
+        const response = await getCotizacionesPaginated({
+          page,
+          perPage,
+          estadoCotizacionId: 1,
+          ejecutivoId: user.id,
+        });
+        draftCotizaciones.push(...(response.data || []));
+      }
+
+      setCotizaciones(
+        draftCotizaciones.filter(
+          (cotizacion) =>
+            Number(cotizacion.estado_cotizacion_id) === 1 &&
+            Number(cotizacion.user_id) === Number(user.id)
+        )
+      );
     } catch (error) {
       console.error(error);
       addNotification({
         title: "Error al cargar cotizaciones",
-        description: "No se pudo obtener la lista de cotizaciones.",
+        description: "No se pudo obtener la lista de tus cotizaciones en borrador.",
         type: "warning",
         icon: "MessageCircle",
         route: "/productos",
@@ -568,10 +599,7 @@ export default function Productos() {
     setSelectedExternalItem(externalItem);
     setCotizacionSearchTerm("");
     setShowAddToCotizacionModal(true);
-
-    if (cotizaciones.length === 0) {
-      void loadCotizacionesForExternalItem();
-    }
+    void loadCotizacionesForExternalItem();
   };
 
   const handleCreateCotizacionWithExternalItem = () => {
@@ -840,7 +868,30 @@ export default function Productos() {
 
       {/* TABLA */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
-        <table className="w-full">
+        <table className="w-full table-fixed">
+          <colgroup>
+            {isStockTab ? (
+              <>
+                <col className="w-[22%]" />
+                <col className="w-[14%]" />
+                <col className="w-[10%]" />
+                <col className="w-[12%]" />
+                <col className="w-[20%]" />
+                <col className="w-[10%]" />
+                <col className="w-[120px]" />
+              </>
+            ) : (
+              <>
+                <col className="w-[30%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[8%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[136px]" />
+              </>
+            )}
+          </colgroup>
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               {isStockTab ? (
@@ -906,20 +957,35 @@ export default function Productos() {
                 </td>
               </tr>
             ) : tableItems.length > 0 ? (
-              tableItems.map((item: any) => (
-                <tr
-                  key={item.id ?? item.codigo ?? JSON.stringify(item)}
-                  className="border-b border-gray-100 hover:bg-gray-50 transition-all duration-200"
-                >
+              tableItems.map((item: any) => {
+                const itemImage = resolveItemImageUrl(item.imagen_url, item.imagen);
+
+                return (
+                  <tr
+                    key={item.id ?? item.codigo ?? JSON.stringify(item)}
+                    className="border-b border-gray-100 hover:bg-gray-50 transition-all duration-200"
+                  >
                   {isStockTab ? (
                     <>
-                      <td className="px-6 py-5">
-                        <h3 className="font-semibold text-gray-800">
-                          {item.nombre}
-                        </h3>
-                        <p className="text-sm text-gray-500">
-                          #{item.codigo}
-                        </p>
+                      <td className="px-6 py-5 overflow-hidden">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {itemImage && (
+                            <img
+                              src={itemImage}
+                              alt=""
+                              className="w-8 h-8 rounded border border-gray-200 object-contain bg-white flex-shrink-0"
+                              loading="lazy"
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <h3 className="font-semibold text-gray-800 truncate">
+                              {item.nombre}
+                            </h3>
+                            <p className="text-sm text-gray-500 truncate">
+                              #{item.codigo}
+                            </p>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-6 py-5 text-gray-600">
                         {item.categoria_label}
@@ -968,15 +1034,29 @@ export default function Productos() {
                   ) : (
                     <>
                       <td className="px-6 py-5">
-                        <h3 className="font-semibold text-gray-800">
-                          {item.descripcion}
-                        </h3>
+                        <div className="flex items-center gap-2 min-w-0">
+                          {itemImage && (
+                            <img
+                              src={itemImage}
+                              alt=""
+                              className="w-8 h-8 rounded border border-gray-200 object-contain bg-white flex-shrink-0"
+                              loading="lazy"
+                            />
+                          )}
+                          <h3 className="min-w-0 truncate font-semibold text-gray-800" title={item.descripcion}>
+                            {item.descripcion}
+                          </h3>
+                        </div>
                       </td>
                       <td className="px-6 py-5 text-gray-600">
-                        {item.marca || "N/A"}
+                        <span className="block truncate" title={item.marca || "N/A"}>
+                          {item.marca || "N/A"}
+                        </span>
                       </td>
                       <td className="px-6 py-5 text-gray-600">
-                        {item.codigo}
+                        <span className="block truncate" title={item.codigo}>
+                          {item.codigo}
+                        </span>
                       </td>
                       <td className="px-6 py-5 text-gray-600 font-medium">
                         {item.stock}
@@ -987,8 +1067,8 @@ export default function Productos() {
                       <td className="px-6 py-5 font-semibold text-gray-800">
                         S/. {Number(item.ultimo_precio_venta || item.precio_venta || "0").toLocaleString()}
                       </td>
-                      <td className="px-6 py-5">
-                        <div className="flex items-center justify-center">
+                      <td className="px-4 py-5">
+                        <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() =>
                               handleOpenExternalEditModal(item)
@@ -1000,7 +1080,7 @@ export default function Productos() {
                           </button>
                           <button
                             onClick={() => handleAddExternalItem(item)}
-                            className="w-11 h-11 rounded-xl bg-gray-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm ml-2"
+                            className="w-11 h-11 rounded-xl bg-gray-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
                             title="Agregar item a cotización"
                           >
                             <Plus size={18} />
@@ -1009,8 +1089,9 @@ export default function Productos() {
                       </td>
                     </>
                   )}
-                </tr>
-              ))
+                  </tr>
+                );
+              })
             ) : (
               <tr>
                 <td
