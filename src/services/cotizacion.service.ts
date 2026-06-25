@@ -14,6 +14,7 @@ export interface CotizacionItem {
   imagen_url?: string | null;
   imagen_path?: string | null;
   margen: number;
+  nota?: string;
   marca?: string;
   codigo?: string;
   unidad_medida?: string;
@@ -60,6 +61,7 @@ export interface ItemFormState {
   estado_cotizacion_item_id?: number;
   tipo: 'catalogo' | 'externo';
   margen: number;
+  nota: string;
   marca: string;
   codigo: string;
   unidad_medida: string;
@@ -279,6 +281,7 @@ export interface CreateItemData {
   cantidad: number;
   costo_base: number;
   margen: number;
+  nota?: string;
   marca?: string;
   codigo?: string;
   unidad_medida?: string;

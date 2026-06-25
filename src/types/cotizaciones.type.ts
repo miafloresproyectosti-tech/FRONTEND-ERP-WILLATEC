@@ -56,6 +56,7 @@ export type CotizacionItem ={
     imagen_url?: string | null;
     imagen_path?: string | null;
     margen: number;
+    nota?: string;
     marca?: string;
     codigo?: string;
     unidad_medida?: string;
@@ -136,6 +137,7 @@ export interface ItemForm {
     imagen_url?: string | null;
     imagen_path?: string | null;
     margen: number;
+    nota?: string;
     marca?: string;
     codigo?: string;
     unidad_medida?: string;

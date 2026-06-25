@@ -42,6 +42,7 @@ export interface ItemCotizacion {
   costo_unitario: number;
   precio_venta: number;
   margen: number;
+  nota?: string;
   marca?: string;
   costo_base: number;
   costo_total: number;

@@ -290,6 +290,12 @@ export function ItemFormModal({
                   )}
                 </label>
               </div>
+              {field('Nota',
+                <textarea className={`${inp} min-h-16 resize-y`} value={itemForm.nota || ''}
+                  disabled={readOnly}
+                  onChange={e => setItemForm({ ...itemForm, nota: e.target.value })}
+                  placeholder="Información adicional opcional para mostrar en la cotización" />
+              )}
               <div className="grid grid-cols-3 gap-2">
                 {field('Marca',
                   <input className={inp} type="text" value={itemForm.marca || ''}
@@ -520,5 +526,4 @@ export function ItemFormModal({
     </div>
   );
 }
-
 

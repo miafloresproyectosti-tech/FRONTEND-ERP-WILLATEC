@@ -447,6 +447,7 @@ export function CotizacionDetail() {
       subtotal: Number(source.precio_venta || 0),
       ganancia: Number(source.ganancia || 0),
       margen: Number(source.margen || 0),
+      nota: source.nota || '',
       marca: source.marca || '',
       codigo: source.codigo || '',
       unidad_medida: source.unidad_medida || 'UND',
@@ -487,6 +488,7 @@ export function CotizacionDetail() {
     aplica_costos_adicionales: true,
     tipo: 'externo' as 'catalogo' | 'externo',
     margen: 20,
+    nota: '',
     marca: '',
     codigo: '',
     unidad_medida: 'UND',
@@ -1522,6 +1524,8 @@ export function CotizacionDetail() {
 
       margen: Number(itemForm.margen),
 
+      nota: itemForm.nota,
+
       marca: itemForm.marca,
 
       codigo: itemForm.codigo,
@@ -1596,6 +1600,7 @@ export function CotizacionDetail() {
             cantidad: Number(itemForm.cantidad),
             costo_base: Number(itemForm.costo_base),
             margen: Number(itemForm.margen),
+            nota: itemForm.nota,
             marca: itemForm.marca,
             codigo: itemForm.codigo,
             unidad_medida: itemForm.unidad_medida ?? 'UND',
@@ -1758,6 +1763,7 @@ export function CotizacionDetail() {
       aplica_costos_adicionales: true,
       tipo: 'externo',
       margen: 20,
+      nota: '',
       marca: '',
       codigo: '',
       unidad_medida: 'UND',
@@ -1803,6 +1809,7 @@ export function CotizacionDetail() {
       aplica_costos_adicionales: true,
       tipo: 'catalogo',
       margen: Number(margen.toFixed(2)),
+      nota: '',
       marca: producto.marca || '',
       codigo: producto.codigo || '',
       unidad_medida: producto.unidad_medida || 'UND',
@@ -1831,6 +1838,7 @@ export function CotizacionDetail() {
     setItemForm((prev) => ({
       ...prev,
       descripcion: suggestion.descripcion || prev.descripcion,
+      nota: suggestion.nota || '',
       marca: suggestion.marca || '',
       codigo: suggestion.codigo || '',
       costo_base: Number(suggestion.costo_base ?? suggestion.costo_unitario ?? prev.costo_base ?? 0),
@@ -1959,6 +1967,7 @@ export function CotizacionDetail() {
       cantidad: 1,
       costo_base: 0,
       margen: 20,
+      nota: '',
       marca: '',
       codigo: '',
       unidad_medida: 'UND',
