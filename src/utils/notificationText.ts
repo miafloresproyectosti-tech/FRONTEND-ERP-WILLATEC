@@ -31,6 +31,8 @@ export const getNotificationTitle = (notification: DatabaseNotification) => {
   if (action === "rechazada") return "Cotizacion rechazada";
   if (action === "modificacion_solicitada") return "Solicitud de modificacion";
   if (action === "modificacion_en_revision") return "Modificacion enviada a revision";
+  if (action === "modificacion_aprobada") return "Version aprobada";
+  if (action === "modificacion_rechazada") return "Version rechazada";
   if (action === "oc_recibida_registrada") return "OC recibida registrada";
   if (action === "oc_emitida_registrada") return "OC emitida";
 
@@ -90,6 +92,23 @@ export const getNotificationDescription = (notification: DatabaseNotification) =
       : `Una modificacion de ${target} fue enviada para revision.`;
   }
 
+  if (action === "modificacion_aprobada") {
+    const version = notification.data.version_number ? ` V${notification.data.version_number}` : "";
+    return actor
+      ? `La version${version} de ${target} fue aprobada por ${actor}.`
+      : `La version${version} de ${target} fue aprobada.`;
+  }
+
+  if (action === "modificacion_rechazada") {
+    const version = notification.data.version_number ? ` V${notification.data.version_number}` : "";
+    const reason = typeof notification.data.reason === "string" && notification.data.reason.trim()
+      ? `: ${notification.data.reason.trim()}`
+      : "";
+    return actor
+      ? `La version${version} de ${target} fue rechazada por ${actor}${reason}.`
+      : `La version${version} de ${target} fue rechazada${reason}.`;
+  }
+
   if (action === "oc_recibida_registrada") {
     const ocNumero = typeof notification.data.oc_recibida_numero === "string"
       ? notification.data.oc_recibida_numero
@@ -118,11 +137,13 @@ export const getNotificationTone = (notification: DatabaseNotification) => {
   const action = String(notification.data.action || "");
 
   if (action === "aprobada") return "success";
+  if (action === "modificacion_aprobada") return "success";
   if (action === "oc_recibida_registrada" || action === "oc_emitida_registrada") return "success";
   if (
     action === "rechazada" ||
     action === "modificacion_solicitada" ||
-    action === "modificacion_en_revision"
+    action === "modificacion_en_revision" ||
+    action === "modificacion_rechazada"
   ) {
     return "warning";
   }

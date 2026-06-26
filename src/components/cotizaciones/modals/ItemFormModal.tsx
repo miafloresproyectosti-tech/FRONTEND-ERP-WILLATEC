@@ -316,8 +316,25 @@ export function ItemFormModal({
                     <option value="UND">UND</option>
                     <option value="KIT">KIT</option>
                     <option value="PAR">PAR</option>
+                    <option value="PZA">PZA</option>
+                    <option value="SET">SET</option>
+                    <option value="CAJA">CAJA</option>
+                    <option value="PAQ">PAQ</option>
+                    <option value="BOLSA">BOLSA</option>
+                    <option value="ROLLO">ROLLO</option>
+                    <option value="MTS">MTS</option>
+                    <option value="CM">CM</option>
+                    <option value="MM">MM</option>
                     <option value="SRV">SRV</option>
+                    <option value="HORA">HORA</option>
+                    <option value="DIA">DIA</option>
                     <option value="KG">KG</option>
+                    <option value="GR">GR</option>
+                    <option value="LT">LT</option>
+                    <option value="ML">ML</option>
+                    <option value="CIENTO">CIENTO</option>
+                    <option value="MILES">MILES</option>
+                    <option value="DOC">DOC</option>
                   </select>
                 )}
               </div>
@@ -337,10 +354,19 @@ export function ItemFormModal({
                   onChange={e => setItemForm({ ...itemForm, cantidad: e.target.value ? parseInt(e.target.value) : 0 })} />
               )}
               {field('Garantía (meses)',
-                <input className={inp} type="number"
+                <select className={inp}
                   disabled={readOnly}
-                  value={itemForm.garantia_meses?.toString() ?? ''}
-                  onChange={e => setItemForm({ ...itemForm, garantia_meses: e.target.value ? parseInt(e.target.value) : 0 })} />
+                  value={itemForm.garantia_meses?.toString() ?? '12'}
+                  onChange={e => setItemForm({ ...itemForm, garantia_meses: parseInt(e.target.value) })}>
+                  {[3, 6, 12, 24, 36, 48, 60].map((meses) => (
+                    <option key={meses} value={meses}>{meses}</option>
+                  ))}
+                  {itemForm.garantia_meses && ![3, 6, 12, 24, 36, 48, 60].includes(Number(itemForm.garantia_meses)) && (
+                    <option value={itemForm.garantia_meses}>
+                      {itemForm.garantia_meses} actual
+                    </option>
+                  )}
+                </select>
               )}
               {field('Días entrega',
                 <input className={inp} type="number"
@@ -526,4 +552,3 @@ export function ItemFormModal({
     </div>
   );
 }
-

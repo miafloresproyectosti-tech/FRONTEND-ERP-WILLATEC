@@ -225,6 +225,7 @@ export interface CotizacionModificacion {
   requested_by: number;
   reviewed_by: number | null;
   comentario_revision: string | null;
+  comentario_reenvio_revision?: string | null;
   submitted_at: string | null;
   reviewed_at: string | null;
   cotizacion?: Cotizacion;
@@ -623,9 +624,11 @@ export async function updateCotizacion(
   }
 }
 
-export async function enviarCotizacionRevision(id: number): Promise<Cotizacion> {
+export async function enviarCotizacionRevision(id: number, comentario?: string): Promise<Cotizacion> {
   try {
-    const response = await api.patch(`/cotizaciones/${id}/enviar-revision`);
+    const response = await api.patch(`/cotizaciones/${id}/enviar-revision`, {
+      ...(comentario?.trim() ? { comentario: comentario.trim() } : {}),
+    });
     return response.data?.cotizacion || response.data?.data || response.data;
   } catch (error) {
     console.error("Error al enviar cotización a revisión:", error);
@@ -739,9 +742,15 @@ export async function getCotizacionModificacion(
 export async function updateCotizacionModificacion(
   modificacionId: number,
   propuesta: CotizacionEditablePayload,
+  comentarioReenvioRevision?: string,
 ): Promise<CotizacionModificacion> {
   try {
-    const payload = prepareCotizacionData(propuesta);
+    const payload = {
+      ...prepareCotizacionData(propuesta),
+      ...(comentarioReenvioRevision?.trim()
+        ? { comentario_reenvio_revision: comentarioReenvioRevision.trim() }
+        : {}),
+    };
 
     if (hasNewCotizacionItemImage(propuesta)) {
       const formData = buildCotizacionFormData(payload);
@@ -763,9 +772,14 @@ export async function updateCotizacionModificacion(
 
 export async function enviarModificacionRevision(
   modificacionId: number,
+  comentarioReenvioRevision?: string,
 ): Promise<CotizacionModificacion> {
   try {
-    const response = await api.patch(`/cotizaciones/modificaciones/${modificacionId}/enviar-revision`);
+    const response = await api.patch(`/cotizaciones/modificaciones/${modificacionId}/enviar-revision`, {
+      ...(comentarioReenvioRevision?.trim()
+        ? { comentario_reenvio_revision: comentarioReenvioRevision.trim() }
+        : {}),
+    });
     return response.data?.modificacion || response.data?.data || response.data;
   } catch (error) {
     console.error("Error al enviar modificacion a revision:", error);

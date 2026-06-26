@@ -13,6 +13,7 @@ import { CotizacionResumen } from '../components/cotizaciones/CotizacionResumen'
 import { CotizacionGeneralForm } from '../components/cotizaciones/CotizacionGeneralForm';
 import { CotizacionItemsTable } from '../components/cotizaciones/CotizacionItemsTable';
 import type { ItemForm } from '../types/cotizaciones.type';
+import { normalizeStorageImageUrl } from '../utils/storageImage';
 import { ExportModal } from '../components/cotizaciones/modals/ExportModal';
 import { ItemTypeModal } from '../components/cotizaciones/modals/ItemTypeModal';
 import { ProductModal } from '../components/cotizaciones/modals/ProductModal';
@@ -203,6 +204,7 @@ export function CotizacionDetail() {
   const [showCostosModal, setShowCostosModal] = useState(false);
   const [showRechazoModal, setShowRechazoModal] = useState(false);
   const [comentarioRechazo, setComentarioRechazo] = useState('');
+  const [comentarioReenvioRevision, setComentarioReenvioRevision] = useState('');
   const [showSolicitudModificacionModal, setShowSolicitudModificacionModal] = useState(false);
   const [motivoModificacion, setMotivoModificacion] = useState('');
   const [solicitandoModificacion, setSolicitandoModificacion] = useState(false);
@@ -237,8 +239,11 @@ export function CotizacionDetail() {
   const canEditModificacion = Boolean(
     isModificationMode &&
     modificacion &&
-    modificacion.estado === 'borrador' &&
+    (modificacion.estado === 'borrador' || modificacion.estado === 'rechazada') &&
     (isCotizacionCreator || isCotizacionEditDelegate || Number(modificacion.requested_by) === Number(user?.id))
+  );
+  const isModificacionRechazadaEditable = Boolean(
+    isModificationMode && modificacion?.estado === 'rechazada' && canEditModificacion
   );
   const canReviewModificacion = Boolean(
     isModificationMode &&
@@ -346,6 +351,8 @@ export function CotizacionDetail() {
   const normalizeEditableItems = (rawItems: any[] = []) =>
     rawItems.map((item, index) => {
       const rawImage = item.imagen_url || item.imagen || item.imagen_path || '';
+      const imageForPreview = normalizeStorageImageUrl(rawImage);
+      const imagePath = item.imagen_path || item.imagen || rawImage || null;
 
       return {
         ...item,
@@ -366,9 +373,9 @@ export function CotizacionDetail() {
         orden: Number(item.orden || index + 1),
         aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
         tipo: item.tipo || (item.producto_id ? 'catalogo' : 'externo'),
-        imagen: rawImage,
-        imagen_url: item.imagen_url || rawImage || null,
-        imagen_path: item.imagen_path || item.imagen || null,
+        imagen: imageForPreview || rawImage,
+        imagen_url: imageForPreview || null,
+        imagen_path: imagePath,
         proveedores: item.proveedores || [],
       };
     });
@@ -579,6 +586,7 @@ export function CotizacionDetail() {
   const handleOpenEditItem = (item: CotizacionItem) => {
     const proveedores = normalizeItemProveedores(item);
     const primaryProveedor = getPrimaryProveedor(proveedores);
+    const image = normalizeStorageImageUrl(item.imagen_url || item.imagen || item.imagen_path || '') || item.imagen || item.imagen_url || '';
     setEditingItem(item);
 
     setEditingItemId(item.id);
@@ -587,9 +595,9 @@ export function CotizacionDetail() {
       ...item,
       ...primaryProveedor,
       proveedores,
-      imagen: item.imagen || item.imagen_url || '',
-      imagen_url: item.imagen_url,
-      imagen_path: item.imagen_path,
+      imagen: image,
+      imagen_url: image || null,
+      imagen_path: item.imagen_path || item.imagen || null,
       aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
     });
 
@@ -874,6 +882,7 @@ export function CotizacionDetail() {
       setModificacion(data);
       setCotizacion(baseCotizacion);
       setEstadoCotizacionId(ESTADO_COTIZACION_APROBADA_ID);
+      setComentarioReenvioRevision(data.comentario_reenvio_revision || '');
       applyEditablePayload(data.propuesta, baseCotizacion);
       setHistorial(baseCotizacion?.historial || baseCotizacion?.cotizacion_historial || []);
 
@@ -914,7 +923,7 @@ export function CotizacionDetail() {
 
     setIsSendingReview(true);
     try {
-      const data = await enviarCotizacionRevision(cotizacionId);
+      const data = await enviarCotizacionRevision(cotizacionId, comentarioReenvioRevision);
       const historialApi = await getCotizacionHistorial(cotizacionId);
 
       setCotizacion(data);
@@ -922,6 +931,7 @@ export function CotizacionDetail() {
       setDelegadoId(data.delegado_id || null);
       setDelegadoCotizacionId(data.delegado_cotizacion_id ?? (data as any).delegadoCotizacionId ?? null);
       setHistorial(historialApi);
+      setComentarioReenvioRevision('');
 
       showToast({
         title: 'Cotización enviada',
@@ -1120,7 +1130,8 @@ export function CotizacionDetail() {
 
     setIsSendingReview(true);
     try {
-      const updated = await enviarModificacionRevision(currentModificacionId);
+      const updated = await enviarModificacionRevision(currentModificacionId, comentarioReenvioRevision);
+      setComentarioReenvioRevision('');
       setModificacion(updated);
       showToast({
         title: 'Modificacion enviada',
@@ -1433,11 +1444,22 @@ export function CotizacionDetail() {
       isEditing && currentCotizacionId && currentEstadoCotizacionId === 5 && canEditCotizacion;
     const payload = buildCotizacionPayload();
 
+    if (shouldSendRejectedToReview && comentarioReenvioRevision.trim()) {
+      payload.comentario = comentarioReenvioRevision.trim();
+    }
+
     setSaving(true);
     try {
       if (isModificationMode && currentModificacionId) {
-        const updated = await updateCotizacionModificacion(currentModificacionId, payload);
+        const updated = await updateCotizacionModificacion(
+          currentModificacionId,
+          payload,
+          isModificacionRechazadaEditable ? comentarioReenvioRevision : undefined
+        );
         setModificacion(updated);
+        if (isModificacionRechazadaEditable) {
+          setComentarioReenvioRevision('');
+        }
         showToast({
           title: 'Modificacion enviada',
           description: 'La propuesta fue guardada y enviada para revision.',
@@ -1450,7 +1472,7 @@ export function CotizacionDetail() {
         // Actualizar
         const updated = await updateCotizacion(currentCotizacionId, payload);
         const finalCotizacion = shouldSendRejectedToReview
-          ? await enviarCotizacionRevision(currentCotizacionId)
+          ? await enviarCotizacionRevision(currentCotizacionId, comentarioReenvioRevision)
           : updated;
         const historialApi = shouldSendRejectedToReview
           ? await getCotizacionHistorial(currentCotizacionId)
@@ -1463,6 +1485,9 @@ export function CotizacionDetail() {
         setDelegadoCotizacionId(finalCotizacion.delegado_cotizacion_id ?? (finalCotizacion as any).delegadoCotizacionId ?? null);
         if (historialApi) {
           setHistorial(historialApi);
+        }
+        if (shouldSendRejectedToReview) {
+          setComentarioReenvioRevision('');
         }
         showToast({
           title: shouldSendRejectedToReview ? 'Cotización enviada' : 'Cotización actualizada',
@@ -2024,6 +2049,24 @@ export function CotizacionDetail() {
       return fechaB - fechaA;
     });
 
+  const comentariosRevisionModificaciones = useMemo(() => {
+    const byId = new Map<number, CotizacionModificacion>();
+
+    if (modificacion?.comentario_revision?.trim() || modificacion?.comentario_reenvio_revision?.trim()) {
+      byId.set(modificacion.id, modificacion);
+    }
+
+    versionesInfo?.modificaciones
+      ?.filter((item) => item.comentario_revision?.trim() || item.comentario_reenvio_revision?.trim())
+      .forEach((item) => byId.set(item.id, item));
+
+    return Array.from(byId.values()).sort((a, b) => {
+      const fechaA = a.reviewed_at || a.submitted_at ? new Date(a.reviewed_at || a.submitted_at || '').getTime() : 0;
+      const fechaB = b.reviewed_at || b.submitted_at ? new Date(b.reviewed_at || b.submitted_at || '').getTime() : 0;
+      return fechaB - fechaA;
+    });
+  }, [modificacion, versionesInfo]);
+
   const getNombreUsuarioHistorial = (movimiento: CotizacionHistorial) => {
     const usuario = movimiento.usuario || movimiento.user;
     return usuario?.nombres || usuario?.email || 'Usuario no identificado';
@@ -2096,6 +2139,16 @@ export function CotizacionDetail() {
                 Propuesta V{modificacion.version_number} - {modificacion.estado.replace('_', ' ')}
               </p>
               <p className="text-sm text-blue-700">{modificacion.motivo}</p>
+              {modificacion.comentario_revision?.trim() && (
+                <p className="mt-2 text-sm text-blue-800">
+                  Revision: {modificacion.comentario_revision}
+                </p>
+              )}
+              {modificacion.comentario_reenvio_revision?.trim() && (
+                <p className="mt-2 text-sm text-blue-800">
+                  Reenvio: {modificacion.comentario_reenvio_revision}
+                </p>
+              )}
             </div>
             <button
               type="button"
@@ -2303,24 +2356,65 @@ export function CotizacionDetail() {
                   </button>
                 ))}
                 {versionesInfo.modificaciones.map((item) => (
-                  <div key={`mod-${item.id}`} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                  <button
+                    key={`mod-${item.id}`}
+                    type="button"
+                    onClick={() => navigate(`/cotizaciones/modificaciones/${item.id}/edit`)}
+                    className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-left transition hover:border-amber-300 hover:bg-amber-100"
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium text-amber-900">Propuesta V{item.version_number}</span>
                       <span className="text-xs text-amber-700">{item.estado.replace('_', ' ')}</span>
                     </div>
                     <p className="text-xs text-amber-700 mt-1 line-clamp-2">{item.motivo}</p>
-                  </div>
+                    {item.comentario_revision?.trim() && (
+                      <p className="text-xs text-amber-900 mt-2 line-clamp-2">
+                        Revision: {item.comentario_revision}
+                      </p>
+                    )}
+                    {item.comentario_reenvio_revision?.trim() && (
+                      <p className="text-xs text-amber-900 mt-1 line-clamp-2">
+                        Reenvio: {item.comentario_reenvio_revision}
+                      </p>
+                    )}
+                  </button>
                 ))}
               </div>
             </div>
           )}
 
-          {comentariosRevision.length > 0 && (
+          {(comentariosRevision.length > 0 || comentariosRevisionModificaciones.length > 0) && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
               <h2 className="text-base font-semibold text-amber-900 mb-3">
                 Comentarios de revision
               </h2>
               <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                {comentariosRevisionModificaciones.map((revision) => (
+                  <div
+                    key={`mod-revision-${revision.id}`}
+                    className="bg-white border border-amber-100 rounded-lg p-3"
+                  >
+                    <p className="text-xs font-medium text-amber-800">
+                      Propuesta V{revision.version_number} - {revision.estado.replace('_', ' ')}
+                    </p>
+                    {revision.comentario_revision?.trim() && (
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap mt-2">
+                        {revision.comentario_revision}
+                      </p>
+                    )}
+                    {revision.comentario_reenvio_revision?.trim() && (
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap mt-2">
+                        Reenvio: {revision.comentario_reenvio_revision}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap items-center justify-between gap-2 mt-3 text-xs text-gray-400">
+                      <span>Por: {revision.revisor?.nombres || revision.revisor?.email || 'Revisor no identificado'}</span>
+                      {(revision.reviewed_at || revision.submitted_at) && (
+                        <span>{new Date(revision.reviewed_at || revision.submitted_at || '').toLocaleString('es-PE')}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
                 {comentariosRevision.map((movimiento) => (
                   <div
                     key={movimiento.id}
@@ -2476,6 +2570,23 @@ export function CotizacionDetail() {
           )}
           {!isCotizacionReadOnly && (
             <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
+              {((!isModificationMode && currentEstadoCotizacionId === 5 && canEditCotizacion) || isModificacionRechazadaEditable) && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Comentario para reenviar a revision
+                  </label>
+                  <textarea
+                    value={comentarioReenvioRevision}
+                    onChange={(event) => setComentarioReenvioRevision(event.target.value)}
+                    className="w-full min-h-24 p-3 border rounded-lg resize-y focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Describe que se corrigio antes de enviar nuevamente"
+                    maxLength={1000}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Si lo dejas vacio, se usara el comentario automatico del sistema.
+                  </p>
+                </div>
+              )}
               <button
                 onClick={handleSaveCotizacion}
                 disabled={saving}
