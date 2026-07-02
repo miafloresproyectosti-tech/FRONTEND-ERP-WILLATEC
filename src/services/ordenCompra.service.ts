@@ -309,7 +309,7 @@ const appendArrayFields = (
 ) => {
   rows.forEach((row, index) => {
     Object.entries(row).forEach(([field, value]) => {
-      formData.append(`${key}[${index}][${field}]`, String(value));
+      formData.append(`${key}[${index}][${field}]`, typeof value === "boolean" ? (value ? "1" : "0") : String(value));
     });
   });
 };

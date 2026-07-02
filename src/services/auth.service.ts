@@ -81,6 +81,44 @@ export const forgotPasswordRequest = async (email: string) => {
     return response.data;
 };
 
+export interface SecurityQuestion {
+  id: number;
+  question: string;
+}
+
+export const getSuperadminSecurityQuestionsRequest = async () => {
+  const response = await api.get("/superadmin/security-questions");
+  return response.data as { configured: boolean; questions: SecurityQuestion[] };
+};
+
+export const updateSuperadminSecurityQuestionsRequest = async (
+  current_password: string,
+  questions: Array<{ answer: string }>
+) => {
+  const response = await api.put("/superadmin/security-questions", {
+    current_password,
+    questions,
+  });
+  return response.data as { configured: boolean; questions: SecurityQuestion[]; message?: string };
+};
+
+export const resetSuperadminPasswordWithSecurityQuestionsRequest = async (
+  email: string,
+  answers: string[],
+  password: string,
+  password_confirmation: string,
+  two_factor_code?: string
+) => {
+  const response = await api.post("/superadmin/security-question-reset", {
+    email,
+    answers,
+    password,
+    password_confirmation,
+    ...(two_factor_code ? { two_factor_code } : {}),
+  });
+  return response.data;
+};
+
 export const changePasswordRequest = async (current_password: string, password: string, password_confirmation: string) => {
     const response = await api.post('/password/change', { current_password, password, password_confirmation });
     if (response.data?.token) {

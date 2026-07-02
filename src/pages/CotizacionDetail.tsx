@@ -1965,6 +1965,9 @@ export function CotizacionDetail() {
   const ventasUsuarios = usuarios.filter((u) =>
     u.roles?.some((role) => role.name?.toUpperCase() === 'VENTAS')
   );
+  const usuariosDelegacionEdicion = usuarios.filter((u) =>
+    u.roles?.some((role) => ['VENTAS', 'SUPERADMIN'].includes(role.name?.toUpperCase()))
+  );
 
   const nombreDelegado = (() => {
     const delegado = cotizacion?.delegado || usuarios.find((u) => u.id === delegadoId);
@@ -2839,7 +2842,7 @@ export function CotizacionDetail() {
               className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 mb-4"
             >
               <option value="">Seleccionar delegado de edición</option>
-              {ventasUsuarios.map((usuario) => (
+              {usuariosDelegacionEdicion.map((usuario) => (
                 <option key={usuario.id} value={usuario.id}>
                   {`${usuario.nombres || (usuario as any).name || 'Usuario'} ${(usuario as any).apellidos || ''}`.trim()}
                 </option>

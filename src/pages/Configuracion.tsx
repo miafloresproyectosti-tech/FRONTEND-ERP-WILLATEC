@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Save, Building, Settings, Shield, Bell, Eye, EyeOff } from "lucide-react";
 import {
   enableTwoFactorRequest,
@@ -6,15 +6,23 @@ import {
   confirmTwoFactorRequest,
   disableTwoFactorRequest,
   changePasswordRequest,
+  getSuperadminSecurityQuestionsRequest,
+  updateSuperadminSecurityQuestionsRequest,
 } from "../services/auth.service";
 import { useNotifications } from "../NotificationContext";
 import { useAuth } from "../AuthContext";
+
+const SUPERADMIN_SECURITY_QUESTIONS = [
+  "¿Cual es el nombre de tu primera mascota?",
+  "¿Cual fue tu apodo en la universidad?",
+];
 
 export default function Configuracion() {
   const [activeTab, setActiveTab] = useState("empresa");
   const { showToast } = useNotifications();
   const { user, updateTwoFactorEnabled } = useAuth();
   const twoFactorEnabled = !!user?.two_factor_enabled;
+  const isSuperAdmin = user?.role === "SUPERADMIN";
 
   const tabs = [
     { id: "empresa", name: "Empresa", icon: Building },
@@ -38,6 +46,33 @@ export default function Configuracion() {
   });
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showSecurityQuestionAnswers, setShowSecurityQuestionAnswers] = useState([false, false]);
+  const [loadingSecurityQuestions, setLoadingSecurityQuestions] = useState(false);
+  const [savingSecurityQuestions, setSavingSecurityQuestions] = useState(false);
+  const [securityQuestionsConfigured, setSecurityQuestionsConfigured] = useState(false);
+  const [securityQuestionsPassword, setSecurityQuestionsPassword] = useState("");
+  const [securityQuestionsForm, setSecurityQuestionsForm] = useState<Array<{ answer: string }>>([
+    { answer: "" },
+    { answer: "" },
+  ]);
+
+  useEffect(() => {
+    if (!isSuperAdmin || activeTab !== "seguridad") return;
+
+    const loadSecurityQuestions = async () => {
+      try {
+        setLoadingSecurityQuestions(true);
+        const data = await getSuperadminSecurityQuestionsRequest();
+        setSecurityQuestionsConfigured(Boolean(data.configured));
+      } catch (error) {
+        console.warn("Error al cargar preguntas de seguridad:", error);
+      } finally {
+        setLoadingSecurityQuestions(false);
+      }
+    };
+
+    void loadSecurityQuestions();
+  }, [activeTab, isSuperAdmin]);
 
   const handlePasswordFormChange = (field: keyof typeof passwordForm, value: string) => {
     setPasswordForm((current) => ({
@@ -108,6 +143,71 @@ export default function Configuracion() {
       });
     } finally {
       setChangingPassword(false);
+    }
+  };
+
+  const handleSecurityQuestionChange = (
+    index: number,
+    value: string,
+  ) => {
+    setSecurityQuestionsForm((current) =>
+      current.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, answer: value } : row,
+      ),
+    );
+  };
+
+  const saveSecurityQuestions = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!securityQuestionsPassword.trim()) {
+      showToast({
+        title: "Datos incompletos",
+        description: "Ingresa tu contraseña actual para confirmar",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (securityQuestionsForm.some((row) => !row.answer.trim())) {
+      showToast({
+        title: "Preguntas incompletas",
+        description: "Completa las 2 respuestas de seguridad",
+        type: "warning",
+      });
+      return;
+    }
+
+    try {
+      setSavingSecurityQuestions(true);
+      const data = await updateSuperadminSecurityQuestionsRequest(
+        securityQuestionsPassword,
+        securityQuestionsForm,
+      );
+      setSecurityQuestionsConfigured(Boolean(data.configured));
+      setSecurityQuestionsPassword("");
+      setSecurityQuestionsForm((current) =>
+        current.map((row) => ({
+          ...row,
+          answer: "",
+        })),
+      );
+      showToast({
+        title: "Preguntas actualizadas",
+        description: data.message || "Tus preguntas de seguridad fueron guardadas",
+        type: "success",
+      });
+    } catch (error: unknown) {
+      const backendMessage =
+        (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+
+      showToast({
+        title: "Error al guardar preguntas",
+        description: backendMessage || "No se pudieron actualizar las preguntas de seguridad",
+        type: "error",
+      });
+    } finally {
+      setSavingSecurityQuestions(false);
     }
   };
 
@@ -353,6 +453,103 @@ ${recoveryCodes.join("\n")}
                 </div>
               </div>
             </div>
+            {isSuperAdmin && (
+              <div className="bg-white rounded-2xl p-6 shadow">
+                <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold">Preguntas de seguridad</h2>
+                    <p className="text-sm text-gray-600">
+                      Solo se usarán para recuperar la cuenta SUPERADMIN.
+                    </p>
+                  </div>
+                  <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${
+                    securityQuestionsConfigured
+                      ? "bg-green-100 text-green-700"
+                      : "bg-amber-100 text-amber-700"
+                  }`}>
+                    {loadingSecurityQuestions
+                      ? "Cargando..."
+                      : securityQuestionsConfigured
+                        ? "Configuradas"
+                        : "Pendientes"}
+                  </span>
+                </div>
+
+                <form onSubmit={saveSecurityQuestions} className="space-y-4">
+                  {securityQuestionsForm.map((row, index) => (
+                    <div key={index} className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-700">
+                          Pregunta {index + 1}
+                        </label>
+                        <input
+                          type="text"
+                          value={SUPERADMIN_SECURITY_QUESTIONS[index]}
+                          readOnly
+                          className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
+                          placeholder="Ej. ¿Cuál fue tu primera ciudad?"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-700">
+                          Respuesta
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showSecurityQuestionAnswers[index] ? "text" : "password"}
+                            value={row.answer}
+                            onChange={(event) =>
+                              handleSecurityQuestionChange(index, event.target.value)
+                            }
+                            className="w-full px-4 py-3 pr-12 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
+                            autoComplete="off"
+                            placeholder={securityQuestionsConfigured ? "Nueva respuesta" : "Respuesta"}
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowSecurityQuestionAnswers((current) =>
+                                current.map((visible, answerIndex) =>
+                                  answerIndex === index ? !visible : visible,
+                                ),
+                              )
+                            }
+                            className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700"
+                            title={showSecurityQuestionAnswers[index] ? "Ocultar respuesta" : "Ver respuesta"}
+                          >
+                            {showSecurityQuestionAnswers[index] ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700">
+                        Contraseña actual
+                      </label>
+                      <input
+                        type="password"
+                        value={securityQuestionsPassword}
+                        onChange={(event) => setSecurityQuestionsPassword(event.target.value)}
+                        className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
+                        autoComplete="current-password"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={savingSecurityQuestions}
+                      className="inline-flex items-center justify-center gap-2 bg-slate-800 text-white px-5 py-3 rounded-xl font-semibold hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Save className="w-4 h-4" />
+                      {savingSecurityQuestions ? "Guardando..." : "Guardar preguntas"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
             <div className="bg-white rounded-2xl p-6 shadow">
               <h2 className="text-xl font-bold mb-4">Cambiar contraseña</h2>
 
