@@ -1,4 +1,5 @@
 import api from "./api";
+import { cachedRequest, clearCacheByPrefix } from "../utils/cache";
 import { normalizeStorageImagePath, normalizeStorageImageUrl } from "../utils/storageImage";
 
 // ========================
@@ -455,6 +456,15 @@ export interface GetCotizacionesParams {
   search?: string;
   perPage?: number;
   estadoCotizacionId?: number;
+  fechaDesde?: string;
+  fechaHasta?: string;
+}
+
+const COTIZACIONES_COUNT_CACHE_PREFIX = "cotizaciones:count:";
+const COTIZACIONES_COUNT_TTL_MS = 30_000;
+
+function clearCotizacionesReadCache() {
+  clearCacheByPrefix(COTIZACIONES_COUNT_CACHE_PREFIX);
 }
 
 // ========================
@@ -485,6 +495,8 @@ export async function getCotizacionesPaginated({
   search = "",
   perPage = 10,
   estadoCotizacionId,
+  fechaDesde,
+  fechaHasta,
 }: GetCotizacionesParams = {}): Promise<CotizacionesPaginatedResponse> {
   try {
     const response = await api.get("/cotizaciones", {
@@ -495,6 +507,8 @@ export async function getCotizacionesPaginated({
         cliente_id: clienteId,
         user_id: ejecutivoId,
         estado_cotizacion_id: estadoCotizacionId,
+        fecha_desde: fechaDesde || undefined,
+        fecha_hasta: fechaHasta || undefined,
       },
     });
 
@@ -503,6 +517,39 @@ export async function getCotizacionesPaginated({
     console.error("Error al obtener cotizaciones paginadas:", error);
     throw error;
   }
+}
+
+export async function getCotizacionesCount(
+  params: Omit<GetCotizacionesParams, "page" | "perPage"> = {},
+  options: { force?: boolean } = {}
+): Promise<number> {
+  const normalized = {
+    clienteId: params.clienteId ?? null,
+    ejecutivoId: params.ejecutivoId ?? null,
+    estadoCotizacionId: params.estadoCotizacionId ?? null,
+    fechaDesde: params.fechaDesde || null,
+    fechaHasta: params.fechaHasta || null,
+    search: params.search?.trim() || "",
+  };
+  const cacheKey = `${COTIZACIONES_COUNT_CACHE_PREFIX}${JSON.stringify(normalized)}`;
+
+  return cachedRequest(
+    cacheKey,
+    async () => {
+      const response = await getCotizacionesPaginated({
+        ...params,
+        page: 1,
+        perPage: 1,
+      });
+
+      return response.total || 0;
+    },
+    {
+      ttlMs: COTIZACIONES_COUNT_TTL_MS,
+      persist: false,
+      force: options.force,
+    }
+  );
 }
 
 /**
@@ -585,10 +632,12 @@ export async function createCotizacion(
       const response = await api.post("/cotizaciones/completa", buildCotizacionFormData(payload), {
         headers: { "Content-Type": "multipart/form-data" },
       });
+      clearCotizacionesReadCache();
       return response.data?.cotizacion || response.data?.data || response.data;
     }
 
     const response = await api.post("/cotizaciones/completa", payload);
+    clearCotizacionesReadCache();
     return response.data?.cotizacion || response.data?.data || response.data;
   } catch (error) {
     console.error("Error al crear cotización:", error);
@@ -613,10 +662,12 @@ export async function updateCotizacion(
       const response = await api.post(`/cotizaciones/${id}/completa`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+      clearCotizacionesReadCache();
       return response.data?.cotizacion || response.data?.data || response.data;
     }
 
     const response = await api.put(`/cotizaciones/${id}/completa`, payload);
+    clearCotizacionesReadCache();
     return response.data?.cotizacion || response.data?.data || response.data;
   } catch (error) {
     console.error("Error al actualizar cotización:", error);
@@ -629,6 +680,7 @@ export async function enviarCotizacionRevision(id: number, comentario?: string):
     const response = await api.patch(`/cotizaciones/${id}/enviar-revision`, {
       ...(comentario?.trim() ? { comentario: comentario.trim() } : {}),
     });
+    clearCotizacionesReadCache();
     return response.data?.cotizacion || response.data?.data || response.data;
   } catch (error) {
     console.error("Error al enviar cotización a revisión:", error);
@@ -641,6 +693,7 @@ export async function aprobarCotizacion(id: number): Promise<Cotizacion> {
     const response = await api.patch(`/cotizaciones/${id}/aprobar`, {
       cotizacion_id: id,
     });
+    clearCotizacionesReadCache();
     return response.data?.cotizacion || response.data?.data || response.data;
   } catch (error) {
     console.error("Error al aprobar cotizaciÃ³n:", error);
@@ -669,6 +722,7 @@ export async function rechazarCotizacion(
       cotizacion_id: id,
       comentario_rechazo: comentario,
     });
+    clearCotizacionesReadCache();
     return response.data?.cotizacion || response.data?.data || response.data;
   } catch (error) {
     console.error("Error al rechazar cotizaciÃ³n:", error);
@@ -679,6 +733,7 @@ export async function rechazarCotizacion(
 export async function deleteCotizacion(id: number): Promise<void> {
   try {
     await api.delete(`/cotizaciones/${id}`);
+    clearCotizacionesReadCache();
   } catch (error) {
     console.error("Error al eliminar cotización:", error);
     throw error;
@@ -693,6 +748,7 @@ export async function delegarCotizacion(
     const response = await api.patch(`/cotizaciones/${id}/delegar`, {
       delegado_cotizacion_id: delegadoCotizacionId,
     });
+    clearCotizacionesReadCache();
     return response.data?.cotizacion || response.data?.data || response.data;
   } catch (error) {
     console.error("Error al delegar cotización:", error);

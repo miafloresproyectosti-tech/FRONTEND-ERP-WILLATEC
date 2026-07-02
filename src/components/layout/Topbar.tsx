@@ -29,6 +29,7 @@ interface TopbarProps {
 }
 
 const NOTIFICATION_POLL_INTERVAL_MS = 60_000;
+const NOTIFICATION_MIN_RELOAD_GAP_MS = 15_000;
 
 type WebkitAudioWindow = Window & {
   webkitAudioContext?: typeof AudioContext;
@@ -149,6 +150,7 @@ export default function Topbar({
   const originalTitleRef = useRef(document.title);
   const knownUnreadIdsRef = useRef<Set<string>>(new Set());
   const hasLoadedNotificationsRef = useRef(false);
+  const lastNotificationsFetchRef = useRef(0);
   const { refreshing, refresh } = useRefresh();
 
   const unreadCount = notifications.filter(
@@ -194,11 +196,12 @@ export default function Topbar({
     hasLoadedNotificationsRef.current = true;
   };
 
-  const loadNotifications = async () => {
+  const loadNotifications = async (force = false) => {
     try {
       setNotificationsLoading(true);
       setNotificationsError(null);
-      const data = await notificationService.getNotifications();
+      lastNotificationsFetchRef.current = Date.now();
+      const data = await notificationService.getNotifications({ force });
       applyNotifications(data, true);
     } catch (error) {
       console.error("Error al cargar notificaciones:", error);
@@ -211,9 +214,15 @@ export default function Topbar({
   useEffect(() => {
     let cancelled = false;
 
-    const fetchNotifications = (notifyNewUnread = false) => {
+    const fetchNotifications = (notifyNewUnread = false, force = false) => {
+      const elapsed = Date.now() - lastNotificationsFetchRef.current;
+      if (!force && elapsed < NOTIFICATION_MIN_RELOAD_GAP_MS) {
+        return;
+      }
+
+      lastNotificationsFetchRef.current = Date.now();
       notificationService
-        .getNotifications()
+        .getNotifications({ force })
         .then((data) => {
           if (!cancelled) {
             applyNotifications(data, notifyNewUnread);
@@ -235,7 +244,7 @@ export default function Topbar({
         fetchNotifications(true);
       }
     };
-    const handleRefresh = () => fetchNotifications(true);
+    const handleRefresh = () => fetchNotifications(true, true);
 
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -342,7 +351,7 @@ export default function Topbar({
               const nextOpen = !notificationsOpen;
 
               if (nextOpen) {
-                loadNotifications();
+                loadNotifications(true);
               }
 
               setNotificationsOpen(nextOpen);

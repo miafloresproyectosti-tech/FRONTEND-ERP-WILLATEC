@@ -1,4 +1,5 @@
 import api from "./api";
+import { cachedRequest } from "../utils/cache";
 
 // Interfaces
 export interface User {
@@ -93,8 +94,14 @@ export const toggleUserStatus = async (id: number): Promise<User> => {
 };
 
 export const getRoles = async () => {
-  const response = await api.get("/roles");
-  return response.data;
+  return cachedRequest(
+    "catalog:roles",
+    async () => {
+      const response = await api.get("/roles");
+      return response.data;
+    },
+    { ttlMs: 12 * 60 * 60 * 1000 }
+  );
 };
 
 export const resetPassword = async (id: number) => {

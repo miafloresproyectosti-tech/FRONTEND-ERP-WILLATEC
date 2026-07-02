@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import type { Cliente } from "../../types/cotizaciones.type";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 
 interface Props {
   usuarioNombre?: string;
@@ -9,7 +10,9 @@ interface Props {
   clienteId: number | null;
   setClienteId: (id: number) => void;
 
-  clientes: Cliente[];  
+  clientes: Cliente[];
+  clientesLoading?: boolean;
+  onClienteSearch?: (search: string) => void;
   
   cotizacion: any;
 
@@ -62,6 +65,8 @@ export function CotizacionGeneralForm({
   clienteId,
   setClienteId,
   clientes,
+  clientesLoading = false,
+  onClienteSearch,
   plantillaId,
   setPlantillaId,
   monedaId,
@@ -91,6 +96,7 @@ export function CotizacionGeneralForm({
 
   const [searchClienteInput, setSearchClienteInput] = useState('');
   const [showClienteDropdown, setShowClienteDropdown] = useState(false);
+  const debouncedClienteSearch = useDebouncedValue(searchClienteInput, 300);
 
   const selectedCliente = clientes.find((c) => Number(c.id) === Number(clienteId));
   const clienteInputValue = clienteId
@@ -140,9 +146,11 @@ export function CotizacionGeneralForm({
     return cotizacion?.user_id ? `Usuario #${cotizacion.user_id}` : 'Desconocido';
   };
   
-  const filteredClientes = clientes.filter(cliente =>
-    cliente.nombre.toLowerCase().includes(searchClienteInput.toLowerCase())
-  );
+  const filteredClientes = onClienteSearch
+    ? clientes
+    : clientes.filter(cliente =>
+        cliente.nombre.toLowerCase().includes(searchClienteInput.toLowerCase())
+      );
 
   const handleClienteSelect = (cliente: Cliente) => {
     setClienteId(cliente.id);
@@ -179,6 +187,12 @@ export function CotizacionGeneralForm({
     }
   }, [plantillaId, plantillas]);
 
+  useEffect(() => {
+    if (disabled || !showClienteDropdown || !onClienteSearch) return;
+
+    onClienteSearch(debouncedClienteSearch);
+  }, [debouncedClienteSearch, disabled, onClienteSearch, showClienteDropdown]);
+
   return (
     <div className="bg-white rounded-xl shadow-sm border p-6">
             <h2 className="text-xl text-gray-800 mb-4">Información General</h2>
@@ -201,7 +215,11 @@ export function CotizacionGeneralForm({
                 
                 {showClienteDropdown && !disabled && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
-                    {filteredClientes.length > 0 ? (
+                    {clientesLoading ? (
+                      <div className="px-4 py-3 text-gray-400 text-sm text-center">
+                        Buscando clientes...
+                      </div>
+                    ) : filteredClientes.length > 0 ? (
                       filteredClientes.map((cliente) => (
                         <button
                           key={cliente.id}

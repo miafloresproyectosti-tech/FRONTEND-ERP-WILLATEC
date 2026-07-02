@@ -22,6 +22,7 @@ import { useNotifications } from "../NotificationContext";
 import { useAuth } from "../AuthContext";
 import { normalizeStorageImageUrl, resolveItemImageUrl } from "../utils/storageImage";
 import { getPaginationItems } from "../utils/pagination";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 // import { Plus as PlusIcon } from "lucide-react";
 
 const categoriaOptions = [
@@ -170,6 +171,7 @@ export default function Productos() {
     producto_id: "",
   });
   const [savingExternal, setSavingExternal] = useState(false);
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
 
   // FILTRAR PRODUCTOS
   const productosFiltrados = productos.filter(
@@ -296,10 +298,10 @@ export default function Productos() {
 
   useEffect(() => {
     if (activeTab === "externos") {
-      fetchExternalItems(externalPage, searchTerm);
+      fetchExternalItems(externalPage, debouncedSearchTerm);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, externalPage, searchTerm]);
+  }, [activeTab, externalPage, debouncedSearchTerm]);
 
   const handleTabChange = (tab: "stock" | "externos") => {
     setActiveTab(tab);

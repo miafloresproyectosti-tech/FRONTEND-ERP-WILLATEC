@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useNotifications } from '../NotificationContext';
 import { useAuth } from '../AuthContext';
 import { useLocation } from 'react-router-dom';
-import { getClientes, type Cliente } from '../services/cliente.service';
+import { getActiveClientesSearchCached, type Cliente } from '../services/cliente.service';
 import { getExternalItems, getProductos, type Producto } from "../services/producto.service";
 import { getPlantillas } from '../services/plantilla.service';
 import { getPlataformas } from '../services/plataforma.service';
@@ -139,6 +139,7 @@ export function CotizacionDetail() {
   // Cotización header
   const [cotizacion, setCotizacion] = useState<Cotizacion | null>(null);
   const [clienteId, setClienteId] = useState<number | null>(null);
+  const selectedClienteIdRef = useRef<number | null>(null);
   const [plantillaId, setPlantillaId] = useState<number>(1);
   const [plataformaId, setPlataformaId] = useState<number>(1);
   const [fecha, setFecha] = useState('');
@@ -167,12 +168,43 @@ export function CotizacionDetail() {
 
   // Listas
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [clientesLoading, setClientesLoading] = useState(false);
   const [items, setItems] = useState<CotizacionItem[]>([]);
   const [costos, setCostos] = useState<CotizacionCostosAdicional[]>([]);
   const [historial, setHistorial] = useState<CotizacionHistorial[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [usuarios, setUsuarios] = useState<ApiUser[]>([]);
   const [externalItemSuggestions, setExternalItemSuggestions] = useState<ItemForm[]>([]);
+
+  useEffect(() => {
+    selectedClienteIdRef.current = clienteId;
+  }, [clienteId]);
+
+  const searchActiveClientes = useCallback(async (search = "") => {
+    try {
+      setClientesLoading(true);
+      const data = await getActiveClientesSearchCached(search);
+      setClientes((currentClientes) => {
+        const selectedClienteId = selectedClienteIdRef.current;
+        const selectedCliente = selectedClienteId
+          ? currentClientes.find((cliente) => Number(cliente.id) === Number(selectedClienteId))
+          : undefined;
+
+        if (
+          selectedCliente &&
+          !data.some((cliente) => Number(cliente.id) === Number(selectedCliente.id))
+        ) {
+          return [selectedCliente, ...data];
+        }
+
+        return data;
+      });
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setClientesLoading(false);
+    }
+  }, []);
 
   // Estado de delegación
   const [delegadoId, setDelegadoId] = useState<number | null>(null);
@@ -610,41 +642,8 @@ export function CotizacionDetail() {
     const token = localStorage.getItem("token");
     if (!token) return;
 
-    const fetchAllActiveClientes = async () => {
-      const perPage = 100;
-      const firstPage = await getClientes({
-        page: 1,
-        perPage,
-        estado: "activo",
-      });
-
-      const allClientes = Array.isArray(firstPage) ? firstPage : firstPage.data || [];
-      const lastPage = Array.isArray(firstPage) ? 1 : Number(firstPage.last_page || 1);
-
-      for (let page = 2; page <= lastPage; page += 1) {
-        const response = await getClientes({
-          page,
-          perPage,
-          estado: "activo",
-        });
-
-        allClientes.push(...(Array.isArray(response) ? response : response.data || []));
-      }
-
-      return allClientes;
-    };
-
-    const fetchClientes = async () => {
-      try {
-        const data = await fetchAllActiveClientes();
-        setClientes(data);
-      } catch (error) {
-        console.error(error);
-      }
-    };
-
-    fetchClientes();
-  }, []);
+    void searchActiveClientes("");
+  }, [searchActiveClientes]);
 
   // Cargar usuarios (para delegación)
   useEffect(() => {
@@ -2187,6 +2186,8 @@ export function CotizacionDetail() {
             clienteId={clienteId}
             setClienteId={setClienteId}
             clientes={clientes}
+            clientesLoading={clientesLoading}
+            onClienteSearch={searchActiveClientes}
             cotizacion={cotizacion}
 
             plantillaId={plantillaId}

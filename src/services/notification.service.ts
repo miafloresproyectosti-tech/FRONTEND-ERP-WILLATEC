@@ -1,4 +1,5 @@
 import api from "./api";
+import { cachedRequest, clearCache } from "../utils/cache";
 
 export interface DatabaseNotification {
   id: string;
@@ -44,11 +45,24 @@ const normalizeNotifications = (
   return [];
 };
 
+const NOTIFICATIONS_CACHE_KEY = "notifications:current-user";
+const NOTIFICATIONS_TTL_MS = 15_000;
+
 export const notificationService = {
   // Obtener todas las notificaciones del usuario autenticado
-  getNotifications: async (): Promise<DatabaseNotification[]> => {
-    const response = await api.get<NotificationResponse>("/notifications");
-    return normalizeNotifications(response.data);
+  getNotifications: async (options?: { force?: boolean }): Promise<DatabaseNotification[]> => {
+    return cachedRequest(
+      NOTIFICATIONS_CACHE_KEY,
+      async () => {
+        const response = await api.get<NotificationResponse>("/notifications");
+        return normalizeNotifications(response.data);
+      },
+      {
+        ttlMs: NOTIFICATIONS_TTL_MS,
+        persist: false,
+        force: options?.force,
+      }
+    );
   },
 
   // Marcar una notificación como leída
@@ -56,6 +70,7 @@ export const notificationService = {
     const response = await api.patch<DatabaseNotification>(
       `/notifications/${id}/read`
     );
+    clearCache(NOTIFICATIONS_CACHE_KEY);
     return response.data;
   },
 
@@ -81,5 +96,7 @@ export const notificationService = {
     for (const id of unreadIds) {
       await notificationService.markAsRead(id);
     }
+
+    clearCache(NOTIFICATIONS_CACHE_KEY);
   },
 };

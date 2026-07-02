@@ -18,15 +18,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
-  RefreshCw,
 } from "lucide-react";
 
 import { useAuth } from "../AuthContext";
 import { useNotifications } from "../NotificationContext";
-import { deleteCotizacion, getCotizacionesPaginated, type Cotizacion as ApiCotizacion } from "../services/cotizacion.service";
+import { deleteCotizacion, getCotizacionesCount, getCotizacionesPaginated, type Cotizacion as ApiCotizacion } from "../services/cotizacion.service";
 import { getUsers, type User as ApiUser } from "../services/usuario.service";
 import { formatMoney } from "../utils/formatNumber";
 import { getPaginationItems } from "../utils/pagination";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
 function formatCotizacionDate(value?: string | null): string {
   if (!value) return "N/A";
@@ -136,8 +136,11 @@ export default function Cotizaciones() {
   const [loading, setLoading] = useState(true);
   const [loadingEjecutivos, setLoadingEjecutivos] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
   const [filterEstado, setFilterEstado] = useState("todos");
   const [filterEjecutivo, setFilterEjecutivo] = useState("todos");
+  const [fechaDesde, setFechaDesde] = useState("");
+  const [fechaHasta, setFechaHasta] = useState("");
   const [ejecutivoOptions, setEjecutivoOptions] = useState<EjecutivoOption[]>([]);
   const [totalPorEstado, setTotalPorEstado] = useState<Record<EstadoResumenKey, number>>(EMPTY_TOTAL_POR_ESTADO);
   const [currentPage, setCurrentPage] = useState(1);
@@ -158,10 +161,12 @@ export default function Cotizaciones() {
       setLoading(true);
       const response = await getCotizacionesPaginated({
         page: currentPage,
-        search: searchTerm,
+        search: debouncedSearchTerm,
         perPage: itemsPerPage,
         estadoCotizacionId: ESTADO_FILTER_MAP[filterEstado as EstadoResumenKey],
         ejecutivoId: filterEjecutivo === "todos" ? undefined : Number(filterEjecutivo),
+        fechaDesde,
+        fechaHasta,
       });
       setCotizaciones(response.data || []);
       setTotalPages(response.last_page || 1);
@@ -181,7 +186,7 @@ export default function Cotizaciones() {
     } finally {
       setLoading(false);
     }
-  }, [addNotification, currentPage, filterEjecutivo, filterEstado, searchTerm]);
+  }, [addNotification, currentPage, debouncedSearchTerm, fechaDesde, fechaHasta, filterEjecutivo, filterEstado]);
 
   const paginatedCotizaciones = cotizaciones;
 
@@ -236,7 +241,7 @@ export default function Cotizaciones() {
     return roleNames.length === 0 || roleNames.includes("VENTAS");
   }, []);
 
-  const loadEjecutivosResumen = useCallback(async () => {
+  const loadEjecutivosResumen = useCallback(async (force = false) => {
     try {
       setLoadingEjecutivos(true);
       const users = await getUsers();
@@ -244,18 +249,18 @@ export default function Cotizaciones() {
 
       const resumen = await Promise.all(
         ventasUsers.map(async (apiUser) => {
-          const response = await getCotizacionesPaginated({
-            page: 1,
-            perPage: 1,
-            search: searchTerm,
+          const total = await getCotizacionesCount({
+            search: debouncedSearchTerm,
             estadoCotizacionId: ESTADO_FILTER_MAP[filterEstado as EstadoResumenKey],
             ejecutivoId: apiUser.id,
-          });
+            fechaDesde,
+            fechaHasta,
+          }, { force });
 
           return {
             id: apiUser.id,
             nombre: getApiUserNombre(apiUser),
-            total: response.total || 0,
+            total,
           };
         })
       );
@@ -270,22 +275,22 @@ export default function Cotizaciones() {
     } finally {
       setLoadingEjecutivos(false);
     }
-  }, [filterEstado, getApiUserNombre, isVentasUser, searchTerm]);
+  }, [debouncedSearchTerm, fechaDesde, fechaHasta, filterEstado, getApiUserNombre, isVentasUser]);
 
-  const loadResumenEstados = useCallback(async () => {
+  const loadResumenEstados = useCallback(async (force = false) => {
     try {
       const ejecutivoId = filterEjecutivo === "todos" ? undefined : Number(filterEjecutivo);
       const resumen = await Promise.all(
         Object.entries(ESTADO_FILTER_MAP).map(async ([key, estadoCotizacionId]) => {
-          const response = await getCotizacionesPaginated({
-            page: 1,
-            perPage: 1,
-            search: searchTerm,
+          const total = await getCotizacionesCount({
+            search: debouncedSearchTerm,
             estadoCotizacionId,
             ejecutivoId,
-          });
+            fechaDesde,
+            fechaHasta,
+          }, { force });
 
-          return [key, response.total || 0] as const;
+          return [key, total] as const;
         })
       );
 
@@ -296,7 +301,7 @@ export default function Cotizaciones() {
     } catch (error) {
       console.error("Error al cargar resumen de cotizaciones por estado:", error);
     }
-  }, [filterEjecutivo, searchTerm]);
+  }, [debouncedSearchTerm, fechaDesde, fechaHasta, filterEjecutivo]);
 
   // Cargar cotizaciones al montar el componente
   useEffect(() => {
@@ -315,8 +320,8 @@ export default function Cotizaciones() {
     const refreshCotizacionesData = () => {
       void Promise.all([
         loadCotizaciones(),
-        loadResumenEstados(),
-        loadEjecutivosResumen(),
+        loadResumenEstados(true),
+        loadEjecutivosResumen(true),
       ]);
     };
 
@@ -574,7 +579,7 @@ export default function Cotizaciones() {
       {/* TABLA */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden">
         {/* FILTROS */}
-        <div className="p-6 border-b border-gray-200 dark:border-slate-800 flex flex-col xl:flex-row gap-4 xl:items-center xl:justify-between">
+        <div className="p-6 border-b border-gray-200 dark:border-slate-800 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="relative w-full md:w-96">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-5 h-5" />
 
@@ -588,9 +593,42 @@ export default function Cotizaciones() {
               }}
               className="w-full pl-12 pr-4 py-3 bg-slate-100 dark:bg-slate-900 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
             />
+            <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+              Busca por codigo, titulo, cliente o RUC.
+            </p>
           </div>
 
-          <div className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto">
+          <div className="flex w-full flex-col gap-3 lg:flex-row xl:w-auto">
+            <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
+              <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Desde
+                <input
+                  type="date"
+                  value={fechaDesde}
+                  max={fechaHasta || undefined}
+                  onChange={(e) => {
+                    setFechaDesde(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Hasta
+                <input
+                  type="date"
+                  value={fechaHasta}
+                  min={fechaDesde || undefined}
+                  onChange={(e) => {
+                    setFechaHasta(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                />
+              </label>
+            </div>
+
             <select
               value={filterEjecutivo}
               onChange={(e) => {
@@ -623,15 +661,6 @@ export default function Cotizaciones() {
               <option value="oc_registrada">OC_Registrada</option>
             </select>
 
-            <button
-              type="button"
-              onClick={loadCotizaciones}
-              disabled={loading}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-950 sm:w-auto"
-            >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-              Actualizar
-            </button>
           </div>
         </div>
 
@@ -708,9 +737,19 @@ export default function Cotizaciones() {
                         className="border-b border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-900 transition"
                       >
                         <td className="px-6 py-5">
-                          <span className="font-semibold text-blue-600 dark:text-blue-300">
-                            {cotizacion.numero}
-                          </span>
+                          <div className="max-w-64">
+                            <span
+                              className="font-semibold text-blue-600 dark:text-blue-300"
+                              title={cotizacion.titulo ? `${cotizacion.numero} - ${cotizacion.titulo}` : cotizacion.numero}
+                            >
+                              {cotizacion.numero}
+                            </span>
+                            {cotizacion.titulo && (
+                              <p className="mt-1 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+                                {cotizacion.titulo}
+                              </p>
+                            )}
+                          </div>
                         </td>
 
                         <td className="px-6 py-5">
@@ -819,7 +858,7 @@ export default function Cotizaciones() {
                 ) : (
                   <tr>
                     <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
-                      {searchTerm || filterEstado !== "todos" || filterEjecutivo !== "todos" ? "No se encontraron cotizaciones" : "No hay cotizaciones"}
+                      {searchTerm || fechaDesde || fechaHasta || filterEstado !== "todos" || filterEjecutivo !== "todos" ? "No se encontraron cotizaciones" : "No hay cotizaciones"}
                     </td>
                   </tr>
                 )}

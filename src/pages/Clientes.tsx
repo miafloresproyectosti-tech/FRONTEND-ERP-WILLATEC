@@ -15,6 +15,7 @@ import {
 import { getClientes, createCliente, updateCliente, deleteCliente, type Cliente } from "../services/cliente.service";
 import { useNotifications } from "../NotificationContext";
 import { getPaginationItems } from "../utils/pagination";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
 // Formulario vacío tipado según la API
 interface ClienteForm {
@@ -72,6 +73,7 @@ export default function Clientes() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState<"todos" | "activo" | "inactivo">("todos");
   const [filterTipoCliente, setFilterTipoCliente] = useState("todos");
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
 
 
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Partial<Cliente>>({
@@ -110,7 +112,7 @@ export default function Clientes() {
 
         const response = await getClientes({
           page: currentPage,
-          search: searchTerm,
+          search: debouncedSearchTerm,
           perPage,
           estado: filterEstado === "todos" ? undefined : filterEstado,
           tipoClienteId: filterTipoCliente === "todos" ? undefined : Number(filterTipoCliente),
@@ -134,7 +136,7 @@ export default function Clientes() {
     };
 
     fetchClientes();
-  }, [currentPage, searchTerm, filterEstado, filterTipoCliente]);
+  }, [currentPage, debouncedSearchTerm, filterEstado, filterTipoCliente]);
 
   const handleNuevo = () => {
     setClienteSeleccionado({
