@@ -21,6 +21,7 @@ const CotizacionDetail = lazy(() =>
 const Usuarios = lazy(() => import("../pages/Usuarios"));
 const Configuracion = lazy(() => import("../pages/Configuracion"));
 const Auditoria = lazy(() => import("../pages/Auditoria"));
+const InventarioMovimientos = lazy(() => import("../pages/InventarioMovimientos"));
 const OrdenesCompraPage = lazy(() => import("../pages/OrdenesCompraPage"));
 const OrdenCompraDetail = lazy(() => import("../pages/OrdenCompraDetail"));
 const Notificaciones = lazy(() => import("../pages/Notificaciones"));
@@ -86,6 +87,15 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute requiredPermission="auditoria">
                 <Auditoria />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/inventario/movimientos"
+            element={
+              <ProtectedRoute requiredRole="SUPERADMIN">
+                <InventarioMovimientos />
               </ProtectedRoute>
             }
           />

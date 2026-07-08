@@ -31,6 +31,11 @@ export interface CotizacionItem {
   ganancia?: number;
   producto_id?: number;
   producto_externo_id?: number | null;
+  moneda_id?: number | null;
+  precio_incluye_igv?: boolean | null;
+  plantilla_origen_id?: number | null;
+  plantilla_origen_nombre?: string | null;
+  plantilla_ultimo_uso_nombre?: string | null;
   estado_cotizacion_item_id?: number;
   aplica_costos_adicionales?: boolean;
   created_at?: string;
@@ -59,6 +64,11 @@ export interface ItemFormState {
   cotizacion_id: number;
   producto_id?: number;
   producto_externo_id?: number | null;
+  moneda_id?: number | null;
+  precio_incluye_igv?: boolean | null;
+  plantilla_origen_id?: number | null;
+  plantilla_origen_nombre?: string | null;
+  plantilla_ultimo_uso_nombre?: string | null;
   estado_cotizacion_item_id?: number;
   tipo: 'catalogo' | 'externo';
   margen: number;

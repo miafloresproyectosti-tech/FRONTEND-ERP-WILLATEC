@@ -17,6 +17,7 @@ import {
   ShoppingCart,
   FolderOpen,
   ShieldCheck,
+  ClipboardList,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -325,6 +326,30 @@ export default function Sidebar({
               </>
             )}
 
+            {user?.role === "SUPERADMIN" && (
+              <Link
+                to="/inventario/movimientos"
+                onClick={() => mobile && onClose?.()}
+                className={`
+                  flex items-center gap-3
+                  px-4 py-3
+                  rounded-2xl
+                  transition-all
+                  text-sm sm:text-base
+                  ${
+                    location.pathname === "/inventario/movimientos"
+                      ? "bg-blue-600 text-white shadow-lg"
+                      : "text-gray-300 hover:bg-gray-900 hover:text-white"
+                  }
+                `}
+              >
+                <ClipboardList size={20} />
+                <span className="font-medium">
+                  KARDEX
+                </span>
+              </Link>
+            )}
+
             {/* ✅ VENTAS NORMAL */}
             {user?.role === "VENTAS" && (
               <>
@@ -360,6 +385,21 @@ export default function Sidebar({
                   Órdenes de Compra
                 </Link>
               </>
+            )}
+
+            {user?.role === "SOPORTE" && (
+              <Link
+                to="/productos"
+                onClick={() => mobile && onClose?.()}
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition text-sm sm:text-base ${
+                  location.pathname === "/productos"
+                    ? "bg-blue-600 text-white shadow-lg"
+                    : "text-gray-300 hover:bg-gray-900 hover:text-white"
+                }`}
+              >
+                <Package size={20} />
+                <span className="font-medium">Productos</span>
+              </Link>
             )}
           </nav>
         </div>

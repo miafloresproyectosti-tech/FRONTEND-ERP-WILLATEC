@@ -54,6 +54,7 @@ interface EjecutivoOption {
   id: number;
   nombre: string;
   total: number;
+  isSuperadmin?: boolean;
 }
 
 type CotizacionListItem = ApiCotizacion & {
@@ -235,20 +236,31 @@ export default function Cotizaciones() {
     return nombreCompleto || apiUser.email || `Usuario #${apiUser.id}`;
   }, []);
 
-  const isVentasUser = useCallback((apiUser: ApiUser) => {
+  const isCotizacionExecutiveUser = useCallback((apiUser: ApiUser) => {
     const roleNames = (apiUser.roles || []).map((role) => role.name.toUpperCase());
 
-    return roleNames.length === 0 || roleNames.includes("VENTAS");
+    return roleNames.length === 0 || roleNames.some((roleName) => ["VENTAS", "SUPERADMIN"].includes(roleName));
   }, []);
+
+  const ejecutivoResumenOptions = ejecutivoOptions.slice(0, 6);
+  const superadminResumenOptions = ejecutivoOptions.filter(
+    (ejecutivo) =>
+      ejecutivo.isSuperadmin &&
+      !ejecutivoResumenOptions.some((visibleEjecutivo) => visibleEjecutivo.id === ejecutivo.id)
+  );
+  const visibleEjecutivoResumenOptions = [...ejecutivoResumenOptions, ...superadminResumenOptions];
 
   const loadEjecutivosResumen = useCallback(async (force = false) => {
     try {
       setLoadingEjecutivos(true);
       const users = await getUsers();
-      const ventasUsers = users.filter((apiUser) => apiUser.activo !== false && isVentasUser(apiUser));
+      const cotizacionExecutiveUsers = users.filter(
+        (apiUser) => apiUser.activo !== false && isCotizacionExecutiveUser(apiUser)
+      );
 
       const resumen = await Promise.all(
-        ventasUsers.map(async (apiUser) => {
+        cotizacionExecutiveUsers.map(async (apiUser) => {
+          const roleNames = (apiUser.roles || []).map((role) => role.name.toUpperCase());
           const total = await getCotizacionesCount({
             search: debouncedSearchTerm,
             estadoCotizacionId: ESTADO_FILTER_MAP[filterEstado as EstadoResumenKey],
@@ -261,6 +273,7 @@ export default function Cotizaciones() {
             id: apiUser.id,
             nombre: getApiUserNombre(apiUser),
             total,
+            isSuperadmin: roleNames.includes("SUPERADMIN"),
           };
         })
       );
@@ -275,7 +288,7 @@ export default function Cotizaciones() {
     } finally {
       setLoadingEjecutivos(false);
     }
-  }, [debouncedSearchTerm, fechaDesde, fechaHasta, filterEstado, getApiUserNombre, isVentasUser]);
+  }, [debouncedSearchTerm, fechaDesde, fechaHasta, filterEstado, getApiUserNombre, isCotizacionExecutiveUser]);
 
   const loadResumenEstados = useCallback(async (force = false) => {
     try {
@@ -549,8 +562,8 @@ export default function Cotizaciones() {
               <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
                 <Loader2 size={14} className="animate-spin" /> Calculando...
               </span>
-            ) : ejecutivoOptions.length > 0 ? (
-              ejecutivoOptions.slice(0, 6).map((ejecutivo) => (
+            ) : visibleEjecutivoResumenOptions.length > 0 ? (
+              visibleEjecutivoResumenOptions.map((ejecutivo) => (
                 <button
                   key={ejecutivo.id}
                   type="button"

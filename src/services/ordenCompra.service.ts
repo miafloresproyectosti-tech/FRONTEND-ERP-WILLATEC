@@ -66,6 +66,8 @@ export interface OcRecibida {
   };
   fecha_recepcion?: string;
   observaciones?: string | null;
+  factura_numero?: string | null;
+  factura_path?: string | null;
   estado: OcRecibidaEstado | string;
   documentos_completos?: boolean;
   documentos_faltantes?: string[];
@@ -131,6 +133,8 @@ export interface CreateOcRecibidaPayload {
   }>;
   orden_compra_cliente?: File | null;
   guia_emision?: File | null;
+  factura_numero?: string;
+  factura?: File | null;
 }
 
 export interface CreateOcEmitidaPayload {
@@ -338,7 +342,7 @@ export async function getOcRecibidaPreview(cotizacionId: number) {
 }
 
 export async function createOcRecibida(payload: CreateOcRecibidaPayload) {
-  const hasFiles = Boolean(payload.orden_compra_cliente || payload.guia_emision);
+  const hasFiles = Boolean(payload.orden_compra_cliente || payload.guia_emision || payload.factura);
 
   if (hasFiles) {
     const formData = new FormData();
@@ -352,6 +356,12 @@ export async function createOcRecibida(payload: CreateOcRecibidaPayload) {
     if (payload.guia_emision) {
       formData.append("guia_emision", payload.guia_emision);
     }
+    if (payload.factura_numero) {
+      formData.append("factura_numero", payload.factura_numero);
+    }
+    if (payload.factura) {
+      formData.append("factura", payload.factura);
+    }
 
     const response = await api.post("/oc-recibidas", formData, {
       headers: { "Content-Type": "multipart/form-data" },
@@ -363,6 +373,7 @@ export async function createOcRecibida(payload: CreateOcRecibidaPayload) {
     cotizacion_id: payload.cotizacion_id,
     fecha_recepcion: payload.fecha_recepcion,
     observaciones: payload.observaciones,
+    factura_numero: payload.factura_numero,
     items: payload.items,
   });
 
@@ -379,7 +390,7 @@ export async function updateOcRecibidaItems(
 
 export async function uploadOcRecibidaDocumentos(
   id: number | string,
-  files: { orden_compra_cliente?: File | null; guia_emision?: File | null },
+  files: { orden_compra_cliente?: File | null; guia_emision?: File | null; factura_numero?: string; factura?: File | null },
 ) {
   const formData = new FormData();
   if (files.orden_compra_cliente) {
@@ -387,6 +398,12 @@ export async function uploadOcRecibidaDocumentos(
   }
   if (files.guia_emision) {
     formData.append("guia_emision", files.guia_emision);
+  }
+  if (files.factura_numero) {
+    formData.append("factura_numero", files.factura_numero);
+  }
+  if (files.factura) {
+    formData.append("factura", files.factura);
   }
 
   const response = await api.post(`/oc-recibidas/${id}/documentos`, formData, {

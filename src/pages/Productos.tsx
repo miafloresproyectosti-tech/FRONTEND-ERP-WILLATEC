@@ -9,9 +9,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  PackageCheck,
+  Upload,
 } from "lucide-react";
 
-import { getProductos, getExternalItems, createProducto, updateProducto, deleteProducto, updateCotizacionItem, type Producto, type ProductoPayload, type CotizacionItem } from "../services/producto.service";
+import { getProductos, getExternalItems, createProducto, updateProducto, deleteProducto, updateCotizacionItem, convertirProductoExternoAInterno, type Producto, type ProductoPayload, type CotizacionItem } from "../services/producto.service";
 import {
   getCotizacion,
   getCotizacionesPaginated,
@@ -25,6 +27,7 @@ import { getPaginationItems } from "../utils/pagination";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 // import { Plus as PlusIcon } from "lucide-react";
 
+/*
 const categoriaOptions = [
   { id: 1, label: "Tecnologia" },
   { id: 2, label: "Hogar" },
@@ -36,11 +39,32 @@ const categoriaOptions = [
   { id: 8, label: "Otros" },
 ];
 
+*/
 const unidadMedidaOptions = [
   { value: "unidad", label: "Unidad" },
   { value: "kg", label: "Kg" },
   { value: "m", label: "Metro" },
   { value: "l", label: "Litro" },
+];
+
+const productoCategoriaOptions = [
+  { id: 1, label: "LAPTOPS" },
+  { id: 2, label: "ACCESORIOS" },
+  { id: 3, label: "PERIFÉRICOS" },
+  { id: 4, label: "COMPUTADORAS" },
+  { id: 5, label: "LICENCIAS" },
+  { id: 6, label: "SERVIDORES" },
+  { id: 7, label: "GADGETS" },
+  { id: 8, label: "SUMINISTROS" },
+  { id: 9, label: "REDES" },
+  { id: 10, label: "SEGURIDAD" },
+  { id: 11, label: "COMPONENTES" },
+  { id: 12, label: "ALMACENAMIENTO" },
+];
+
+const monedaOptions = [
+  { id: 1, label: "Soles", symbol: "S/" },
+  { id: 2, label: "Dolares", symbol: "$" },
 ];
 
 interface ProductoForm {
@@ -55,6 +79,7 @@ interface ProductoForm {
   descripcion: string;
   imagen: string;
   activo: "true" | "false";
+  estado: "nuevo" | "usado";
   unidad_medida: string;
 }
 
@@ -64,6 +89,9 @@ type ProductoUI = ProductoForm & {
   precio_referencial: string;
   activo: "true" | "false";
   imagen?: string;
+  stock_actual?: number | string | null;
+  stock_reservado?: number | string | null;
+  stock_disponible?: number | string | null;
 };
 
 type ExternalItem = CotizacionItem;
@@ -71,21 +99,86 @@ type ExternalItem = CotizacionItem;
 const mapProducto = (producto: Producto): ProductoUI => ({
 
   id: producto.id,
-  codigo: producto.codigo,
+  codigo: producto.codigo || producto.sku || "",
   nombre: producto.nombre,
   marca: producto.marca ?? "",
   modelo: producto.modelo ?? "",
   categoria_id: producto.categoria_id,
   categoria_label:
-    categoriaOptions.find((option) => option.id === producto.categoria_id)
+    productoCategoriaOptions.find((option) => option.id === producto.categoria_id)
       ?.label ?? String(producto.categoria_id),
   stock: String(producto.stock),
+  stock_actual: producto.stock_actual ?? producto.stock,
+  stock_reservado: producto.stock_reservado ?? 0,
+  stock_disponible: producto.stock_disponible ?? producto.stock,
   precio_referencial: String(producto.precio_referencial),
   descripcion: producto.descripcion ?? "",
   imagen: normalizeStorageImageUrl(producto.imagen_url || producto.imagen || producto.imagen_path),
   activo: producto.activo ? "true" : "false",
+  estado: producto.estado ?? "nuevo",
   unidad_medida: producto.unidad_medida ?? "unidad",
 });
+
+const getExternalItemCurrencySymbol = (item: ExternalItem) => {
+  if (item.moneda?.simbolo) return item.moneda.simbolo;
+
+  const codigo = String(item.moneda?.codigo || "").toUpperCase();
+  const monedaId = Number(item.moneda_id || 1);
+
+  if (monedaId === 2 || codigo.includes("USD") || codigo.includes("DOLAR")) {
+    return "$";
+  }
+
+  return "S/.";
+};
+
+const getExternalItemPricingSuffix = (item: ExternalItem) =>
+  Number(item.moneda_id || 1) === 1 && item.precio_incluye_igv ? " incl. IGV" : "";
+
+const formatExternalItemMoney = (
+  item: ExternalItem,
+  value: number | string | null | undefined
+) => `${getExternalItemCurrencySymbol(item)} ${Number(value || 0).toLocaleString()}${getExternalItemPricingSuffix(item)}`;
+
+const PLANTILLA_IDS_CON_IGV = new Set([3, 5]);
+
+const roundMoney = (value: number) => Number(value.toFixed(2));
+
+const plantillaIncluyeIgv = (plantillaId?: number | null) =>
+  PLANTILLA_IDS_CON_IGV.has(Number(plantillaId || 0));
+
+const convertExternalItemValue = (
+  value: number | string | null | undefined,
+  item: ExternalItem,
+  targetMonedaId?: number | null,
+  targetIncluyeIgv?: boolean
+) => {
+  const sourceValue = Number(value || 0);
+  const sourceMonedaId = Number(item.moneda_id || targetMonedaId || 1);
+  const sourceIncluyeIgv = item.precio_incluye_igv ?? false;
+  const destinationMonedaId = Number(targetMonedaId || sourceMonedaId);
+
+  if (sourceMonedaId === destinationMonedaId) {
+    if (sourceMonedaId === 2 || sourceIncluyeIgv === targetIncluyeIgv) {
+      return roundMoney(sourceValue);
+    }
+
+    return roundMoney(sourceIncluyeIgv ? sourceValue / 1.18 : sourceValue * 1.18);
+  }
+
+  const solesSinIgv =
+    sourceMonedaId === 2
+      ? sourceValue * 3.5
+      : sourceIncluyeIgv
+        ? sourceValue / 1.18
+        : sourceValue;
+
+  if (destinationMonedaId === 2) {
+    return roundMoney(solesSinIgv / 3.3);
+  }
+
+  return roundMoney(targetIncluyeIgv ? solesSinIgv * 1.18 : solesSinIgv);
+};
 
 export default function Productos() {
   const { addNotification } = useNotifications();
@@ -112,6 +205,18 @@ export default function Productos() {
   });
   const [showAddToCotizacionModal, setShowAddToCotizacionModal] = useState(false);
   const [selectedExternalItem, setSelectedExternalItem] = useState<ExternalItem | null>(null);
+  const [conversionExternalItem, setConversionExternalItem] = useState<ExternalItem | null>(null);
+  const [conversionFactura, setConversionFactura] = useState<File | null>(null);
+  const [convertingExternal, setConvertingExternal] = useState(false);
+  const [conversionForm, setConversionForm] = useState({
+    cantidad: "",
+    costo_unitario: "",
+    moneda_id: "1",
+    documento_numero: "",
+    categoria_id: 1,
+    estado: "nuevo" as "nuevo" | "usado",
+    observacion: "",
+  });
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
   const [cotizacionSearchTerm, setCotizacionSearchTerm] = useState("");
   const [loadingCotizaciones, setLoadingCotizaciones] = useState(false);
@@ -137,6 +242,7 @@ export default function Productos() {
       descripcion: "",
       imagen: "",
       activo: "true",
+      estado: "nuevo",
       marca: "",
       modelo: "",
       unidad_medida: "unidad",
@@ -172,6 +278,7 @@ export default function Productos() {
   });
   const [savingExternal, setSavingExternal] = useState(false);
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
+  const canUseExternalProducts = user?.role !== "SOPORTE";
 
   // FILTRAR PRODUCTOS
   const productosFiltrados = productos.filter(
@@ -297,13 +404,15 @@ export default function Productos() {
   };
 
   useEffect(() => {
-    if (activeTab === "externos") {
+    if (activeTab === "externos" && canUseExternalProducts) {
       fetchExternalItems(externalPage, debouncedSearchTerm);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, externalPage, debouncedSearchTerm]);
+  }, [activeTab, externalPage, debouncedSearchTerm, canUseExternalProducts]);
 
   const handleTabChange = (tab: "stock" | "externos") => {
+    if (tab === "externos" && !canUseExternalProducts) return;
+
     setActiveTab(tab);
     if (tab === "externos") {
       setExternalPage(1);
@@ -321,6 +430,7 @@ export default function Productos() {
       descripcion: "",
       imagen: "",
       activo: "true",
+      estado: "nuevo",
       marca: "",
       modelo: "",
       unidad_medida: "unidad",
@@ -342,6 +452,7 @@ export default function Productos() {
       descripcion: producto.descripcion || "",
       imagen: producto.imagen || "", 
       activo: producto.activo ? "true" : "false",
+      estado: producto.estado || "nuevo",
       marca: producto.marca || "",
       modelo: producto.modelo || "",
       unidad_medida: producto.unidad_medida || "unidad",
@@ -434,6 +545,7 @@ export default function Productos() {
     const precioNum = parseFloat(productoSeleccionado.precio_referencial);
 
     const payload: ProductoPayload = {
+      sku: productoSeleccionado.codigo,
       nombre: productoSeleccionado.nombre,
       marca: productoSeleccionado.marca,
       modelo: productoSeleccionado.modelo,
@@ -444,6 +556,13 @@ export default function Productos() {
       unidad_medida:
         productoSeleccionado.unidad_medida || "unidad",
       activo: productoSeleccionado.activo === "true",
+      estado: productoSeleccionado.estado,
+      tipo_producto: "stock",
+      controla_stock: true,
+      stock_actual: isNaN(stockNum) ? 0 : stockNum,
+      stock_minimo: 0,
+      costo_unitario: isNaN(precioNum) ? 0 : precioNum,
+      precio_venta: isNaN(precioNum) ? 0 : precioNum,
       stock: isNaN(stockNum) ? 0 : stockNum,
       categoria_id: productoSeleccionado.categoria_id,
     };
@@ -501,10 +620,10 @@ export default function Productos() {
   };
 
   // ESTADO
-  const handleEstadoChange = (activo: string) => {
+  const handleEstadoChange = (estado: "nuevo" | "usado") => {
     setProductoSeleccionado({
       ...productoSeleccionado,
-      activo: 'true' === activo ? "true" : "false",
+      estado,
     });
   };
 
@@ -516,29 +635,54 @@ export default function Productos() {
   };
 
   // AGREGAR ITEM EXTERNO A COTIZACIÓN
-  const buildExternalItemForCotizacion = (externalItem: ExternalItem) => ({
-      tipo: "externo",
-      producto_externo_id: externalItem.producto_externo_id || externalItem.id,
-      producto_id: undefined,
+  const buildExternalItemForCotizacion = (
+    externalItem: ExternalItem,
+    targetCotizacion?: Pick<Cotizacion, "moneda_id" | "plantilla_id">
+  ) => {
+    const targetMonedaId = targetCotizacion?.moneda_id ?? externalItem.moneda_id;
+    const targetIncluyeIgv = targetCotizacion
+      ? plantillaIncluyeIgv(targetCotizacion.plantilla_id)
+      : externalItem.precio_incluye_igv ?? false;
+    const costoBase = convertExternalItemValue(
+      externalItem.costo_base_referencial || externalItem.costo_base || externalItem.costo_unitario || 0,
+      externalItem,
+      targetMonedaId,
+      targetIncluyeIgv
+    );
+    const proveedores = externalItem.proveedores?.map((proveedor) => ({
+      ...proveedor,
+      precio: proveedor.precio === null || proveedor.precio === undefined
+        ? null
+        : convertExternalItemValue(proveedor.precio, externalItem, targetMonedaId, targetIncluyeIgv),
+    }));
+
+    return {
+      tipo: externalItem.producto_id ? "catalogo" : "externo",
+      producto_externo_id: externalItem.producto_id ? undefined : externalItem.producto_externo_id || externalItem.id,
+      producto_id: externalItem.producto_id || undefined,
       descripcion: externalItem.descripcion,
       cantidad: 1,
-      costo_base: externalItem.costo_base_referencial || externalItem.costo_base || externalItem.costo_unitario || 0,
-      margen: externalItem.ultimo_margen_usado ?? externalItem.margen ?? 0,
+      costo_base: costoBase,
+      margen: 0,
       marca: externalItem.marca,
       codigo: externalItem.codigo,
       unidad_medida: externalItem.unidad_medida,
       disponibilidad_tipo: externalItem.disponibilidad_tipo,
       disponibilidad_dias: externalItem.disponibilidad_dias,
       garantia_meses: externalItem.garantia_meses,
-      aplica_costos_adicionales: externalItem.aplica_costos_adicionales ?? true,
+      aplica_costos_adicionales: false,
       proveedor: externalItem.proveedor,
       link_proveedor: externalItem.link_proveedor,
-      proveedores: externalItem.proveedores,
+      proveedores,
       imagen: externalItem.imagen || externalItem.imagen_url || "",
       imagen_url: externalItem.imagen_url || externalItem.imagen || null,
       imagen_path: externalItem.imagen_path || externalItem.imagen || null,
-      stock: 0, // Stock en 0 para items externos
-    });
+      moneda_id: externalItem.moneda_id,
+      precio_incluye_igv: externalItem.precio_incluye_igv,
+      plantilla_origen_id: externalItem.plantilla_origen_id,
+      stock: Number(externalItem.stock || 0),
+    };
+  };
 
   const loadCotizacionesForExternalItem = async () => {
     if (!user?.id) {
@@ -604,6 +748,91 @@ export default function Productos() {
     void loadCotizacionesForExternalItem();
   };
 
+  const handleOpenConvertExternal = (externalItem: ExternalItem) => {
+    setConversionExternalItem(externalItem);
+    setConversionFactura(null);
+    setConversionForm({
+      cantidad: String(externalItem.stock && Number(externalItem.stock) > 0 ? externalItem.stock : 1),
+      costo_unitario: String(externalItem.costo_base_referencial || externalItem.costo_base || externalItem.costo_unitario || 0),
+      moneda_id: String(externalItem.moneda_id || 1),
+      documento_numero: "",
+      categoria_id: 1,
+      estado: "nuevo",
+      observacion: "",
+    });
+  };
+
+  const handleCloseConvertExternal = () => {
+    if (convertingExternal) return;
+    setConversionExternalItem(null);
+    setConversionFactura(null);
+  };
+
+  const handleConvertExternal = async () => {
+    if (!conversionExternalItem || !conversionFactura) {
+      addNotification({
+        title: "Factura requerida",
+        description: "Para convertir un producto externo debes adjuntar la factura de compra.",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/productos",
+      });
+      return;
+    }
+
+    const cantidad = Number(conversionForm.cantidad);
+    const costoUnitario = Number(conversionForm.costo_unitario);
+
+    if (cantidad <= 0 || costoUnitario < 0 || !conversionForm.documento_numero.trim()) {
+      addNotification({
+        title: "Datos incompletos",
+        description: "Ingresa cantidad, costo unitario y numero de factura.",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/productos",
+      });
+      return;
+    }
+
+    try {
+      setConvertingExternal(true);
+      const response = await convertirProductoExternoAInterno(Number(conversionExternalItem.producto_externo_id || conversionExternalItem.id), {
+        cantidad,
+        costo_unitario: costoUnitario,
+        moneda_id: Number(conversionForm.moneda_id || 1),
+        documento_numero: conversionForm.documento_numero,
+        factura: conversionFactura,
+        categoria_id: conversionForm.categoria_id,
+        estado: conversionForm.estado,
+        observacion: conversionForm.observacion,
+      });
+
+      addNotification({
+        title: "Producto convertido",
+        description: response.message || "El producto externo ya esta asociado al inventario interno.",
+        type: "success",
+        icon: "CheckCircle",
+        route: "/productos",
+      });
+      setConversionExternalItem(null);
+      setConversionFactura(null);
+      await fetchExternalItems(externalMeta.current_page, debouncedSearchTerm);
+      const productosActualizados = await getProductos();
+      setProductos(productosActualizados.map(mapProducto));
+    } catch (error: any) {
+      console.error(error);
+      addNotification({
+        title: "Error al convertir producto",
+        description: error?.response?.data?.message || "No se pudo convertir el producto externo.",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/productos",
+      });
+    } finally {
+      setConvertingExternal(false);
+    }
+  };
+
   const handleCreateCotizacionWithExternalItem = () => {
     if (!selectedExternalItem) return;
 
@@ -628,7 +857,7 @@ export default function Productos() {
     try {
       setAddingToCotizacion(true);
       const cotizacion = await getCotizacion(cotizacionId);
-      const itemData = buildExternalItemForCotizacion(selectedExternalItem);
+      const itemData = buildExternalItemForCotizacion(selectedExternalItem, cotizacion);
       const items = [
         ...(cotizacion.items || []),
         {
@@ -810,16 +1039,18 @@ export default function Productos() {
               Productos Stock
             </button>
 
-            <button
-              onClick={() => handleTabChange("externos")}
-              className={`px-5 py-3 rounded-2xl transition-all duration-200 font-semibold ${
-                !isStockTab
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              Productos Externos
-            </button>
+            {canUseExternalProducts && (
+              <button
+                onClick={() => handleTabChange("externos")}
+                className={`px-5 py-3 rounded-2xl transition-all duration-200 font-semibold ${
+                  !isStockTab
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                Productos Externos
+              </button>
+            )}
           </div>
 
           <h1 className="text-3xl font-bold text-gray-800">
@@ -874,12 +1105,12 @@ export default function Productos() {
           <colgroup>
             {isStockTab ? (
               <>
-                <col className="w-[22%]" />
-                <col className="w-[14%]" />
-                <col className="w-[10%]" />
+                <col className="w-[21%]" />
                 <col className="w-[12%]" />
-                <col className="w-[20%]" />
-                <col className="w-[10%]" />
+                <col className="w-[16%]" />
+                <col className="w-[11%]" />
+                <col className="w-[18%]" />
+                <col className="w-[9%]" />
                 <col className="w-[120px]" />
               </>
             ) : (
@@ -890,7 +1121,7 @@ export default function Productos() {
                 <col className="w-[8%]" />
                 <col className="w-[12%]" />
                 <col className="w-[12%]" />
-                <col className="w-[136px]" />
+                <col className="w-[180px]" />
               </>
             )}
           </colgroup>
@@ -905,7 +1136,7 @@ export default function Productos() {
                     Categoría
                   </th>
                   <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Stock
+                    Stock real
                   </th>
                   <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                     Precio
@@ -932,7 +1163,7 @@ export default function Productos() {
                     Código
                   </th>
                   <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Stock
+                    Stock interno
                   </th>
                   <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                     Costo Unit.
@@ -992,8 +1223,21 @@ export default function Productos() {
                       <td className="px-6 py-5 text-gray-600">
                         {item.categoria_label}
                       </td>
-                      <td className="px-6 py-5 text-gray-600 font-medium">
-                        {item.stock}
+                      <td className="px-6 py-5 text-gray-600">
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between gap-2">
+                            <span className="text-gray-500">Actual</span>
+                            <span className="font-semibold text-gray-900">{Number(item.stock_actual ?? item.stock ?? 0).toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between gap-2">
+                            <span className="text-gray-500">Reservado</span>
+                            <span className="font-semibold text-amber-700">{Number(item.stock_reservado ?? 0).toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between gap-2">
+                            <span className="text-gray-500">Disponible</span>
+                            <span className="font-semibold text-emerald-700">{Number(item.stock_disponible ?? item.stock ?? 0).toLocaleString()}</span>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-6 py-5 font-semibold text-gray-800">
                         S/. {Number(item.precio_referencial || "0").toLocaleString()}
@@ -1004,12 +1248,12 @@ export default function Productos() {
                       <td className="px-6 py-5">
                         <span
                           className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            item.activo === "true"
-                              ? "bg-green-100 text-green-700 border border-green-200"
-                              : "bg-red-100 text-red-700 border border-red-200"
+                            item.estado === "usado"
+                              ? "bg-amber-100 text-amber-700 border border-amber-200"
+                              : "bg-green-100 text-green-700 border border-green-200"
                           }`}
                         >
-                          {item.activo === "true" || item.activo === true ? "Activo" : "Inactivo"}
+                          {item.estado === "usado" ? "Usado" : "Nuevo"}
                         </span>
                       </td>
                       <td className="px-6 py-5">
@@ -1045,9 +1289,21 @@ export default function Productos() {
                               loading="lazy"
                             />
                           )}
-                          <h3 className="min-w-0 truncate font-semibold text-gray-800" title={item.descripcion}>
-                            {item.descripcion}
-                          </h3>
+                          <div className="min-w-0">
+                            <h3 className="truncate font-semibold text-gray-800" title={item.descripcion}>
+                              {item.descripcion}
+                            </h3>
+                            {(item.plantilla_ultimo_uso_nombre || item.plantilla_origen_nombre) && (
+                              <p className="truncate text-[11px] font-semibold text-blue-700">
+                                Ultima plantilla: {item.plantilla_ultimo_uso_nombre || item.plantilla_origen_nombre}
+                              </p>
+                            )}
+                            {item.producto_id && (
+                              <p className="truncate text-[11px] font-semibold text-emerald-700">
+                                Asociado a inventario #{item.producto_id}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-5 text-gray-600">
@@ -1060,14 +1316,43 @@ export default function Productos() {
                           {item.codigo}
                         </span>
                       </td>
-                      <td className="px-6 py-5 text-gray-600 font-medium">
-                        {item.stock}
+                      <td className="px-6 py-5 text-gray-600">
+                        {item.producto_id ? (
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between gap-2">
+                              <span className="text-gray-500">Actual</span>
+                              <span className="font-semibold text-gray-900">
+                                {Number(item.producto?.stock_actual ?? 0).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-gray-500">Reservado</span>
+                              <span className="font-semibold text-amber-700">
+                                {Number(item.producto?.stock_reservado ?? 0).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-gray-500">Disponible</span>
+                              <span className="font-semibold text-emerald-700">
+                                {Number(item.producto?.stock_disponible ?? 0).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="font-medium">{Number(item.stock || 0).toLocaleString()}</span>
+                        )}
                       </td>
                       <td className="px-6 py-5 font-semibold text-gray-800">
-                        S/. {Number(item.costo_base_referencial || item.costo_base || item.costo_unitario || "0").toLocaleString()}
+                        {formatExternalItemMoney(
+                          item,
+                          item.costo_base_referencial || item.costo_base || item.costo_unitario || "0"
+                        )}
                       </td>
                       <td className="px-6 py-5 font-semibold text-gray-800">
-                        S/. {Number(item.ultimo_precio_venta || item.precio_venta || "0").toLocaleString()}
+                        {formatExternalItemMoney(
+                          item,
+                          item.ultimo_precio_venta || item.precio_venta || "0"
+                        )}
                       </td>
                       <td className="px-4 py-5">
                         <div className="flex items-center justify-center gap-2">
@@ -1086,6 +1371,17 @@ export default function Productos() {
                             title="Agregar item a cotización"
                           >
                             <Plus size={18} />
+                          </button>
+                          <button
+                            onClick={() => handleOpenConvertExternal(item)}
+                            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-sm ${
+                              item.producto_id
+                                ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                            }`}
+                            title={item.producto_id ? "Registrar nueva entrada al inventario" : "Convertir a producto interno"}
+                          >
+                            <PackageCheck size={18} />
                           </button>
                         </div>
                       </td>
@@ -1304,6 +1600,152 @@ export default function Productos() {
         </div>
       )}
 
+      {conversionExternalItem && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+            <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {conversionExternalItem.producto_id ? "Registrar entrada de inventario" : "Convertir a producto interno"}
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  {conversionExternalItem.descripcion}
+                </p>
+              </div>
+              <button
+                onClick={handleCloseConvertExternal}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 p-6 md:grid-cols-2">
+              <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-sm text-blue-800">
+                El codigo interno se generara automaticamente con la secuencia de productos stock.
+              </div>
+
+              <label className="text-xs font-semibold uppercase text-gray-500">
+                Categoria
+                <select
+                  value={conversionForm.categoria_id}
+                  onChange={(event) => setConversionForm((current) => ({ ...current, categoria_id: Number(event.target.value) }))}
+                  disabled={Boolean(conversionExternalItem.producto_id)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 disabled:bg-gray-100"
+                >
+                  {productoCategoriaOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="text-xs font-semibold uppercase text-gray-500">
+                Cantidad comprada
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={conversionForm.cantidad}
+                  onChange={(event) => setConversionForm((current) => ({ ...current, cantidad: event.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800"
+                />
+              </label>
+
+              <label className="text-xs font-semibold uppercase text-gray-500">
+                Costo unitario
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={conversionForm.costo_unitario}
+                  onChange={(event) => setConversionForm((current) => ({ ...current, costo_unitario: event.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800"
+                />
+              </label>
+
+              <label className="text-xs font-semibold uppercase text-gray-500">
+                Moneda de compra
+                <select
+                  value={conversionForm.moneda_id}
+                  onChange={(event) => setConversionForm((current) => ({ ...current, moneda_id: event.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800"
+                >
+                  {monedaOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label} ({option.symbol})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="text-xs font-semibold uppercase text-gray-500">
+                Numero de factura
+                <input
+                  value={conversionForm.documento_numero}
+                  onChange={(event) => setConversionForm((current) => ({ ...current, documento_numero: event.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800"
+                />
+              </label>
+
+              <label className="text-xs font-semibold uppercase text-gray-500">
+                Estado
+                <select
+                  value={conversionForm.estado}
+                  onChange={(event) => setConversionForm((current) => ({ ...current, estado: event.target.value as "nuevo" | "usado" }))}
+                  disabled={Boolean(conversionExternalItem.producto_id)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 disabled:bg-gray-100"
+                >
+                  <option value="nuevo">NUEVO</option>
+                  <option value="usado">USADO</option>
+                </select>
+              </label>
+
+              <label className="text-xs font-semibold uppercase text-gray-500 md:col-span-2">
+                Archivo factura
+                <div className="mt-1 flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700">
+                  <Upload size={16} className="text-gray-400" />
+                  <input
+                    type="file"
+                    accept=".pdf,.xml,.doc,.docx,.jpg,.jpeg,.png"
+                    onChange={(event) => setConversionFactura(event.target.files?.[0] ?? null)}
+                    className="w-full text-sm"
+                  />
+                </div>
+              </label>
+
+              <label className="text-xs font-semibold uppercase text-gray-500 md:col-span-2">
+                Observacion
+                <textarea
+                  value={conversionForm.observacion}
+                  onChange={(event) => setConversionForm((current) => ({ ...current, observacion: event.target.value }))}
+                  rows={3}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800"
+                />
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+              <button
+                onClick={handleCloseConvertExternal}
+                className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConvertExternal}
+                disabled={convertingExternal}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {convertingExternal ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={16} />}
+                {conversionExternalItem.producto_id ? "Registrar entrada" : "Convertir y registrar entrada"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL CREAR / EDITAR */}
       {openModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1337,7 +1779,7 @@ export default function Productos() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Nombre</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">Nombre del Producto</label>
                   <input
                     value={productoSeleccionado.nombre}
                     onChange={(e) =>
@@ -1346,7 +1788,7 @@ export default function Productos() {
                         nombre: e.target.value,
                       })
                     }
-                    placeholder="Nombre"
+                    placeholder="Nombre del Producto"
                     className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                   />
                 </div>
@@ -1363,7 +1805,7 @@ export default function Productos() {
                     }
                     className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                   >
-                    {categoriaOptions.map((option) => (
+                    {productoCategoriaOptions.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.label}
                       </option>
@@ -1522,12 +1964,12 @@ export default function Productos() {
               <div className="space-y-1">
                 <label className="block text-[11px] text-gray-500 uppercase">Estado</label>
                 <select
-                  value={productoSeleccionado.activo}
-                  onChange={(e) => handleEstadoChange(e.target.value)}
+                  value={productoSeleccionado.estado}
+                  onChange={(e) => handleEstadoChange(e.target.value as "nuevo" | "usado")}
                   className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                 >
-                  <option value="true">Activo</option>
-                  <option value="false">Inactivo</option>
+                  <option value="nuevo">NUEVO</option>
+                  <option value="usado">USADO</option>
                 </select>
               </div>
             </div>

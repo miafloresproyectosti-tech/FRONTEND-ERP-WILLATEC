@@ -111,6 +111,109 @@ const plantillaIncluyeIgv = (plantillaId: number, plantilla?: { incluye_igv?: bo
   return Boolean(plantilla?.incluye_igv);
 };
 
+const normalizePlantillaDescriptor = (plantilla?: {
+  nombre?: string;
+  formato_pdf?: string;
+  codigo_moneda?: string;
+}) =>
+  [
+    plantilla?.nombre,
+    plantilla?.formato_pdf,
+    plantilla?.codigo_moneda,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-');
+
+const toFiniteNumber = (value: unknown) => {
+  const numericValue = Number(value);
+
+  return Number.isFinite(numericValue) ? numericValue : 0;
+};
+
+const roundMoney = (value: number) => Number(value.toFixed(2));
+
+const getProductoPrecioSolesInclIgv = (producto: Producto) => {
+  const precio = [
+    producto.precio_referencial,
+    producto.precio_venta,
+    producto.costo_unitario,
+    producto.costo_base,
+    (producto as { precio?: number | string | null }).precio,
+  ]
+    .map(toFiniteNumber)
+    .find((value) => value > 0);
+
+  return precio ?? 0;
+};
+
+const calcularPrecioProductoCatalogo = (
+  producto: Producto,
+  plantilla: {
+    nombre?: string;
+    formato_pdf?: string;
+    codigo_moneda?: string;
+  } | undefined,
+  tipoCambioSolesADolar: number
+) => {
+  const precioSolesInclIgv = getProductoPrecioSolesInclIgv(producto);
+  const descriptor = normalizePlantillaDescriptor(plantilla);
+  const tipoCambio = tipoCambioSolesADolar > 0 ? tipoCambioSolesADolar : 3.3;
+
+  if (descriptor.includes('willatec-soles-estado')) {
+    return roundMoney(precioSolesInclIgv);
+  }
+
+  if (descriptor.includes('willatec-dolares')) {
+    return roundMoney(precioSolesInclIgv / 1.18 / tipoCambio);
+  }
+
+  if (descriptor.includes('willatec-soles')) {
+    return roundMoney(precioSolesInclIgv / 1.18);
+  }
+
+  return roundMoney(precioSolesInclIgv);
+};
+
+const convertirPrecioExternoAPlantilla = (
+  value: number | string | null | undefined,
+  sourceMonedaId: number | null | undefined,
+  sourceIncluyeIgv: boolean | null | undefined,
+  targetMonedaId: number,
+  targetIncluyeIgv: boolean,
+  tipoCambioSolesADolar: number,
+  tipoCambioDolarASoles: number
+) => {
+  const sourceValue = toFiniteNumber(value);
+  const sourceMoneda = Number(sourceMonedaId || targetMonedaId || 1);
+  const usdToPen = tipoCambioDolarASoles > 0 ? tipoCambioDolarASoles : 3.5;
+  const penToUsd = tipoCambioSolesADolar > 0 ? tipoCambioSolesADolar : 3.3;
+
+  if (sourceMoneda === targetMonedaId) {
+    if (sourceMoneda === 2 || sourceIncluyeIgv === targetIncluyeIgv) {
+      return roundMoney(sourceValue);
+    }
+
+    return roundMoney(sourceIncluyeIgv ? sourceValue / 1.18 : sourceValue * 1.18);
+  }
+
+  const solesSinIgv =
+    sourceMoneda === 2
+      ? sourceValue * usdToPen
+      : sourceIncluyeIgv
+        ? sourceValue / 1.18
+        : sourceValue;
+
+  if (targetMonedaId === 2) {
+    return roundMoney(solesSinIgv / penToUsd);
+  }
+
+  return roundMoney(targetIncluyeIgv ? solesSinIgv * 1.18 : solesSinIgv);
+};
+
 export function CotizacionDetail() {
   const navigate = useNavigate();
   const { id, modificacionId } = useParams<{ id: string; modificacionId: string }>();
@@ -470,22 +573,48 @@ export function CotizacionDetail() {
   };
 
   const buildItemFromExternalSource = (source: Partial<CotizacionItem>): CotizacionItem => {
-    const proveedores = normalizeItemProveedores(source);
+    const sourceMonedaId = source.moneda_id ?? currentMonedaId;
+    const sourceIncluyeIgv = source.precio_incluye_igv ?? false;
+    const costoBase = convertirPrecioExternoAPlantilla(
+      source.costo_base ?? source.costo_unitario ?? 0,
+      sourceMonedaId,
+      sourceIncluyeIgv,
+      currentMonedaId,
+      currentIncludeIgv,
+      tipoCambioSolesADolar,
+      tipoCambioDolarASoles
+    );
+    const proveedores = normalizeItemProveedores(source).map((proveedor) => ({
+      ...proveedor,
+      precio: proveedor.precio === null || proveedor.precio === undefined
+        ? null
+        : convertirPrecioExternoAPlantilla(
+          proveedor.precio,
+          sourceMonedaId,
+          sourceIncluyeIgv,
+          currentMonedaId,
+          currentIncludeIgv,
+          tipoCambioSolesADolar,
+          tipoCambioDolarASoles
+        ),
+    }));
     const primaryProveedor = getPrimaryProveedor(proveedores);
     const image = source.imagen || source.imagen_url || source.imagen_path || '';
+    const margen = 0;
+    const precioVenta = margen < 100 ? roundMoney(costoBase / (1 - margen / 100)) : costoBase;
 
     return {
       id: Date.now(),
       cotizacion_id: currentCotizacionId || 0,
       descripcion: source.descripcion || '',
       cantidad: 1,
-      costo_base: Number(source.costo_base ?? source.costo_unitario ?? 0),
-      costo_unitario: Number(source.costo_unitario ?? source.costo_base ?? 0),
-      costo_total: Number(source.costo_unitario ?? source.costo_base ?? 0),
-      precio_venta: Number(source.precio_venta || 0),
-      subtotal: Number(source.precio_venta || 0),
-      ganancia: Number(source.ganancia || 0),
-      margen: Number(source.margen || 0),
+      costo_base: costoBase,
+      costo_unitario: costoBase,
+      costo_total: costoBase,
+      precio_venta: precioVenta,
+      subtotal: precioVenta,
+      ganancia: roundMoney(precioVenta - costoBase),
+      margen,
       nota: source.nota || '',
       marca: source.marca || '',
       codigo: source.codigo || '',
@@ -496,8 +625,13 @@ export function CotizacionDetail() {
       orden: items.length + 1,
       producto_id: source.producto_id,
       producto_externo_id: source.producto_externo_id,
+      moneda_id: source.moneda_id,
+      precio_incluye_igv: source.precio_incluye_igv,
+      plantilla_origen_id: source.plantilla_origen_id,
+      plantilla_origen_nombre: source.plantilla_origen_nombre,
+      plantilla_ultimo_uso_nombre: source.plantilla_ultimo_uso_nombre,
       estado_cotizacion_item_id: undefined,
-      aplica_costos_adicionales: source.aplica_costos_adicionales ?? true,
+      aplica_costos_adicionales: false,
       tipo: 'externo',
       ...primaryProveedor,
       proveedores,
@@ -563,10 +697,8 @@ export function CotizacionDetail() {
         ? totalCantidad > 0 ? totalCantidad : 1
         : totalCantidadSeleccionada > 0 ? totalCantidadSeleccionada : 1;
     const costoExtraUnitario = costosTotal / divisor;
-    const aplicaCostoExtra =
-      modoDistribucion === 'POR_CANTIDAD' ||
-      (itemForm.aplica_costos_adicionales ?? true) ||
-      itemsConCostos.length === 0;
+    const itemAplicaCostos = itemForm.aplica_costos_adicionales !== false;
+    const aplicaCostoExtra = itemAplicaCostos;
     const costoUnitario = costoBase + (aplicaCostoExtra ? costoExtraUnitario : 0);
     const precioVenta = margen < 100 ? costoUnitario / (1 - margen / 100) : costoUnitario;
     const subtotal = precioVenta * cantidad;
@@ -1802,26 +1934,27 @@ export function CotizacionDetail() {
     setShowItemFormModal(true);
   };
 
-  const handleProductSelection = (producto: any) => {
+  const handleProductSelection = (producto: Producto) => {
     if (isCotizacionReadOnly) return;
 
     setShowProductModal(false);
 
-    const margen =
-      producto.precio > 0
-        ? ((producto.precio - producto.costo) / producto.precio) * 100
-        : 0;
+    const precioCatalogo = calcularPrecioProductoCatalogo(
+      producto,
+      selectedPlantilla,
+      tipoCambioSolesADolar
+    );
 
     setItemForm({
       id: 1,
       descripcion: producto.nombre || '',
       cantidad: 1,
-      costo_base: producto.costo || 0,
-      precio_venta: producto.precio || 0,
-      costo_unitario: producto.costo || 0,
-      costo_total: producto.costo || 0,
-      ganancia: (producto.precio || 0) - (producto.costo || 0),
-      subtotal: producto.precio || 0,
+      costo_base: precioCatalogo,
+      precio_venta: precioCatalogo,
+      costo_unitario: precioCatalogo,
+      costo_total: precioCatalogo,
+      ganancia: 0,
+      subtotal: precioCatalogo,
       imagen: producto.imagen || producto.imagen_url || '',
       imagen_url: producto.imagen_url || producto.imagen || null,
       imagen_path: producto.imagen_path || producto.imagen || null,
@@ -1832,7 +1965,7 @@ export function CotizacionDetail() {
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
       tipo: 'catalogo',
-      margen: Number(margen.toFixed(2)),
+      margen: 0,
       nota: '',
       marca: producto.marca || '',
       codigo: producto.codigo || '',
@@ -1855,7 +1988,31 @@ export function CotizacionDetail() {
   };
 
   const handleExternalSuggestionSelection = (suggestion: ItemForm) => {
-    const proveedores = normalizeItemProveedores(suggestion);
+    const sourceMonedaId = suggestion.moneda_id ?? currentMonedaId;
+    const sourceIncluyeIgv = suggestion.precio_incluye_igv ?? false;
+    const costoBase = convertirPrecioExternoAPlantilla(
+      suggestion.costo_base ?? suggestion.costo_unitario ?? 0,
+      sourceMonedaId,
+      sourceIncluyeIgv,
+      currentMonedaId,
+      currentIncludeIgv,
+      tipoCambioSolesADolar,
+      tipoCambioDolarASoles
+    );
+    const proveedores = normalizeItemProveedores(suggestion).map((proveedor) => ({
+      ...proveedor,
+      precio: proveedor.precio === null || proveedor.precio === undefined
+        ? null
+        : convertirPrecioExternoAPlantilla(
+          proveedor.precio,
+          sourceMonedaId,
+          sourceIncluyeIgv,
+          currentMonedaId,
+          currentIncludeIgv,
+          tipoCambioSolesADolar,
+          tipoCambioDolarASoles
+        ),
+    }));
     const primaryProveedor = getPrimaryProveedor(proveedores);
     const image = suggestion.imagen || suggestion.imagen_url || suggestion.imagen_path || '';
 
@@ -1865,10 +2022,15 @@ export function CotizacionDetail() {
       nota: suggestion.nota || '',
       marca: suggestion.marca || '',
       codigo: suggestion.codigo || '',
-      costo_base: Number(suggestion.costo_base ?? suggestion.costo_unitario ?? prev.costo_base ?? 0),
-      margen: Number(suggestion.margen ?? prev.margen ?? 0),
+      costo_base: costoBase,
+      margen: 0,
       producto_id: undefined,
       producto_externo_id: suggestion.producto_externo_id,
+      moneda_id: suggestion.moneda_id,
+      precio_incluye_igv: suggestion.precio_incluye_igv,
+      plantilla_origen_id: suggestion.plantilla_origen_id,
+      plantilla_origen_nombre: suggestion.plantilla_origen_nombre,
+      plantilla_ultimo_uso_nombre: suggestion.plantilla_ultimo_uso_nombre,
       proveedor: primaryProveedor.proveedor,
       link_proveedor: primaryProveedor.link_proveedor,
       proveedores,
@@ -1876,7 +2038,7 @@ export function CotizacionDetail() {
       imagen_url: suggestion.imagen_url || image || null,
       imagen_path: suggestion.imagen_path || image || null,
       tipo: 'externo',
-      aplica_costos_adicionales: suggestion.aplica_costos_adicionales ?? true,
+      aplica_costos_adicionales: false,
     }));
   };
 
@@ -2074,6 +2236,14 @@ export function CotizacionDetail() {
     return usuario?.nombres || usuario?.email || 'Usuario no identificado';
   };
 
+  const cotizacionNumeroDisplay =
+    cotizacion?.numero ||
+    (isModificationMode && modificacion?.cotizacion_id
+      ? `#${modificacion.cotizacion_id}`
+      : isEditing && currentCotizacionId
+        ? `#${currentCotizacionId}`
+        : 'Se generara al guardar');
+
   // ====== RENDER ======
 
   if (loading) {
@@ -2094,6 +2264,7 @@ export function CotizacionDetail() {
           <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg">
             <ArrowLeft className="w-6 h-6 text-gray-600" />
           </button>
+          <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             {cotizacion?.estado_cotizacion_id === 1 && (
               <CheckCircle className="text-green-500 w-6 h-6" />
@@ -2101,6 +2272,10 @@ export function CotizacionDetail() {
 
             {isEditing ? 'Editar Cotización' : 'Nueva Cotización'}
           </h1>
+            <p className="mt-1 text-sm font-semibold text-gray-600">
+              Numero de cotizacion: <span className="text-gray-900">{cotizacionNumeroDisplay}</span>
+            </p>
+          </div>
         </div>
       </div>
 

@@ -127,6 +127,10 @@ export function ItemFormModal({
   const proveedores = itemForm.proveedores?.length
     ? itemForm.proveedores
     : [{ nombre: itemForm.proveedor || "", link: itemForm.link_proveedor || "", precio: null, notas: "" }];
+  const selectedExternalPlantilla =
+    itemForm.plantilla_ultimo_uso_nombre ||
+    itemForm.plantilla_origen_nombre ||
+    null;
 
   const updateProveedor = (
     index: number,
@@ -230,11 +234,21 @@ export function ItemFormModal({
                             <span className="block text-[10px] text-gray-500 truncate">
                               {[suggestion.marca, suggestion.codigo, suggestion.proveedor].filter(Boolean).join(' · ')}
                             </span>
+                            {(suggestion.plantilla_ultimo_uso_nombre || suggestion.plantilla_origen_nombre) && (
+                              <span className="block text-[10px] font-semibold text-blue-700 truncate">
+                                Ultima plantilla: {suggestion.plantilla_ultimo_uso_nombre || suggestion.plantilla_origen_nombre}
+                              </span>
+                            )}
                           </span>
                         </button>
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+              {itemForm.tipo === "externo" && selectedExternalPlantilla && (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700">
+                  Ultima plantilla: {selectedExternalPlantilla}
                 </div>
               )}
 

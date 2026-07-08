@@ -279,6 +279,7 @@ const getDocumentLinks = (oc: OcEmitida | OcRecibida): DocumentLink[] => {
     : [
       ["orden_compra_cliente", "Orden de compra cliente"],
       ["guia_emision", "Guia de emision"],
+      ["factura", "Factura"],
     ];
 
   const directLinks = labels
@@ -336,6 +337,7 @@ export default function OrdenesCompraPage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [documentTarget, setDocumentTarget] = useState<OcEmitida | OcRecibida | null>(null);
   const [factura, setFactura] = useState<File | null>(null);
+  const [facturaNumero, setFacturaNumero] = useState("");
   const [comprobantePago, setComprobantePago] = useState<File | null>(null);
   const [updatingItemOc, setUpdatingItemOc] = useState<number | null>(null);
 
@@ -490,6 +492,8 @@ export default function OrdenesCompraPage() {
     setEmitidaItems([]);
     setOrdenCompraCliente(null);
     setGuiaEmision(null);
+    setFactura(null);
+    setFacturaNumero("");
   };
 
   const openCreateModal = (mode: Exclude<ModalMode, null>) => {
@@ -746,6 +750,8 @@ export default function OrdenesCompraPage() {
         await uploadOcRecibidaDocumentos(documentTarget.id, {
           orden_compra_cliente: ordenCompraCliente,
           guia_emision: guiaEmision,
+          factura_numero: facturaNumero,
+          factura,
         });
         setSelectedOc(await getOcRecibida(documentTarget.id));
       }
@@ -753,6 +759,7 @@ export default function OrdenesCompraPage() {
       showToast({ title: "Documentos actualizados", description: "Los archivos fueron enviados al backend.", type: "success" });
       setDocumentTarget(null);
       setFactura(null);
+      setFacturaNumero("");
       setComprobantePago(null);
       setOrdenCompraCliente(null);
       setGuiaEmision(null);
@@ -829,17 +836,10 @@ export default function OrdenesCompraPage() {
       comprado: row.id === item.id && field === "comprado" ? checked : Boolean(row.comprado),
       entregado: row.id === item.id && field === "entregado" ? checked : Boolean(row.entregado),
     }));
-    const nextOc = {
-      ...oc,
-      items: oc.items.map((row) =>
-        row.id === item.id ? { ...row, [field]: checked } : row
-      ),
-    };
-
     try {
       setUpdatingItemOc(oc.id);
-      setSelectedOc((current) => current?.id === oc.id ? nextOc : current);
       await updateOcRecibidaItems(oc.id, { items: nextItems });
+      setSelectedOc(await getOcRecibida(oc.id));
       showToast({ title: "Items actualizados", description: "Comprado/entregado fue sincronizado.", type: "success" });
       void loadRecibidas(recibidasPagination.page);
     } catch (error) {
@@ -1161,6 +1161,15 @@ export default function OrdenesCompraPage() {
                 <>
                   <FileInput label="Orden de compra cliente" onChange={handleFile(setOrdenCompraCliente)} />
                   <FileInput label="Guia de emision" onChange={handleFile(setGuiaEmision)} />
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    Numero de factura
+                    <input
+                      value={facturaNumero}
+                      onChange={(event) => setFacturaNumero(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    />
+                  </label>
+                  <FileInput label="Factura" onChange={handleFile(setFactura)} />
                 </>
               )}
             </div>
