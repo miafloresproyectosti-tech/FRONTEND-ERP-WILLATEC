@@ -19,6 +19,9 @@ export function ProductModal({
   onSelect,
 }: Props) {
   const [searchTerm, setSearchTerm] = useState("");
+  const toNumber = (value: number | string | null | undefined) => Number(value ?? 0) || 0;
+  const formatUnits = (value: number) =>
+    value.toLocaleString("es-PE", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
   useEffect(() => {
     if (open) {
@@ -33,6 +36,7 @@ export function ProductModal({
 
     return productos.filter((producto) => {
       const searchableText = [
+        producto.sku,
         producto.nombre,
         producto.marca,
         producto.modelo,
@@ -53,7 +57,7 @@ export function ProductModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
         <div className="p-6 border-b flex justify-between items-center bg-gray-50">
-          <h3 className="text-xl font-bold text-gray-800">Seleccionar del Catálogo</h3>
+          <h3 className="text-xl font-bold text-gray-800">Seleccionar del Catalogo</h3>
           <button onClick={onClose}>
             <X className="w-6 h-6 text-gray-400" />
           </button>
@@ -66,7 +70,7 @@ export function ProductModal({
               type="text"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Buscar por nombre, marca, modelo o código..."
+              placeholder="Buscar por nombre, marca, modelo, SKU o codigo..."
               className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             />
           </div>
@@ -74,37 +78,58 @@ export function ProductModal({
 
         <div className="p-4 overflow-y-auto">
           <div className="space-y-2">
-            {filteredProductos.map((producto) => (
-              <div
-                key={producto.id}
-                onClick={() => onSelect(producto)}
-                className="flex items-center justify-between p-4 border rounded-lg hover:bg-blue-50 cursor-pointer group transition-all"
-              >
-                <div>
-                  <p className="font-bold text-gray-800 group-hover:text-blue-700">
-                    {producto.nombre}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Sugerido: {formatMoney(producto.precio_referencial, simboloMoneda)}
-                  </p>
-                </div>
-                <span
-                  className={`text-xs px-2 py-1 rounded-full ${
-                    producto.stock === 0
-                      ? "bg-red-100 text-red-700"
-                      : producto.stock > 10
-                        ? "bg-green-100 text-green-700"
-                        : "bg-orange-100 text-orange-700"
-                  }`}
+            {filteredProductos.map((producto) => {
+              const stockActual = toNumber(producto.stock_actual ?? producto.stock);
+              const stockReservado = toNumber(producto.stock_reservado);
+              const stockDisponible = toNumber(producto.stock_disponible ?? producto.stock);
+              const unidad = producto.unidad_medida || "UND";
+
+              return (
+                <div
+                  key={producto.id}
+                  onClick={() => onSelect(producto)}
+                  className="flex items-center justify-between gap-3 p-4 border rounded-lg hover:bg-blue-50 cursor-pointer group transition-all"
                 >
-                  {producto.stock === 0
-                    ? "Agotado"
-                    : producto.stock > 10
-                      ? "En Stock"
-                      : `Pocas Unidades (${producto.stock})`}
-                </span>
-              </div>
-            ))}
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-800 group-hover:text-blue-700">
+                      {producto.nombre}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                      <span>Sugerido: {formatMoney(producto.precio_referencial, simboloMoneda)}</span>
+                      {(producto.sku || producto.codigo) && (
+                        <span>Codigo: {producto.sku || producto.codigo}</span>
+                      )}
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                      <span className="rounded-md bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">
+                        Disponibles: {formatUnits(stockDisponible)} {unidad}
+                      </span>
+                      <span className="rounded-md bg-gray-100 px-2 py-1 text-gray-600">
+                        Actual: {formatUnits(stockActual)}
+                      </span>
+                      <span className="rounded-md bg-amber-50 px-2 py-1 text-amber-700">
+                        Reservado: {formatUnits(stockReservado)}
+                      </span>
+                    </div>
+                  </div>
+                  <span
+                    className={`shrink-0 text-xs px-2 py-1 rounded-full ${
+                      stockDisponible <= 0
+                        ? "bg-red-100 text-red-700"
+                        : stockDisponible > 10
+                          ? "bg-green-100 text-green-700"
+                          : "bg-orange-100 text-orange-700"
+                    }`}
+                  >
+                    {stockDisponible <= 0
+                      ? "Sin disponible"
+                      : stockDisponible > 10
+                        ? "Disponible"
+                        : "Disponible bajo"}
+                  </span>
+                </div>
+              );
+            })}
 
             {filteredProductos.length === 0 && (
               <div className="py-10 text-center text-sm text-gray-500">

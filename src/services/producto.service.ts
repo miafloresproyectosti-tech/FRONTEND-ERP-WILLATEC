@@ -417,7 +417,12 @@ function buildFormData(payload: ProductoPayload): FormData {
 
 //Backend devuelve productos paginados
 export const getProductos = async (): Promise<Producto[]> => {
-    const res = await api.get("/productos");
+    const res = await api.get("/productos", {
+        params: {
+            activo: true,
+            per_page: 1000,
+        },
+    });
     const productos = res.data?.data ?? [];
     return Array.isArray(productos) ? productos.map(normalizeProducto) : [];
 };

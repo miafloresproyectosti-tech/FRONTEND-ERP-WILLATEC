@@ -44,6 +44,7 @@ export interface CotizacionItem {
   proveedor?: string; // Nuevo campo para proveedor
   link_proveedor?: string; // Nuevo campo para link del proveedor
   proveedores?: CotizacionItemProveedor[];
+  importacion_calculo?: ImportacionCalculo | null;
 }
 
 export interface CotizacionItemProveedor {
@@ -54,6 +55,30 @@ export interface CotizacionItemProveedor {
   precio?: number | null;
   notas?: string | null;
   orden?: number;
+}
+
+export type ImportacionCalculoTipo = "under200" | "from201to1999" | "from2000up";
+
+export interface ImportacionCalculo {
+  tipo: ImportacionCalculoTipo;
+  label: string;
+  precio_producto: number;
+  unidades: number;
+  peso_total: number;
+  costo_peso_kg: number;
+  desaduanaje: number;
+  agente_aduanero: number;
+  impuesto_rate: number;
+  total_producto: number;
+  total_peso: number;
+  subtotal_importacion: number;
+  impuesto: number;
+  total_importacion: number;
+  precio_unitario_usd: number;
+  costo_aplicado: number;
+  moneda_id: number;
+  tipo_cambio_usd_soles?: number;
+  created_at?: string;
 }
 
 export interface ItemFormState {
@@ -83,6 +108,7 @@ export interface ItemFormState {
   proveedor?: string;
   link_proveedor?: string;
   proveedores?: CotizacionItemProveedor[];
+  importacion_calculo?: ImportacionCalculo | null;
 }
 
 export interface CotizacionCostosAdicional {
@@ -143,6 +169,8 @@ export interface Cotizacion {
   fecha: string;
   titulo: string;
   forma_pago?: string;
+  entrega_provincia?: boolean;
+  entrega_destino?: string | null;
   tipo_cambio: number;
   cliente_id: number;
   plantilla_id: number;
@@ -260,6 +288,8 @@ export interface CreateCotizacionData {
   plataforma_id: number;
   titulo?: string;
   forma_pago?: string;
+  entrega_provincia?: boolean;
+  entrega_destino?: string | null;
   cliente_contacto?: string;
   modo_distribucion?: "POR_ITEM" | "POR_CANTIDAD";
   moneda_id: number;
@@ -279,6 +309,8 @@ export interface UpdateCotizacionData {
   validez_dias?: number;
   titulo?: string;
   forma_pago?: string;
+  entrega_provincia?: boolean;
+  entrega_destino?: string | null;
   cliente_contacto?: string;
   delegado_id?: number | null;
   delegado_cotizacion_id?: number | null;
@@ -307,6 +339,7 @@ export interface CreateItemData {
   imagen?: string | null;
   imagen_path?: string | null;
   aplica_costos_adicionales?: boolean;
+  importacion_calculo?: ImportacionCalculo | null;
 }
 
 export interface UpdateItemData extends CreateItemData {}
@@ -340,6 +373,18 @@ function buildItemFormData(data: CreateItemData | UpdateItemData): FormData {
             );
           }
         });
+      });
+      return;
+    }
+
+    if (typeof value === "object") {
+      Object.entries(value).forEach(([childKey, childValue]) => {
+        if (childValue !== undefined && childValue !== null) {
+          formData.append(
+            `${key}[${childKey}]`,
+            typeof childValue === "boolean" ? (childValue ? "1" : "0") : String(childValue),
+          );
+        }
       });
       return;
     }

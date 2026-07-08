@@ -60,6 +60,12 @@ export interface OcRecibida {
     numero?: string;
     cliente_nombre?: string;
     titulo?: string;
+    total?: number | string;
+    estado_cotizacion_id?: number | string;
+    estado_cotizacion?: {
+      id?: number | string;
+      nombre?: string | null;
+    } | null;
     cliente?: {
       nombre?: string;
     };
@@ -74,6 +80,8 @@ export interface OcRecibida {
   items_count?: number | string;
   total_items?: number | string;
   items?: OcRecibidaItem[];
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface OcRecibidaItem {

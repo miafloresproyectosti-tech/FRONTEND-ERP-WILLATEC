@@ -46,6 +46,11 @@ interface Props {
   formaPago: string;
   setFormaPago: (v: string) => void;
 
+  entregaProvincia: boolean;
+  setEntregaProvincia: (v: boolean) => void;
+  entregaDestino: string;
+  setEntregaDestino: (v: string) => void;
+
   clienteContacto: string;
   setClienteContacto: (v: string) => void;
 
@@ -88,6 +93,10 @@ export function CotizacionGeneralForm({
   setTitulo,
   formaPago,
   setFormaPago,
+  entregaProvincia,
+  setEntregaProvincia,
+  entregaDestino,
+  setEntregaDestino,
   clienteContacto,
   setClienteContacto,
   disabled,
@@ -268,6 +277,37 @@ export function CotizacionGeneralForm({
                   <option value="CRÉDITO 15 DÍAS">CRÉDITO 15 DÍAS</option>
                   <option value="CRÉDITO 30 DÍAS">CRÉDITO 30 DÍAS</option>
                 </select>
+              </div>
+              <div className="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <label className="flex items-center gap-3 text-sm font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    disabled={disabled}
+                    checked={entregaProvincia}
+                    onChange={(e) => {
+                      setEntregaProvincia(e.target.checked);
+                      if (!e.target.checked) {
+                        setEntregaDestino('');
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  ¿La entrega es en provincia?
+                </label>
+
+                {entregaProvincia && (
+                  <div className="mt-3">
+                    <label className="block text-sm mb-2 text-gray-700">Destino de entrega</label>
+                    <input
+                      disabled={disabled}
+                      type="text"
+                      value={entregaDestino}
+                      onChange={(e) => setEntregaDestino(e.target.value)}
+                      className="w-full px-4 py-2 border rounded-lg bg-white focus:ring-2 focus:ring-blue-500"
+                      placeholder="Ej: Ayacucho, Trujillo, Arequipa"
+                    />
+                  </div>
+                )}
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm mb-2 text-gray-700">Título *</label>

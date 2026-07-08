@@ -1,6 +1,6 @@
 import React from "react";
-import type { ItemForm } from "../../../types/cotizaciones.type";
-import { ArrowLeftRight, Copy, Plus, Trash2, X } from "lucide-react";
+import type { ImportacionCalculoTipo, ItemForm } from "../../../types/cotizaciones.type";
+import { Calculator, Copy, Plus, Trash2, X } from "lucide-react";
 import { formatMoney } from "../../../utils/formatNumber";
 import { resolveItemImageUrl } from "../../../utils/storageImage";
 import api from "../../../services/api";
@@ -15,6 +15,7 @@ interface Props {
   monedaId: number;
   simboloMoneda: string;
   tipoCambioSolesADolar: number;
+  tipoCambioDolarASoles: number;
   canViewGanancia?: boolean;
 
   onSave: () => void;
@@ -35,6 +36,7 @@ export function ItemFormModal({
   monedaId,
   simboloMoneda,
   tipoCambioSolesADolar,
+  tipoCambioDolarASoles,
   canViewGanancia = true,
   onSave,
   onUpdate,
@@ -44,7 +46,20 @@ export function ItemFormModal({
   externalItemSuggestions = [],
   onSelectExternalSuggestion
 }: Props) {
+  const [importCalcOpen, setImportCalcOpen] = React.useState(false);
+  const [importCalcType, setImportCalcType] = React.useState<'under200' | 'from201to1999' | 'from2000up'>('under200');
+  const [importCalcForm, setImportCalcForm] = React.useState({
+    precioProducto: itemForm.costo_base ? String(itemForm.costo_base) : '',
+    unidades: itemForm.cantidad ? String(itemForm.cantidad) : '1',
+    pesoTotal: '',
+  });
+
   if (!open) return null;
+
+  const importCalc = itemForm.importacion_calculo ?? null;
+  const hasImportCalc = Boolean(importCalc);
+  const showImportCalcControls = itemForm.disponibilidad_tipo === 'importacion';
+  const isImportCalcReadOnly = readOnly && hasImportCalc;
 
   const gananciaSoles =
     monedaId === 2
@@ -111,6 +126,113 @@ export function ItemFormModal({
   };
 
   const inp = "w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-1 focus:ring-blue-400 outline-none bg-white";
+  const calcNumber = (value: string | number | null | undefined) => Number(value || 0);
+  const calcConfig = {
+    under200: {
+      label: 'IMPORTACIÓN MENOS DE $200',
+      desaduanaje: 25,
+      agenteAduanero: 0,
+      impuestoRate: 0,
+    },
+    from201to1999: {
+      label: 'IMPORTACIÓN VALOR DE $201 A $1999',
+      desaduanaje: 30,
+      agenteAduanero: 0,
+      impuestoRate: 0.25,
+    },
+    from2000up: {
+      label: 'IMPORTACIÓN VALOR DE $2000 A +',
+      desaduanaje: 40,
+      agenteAduanero: 300,
+      impuestoRate: 0.25,
+    },
+  }[importCalcType];
+  const importCalcValues = (() => {
+    const precioProducto = calcNumber(importCalcForm.precioProducto);
+    const unidades = Math.max(0, calcNumber(importCalcForm.unidades));
+    const pesoTotal = calcNumber(importCalcForm.pesoTotal);
+    const totalProducto = precioProducto * unidades;
+    const totalPeso = 10 * pesoTotal;
+    const totalDesaduanaje = calcConfig.desaduanaje;
+    const totalAgente = calcConfig.agenteAduanero;
+    const subTotal = totalProducto + totalPeso + totalDesaduanaje + totalAgente;
+    const impuesto = subTotal * calcConfig.impuestoRate;
+    const total = subTotal + impuesto;
+    const precioUnitario = unidades > 0 ? total / unidades : 0;
+    const costoAplicable = monedaId === 1
+      ? precioUnitario * (tipoCambioDolarASoles || 3.5)
+      : precioUnitario;
+
+    return {
+      precioProducto,
+      unidades,
+      pesoTotal,
+      totalProducto,
+      totalPeso,
+      totalDesaduanaje,
+      totalAgente,
+      subTotal,
+      impuesto,
+      total,
+      precioUnitario,
+      costoAplicable,
+    };
+  })();
+  const formatUsd = (value: number) =>
+    `$ ${value.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const handleOpenImportCalculation = () => {
+    if (importCalc) {
+      setImportCalcType(importCalc.tipo as ImportacionCalculoTipo);
+      setImportCalcForm({
+        precioProducto: String(importCalc.precio_producto ?? ''),
+        unidades: String(importCalc.unidades ?? itemForm.cantidad ?? 1),
+        pesoTotal: String(importCalc.peso_total ?? ''),
+      });
+    } else {
+      setImportCalcForm({
+        precioProducto: itemForm.costo_base ? String(itemForm.costo_base) : '',
+        unidades: itemForm.cantidad ? String(itemForm.cantidad) : '1',
+        pesoTotal: '',
+      });
+    }
+
+    setImportCalcOpen(true);
+  };
+  const handleApplyImportCalculation = () => {
+    if (readOnly || importCalcValues.precioUnitario <= 0) return;
+
+    const importacionCalculo = {
+      tipo: importCalcType,
+      label: calcConfig.label,
+      precio_producto: Number(importCalcValues.precioProducto.toFixed(2)),
+      unidades: importCalcValues.unidades,
+      peso_total: Number(importCalcValues.pesoTotal.toFixed(2)),
+      costo_peso_kg: 10,
+      desaduanaje: calcConfig.desaduanaje,
+      agente_aduanero: calcConfig.agenteAduanero,
+      impuesto_rate: calcConfig.impuestoRate,
+      total_producto: Number(importCalcValues.totalProducto.toFixed(2)),
+      total_peso: Number(importCalcValues.totalPeso.toFixed(2)),
+      subtotal_importacion: Number(importCalcValues.subTotal.toFixed(2)),
+      impuesto: Number(importCalcValues.impuesto.toFixed(2)),
+      total_importacion: Number(importCalcValues.total.toFixed(2)),
+      precio_unitario_usd: Number(importCalcValues.precioUnitario.toFixed(2)),
+      costo_aplicado: Number(importCalcValues.costoAplicable.toFixed(2)),
+      moneda_id: monedaId,
+      tipo_cambio_usd_soles: monedaId === 1 ? tipoCambioDolarASoles : undefined,
+      created_at: new Date().toISOString(),
+    };
+
+    setItemForm({
+      ...itemForm,
+      costo_base: Number(importCalcValues.costoAplicable.toFixed(2)),
+      cantidad: importCalcValues.unidades > 0 ? importCalcValues.unidades : itemForm.cantidad,
+      disponibilidad_tipo: 'importacion',
+      disponibilidad_dias: itemForm.disponibilidad_dias || 25,
+      importacion_calculo: importacionCalculo,
+    });
+    setImportCalcOpen(false);
+  };
   const filteredExternalSuggestions = !readOnly && itemForm.tipo === "externo" && itemForm.descripcion.trim()
     ? externalItemSuggestions
       .filter((suggestion) => {
@@ -396,11 +518,17 @@ export function ItemFormModal({
                     disabled={readOnly}
                     value={itemForm.costo_base?.toString() ?? ''}
                     onChange={e => setItemForm({ ...itemForm, costo_base: e.target.value ? parseFloat(e.target.value) : 0 })} />
-                  <button onClick={handleIntercambiarMoneda}
-                    disabled={readOnly}
-                    className="px-1.5 border border-gray-200 rounded hover:bg-gray-50 text-gray-500">
-                    <ArrowLeftRight className="w-3 h-3" />
-                  </button>
+                  {showImportCalcControls && (
+                    <button
+                      type="button"
+                      onClick={handleOpenImportCalculation}
+                      disabled={readOnly && !hasImportCalc}
+                      className={`px-1.5 border border-gray-200 rounded text-gray-500 ${hasImportCalc ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'hover:bg-gray-50'} disabled:cursor-not-allowed disabled:opacity-50`}
+                      title="Cálculo de importación"
+                    >
+                      <Calculator className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
               )}
               {field('Margen %',
@@ -422,6 +550,11 @@ export function ItemFormModal({
                 </select>
               )}
             </div>
+            {showImportCalcControls && hasImportCalc && (
+              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                Este ítem fue calculado con la calculadora de importación.
+              </div>
+            )}
           </div>
 
           {/* Proveedores - solo si es personalizado */}
@@ -563,6 +696,172 @@ export function ItemFormModal({
           )}
         </div>
       </div>
+
+      {importCalcOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4">
+          <div className="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">Cálculo de importación</h3>
+                <p className="text-xs text-gray-500">
+                  {isImportCalcReadOnly ? 'Detalle del cálculo usado en este ítem.' : 'Calcula el costo unitario y aplícalo al ítem.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setImportCalcOpen(false)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <label className="block text-xs font-semibold uppercase text-gray-500">
+                Tipo de importación
+                <select
+                  value={importCalcType}
+                  onChange={(event) => setImportCalcType(event.target.value as typeof importCalcType)}
+                  disabled={isImportCalcReadOnly}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="under200">IMPORTACIÓN MENOS DE $200</option>
+                  <option value="from201to1999">IMPORTACIÓN VALOR DE $201 A $1999</option>
+                  <option value="from2000up">IMPORTACIÓN VALOR DE $2000 A +</option>
+                </select>
+              </label>
+
+              <div className="overflow-hidden rounded-lg border border-gray-200">
+                <table className="w-full table-fixed text-sm">
+                  <colgroup>
+                    <col className="w-[34%]" />
+                    <col className="w-[22%]" />
+                    <col className="w-[22%]" />
+                    <col className="w-[22%]" />
+                  </colgroup>
+                  <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2">Descripción</th>
+                      <th className="px-3 py-2 text-right">Precio</th>
+                      <th className="px-3 py-2 text-right">Unitario</th>
+                      <th className="px-3 py-2 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    <tr>
+                      <td className="px-3 py-2 font-semibold text-gray-700">Precio de producto</td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={importCalcForm.precioProducto}
+                          disabled={isImportCalcReadOnly}
+                          onChange={(event) => setImportCalcForm((current) => ({ ...current, precioProducto: event.target.value }))}
+                          className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-right text-sm outline-none focus:ring-1 focus:ring-blue-400"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={importCalcForm.unidades}
+                          disabled={isImportCalcReadOnly}
+                          onChange={(event) => setImportCalcForm((current) => ({ ...current, unidades: event.target.value }))}
+                          className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-right text-sm outline-none focus:ring-1 focus:ring-blue-400"
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold text-gray-900">{formatUsd(importCalcValues.totalProducto)}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 font-semibold text-gray-700">Peso x kilo</td>
+                      <td className="px-3 py-2 text-right text-gray-700">$ 10.00</td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={importCalcForm.pesoTotal}
+                          disabled={isImportCalcReadOnly}
+                          onChange={(event) => setImportCalcForm((current) => ({ ...current, pesoTotal: event.target.value }))}
+                          className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-right text-sm outline-none focus:ring-1 focus:ring-blue-400"
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold text-gray-900">{formatUsd(importCalcValues.totalPeso)}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 font-semibold text-gray-700">Desaduanaje</td>
+                      <td className="px-3 py-2 text-right text-gray-700">{formatUsd(calcConfig.desaduanaje)}</td>
+                      <td className="px-3 py-2 text-right text-gray-700">1</td>
+                      <td className="px-3 py-2 text-right font-semibold text-gray-900">{formatUsd(importCalcValues.totalDesaduanaje)}</td>
+                    </tr>
+                    {calcConfig.agenteAduanero > 0 && (
+                      <tr>
+                        <td className="px-3 py-2 font-semibold text-gray-700">Agente aduanero</td>
+                        <td className="px-3 py-2 text-right text-gray-700">{formatUsd(calcConfig.agenteAduanero)}</td>
+                        <td className="px-3 py-2 text-right text-gray-700">1</td>
+                        <td className="px-3 py-2 text-right font-semibold text-gray-900">{formatUsd(importCalcValues.totalAgente)}</td>
+                      </tr>
+                    )}
+                    {calcConfig.impuestoRate > 0 && (
+                      <>
+                        <tr className="bg-gray-50">
+                          <td className="px-3 py-2 font-semibold text-gray-700" colSpan={3}>Sub total</td>
+                          <td className="px-3 py-2 text-right font-bold text-gray-900">{formatUsd(importCalcValues.subTotal)}</td>
+                        </tr>
+                        <tr>
+                          <td className="px-3 py-2 font-semibold text-gray-700" colSpan={3}>Impuestos 25%</td>
+                          <td className="px-3 py-2 text-right font-semibold text-gray-900">{formatUsd(importCalcValues.impuesto)}</td>
+                        </tr>
+                      </>
+                    )}
+                    <tr className="bg-blue-50">
+                      <td className="px-3 py-2 font-bold text-blue-900" colSpan={3}>Total importación</td>
+                      <td className="px-3 py-2 text-right font-bold text-blue-900">{formatUsd(importCalcValues.total)}</td>
+                    </tr>
+                    <tr className="bg-emerald-50">
+                      <td className="px-3 py-2 font-bold text-emerald-900" colSpan={3}>Precio por unidad</td>
+                      <td className="px-3 py-2 text-right font-bold text-emerald-900">{formatUsd(importCalcValues.precioUnitario)}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 font-bold text-gray-900" colSpan={3}>Costo a aplicar ({monedaId === 1 ? 'Soles' : 'Dólares'})</td>
+                      <td className="px-3 py-2 text-right font-bold text-gray-900">
+                        {formatMoney(importCalcValues.costoAplicable, simboloMoneda)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-col gap-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-600 sm:flex-row sm:items-center sm:justify-between">
+                <span>{calcConfig.label}</span>
+                <span>{isImportCalcReadOnly ? 'Vista solo lectura.' : 'El resultado se aplicará al costo del ítem.'}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setImportCalcOpen(false)}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                {isImportCalcReadOnly ? 'Cerrar' : 'Cancelar'}
+              </button>
+              {!isImportCalcReadOnly && (
+                <button
+                  type="button"
+                  onClick={handleApplyImportCalculation}
+                  disabled={importCalcValues.precioUnitario <= 0}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Aplicar al costo
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

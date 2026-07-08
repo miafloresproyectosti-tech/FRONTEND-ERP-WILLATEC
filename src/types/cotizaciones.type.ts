@@ -7,6 +7,8 @@ export interface Cotizacion {
     tipo_cambio: number;
     titulo: string;
     forma_pago?: string;
+    entrega_provincia?: boolean;
+    entrega_destino?: string | null;
     subtotal: number;
     igv: number;
     total: number;
@@ -44,6 +46,30 @@ export interface CotizacionItemProveedor {
     precio?: number | null;
     notas?: string | null;
     orden?: number;
+}
+
+export type ImportacionCalculoTipo = "under200" | "from201to1999" | "from2000up";
+
+export interface ImportacionCalculo {
+    tipo: ImportacionCalculoTipo;
+    label: string;
+    precio_producto: number;
+    unidades: number;
+    peso_total: number;
+    costo_peso_kg: number;
+    desaduanaje: number;
+    agente_aduanero: number;
+    impuesto_rate: number;
+    total_producto: number;
+    total_peso: number;
+    subtotal_importacion: number;
+    impuesto: number;
+    total_importacion: number;
+    precio_unitario_usd: number;
+    costo_aplicado: number;
+    moneda_id: number;
+    tipo_cambio_usd_soles?: number;
+    created_at?: string;
 }
 
 export type CotizacionItem ={
@@ -85,6 +111,7 @@ export type CotizacionItem ={
     proveedor?: string; // Nuevo campo para proveedor
     link_proveedor?: string; // Nuevo campo para link del proveedor
     proveedores?: CotizacionItemProveedor[];
+    importacion_calculo?: ImportacionCalculo | null;
     costo_base_referencial?: number;
     ultimo_margen_usado?: number | null;
     ultimo_precio_venta?: number | null;
@@ -171,6 +198,7 @@ export interface ItemForm {
     proveedor?: string; // Nuevo campo para proveedor
     link_proveedor?: string; // Nuevo campo para link del proveedor
     proveedores?: CotizacionItemProveedor[];
+    importacion_calculo?: ImportacionCalculo | null;
     costo_base_referencial?: number;
     ultimo_margen_usado?: number | null;
     ultimo_precio_venta?: number | null;

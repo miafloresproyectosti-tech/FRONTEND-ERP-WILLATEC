@@ -262,6 +262,8 @@ export function CotizacionDetail() {
   const [modoDistribucion, setModoDistribucion] = useState<'POR_ITEM' | 'POR_CANTIDAD'>('POR_ITEM');
   const [titulo, setTitulo] = useState('');
   const [formaPago, setFormaPago] = useState('AL CONTADO');
+  const [entregaProvincia, setEntregaProvincia] = useState(false);
+  const [entregaDestino, setEntregaDestino] = useState('');
   const [clienteContacto, setClienteContacto] = useState('');
   const selectedPlantilla = plantillas.find((plantilla) => Number(plantilla.id) === Number(plantillaId));
   const plantillaMonedaId = detectPlantillaMonedaId(selectedPlantilla);
@@ -537,6 +539,8 @@ export function CotizacionDetail() {
     setModoDistribucion(source.modo_distribucion || baseCotizacion?.modo_distribucion || 'POR_ITEM');
     setTitulo(source.titulo ?? baseCotizacion?.titulo ?? '');
     setFormaPago(source.forma_pago ?? baseCotizacion?.forma_pago ?? 'AL CONTADO');
+    setEntregaProvincia(Boolean(source.entrega_provincia ?? baseCotizacion?.entrega_provincia ?? false));
+    setEntregaDestino(source.entrega_destino ?? baseCotizacion?.entrega_destino ?? '');
     setClienteContacto(source.cliente_contacto ?? baseCotizacion?.cliente_contacto ?? baseCotizacion?.cliente?.contacto ?? '');
     setDelegadoId(source.delegado_id ?? baseCotizacion?.delegado_id ?? null);
     setDelegadoCotizacionId(source.delegado_cotizacion_id ?? baseCotizacion?.delegado_cotizacion_id ?? (baseCotizacion as any)?.delegadoCotizacionId ?? null);
@@ -671,6 +675,7 @@ export function CotizacionDetail() {
     proveedor: '',
     link_proveedor: '',
     proveedores: [{ nombre: '', link: '', precio: null, notas: '' }],
+    importacion_calculo: null,
   });
 
   useEffect(() => {
@@ -792,7 +797,7 @@ export function CotizacionDetail() {
 
   //Cargar Productos:
   useEffect(() => {
-    if (isCotizacionReadOnly || !showProductModal || productos.length > 0) return;
+    if (isCotizacionReadOnly || !showProductModal) return;
 
     const fetchProductos = async () => {
       try {
@@ -809,7 +814,7 @@ export function CotizacionDetail() {
       }
     };
     fetchProductos();
-  }, [isViewMode, showProductModal, productos.length]);
+  }, [isCotizacionReadOnly, showProductModal]);
 
   useEffect(() => {
     if (isCotizacionReadOnly || !showItemFormModal || itemForm.tipo !== 'externo') return;
@@ -955,6 +960,8 @@ export function CotizacionDetail() {
       setModoDistribucion(data.modo_distribucion);
       setTitulo(data.titulo);
       setFormaPago(data.forma_pago || 'AL CONTADO');
+      setEntregaProvincia(Boolean(data.entrega_provincia));
+      setEntregaDestino(data.entrega_destino || '');
       setClienteContacto(data.cliente_contacto || data.cliente?.contacto || '');
       setDelegadoId(data.delegado_id || null);
       setDelegadoCotizacionId(data.delegado_cotizacion_id ?? (data as any).delegadoCotizacionId ?? null);
@@ -1517,6 +1524,8 @@ export function CotizacionDetail() {
       fecha: fecha || getLocalDateString(),
       titulo: titulo,
       forma_pago: formaPago,
+      entrega_provincia: entregaProvincia,
+      entrega_destino: entregaProvincia ? entregaDestino.trim() : '',
       cliente_contacto: clienteContactoValue,
       tipo_cambio_soles_a_usd: tipoCambioSolesADolar,
       tipo_cambio_usd_a_soles: tipoCambioDolarASoles,
@@ -1709,6 +1718,7 @@ export function CotizacionDetail() {
       imagen: itemForm.imagen || null,
       imagen_url: itemForm.imagen_url,
       imagen_path: itemForm.imagen_path,
+      importacion_calculo: itemForm.importacion_calculo ?? null,
 
     };
 
@@ -1772,6 +1782,7 @@ export function CotizacionDetail() {
             imagen: itemForm.imagen || "",
             imagen_url: itemForm.imagen_url,
             imagen_path: itemForm.imagen_path,
+            importacion_calculo: itemForm.importacion_calculo ?? null,
           }
           : item
       )
@@ -1929,6 +1940,7 @@ export function CotizacionDetail() {
       proveedor: '',
       link_proveedor: '',
       proveedores: [{ nombre: '', link: '', precio: null, notas: '' }],
+      importacion_calculo: null,
     });
 
     setShowItemFormModal(true);
@@ -1976,6 +1988,7 @@ export function CotizacionDetail() {
       proveedor: '',
       link_proveedor: '',
       proveedores: [],
+      importacion_calculo: null,
     });
 
     addNotification({
@@ -2039,6 +2052,7 @@ export function CotizacionDetail() {
       imagen_path: suggestion.imagen_path || image || null,
       tipo: 'externo',
       aplica_costos_adicionales: false,
+      importacion_calculo: null,
     }));
   };
 
@@ -2179,6 +2193,7 @@ export function CotizacionDetail() {
       proveedor: '',
       link_proveedor: '',
       proveedores: [{ nombre: '', link: '', precio: null, notas: '' }],
+      importacion_calculo: null,
     });
   };
 
@@ -2383,6 +2398,10 @@ export function CotizacionDetail() {
 
             formaPago={formaPago}
             setFormaPago={setFormaPago}
+            entregaProvincia={entregaProvincia}
+            setEntregaProvincia={setEntregaProvincia}
+            entregaDestino={entregaDestino}
+            setEntregaDestino={setEntregaDestino}
             clienteContacto={clienteContacto}
             setClienteContacto={setClienteContacto}
 
@@ -2869,6 +2888,7 @@ export function CotizacionDetail() {
         monedaId={currentMonedaId}
         simboloMoneda={simboloMoneda}
         tipoCambioSolesADolar={tipoCambioSolesADolar}
+        tipoCambioDolarASoles={tipoCambioDolarASoles}
         canViewGanancia={canViewGanancia}
         onSave={handleAddItem}
         onUpdate={() => editingItem && handleUpdateItem()} // 🔥 AQUÍ
