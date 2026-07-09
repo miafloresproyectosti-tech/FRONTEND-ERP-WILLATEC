@@ -34,6 +34,20 @@ export interface Producto {
     precio_venta?: number | string | null;
     codigo_barras?: string | null;
     moneda_id?: number | null;
+    categoria?: {
+        id?: number;
+        nombre?: string | null;
+    } | null;
+    series?: ProductoSerie[];
+}
+
+export interface ProductoSerie {
+    id: number;
+    producto_id?: number;
+    serie?: string | null;
+    factura_numero?: string | null;
+    estado?: string | null;
+    fecha_ingreso?: string | null;
 }
 
 export interface CotizacionItem {
@@ -186,6 +200,7 @@ export interface ProductoPayload {
     modelo: string;
     codigo:string;
     serie?: string;
+    series?: string[];
     factura_numero?: string;
     descripcion?: string;
     imagen?: string;
@@ -406,6 +421,9 @@ function buildFormData(payload: ProductoPayload): FormData {
             formData.append(key, String(value));
         }
     }
+    payload.series?.forEach((serie, index) => {
+        if (serie.trim()) formData.append(`series[${index}]`, serie.trim());
+    });
         formData.append("activo", payload.activo ? "1" : "0");
         formData.append("controla_stock", payload.controla_stock ? "1" : "0");
 
@@ -532,4 +550,3 @@ export const updateCotizacionItem = async (
         : await api.put(`/cotizaciones/items/${id}`, payload);
     return normalizeCotizacionItem(res.data?.data || res.data);
 };
-

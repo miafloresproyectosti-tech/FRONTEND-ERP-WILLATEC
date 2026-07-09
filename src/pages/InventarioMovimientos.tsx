@@ -247,6 +247,7 @@ export default function InventarioMovimientos() {
     documento_numero: "",
     fecha_documento: today,
     observacion: "",
+    series_text: "",
   });
   const [factura, setFactura] = useState<File | null>(null);
   const [salidaForm, setSalidaForm] = useState({
@@ -287,6 +288,8 @@ export default function InventarioMovimientos() {
     created_by: "",
     ip_origen: "",
     serie: "",
+    marca: "",
+    modelo: "",
     date_from: "",
     date_to: "",
   });
@@ -405,6 +408,8 @@ export default function InventarioMovimientos() {
       created_by: "",
       ip_origen: "",
       serie: "",
+      marca: "",
+      modelo: "",
       date_from: "",
       date_to: "",
     });
@@ -546,6 +551,16 @@ export default function InventarioMovimientos() {
       return;
     }
 
+    const series = entradaForm.series_text
+      .split(/\r?\n/)
+      .map((serie) => serie.trim())
+      .filter(Boolean);
+
+    if (series.length > cantidad) {
+      setError("No puedes registrar mas series que la cantidad ingresada.");
+      return;
+    }
+
     try {
       setSavingEntrada(true);
       setError(null);
@@ -560,6 +575,7 @@ export default function InventarioMovimientos() {
         documento_numero: entradaForm.documento_numero,
         fecha_documento: entradaForm.fecha_documento,
         observacion: entradaForm.observacion,
+        series,
         factura,
       });
       setEntradaModalOpen(false);
@@ -573,6 +589,7 @@ export default function InventarioMovimientos() {
         documento_numero: "",
         fecha_documento: today,
         observacion: "",
+        series_text: "",
       });
       setFactura(null);
       if (facturaInputRef.current) {
@@ -767,6 +784,26 @@ export default function InventarioMovimientos() {
           </label>
 
           <label className="text-xs font-semibold text-gray-500">
+            Marca
+            <input
+              value={filters.marca ?? ""}
+              onChange={(event) => updateFilter("marca", event.target.value)}
+              placeholder="Marca"
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+            />
+          </label>
+
+          <label className="text-xs font-semibold text-gray-500">
+            Modelo
+            <input
+              value={filters.modelo ?? ""}
+              onChange={(event) => updateFilter("modelo", event.target.value)}
+              placeholder="Modelo"
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+            />
+          </label>
+
+          <label className="text-xs font-semibold text-gray-500">
             Usuario ID
             <input
               value={filters.created_by ?? ""}
@@ -934,7 +971,20 @@ export default function InventarioMovimientos() {
                       </div>
                     </td>
                     <td className="px-4 py-3 font-semibold text-gray-700">
-                      {movimiento.producto_serie?.serie || movimiento.producto?.serie || "-"}
+                      {[
+                        ...(movimiento.producto_series ?? []),
+                        ...(movimiento.producto_serie ? [movimiento.producto_serie] : []),
+                      ]
+                        .map((serie) => serie.serie)
+                        .filter(Boolean)
+                        .filter((serie, index, series) => series.indexOf(serie) === index)
+                        .slice(0, 3)
+                        .join(", ") || "-"}
+                      {Number(movimiento.producto_series?.length || 0) > 3 && (
+                        <span className="ml-1 text-xs text-gray-500">
+                          +{Number(movimiento.producto_series?.length || 0) - 3}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${getTipoBadge(movimiento.tipo_movimiento)}`}>
@@ -1377,6 +1427,20 @@ export default function InventarioMovimientos() {
                     </button>
                   </div>
                 )}
+              </label>
+
+              <label className="text-sm font-semibold text-gray-600 md:col-span-2">
+                Series ingresadas
+                <textarea
+                  value={entradaForm.series_text}
+                  onChange={(event) => handleEntradaChange("series_text", event.target.value)}
+                  rows={4}
+                  placeholder="Una serie por linea. Ej: ABC123"
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+                />
+                <span className="mt-1 block text-xs font-normal text-gray-500">
+                  Si son varias unidades iguales, registra aqui cada serie fisica. Puede quedar vacio si aun no la tienes.
+                </span>
               </label>
 
               <label className="text-sm font-semibold text-gray-600 md:col-span-2">

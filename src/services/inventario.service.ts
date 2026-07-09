@@ -10,6 +10,8 @@ export interface InventarioMovimientoFilters {
   created_by?: string | number;
   ip_origen?: string;
   serie?: string;
+  marca?: string;
+  modelo?: string;
   date_from?: string;
   date_to?: string;
 }
@@ -67,6 +69,8 @@ export interface InventarioMovimiento {
     sku?: string | null;
     codigo?: string | null;
     serie?: string | null;
+    marca?: string | null;
+    modelo?: string | null;
   } | null;
   producto_serie?: {
     id?: number;
@@ -75,6 +79,13 @@ export interface InventarioMovimiento {
     factura_numero?: string | null;
     estado?: string | null;
   } | null;
+  producto_series?: {
+    id?: number;
+    producto_id?: number;
+    serie?: string | null;
+    factura_numero?: string | null;
+    estado?: string | null;
+  }[];
   garantia_info?: {
     garantia_meses: number;
     fecha_inicio: string;
@@ -120,6 +131,7 @@ export interface RegistrarEntradaKardexPayload {
   documento_numero?: string;
   fecha_documento?: string;
   observacion?: string;
+  series?: string[];
   factura?: File | null;
 }
 
@@ -204,6 +216,9 @@ export async function registrarEntradaKardex(payload: RegistrarEntradaKardexPayl
   if (payload.documento_numero) formData.append("documento_numero", payload.documento_numero);
   if (payload.fecha_documento) formData.append("fecha_documento", payload.fecha_documento);
   if (payload.observacion) formData.append("observacion", payload.observacion);
+  payload.series?.forEach((serie, index) => {
+    if (serie.trim()) formData.append(`series[${index}]`, serie.trim());
+  });
   if (payload.factura) formData.append("factura", payload.factura);
 
   const response = await api.post(

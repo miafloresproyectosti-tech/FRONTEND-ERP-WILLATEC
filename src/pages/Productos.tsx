@@ -10,10 +10,11 @@ import {
   ChevronRight,
   Loader2,
   PackageCheck,
+  List,
   Upload,
 } from "lucide-react";
 
-import { getProductos, getExternalItems, createProducto, updateProducto, deleteProducto, updateCotizacionItem, convertirProductoExternoAInterno, type Producto, type ProductoPayload, type CotizacionItem } from "../services/producto.service";
+import { getProductos, getExternalItems, createProducto, updateProducto, deleteProducto, updateCotizacionItem, convertirProductoExternoAInterno, type Producto, type ProductoPayload, type CotizacionItem, type ProductoSerie } from "../services/producto.service";
 import {
   getCotizacion,
   getCotizacionesPaginated,
@@ -74,6 +75,7 @@ interface ProductoForm {
   marca: string;
   modelo: string;
   serie: string;
+  series_text: string;
   factura_numero: string;
   categoria_id: number;
   stock: string;
@@ -94,9 +96,16 @@ type ProductoUI = ProductoForm & {
   stock_actual?: number | string | null;
   stock_reservado?: number | string | null;
   stock_disponible?: number | string | null;
+  series?: ProductoSerie[];
 };
 
 type ExternalItem = CotizacionItem;
+
+const getProductoCategoriaLabel = (producto: Producto) => {
+  const optionLabel = productoCategoriaOptions.find((option) => option.id === Number(producto.categoria_id))?.label;
+
+  return producto.categoria?.nombre || optionLabel || String(producto.categoria_id || "-");
+};
 
 const mapProducto = (producto: Producto): ProductoUI => ({
 
@@ -106,11 +115,13 @@ const mapProducto = (producto: Producto): ProductoUI => ({
   marca: producto.marca ?? "",
   modelo: producto.modelo ?? "",
   serie: producto.serie ?? "",
+  series_text: (producto.series ?? [])
+    .map((serie) => serie.serie)
+    .filter(Boolean)
+    .join("\n") || producto.serie || "",
   factura_numero: producto.factura_numero ?? "",
-  categoria_id: producto.categoria_id,
-  categoria_label:
-    productoCategoriaOptions.find((option) => option.id === producto.categoria_id)
-      ?.label ?? String(producto.categoria_id),
+  categoria_id: Number(producto.categoria_id || 0),
+  categoria_label: getProductoCategoriaLabel(producto),
   stock: String(producto.stock),
   stock_actual: producto.stock_actual ?? producto.stock,
   stock_reservado: producto.stock_reservado ?? 0,
@@ -121,6 +132,7 @@ const mapProducto = (producto: Producto): ProductoUI => ({
   activo: producto.activo ? "true" : "false",
   estado: producto.estado ?? "nuevo",
   unidad_medida: producto.unidad_medida ?? "unidad",
+  series: producto.series ?? [],
 });
 
 const getExternalItemCurrencySymbol = (item: ExternalItem) => {
@@ -250,12 +262,14 @@ export default function Productos() {
       marca: "",
       modelo: "",
       serie: "",
+      series_text: "",
       factura_numero: "",
       unidad_medida: "unidad",
     });
 
   const [productoAEliminar, setProductoAEliminar] =
     useState<ProductoUI | null>(null);
+  const [productoSeriesModal, setProductoSeriesModal] = useState<ProductoUI | null>(null);
 
   // Estados para editar items externos
   const [editingExternalItem, setEditingExternalItem] =
@@ -287,18 +301,26 @@ export default function Productos() {
   const canUseExternalProducts = user?.role !== "SOPORTE" && user?.role !== "LOGISTICA";
 
   // FILTRAR PRODUCTOS
-  const productosFiltrados = productos.filter(
-    (producto: any) =>
-      producto.nombre
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase()) ||
-      producto.codigo
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase()) ||
-      producto.categoria_label
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase())
-  );
+  const productosFiltrados = productos.filter((producto) => {
+    const search = searchTerm.trim().toLowerCase();
+
+    if (!search) return true;
+
+    return [
+      producto.nombre,
+      producto.codigo,
+      producto.categoria_label,
+      producto.marca,
+      producto.modelo,
+      producto.serie,
+      producto.factura_numero,
+      ...(producto.series ?? []).flatMap((serie) => [
+        serie.serie,
+        serie.factura_numero,
+        serie.estado,
+      ]),
+    ].some((value) => String(value || "").toLowerCase().includes(search));
+  });
 
   // PAGINACION
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -440,6 +462,7 @@ export default function Productos() {
       marca: "",
       modelo: "",
       serie: "",
+      series_text: "",
       factura_numero: "",
       unidad_medida: "unidad",
     });
@@ -464,6 +487,10 @@ export default function Productos() {
       marca: producto.marca || "",
       modelo: producto.modelo || "",
       serie: producto.serie || "",
+      series_text: (producto.series || [])
+        .map((serie: ProductoSerie) => serie.serie)
+        .filter(Boolean)
+        .join("\n") || producto.serie || "",
       factura_numero: producto.factura_numero || "",
       unidad_medida: producto.unidad_medida || "unidad",
     });
@@ -553,13 +580,29 @@ export default function Productos() {
   const handleGuardar = async () => {
     const stockNum = parseInt(productoSeleccionado.stock, 10);
     const precioNum = parseFloat(productoSeleccionado.precio_referencial);
+    const series = productoSeleccionado.series_text
+      .split(/\r?\n/)
+      .map((serie) => serie.trim())
+      .filter(Boolean);
+
+    if (series.length > 0 && !Number.isNaN(stockNum) && series.length > stockNum) {
+      addNotification({
+        title: "Revisa las series",
+        description: "No puedes registrar mas series que la cantidad del producto.",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/productos",
+      });
+      return;
+    }
 
     const payload: ProductoPayload = {
       sku: productoSeleccionado.codigo,
       nombre: productoSeleccionado.nombre,
       marca: productoSeleccionado.marca,
       modelo: productoSeleccionado.modelo,
-      serie: productoSeleccionado.serie,
+      serie: productoSeleccionado.serie || series[0] || "",
+      series,
       factura_numero: productoSeleccionado.factura_numero,
       codigo: productoSeleccionado.codigo,
       descripcion: productoSeleccionado.descripcion || "",
@@ -1229,6 +1272,21 @@ export default function Productos() {
                             <p className="text-sm text-gray-500 truncate">
                               #{item.codigo}
                             </p>
+                            {(item.marca || item.modelo) && (
+                              <p className="text-xs text-gray-500 truncate">
+                                {[item.marca, item.modelo].filter(Boolean).join(" / ")}
+                              </p>
+                            )}
+                            {(item.series?.length || item.serie) && (
+                              <button
+                                type="button"
+                                onClick={() => setProductoSeriesModal(item)}
+                                className="mt-1 inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+                              >
+                                <List size={12} />
+                                Series {item.series?.length || 1}
+                              </button>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -1525,6 +1583,72 @@ export default function Productos() {
               >
                 Eliminar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {productoSeriesModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
+            <div className="flex items-start justify-between px-6 py-5 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Series del producto</h2>
+                <p className="text-sm text-gray-500">
+                  {productoSeriesModal.nombre} #{productoSeriesModal.codigo}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProductoSeriesModal(null)}
+                className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {(productoSeriesModal.series?.length || productoSeriesModal.serie) ? (
+                <div className="overflow-hidden rounded-2xl border border-gray-200">
+                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                      <tr>
+                        <th className="px-4 py-3">Serie</th>
+                        <th className="px-4 py-3">Factura</th>
+                        <th className="px-4 py-3">Estado</th>
+                        <th className="px-4 py-3">Ingreso</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {(productoSeriesModal.series?.length
+                        ? productoSeriesModal.series
+                        : [{
+                          id: productoSeriesModal.id,
+                          serie: productoSeriesModal.serie,
+                          factura_numero: productoSeriesModal.factura_numero,
+                          estado: productoSeriesModal.estado,
+                          fecha_ingreso: null,
+                        }]
+                      ).map((serie) => (
+                        <tr key={serie.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-semibold text-gray-900">{serie.serie || "Sin serie"}</td>
+                          <td className="px-4 py-3 text-gray-700">{serie.factura_numero || "-"}</td>
+                          <td className="px-4 py-3">
+                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                              {serie.estado || "disponible"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-700">{serie.fecha_ingreso || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-500">
+                  Este producto todavia no tiene series registradas.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1887,19 +2011,27 @@ export default function Productos() {
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Serie</label>
-                  <input
-                    value={productoSeleccionado.serie}
+                <div className="space-y-1 md:col-span-2">
+                  <label className="block text-[11px] text-gray-500 uppercase">Series</label>
+                  <textarea
+                    value={productoSeleccionado.series_text}
                     onChange={(e) =>
                       setProductoSeleccionado({
                         ...productoSeleccionado,
-                        serie: e.target.value,
+                        series_text: e.target.value,
+                        serie: e.target.value
+                          .split(/\r?\n/)
+                          .map((serie) => serie.trim())
+                          .filter(Boolean)[0] || "",
                       })
                     }
-                    placeholder="Serie opcional"
+                    rows={4}
+                    placeholder="Una serie por linea. Ej: ABC123"
                     className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                   />
+                  <p className="text-[11px] text-gray-500">
+                    Si compras varias unidades del mismo modelo, escribe una serie por linea. Puede quedar vacio.
+                  </p>
                 </div>
 
                 <div className="space-y-1">
