@@ -4,9 +4,9 @@ import {
   AlertTriangle,
   BarChart3,
   ClipboardCheck,
+  Clock,
   FileText,
   Loader2,
-  Package,
   RefreshCw,
   ShoppingCart,
   TrendingUp,
@@ -30,6 +30,7 @@ import {
 } from "../services/cotizacion.service";
 import { getInventarioMovimientos, getProductosInventario, type InventarioMovimiento, type ProductoInventarioOption } from "../services/inventario.service";
 import { getOcEmitidas, getOcRecibidas, type OcEmitida, type OcRecibida } from "../services/ordenCompra.service";
+import { getPlataformas, type Plataforma } from "../services/plataforma.service";
 import { getProductos, type Producto } from "../services/producto.service";
 import { getUsers, type User } from "../services/usuario.service";
 import { formatMoney } from "../utils/formatNumber";
@@ -47,6 +48,7 @@ interface DashboardState {
   ocEmitidas: OcEmitida[];
   movimientos: InventarioMovimiento[];
   users: User[];
+  plataformas: Plataforma[];
 }
 
 const emptyState: DashboardState = {
@@ -58,6 +60,7 @@ const emptyState: DashboardState = {
   ocEmitidas: [],
   movimientos: [],
   users: [],
+  plataformas: [],
 };
 
 type EstadoKey =
@@ -90,7 +93,7 @@ const periodItems: Array<{ id: PeriodFilter; label: string }> = [
   { id: "hoy", label: "Hoy" },
   { id: "7d", label: "7 dias" },
   { id: "mes", label: "Este mes" },
-  { id: "anio", label: "Este ano" },
+  { id: "anio", label: "Este año" },
   { id: "todo", label: "Todo" },
 ];
 
@@ -177,6 +180,17 @@ const formatDate = (value?: string | null) => {
     month: "short",
     timeZone: "America/Lima",
   });
+};
+
+const daysSince = (value?: string | null) => {
+  const date = getRowDate(value);
+  if (!date) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+
+  return Math.max(0, Math.floor((today.getTime() - date.getTime()) / 86_400_000));
 };
 
 const monthKey = (value?: string | null) => {
@@ -268,6 +282,7 @@ export default function Dashboard() {
       ocEmitidasResult,
       movimientosResult,
       usersResult,
+      plataformasResult,
     ] = await Promise.allSettled([
       loadCotizaciones(),
       getActiveClientesCached(),
@@ -277,6 +292,7 @@ export default function Dashboard() {
       getOcEmitidas({ page: 1, perPage: 100 }),
       getInventarioMovimientos({ page: 1, per_page: 8 }),
       getUsers(),
+      getPlataformas(),
     ]);
 
     setData({
@@ -288,6 +304,7 @@ export default function Dashboard() {
       ocEmitidas: ocEmitidasResult.status === "fulfilled" ? ocEmitidasResult.value.data : [],
       movimientos: movimientosResult.status === "fulfilled" ? movimientosResult.value.data : [],
       users: usersResult.status === "fulfilled" ? usersResult.value : [],
+      plataformas: plataformasResult.status === "fulfilled" ? plataformasResult.value : [],
     });
 
     if ([cotizacionesResult, productosResult, ocRecibidasResult].some((result) => result.status === "rejected")) {
@@ -442,6 +459,39 @@ export default function Dashboard() {
       .sort((a, b) => b.montoVenta - a.montoVenta || b.montoAprobado - a.montoAprobado || b.montoCotizado - a.montoCotizado);
   }, [cotizacionesById, cotizacionesPeriodo, data.users, ocRecibidasAtendidasPeriodo]);
 
+  const plataformaMetrics = useMemo(() => {
+    const plataformasById = new Map(data.plataformas.map((plataforma) => [Number(plataforma.id), plataforma.nombre]));
+    const rows = new Map<number, {
+      id: number;
+      nombre: string;
+      cotizaciones: number;
+      aprobadas: number;
+      ocRegistradas: number;
+      montoCotizado: number;
+    }>();
+
+    cotizacionesPeriodo.forEach((cotizacion) => {
+      const id = Number(cotizacion.plataforma_id || 0);
+      const row = rows.get(id) || {
+        id,
+        nombre: plataformasById.get(id) || `Plataforma #${id || "N/A"}`,
+        cotizaciones: 0,
+        aprobadas: 0,
+        ocRegistradas: 0,
+        montoCotizado: 0,
+      };
+
+      row.cotizaciones += 1;
+      row.montoCotizado += toNumber(cotizacion.total);
+      if (isCotizacionAprobada(cotizacion)) row.aprobadas += 1;
+      if (isCotizacionOcRegistrada(cotizacion)) row.ocRegistradas += 1;
+      rows.set(id, row);
+    });
+
+    return Array.from(rows.values())
+      .sort((a, b) => b.cotizaciones - a.cotizaciones || b.montoCotizado - a.montoCotizado);
+  }, [cotizacionesPeriodo, data.plataformas]);
+
   const estadoResumen = useMemo(() => {
     return ESTADOS.map((estado) => {
       const match = cotizacionesPeriodo.find((row) => estadoKey(row) === estado.key);
@@ -463,6 +513,84 @@ export default function Dashboard() {
   const lowStock = metrics.productosBajoStock.slice(0, 8);
   const ocRecibidasPendientes = ocRecibidasPeriodo.filter((row) => row.estado !== "atendido").slice(0, 6);
   const ocEmitidasPendientes = ocEmitidasPeriodo.filter((row) => row.estado !== "atendido").slice(0, 6);
+
+  const topClientes = useMemo(() => {
+    const rows = new Map<string, {
+      key: string;
+      nombre: string;
+      ruc?: string;
+      ventas: number;
+      monto: number;
+      ultimaVenta?: string;
+    }>();
+
+    ocRecibidasAtendidasPeriodo.forEach((oc) => {
+      const cotizacion = cotizacionesById.get(Number(oc.cotizacion_id || oc.cotizacion?.id));
+      const rawOc = oc as any;
+      const nombre =
+        cotizacion?.cliente_nombre ||
+        oc.cotizacion?.cliente_nombre ||
+        oc.cotizacion?.cliente?.nombre ||
+        rawOc.cliente_nombre ||
+        "Cliente sin nombre";
+      const ruc = cotizacion?.cliente_ruc || rawOc.cliente_ruc || "";
+      const key = String(cotizacion?.cliente_id || rawOc.cliente_id || ruc || nombre).toLowerCase();
+      const current = rows.get(key) || { key, nombre, ruc, ventas: 0, monto: 0, ultimaVenta: undefined };
+      const ventaDate = ocVentaDate(oc);
+
+      current.ventas += 1;
+      current.monto += toNumber(cotizacion?.total || oc.cotizacion?.total);
+      current.ultimaVenta = !current.ultimaVenta || String(ventaDate).localeCompare(String(current.ultimaVenta)) > 0
+        ? ventaDate
+        : current.ultimaVenta;
+
+      rows.set(key, current);
+    });
+
+    return Array.from(rows.values())
+      .sort((a, b) => b.monto - a.monto || b.ventas - a.ventas)
+      .slice(0, 6);
+  }, [cotizacionesById, ocRecibidasAtendidasPeriodo]);
+
+  const approvedWithoutOc = useMemo(() => {
+    const cotizacionesConOc = new Set(data.ocRecibidas.map((oc) => Number(oc.cotizacion_id || oc.cotizacion?.id)));
+
+    return cotizacionesPeriodo
+      .filter((cotizacion) => isCotizacionAprobada(cotizacion) && !cotizacionesConOc.has(Number(cotizacion.id)))
+      .sort((a, b) => String(b.updated_at || b.created_at || b.fecha).localeCompare(String(a.updated_at || a.created_at || a.fecha)))
+      .slice(0, 6);
+  }, [cotizacionesPeriodo, data.ocRecibidas]);
+
+  const oldestPendingOrders = useMemo(() => {
+    const recibidas = ocRecibidasPeriodo
+      .filter((oc) => oc.estado !== "atendido")
+      .map((oc) => ({
+        id: oc.id,
+        tipo: "Recibida",
+        numero: oc.numero || `OC recibida #${oc.id}`,
+        detalle: oc.cotizacion?.cliente_nombre || oc.cotizacion?.cliente?.nombre || "Sin cliente",
+        estado: oc.estado,
+        date: oc.fecha_recepcion || oc.created_at || "",
+        route: `/ordenes-compra/recibidas/${oc.id}`,
+      }));
+    const emitidas = ocEmitidasPeriodo
+      .filter((oc) => oc.estado !== "atendido")
+      .map((oc) => ({
+        id: oc.id,
+        tipo: "Emitida",
+        numero: oc.numero || `OC emitida #${oc.id}`,
+        detalle: oc.proveedor || "Sin proveedor",
+        estado: oc.estado,
+        date: oc.fecha_emision || "",
+        route: `/ordenes-compra/emitidas/${oc.id}`,
+      }));
+
+    return [...recibidas, ...emitidas]
+      .map((oc) => ({ ...oc, dias: daysSince(oc.date) ?? 0 }))
+      .sort((a, b) => b.dias - a.dias)
+      .slice(0, 8);
+  }, [ocEmitidasPeriodo, ocRecibidasPeriodo]);
+
   const actionAlerts = useMemo(() => {
     const today = new Date();
     const sentWithoutAdvance = cotizacionesPeriodo.filter((cotizacion) => {
@@ -476,6 +604,9 @@ export default function Dashboard() {
     const pendingMods = cotizacionesPeriodo.filter((cotizacion) => toNumber(cotizacion.modificaciones_pendientes_count) > 0);
     const missingDocs = ocRecibidasPeriodo.filter((oc) => oc.documentos_completos === false);
     const deliveryPending = ocRecibidasPeriodo.filter((oc) => oc.estado === "por_entrega");
+    const recibidasPendientes = ocRecibidasPeriodo.filter((oc) => !["atendido", "por_entrega"].includes(String(oc.estado)));
+    const emitidasMissingDocs = ocEmitidasPeriodo.filter((oc) => oc.documentos_completos === false);
+    const emitidasPendientes = ocEmitidasPeriodo.filter((oc) => oc.estado !== "atendido");
 
     return [
       ...missingDocs.slice(0, 3).map((oc) => ({
@@ -491,6 +622,27 @@ export default function Dashboard() {
         detail: "Pendiente de entrega/atencion",
         tone: "bg-blue-50 text-blue-700 border-blue-100",
         action: () => navigate(`/ordenes-compra/recibidas/${oc.id}`),
+      })),
+      ...recibidasPendientes.slice(0, 3).map((oc) => ({
+        key: `received-pending-${oc.id}`,
+        title: oc.numero || `OC recibida #${oc.id}`,
+        detail: `Estado: ${oc.estado}`,
+        tone: "bg-slate-50 text-slate-700 border-slate-100",
+        action: () => navigate(`/ordenes-compra/recibidas/${oc.id}`),
+      })),
+      ...emitidasMissingDocs.slice(0, 3).map((oc) => ({
+        key: `issued-docs-${oc.id}`,
+        title: oc.numero || `OC emitida #${oc.id}`,
+        detail: "Faltan documentos de compra/pago",
+        tone: "bg-red-50 text-red-700 border-red-100",
+        action: () => navigate(`/ordenes-compra/emitidas/${oc.id}`),
+      })),
+      ...emitidasPendientes.slice(0, 3).map((oc) => ({
+        key: `issued-pending-${oc.id}`,
+        title: oc.numero || `OC emitida #${oc.id}`,
+        detail: `Estado: ${oc.estado}`,
+        tone: "bg-indigo-50 text-indigo-700 border-indigo-100",
+        action: () => navigate(`/ordenes-compra/emitidas/${oc.id}`),
       })),
       ...lowStock.slice(0, 3).map((producto) => ({
         key: `stock-${producto.id}`,
@@ -514,7 +666,7 @@ export default function Dashboard() {
         action: () => navigate(`/cotizaciones/${cotizacion.id}/view`),
       })),
     ].slice(0, 8);
-  }, [cotizacionesPeriodo, lowStock, navigate, ocRecibidasPeriodo]);
+  }, [cotizacionesPeriodo, lowStock, navigate, ocEmitidasPeriodo, ocRecibidasPeriodo]);
   const syncLabel = loadedAt || lastSync
     ? new Date(loadedAt || lastSync || "").toLocaleTimeString("es-PE", {
       hour: "2-digit",
@@ -645,7 +797,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-gray-900">Requiere atencion</h2>
-            <p className="text-xs text-gray-500">Alertas operativas segun el periodo seleccionado.</p>
+            <p className="text-xs text-gray-500">OC pendientes, stock bajo, cotizaciones sin avance y modificaciones pendientes.</p>
           </div>
           <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
             {actionAlerts.length} alertas
@@ -755,6 +907,48 @@ export default function Dashboard() {
               <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
                   <div>
+                    <h2 className="text-base font-bold text-gray-900">Cotizaciones por plataforma</h2>
+                    <p className="text-xs text-gray-500">Cantidad por canal del periodo seleccionado.</p>
+                  </div>
+                  <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700">
+                    {plataformaMetrics.length} plataformas
+                  </span>
+                </div>
+
+                {plataformaMetrics.length ? (
+                  <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+                    {plataformaMetrics.map((plataforma) => (
+                      <div
+                        key={plataforma.id}
+                        className="rounded-lg border border-gray-100 p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-gray-900">{plataforma.nombre}</p>
+                            <p className="text-xs text-gray-500">
+                              {plataforma.aprobadas} aprobadas · {plataforma.ocRegistradas} con OC
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded-lg bg-cyan-50 px-2.5 py-1 text-lg font-bold text-cyan-700">
+                            {plataforma.cotizaciones}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-xs font-semibold text-gray-600">
+                          Monto cotizado: {formatMoney(plataforma.montoCotizado, "S/")}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-3">
+                    <EmptyPanel message="No hay cotizaciones por plataforma en este periodo." />
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
                     <h2 className="text-base font-bold text-gray-900">Metricas por ejecutivo</h2>
                     <p className="text-xs text-gray-500">Cotizado, aprobado, venta efectuada y conversion real del periodo.</p>
                   </div>
@@ -805,6 +999,74 @@ export default function Dashboard() {
                     <EmptyPanel message="No hay informacion de ejecutivos para este periodo." />
                   </div>
                 )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-base font-bold text-gray-900">Top clientes por venta real</h2>
+                      <p className="text-xs text-gray-500">Solo OC recibidas con estado atendido.</p>
+                    </div>
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                      {topClientes.length} clientes
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {topClientes.length ? topClientes.map((cliente, index) => (
+                      <div
+                        key={cliente.key}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 p-3"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-sm font-bold text-emerald-700">
+                            {index + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-900">{cliente.nombre}</p>
+                            <p className="text-xs text-gray-500">
+                              {cliente.ventas} venta{cliente.ventas === 1 ? "" : "s"}
+                              {cliente.ultimaVenta ? ` · Ultima ${formatDate(cliente.ultimaVenta)}` : ""}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="shrink-0 text-sm font-bold text-emerald-700">
+                          {formatMoney(cliente.monto, "S/")}
+                        </p>
+                      </div>
+                    )) : <EmptyPanel message="No hay ventas reales para ranking de clientes." />}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-base font-bold text-gray-900">Aprobadas sin OC</h2>
+                      <p className="text-xs text-gray-500">Cotizaciones listas que aun no se convierten en venta.</p>
+                    </div>
+                    <span className="rounded-full bg-lime-50 px-3 py-1 text-xs font-semibold text-lime-700">
+                      {approvedWithoutOc.length} pendientes
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {approvedWithoutOc.length ? approvedWithoutOc.map((cotizacion) => (
+                      <button
+                        type="button"
+                        key={cotizacion.id}
+                        onClick={() => navigate(`/cotizaciones/${cotizacion.id}/view`)}
+                        className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-100 p-3 text-left hover:bg-gray-50"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-gray-900">{cotizacion.numero}</p>
+                          <p className="truncate text-xs text-gray-500">{cotizacion.cliente_nombre || cotizacion.titulo}</p>
+                        </div>
+                        <p className="shrink-0 text-sm font-bold text-gray-800">{formatMoney(toNumber(cotizacion.total), "S/")}</p>
+                      </button>
+                    )) : <EmptyPanel message="No hay cotizaciones aprobadas pendientes de OC." />}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -861,7 +1123,49 @@ export default function Dashboard() {
           )}
 
           {activeTab === "operacion" && (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="space-y-4">
+              <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-bold text-gray-900">Antiguedad de OC pendientes</h2>
+                    <p className="text-xs text-gray-500">Ordenadas por mas dias sin atencion completa.</p>
+                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
+                    <Clock className="h-3.5 w-3.5" />
+                    {oldestPendingOrders.length} en seguimiento
+                  </span>
+                </div>
+
+                <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+                  {oldestPendingOrders.length ? oldestPendingOrders.map((oc) => (
+                    <button
+                      type="button"
+                      key={`${oc.tipo}-${oc.id}`}
+                      onClick={() => navigate(oc.route)}
+                      className="rounded-lg border border-gray-100 p-3 text-left hover:bg-gray-50"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-gray-900">{oc.numero}</p>
+                          <p className="truncate text-xs text-gray-500">{oc.tipo} · {oc.detalle}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-bold ${
+                          oc.dias >= 7 ? "bg-red-50 text-red-700" : oc.dias >= 3 ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-700"
+                        }`}>
+                          {oc.dias} d
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs font-semibold uppercase text-gray-500">{oc.estado}</p>
+                    </button>
+                  )) : (
+                    <div className="md:col-span-2 xl:col-span-4">
+                      <EmptyPanel message="No hay OC pendientes para seguimiento." />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
               <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                 <h2 className="text-base font-bold text-gray-900">OC recibidas pendientes</h2>
                 <div className="mt-3 space-y-2">
@@ -900,6 +1204,7 @@ export default function Dashboard() {
                     </button>
                   )) : <EmptyPanel message="No hay OC emitidas pendientes." />}
                 </div>
+              </div>
               </div>
             </div>
           )}

@@ -73,6 +73,8 @@ interface ProductoForm {
   nombre: string;
   marca: string;
   modelo: string;
+  serie: string;
+  factura_numero: string;
   categoria_id: number;
   stock: string;
   precio_referencial: string;
@@ -103,6 +105,8 @@ const mapProducto = (producto: Producto): ProductoUI => ({
   nombre: producto.nombre,
   marca: producto.marca ?? "",
   modelo: producto.modelo ?? "",
+  serie: producto.serie ?? "",
+  factura_numero: producto.factura_numero ?? "",
   categoria_id: producto.categoria_id,
   categoria_label:
     productoCategoriaOptions.find((option) => option.id === producto.categoria_id)
@@ -245,6 +249,8 @@ export default function Productos() {
       estado: "nuevo",
       marca: "",
       modelo: "",
+      serie: "",
+      factura_numero: "",
       unidad_medida: "unidad",
     });
 
@@ -278,7 +284,7 @@ export default function Productos() {
   });
   const [savingExternal, setSavingExternal] = useState(false);
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
-  const canUseExternalProducts = user?.role !== "SOPORTE";
+  const canUseExternalProducts = user?.role !== "SOPORTE" && user?.role !== "LOGISTICA";
 
   // FILTRAR PRODUCTOS
   const productosFiltrados = productos.filter(
@@ -433,6 +439,8 @@ export default function Productos() {
       estado: "nuevo",
       marca: "",
       modelo: "",
+      serie: "",
+      factura_numero: "",
       unidad_medida: "unidad",
     });
 
@@ -455,6 +463,8 @@ export default function Productos() {
       estado: producto.estado || "nuevo",
       marca: producto.marca || "",
       modelo: producto.modelo || "",
+      serie: producto.serie || "",
+      factura_numero: producto.factura_numero || "",
       unidad_medida: producto.unidad_medida || "unidad",
     });
 
@@ -549,6 +559,8 @@ export default function Productos() {
       nombre: productoSeleccionado.nombre,
       marca: productoSeleccionado.marca,
       modelo: productoSeleccionado.modelo,
+      serie: productoSeleccionado.serie,
+      factura_numero: productoSeleccionado.factura_numero,
       codigo: productoSeleccionado.codigo,
       descripcion: productoSeleccionado.descripcion || "",
       imagen: productoSeleccionado.imagen || undefined,
@@ -1814,7 +1826,7 @@ export default function Productos() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Stock</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">Cantidad</label>
                   <input
                     type="number"
                     value={productoSeleccionado.stock}
@@ -1824,7 +1836,7 @@ export default function Productos() {
                         stock: e.target.value,
                       })
                     }
-                    placeholder="Stock"
+                    placeholder="Cantidad"
                     className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                   />
                 </div>
@@ -1871,6 +1883,36 @@ export default function Productos() {
                       })
                     }
                     placeholder="Modelo"
+                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-gray-500 uppercase">Serie</label>
+                  <input
+                    value={productoSeleccionado.serie}
+                    onChange={(e) =>
+                      setProductoSeleccionado({
+                        ...productoSeleccionado,
+                        serie: e.target.value,
+                      })
+                    }
+                    placeholder="Serie opcional"
+                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-gray-500 uppercase">Numero de factura</label>
+                  <input
+                    value={productoSeleccionado.factura_numero}
+                    onChange={(e) =>
+                      setProductoSeleccionado({
+                        ...productoSeleccionado,
+                        factura_numero: e.target.value,
+                      })
+                    }
+                    placeholder="Factura opcional"
                     className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                   />
                 </div>

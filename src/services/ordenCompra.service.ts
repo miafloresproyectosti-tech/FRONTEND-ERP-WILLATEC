@@ -54,6 +54,7 @@ export interface OcPreview {
 export interface OcRecibida {
   id: number;
   numero?: string;
+  user_id?: number | string;
   cotizacion_id?: number;
   cotizacion?: {
     id?: number;
@@ -97,6 +98,7 @@ export interface OcRecibidaItem {
 export interface OcEmitida {
   id: number;
   numero?: string;
+  user_id?: number | string;
   cotizacion_id?: number;
   cotizacion?: {
     id?: number;

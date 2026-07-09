@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  Download,
+  FileText,
   FilePlus2,
   Filter,
+  List,
   Loader2,
   PackageSearch,
+  Plus,
   RefreshCw,
   Search,
   Upload,
@@ -16,11 +20,15 @@ import {
   getProductosInventario,
   getInventarioMovimientos,
   registrarEntradaKardex,
+  registrarSalidaKardex,
   type InventarioMovimiento,
   type InventarioMovimientoFilters,
   type InventarioMovimientoPagination,
   type ProductoInventarioOption,
 } from "../services/inventario.service";
+import { createProveedor, getProveedores, type Proveedor } from "../services/proveedor.service";
+import { createProducto, type ProductoPayload } from "../services/producto.service";
+import { normalizeStorageImageUrl } from "../utils/storageImage";
 
 const tipoOptions = [
   { value: "", label: "Todos los movimientos" },
@@ -48,6 +56,34 @@ const monedaOptions = [
   { id: 2, label: "Dolares", symbol: "$" },
 ];
 
+const productoCategoriaOptions = [
+  { id: 1, label: "LAPTOPS" },
+  { id: 2, label: "ACCESORIOS" },
+  { id: 3, label: "PERIFERICOS" },
+  { id: 4, label: "COMPUTADORAS" },
+  { id: 5, label: "LICENCIAS" },
+  { id: 6, label: "SERVIDORES" },
+  { id: 7, label: "GADGETS" },
+  { id: 8, label: "SUMINISTROS" },
+  { id: 9, label: "REDES" },
+  { id: 10, label: "SEGURIDAD" },
+  { id: 11, label: "COMPONENTES" },
+  { id: 12, label: "ALMACENAMIENTO" },
+];
+
+const estadoProductoOptions = [
+  { value: "nuevo", label: "NUEVO" },
+  { value: "usado", label: "USADO" },
+];
+
+const salidaMotivoOptions = [
+  { value: "uso_interno", label: "Uso propio" },
+  { value: "merma", label: "Merma" },
+  { value: "prestamo", label: "Prestamo" },
+  { value: "garantia", label: "Garantia" },
+  { value: "otro", label: "Otro" },
+];
+
 const emptyMeta: InventarioMovimientoPagination = {
   current_page: 1,
   last_page: 1,
@@ -65,6 +101,15 @@ const formatDate = (value: string) =>
     hour: "2-digit",
     minute: "2-digit",
   });
+
+const formatDateOnly = (value?: string | null) =>
+  value
+    ? new Date(`${value}T00:00:00`).toLocaleDateString("es-PE", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+    : "-";
 
 const formatNumber = (value: number | string | null | undefined) =>
   Number(value ?? 0).toLocaleString("es-PE", {
@@ -90,6 +135,8 @@ const formatMoney = (
     maximumFractionDigits: 2,
   })}`;
 
+const getDocumentoUrl = (path?: string | null) => normalizeStorageImageUrl(path);
+
 const today = new Date().toISOString().slice(0, 10);
 
 const getUserName = (movimiento: InventarioMovimiento) => {
@@ -108,6 +155,53 @@ const getProductLabel = (movimiento: InventarioMovimiento) => {
   if (!product) return `Producto #${movimiento.producto_id}`;
 
   return product.nombre || product.sku || product.codigo || `Producto #${product.id}`;
+};
+
+const getProveedorLabel = (movimiento: InventarioMovimiento) =>
+  movimiento.proveedor_catalogo?.nombre || movimiento.proveedor || "";
+
+const getGarantiaBadge = (movimiento: InventarioMovimiento) => {
+  const garantia = movimiento.garantia_info;
+
+  if (!garantia) return null;
+
+  const classes = garantia.vigente
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : "border-red-200 bg-red-50 text-red-700";
+
+  return (
+    <div className="space-y-1">
+      <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${classes}`}>
+        {garantia.vigente ? "En garantia" : "Garantia vencida"}
+      </span>
+      <div className="text-xs text-gray-500">
+        Hasta {formatDateOnly(garantia.fecha_vencimiento)}
+      </div>
+      {garantia.oc_numero && (
+        <div className="text-xs text-gray-500">
+          OC {garantia.oc_numero}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const getDocumentoLink = (movimiento: InventarioMovimiento) => {
+  const url = getDocumentoUrl(movimiento.documento_path);
+
+  if (!url) return null;
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+    >
+      <Download className="h-3.5 w-3.5" />
+      Ver
+    </a>
+  );
 };
 
 const getTipoLabel = (tipo: string) =>
@@ -130,24 +224,60 @@ const getTipoBadge = (tipo: string) => {
 };
 
 export default function InventarioMovimientos() {
+  const facturaInputRef = useRef<HTMLInputElement | null>(null);
+  const salidaDocumentoInputRef = useRef<HTMLInputElement | null>(null);
   const [movimientos, setMovimientos] = useState<InventarioMovimiento[]>([]);
   const [productos, setProductos] = useState<ProductoInventarioOption[]>([]);
+  const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [meta, setMeta] = useState<InventarioMovimientoPagination>(emptyMeta);
   const [loading, setLoading] = useState(true);
   const [savingEntrada, setSavingEntrada] = useState(false);
+  const [savingSalida, setSavingSalida] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [entradaModalOpen, setEntradaModalOpen] = useState(false);
+  const [salidaModalOpen, setSalidaModalOpen] = useState(false);
+  const [proveedoresModalOpen, setProveedoresModalOpen] = useState(false);
   const [entradaForm, setEntradaForm] = useState({
     producto_id: "",
     cantidad: "",
     costo_unitario: "",
     moneda_id: "1",
+    proveedor_id: "",
     proveedor: "",
     documento_numero: "",
     fecha_documento: today,
     observacion: "",
   });
   const [factura, setFactura] = useState<File | null>(null);
+  const [salidaForm, setSalidaForm] = useState({
+    producto_id: "",
+    cantidad: "",
+    motivo: "uso_interno",
+    documento_numero: "",
+    fecha_documento: today,
+    observacion: "",
+  });
+  const [salidaDocumento, setSalidaDocumento] = useState<File | null>(null);
+  const [nuevoProveedor, setNuevoProveedor] = useState({
+    nombre: "",
+    ruc: "",
+  });
+  const [proveedorSearch, setProveedorSearch] = useState("");
+  const [proveedorResultsOpen, setProveedorResultsOpen] = useState(false);
+  const [creatingProveedor, setCreatingProveedor] = useState(false);
+  const [showNuevoProveedor, setShowNuevoProveedor] = useState(false);
+  const [showNuevoProducto, setShowNuevoProducto] = useState(false);
+  const [creatingProducto, setCreatingProducto] = useState(false);
+  const [nuevoProducto, setNuevoProducto] = useState({
+    nombre: "",
+    marca: "",
+    modelo: "",
+    serie: "",
+    factura_numero: "",
+    categoria_id: "1",
+    estado: "nuevo",
+    unidad_medida: "unidad",
+  });
   const [filters, setFilters] = useState<InventarioMovimientoFilters>({
     page: 1,
     per_page: 15,
@@ -156,6 +286,7 @@ export default function InventarioMovimientos() {
     origen: "",
     created_by: "",
     ip_origen: "",
+    serie: "",
     date_from: "",
     date_to: "",
   });
@@ -173,6 +304,46 @@ export default function InventarioMovimientos() {
     () => productos.find((producto) => producto.id === Number(entradaForm.producto_id)) || null,
     [entradaForm.producto_id, productos],
   );
+
+  const selectedSalidaProducto = useMemo(
+    () => productos.find((producto) => producto.id === Number(salidaForm.producto_id)) || null,
+    [salidaForm.producto_id, productos],
+  );
+
+  const nextProductoCodigo = useMemo(() => {
+    const maxCodigo = productos.reduce((max, producto) => {
+      const value = parseInt(String(producto.codigo || producto.sku || ""), 10);
+      return Number.isFinite(value) ? Math.max(max, value) : max;
+    }, 0);
+
+    return String(maxCodigo + 1).padStart(4, "0");
+  }, [productos]);
+
+  const filteredProveedores = useMemo(() => {
+    const term = proveedorSearch.trim().toLowerCase();
+
+    if (!term) return proveedores.slice(0, 8);
+
+    return proveedores
+      .filter((proveedor) =>
+        [proveedor.nombre, proveedor.ruc, proveedor.contacto, proveedor.correo]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(term)),
+      )
+      .slice(0, 8);
+  }, [proveedorSearch, proveedores]);
+
+  const proveedoresListado = useMemo(() => {
+    const term = proveedorSearch.trim().toLowerCase();
+
+    if (!term) return proveedores;
+
+    return proveedores.filter((proveedor) =>
+      [proveedor.nombre, proveedor.ruc, proveedor.contacto, proveedor.correo]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term)),
+    );
+  }, [proveedorSearch, proveedores]);
 
   const loadMovimientos = async () => {
     setLoading(true);
@@ -208,6 +379,14 @@ export default function InventarioMovimientos() {
       });
   }, []);
 
+  useEffect(() => {
+    getProveedores()
+      .then(setProveedores)
+      .catch((requestError) => {
+        console.error("Error al cargar proveedores:", requestError);
+      });
+  }, []);
+
   const updateFilter = (key: keyof InventarioMovimientoFilters, value: string | number) => {
     setFilters((current) => ({
       ...current,
@@ -225,6 +404,7 @@ export default function InventarioMovimientos() {
       origen: "",
       created_by: "",
       ip_origen: "",
+      serie: "",
       date_from: "",
       date_to: "",
     });
@@ -232,6 +412,10 @@ export default function InventarioMovimientos() {
 
   const handleEntradaChange = (key: keyof typeof entradaForm, value: string) => {
     setEntradaForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleSalidaChange = (key: keyof typeof salidaForm, value: string) => {
+    setSalidaForm((current) => ({ ...current, [key]: value }));
   };
 
   const handleProductoEntradaChange = (productoId: string) => {
@@ -242,6 +426,114 @@ export default function InventarioMovimientos() {
       producto_id: productoId,
       moneda_id: String(producto?.moneda_id || current.moneda_id || 1),
     }));
+  };
+
+  const handleProveedorEntradaChange = (proveedorId: string) => {
+    const proveedor = proveedores.find((item) => item.id === Number(proveedorId));
+
+    setEntradaForm((current) => ({
+      ...current,
+      proveedor_id: proveedorId,
+      proveedor: proveedor?.nombre || "",
+    }));
+    setProveedorSearch(proveedor?.nombre || "");
+    setProveedorResultsOpen(false);
+  };
+
+  const handleCrearProveedor = async () => {
+    const nombre = nuevoProveedor.nombre.trim();
+
+    if (!nombre) {
+      setError("Ingresa el nombre del proveedor.");
+      return;
+    }
+
+    try {
+      setCreatingProveedor(true);
+      setError(null);
+      const proveedor = await createProveedor({
+        nombre,
+        ruc: nuevoProveedor.ruc.trim() || undefined,
+        activo: true,
+      });
+
+      setProveedores((current) => [...current, proveedor].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      setEntradaForm((current) => ({
+        ...current,
+        proveedor_id: String(proveedor.id),
+        proveedor: proveedor.nombre,
+      }));
+      setProveedorSearch(proveedor.nombre);
+      setNuevoProveedor({ nombre: "", ruc: "" });
+      setShowNuevoProveedor(false);
+    } catch (requestError) {
+      console.error("Error al crear proveedor:", requestError);
+      setError("No se pudo registrar el proveedor.");
+    } finally {
+      setCreatingProveedor(false);
+    }
+  };
+
+  const handleCrearProductoEntrada = async () => {
+    const nombre = nuevoProducto.nombre.trim();
+
+    if (!nombre) {
+      setError("Ingresa el nombre del producto nuevo.");
+      return;
+    }
+
+    try {
+      setCreatingProducto(true);
+      setError(null);
+      const costoEntrada = Number(entradaForm.costo_unitario || 0);
+      const payload: ProductoPayload = {
+        sku: nextProductoCodigo,
+        codigo: nextProductoCodigo,
+        nombre,
+        marca: nuevoProducto.marca.trim(),
+        modelo: nuevoProducto.modelo.trim(),
+        serie: nuevoProducto.serie.trim() || undefined,
+        factura_numero: nuevoProducto.factura_numero.trim() || undefined,
+        descripcion: "",
+        precio_referencial: Number.isFinite(costoEntrada) ? costoEntrada : 0,
+        unidad_medida: nuevoProducto.unidad_medida,
+        activo: true,
+        estado: nuevoProducto.estado as "nuevo" | "usado",
+        tipo_producto: "stock",
+        controla_stock: true,
+        stock_actual: 0,
+        stock_minimo: 0,
+        costo_unitario: Number.isFinite(costoEntrada) ? costoEntrada : 0,
+        precio_venta: Number.isFinite(costoEntrada) ? costoEntrada : 0,
+        stock: 0,
+        categoria_id: Number(nuevoProducto.categoria_id || 1),
+      };
+      const producto = await createProducto(payload);
+      const productosActualizados = await getProductosInventario();
+
+      setProductos(productosActualizados);
+      setEntradaForm((current) => ({
+        ...current,
+        producto_id: String(producto.id),
+        moneda_id: String(producto.moneda_id || current.moneda_id || 1),
+      }));
+      setNuevoProducto({
+        nombre: "",
+        marca: "",
+        modelo: "",
+        serie: "",
+        factura_numero: "",
+        categoria_id: "1",
+        estado: "nuevo",
+        unidad_medida: "unidad",
+      });
+      setShowNuevoProducto(false);
+    } catch (requestError) {
+      console.error("Error al crear producto desde Kardex:", requestError);
+      setError("No se pudo crear el producto nuevo.");
+    } finally {
+      setCreatingProducto(false);
+    }
   };
 
   const handleRegistrarEntrada = async () => {
@@ -262,6 +554,7 @@ export default function InventarioMovimientos() {
         cantidad,
         costo_unitario: costoUnitario,
         moneda_id: Number(entradaForm.moneda_id || 1),
+        proveedor_id: entradaForm.proveedor_id ? Number(entradaForm.proveedor_id) : null,
         proveedor: entradaForm.proveedor,
         documento_tipo: "factura",
         documento_numero: entradaForm.documento_numero,
@@ -275,12 +568,17 @@ export default function InventarioMovimientos() {
         cantidad: "",
         costo_unitario: "",
         moneda_id: "1",
+        proveedor_id: "",
         proveedor: "",
         documento_numero: "",
         fecha_documento: today,
         observacion: "",
       });
       setFactura(null);
+      if (facturaInputRef.current) {
+        facturaInputRef.current.value = "";
+      }
+      setProveedorSearch("");
       await loadMovimientos();
       setProductos(await getProductosInventario());
     } catch (requestError) {
@@ -288,6 +586,66 @@ export default function InventarioMovimientos() {
       setError("No se pudo registrar la entrada. Revisa los datos y permisos.");
     } finally {
       setSavingEntrada(false);
+    }
+  };
+
+  const handleRegistrarSalida = async () => {
+    const productoId = Number(salidaForm.producto_id);
+    const cantidad = Number(salidaForm.cantidad);
+
+    if (!productoId || cantidad <= 0) {
+      setError("Selecciona producto y cantidad validos para la salida.");
+      return;
+    }
+
+    try {
+      setSavingSalida(true);
+      setError(null);
+      await registrarSalidaKardex({
+        producto_id: productoId,
+        cantidad,
+        motivo: salidaForm.motivo,
+        moneda_id: Number(selectedSalidaProducto?.moneda_id || 1),
+        documento_tipo: salidaForm.documento_numero ? "documento" : undefined,
+        documento_numero: salidaForm.documento_numero,
+        fecha_documento: salidaForm.fecha_documento,
+        observacion: salidaForm.observacion,
+        documento: salidaDocumento,
+      });
+      setSalidaModalOpen(false);
+      setSalidaForm({
+        producto_id: "",
+        cantidad: "",
+        motivo: "uso_interno",
+        documento_numero: "",
+        fecha_documento: today,
+        observacion: "",
+      });
+      setSalidaDocumento(null);
+      if (salidaDocumentoInputRef.current) {
+        salidaDocumentoInputRef.current.value = "";
+      }
+      await loadMovimientos();
+      setProductos(await getProductosInventario());
+    } catch (requestError) {
+      console.error("Error al registrar salida Kardex:", requestError);
+      setError("No se pudo registrar la salida. Revisa stock disponible y permisos.");
+    } finally {
+      setSavingSalida(false);
+    }
+  };
+
+  const handleRemoveFactura = () => {
+    setFactura(null);
+    if (facturaInputRef.current) {
+      facturaInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveSalidaDocumento = () => {
+    setSalidaDocumento(null);
+    if (salidaDocumentoInputRef.current) {
+      salidaDocumentoInputRef.current.value = "";
     }
   };
 
@@ -307,6 +665,20 @@ export default function InventarioMovimientos() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setProveedoresModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            <List className="h-4 w-4" />
+            Proveedores
+          </button>
+          <button
+            onClick={() => setSalidaModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            <Upload className="h-4 w-4 rotate-90" />
+            Registrar salida
+          </button>
           <button
             onClick={() => setEntradaModalOpen(true)}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
@@ -385,6 +757,16 @@ export default function InventarioMovimientos() {
           </label>
 
           <label className="text-xs font-semibold text-gray-500">
+            Serie
+            <input
+              value={filters.serie ?? ""}
+              onChange={(event) => updateFilter("serie", event.target.value)}
+              placeholder="Buscar serie"
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+            />
+          </label>
+
+          <label className="text-xs font-semibold text-gray-500">
             Usuario ID
             <input
               value={filters.created_by ?? ""}
@@ -447,6 +829,65 @@ export default function InventarioMovimientos() {
         </div>
       )}
 
+      {proveedoresModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-3xl rounded-lg bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 p-5">
+              <h2 className="text-lg font-bold text-gray-900">Proveedores registrados</h2>
+              <button
+                type="button"
+                onClick={() => setProveedoresModalOpen(false)}
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <div className="mb-4 flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
+                <Search className="h-4 w-4 text-gray-400" />
+                <input
+                  value={proveedorSearch}
+                  onChange={(event) => setProveedorSearch(event.target.value)}
+                  placeholder="Buscar por nombre, RUC, contacto o correo"
+                  className="w-full bg-transparent text-sm text-gray-700 outline-none"
+                />
+              </div>
+
+              <div className="max-h-[55vh] overflow-y-auto rounded-lg border border-gray-200">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                    <tr>
+                      <th className="px-4 py-3">Proveedor</th>
+                      <th className="px-4 py-3">RUC</th>
+                      <th className="px-4 py-3">Contacto</th>
+                      <th className="px-4 py-3">Correo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {proveedoresListado.map((proveedor) => (
+                      <tr key={proveedor.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-semibold text-gray-900">{proveedor.nombre}</td>
+                        <td className="px-4 py-3 text-gray-700">{proveedor.ruc || "-"}</td>
+                        <td className="px-4 py-3 text-gray-700">{proveedor.contacto || proveedor.telefono || "-"}</td>
+                        <td className="px-4 py-3 text-gray-700">{proveedor.correo || "-"}</td>
+                      </tr>
+                    ))}
+                    {proveedores.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-10 text-center text-gray-500">
+                          Todavia no hay proveedores registrados
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -454,30 +895,27 @@ export default function InventarioMovimientos() {
               <tr>
                 <th className="px-4 py-3">Fecha</th>
                 <th className="px-4 py-3">Producto</th>
+                <th className="px-4 py-3">Serie</th>
                 <th className="px-4 py-3">Tipo</th>
                 <th className="px-4 py-3">Documento</th>
-                <th className="px-4 py-3 text-right">Entrada</th>
-                <th className="px-4 py-3 text-right">Salida</th>
-                <th className="px-4 py-3 text-right">Saldo</th>
-                <th className="px-4 py-3 text-right">Costo prom.</th>
-                <th className="px-4 py-3 text-right">Valor mov.</th>
-                <th className="px-4 py-3 text-right">Valor stock</th>
+                <th className="px-4 py-3 text-right">Cantidades</th>
+                <th className="px-4 py-3 text-right">Valores</th>
+                <th className="px-4 py-3">Garantia</th>
                 <th className="px-4 py-3">Usuario</th>
-                <th className="px-4 py-3">Origen</th>
                 <th className="px-4 py-3">Observacion</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan={11} className="px-4 py-12 text-center text-gray-500">
                     <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin text-blue-600" />
                     Cargando movimientos...
                   </td>
                 </tr>
               ) : movimientos.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan={11} className="px-4 py-12 text-center text-gray-500">
                     No se encontraron movimientos
                   </td>
                 </tr>
@@ -492,8 +930,11 @@ export default function InventarioMovimientos() {
                       <div className="text-xs text-gray-500">
                         {[movimiento.producto?.sku, movimiento.producto?.codigo]
                           .filter(Boolean)
-                          .join(" / ") || `ID ${movimiento.producto_id}`}
+                        .join(" / ") || `ID ${movimiento.producto_id}`}
                       </div>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-gray-700">
+                      {movimiento.producto_serie?.serie || movimiento.producto?.serie || "-"}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${getTipoBadge(movimiento.tipo_movimiento)}`}>
@@ -501,28 +942,57 @@ export default function InventarioMovimientos() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-700">
-                      <div className="font-semibold">{movimiento.documento_numero || "-"}</div>
-                      <div className="text-xs text-gray-500">
-                        {[movimiento.documento_tipo, movimiento.fecha_documento].filter(Boolean).join(" / ")}
+                      <div className="flex items-start gap-2">
+                        <FileText className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+                        <div className="min-w-0">
+                          <div className="font-semibold">{movimiento.documento_numero || "-"}</div>
+                          <div className="text-xs text-gray-500">
+                            {[movimiento.documento_tipo, movimiento.fecha_documento].filter(Boolean).join(" / ")}
+                          </div>
+                          <div className="mt-1">{getDocumentoLink(movimiento)}</div>
+                        </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right font-semibold text-emerald-700">
-                      {formatNumber(movimiento.entrada_cantidad)}
+                    <td className="px-4 py-3 text-right">
+                      <div className="space-y-1 text-xs">
+                        <div className="flex justify-end gap-2">
+                          <span className="text-gray-500">Entrada</span>
+                          <span className="font-semibold text-emerald-700">{formatNumber(movimiento.entrada_cantidad)}</span>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <span className="text-gray-500">Salida</span>
+                          <span className="font-semibold text-red-700">{formatNumber(movimiento.salida_cantidad)}</span>
+                        </div>
+                        <div className="flex justify-end gap-2 border-t border-gray-100 pt-1">
+                          <span className="text-gray-500">Saldo</span>
+                          <span className="font-bold text-gray-900">{formatNumber(movimiento.saldo_cantidad ?? movimiento.stock_despues)}</span>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-right font-semibold text-red-700">
-                      {formatNumber(movimiento.salida_cantidad)}
+                    <td className="px-4 py-3 text-right">
+                      <div className="space-y-1 text-xs">
+                        <div className="flex justify-end gap-2">
+                          <span className="text-gray-500">Costo</span>
+                          <span className="font-semibold text-gray-700">
+                            {formatMoney(movimiento.costo_promedio_despues ?? movimiento.costo_unitario, movimiento.moneda_id, movimiento.moneda)}
+                          </span>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <span className="text-gray-500">Mov.</span>
+                          <span className="font-semibold text-gray-700">
+                            {formatMoney(movimiento.valor_movimiento, movimiento.moneda_id, movimiento.moneda)}
+                          </span>
+                        </div>
+                        <div className="flex justify-end gap-2 border-t border-gray-100 pt-1">
+                          <span className="text-gray-500">Stock</span>
+                          <span className="font-bold text-gray-900">
+                            {formatMoney(movimiento.valor_stock_despues, movimiento.moneda_id, movimiento.moneda)}
+                          </span>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                      {formatNumber(movimiento.saldo_cantidad ?? movimiento.stock_despues)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-700">
-                      {formatMoney(movimiento.costo_promedio_despues ?? movimiento.costo_unitario, movimiento.moneda_id, movimiento.moneda)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-700">
-                      {formatMoney(movimiento.valor_movimiento, movimiento.moneda_id, movimiento.moneda)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                      {formatMoney(movimiento.valor_stock_despues, movimiento.moneda_id, movimiento.moneda)}
+                    <td className="px-4 py-3 text-gray-700">
+                      {getGarantiaBadge(movimiento) || <span className="text-gray-400">-</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-700">
                       <div className="font-semibold">{getUserName(movimiento)}</div>
@@ -530,18 +1000,13 @@ export default function InventarioMovimientos() {
                         <div className="text-xs text-gray-500">{movimiento.created_by.email}</div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-gray-700">
-                      <div className="font-semibold">{movimiento.origen || "-"}</div>
-                      {(movimiento.referencia_tipo || movimiento.referencia_id) && (
-                        <div className="text-xs text-gray-500">
-                          {[movimiento.referencia_tipo, movimiento.referencia_id].filter(Boolean).join(" #")}
-                        </div>
-                      )}
-                    </td>
                     <td className="max-w-[260px] px-4 py-3 text-gray-600">
                       <span className="line-clamp-2" title={movimiento.observacion || ""}>
-                        {[movimiento.proveedor, movimiento.observacion].filter(Boolean).join(" - ") || "-"}
+                        {[getProveedorLabel(movimiento), movimiento.observacion].filter(Boolean).join(" - ") || "-"}
                       </span>
+                      <div className="mt-1 text-xs text-gray-400">
+                        {[movimiento.origen, movimiento.referencia_tipo, movimiento.referencia_id].filter(Boolean).join(" / ")}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -580,7 +1045,7 @@ export default function InventarioMovimientos() {
 
       {entradaModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-lg bg-white shadow-2xl">
+          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col rounded-lg bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 p-5">
               <h2 className="text-lg font-bold text-gray-900">Registrar entrada Kardex</h2>
               <button
@@ -592,22 +1057,137 @@ export default function InventarioMovimientos() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 overflow-y-auto p-5 md:grid-cols-2">
               <label className="text-sm font-semibold text-gray-600 md:col-span-2">
                 Producto
-                <select
-                  value={entradaForm.producto_id}
-                  onChange={(event) => handleProductoEntradaChange(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
-                >
-                  <option value="">Selecciona producto</option>
-                  {productos.map((producto) => (
-                    <option key={producto.id} value={producto.id}>
-                      {producto.nombre} {producto.sku ? `- ${producto.sku}` : ""}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1 flex gap-2">
+                  <select
+                    value={entradaForm.producto_id}
+                    onChange={(event) => handleProductoEntradaChange(event.target.value)}
+                    className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+                  >
+                    <option value="">Selecciona producto</option>
+                    {productos.map((producto) => (
+                      <option key={producto.id} value={producto.id}>
+                        {producto.nombre} {producto.sku ? `- ${producto.sku}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowNuevoProducto((current) => !current)}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Nuevo
+                  </button>
+                </div>
               </label>
+
+              {showNuevoProducto && (
+                <div className="md:col-span-2 rounded-lg border border-emerald-200 bg-white shadow-sm">
+                  <div className="flex items-center justify-between border-b border-emerald-100 bg-emerald-50 px-4 py-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-emerald-900">Nuevo producto interno</h3>
+                      <p className="text-xs text-emerald-700">Se crea con stock inicial 0 y luego se registra esta entrada.</p>
+                    </div>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                      {nextProductoCodigo}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-6">
+                    <label className="text-xs font-semibold text-gray-600 sm:col-span-4">
+                    Nombre producto
+                    <input
+                      value={nuevoProducto.nombre}
+                      onChange={(event) => setNuevoProducto((current) => ({ ...current, nombre: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none"
+                    />
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600 sm:col-span-2">
+                    Codigo
+                    <input
+                      value={nextProductoCodigo}
+                      disabled
+                      className="mt-1 w-full rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-sm text-gray-500 outline-none"
+                    />
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600 sm:col-span-3">
+                    Categoria
+                    <select
+                      value={nuevoProducto.categoria_id}
+                      onChange={(event) => setNuevoProducto((current) => ({ ...current, categoria_id: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none"
+                    >
+                      {productoCategoriaOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600 sm:col-span-3">
+                    Estado
+                    <select
+                      value={nuevoProducto.estado}
+                      onChange={(event) => setNuevoProducto((current) => ({ ...current, estado: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none"
+                    >
+                      {estadoProductoOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600 sm:col-span-3">
+                    Marca
+                    <input
+                      value={nuevoProducto.marca}
+                      onChange={(event) => setNuevoProducto((current) => ({ ...current, marca: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none"
+                    />
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600 sm:col-span-3">
+                    Modelo
+                    <input
+                      value={nuevoProducto.modelo}
+                      onChange={(event) => setNuevoProducto((current) => ({ ...current, modelo: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none"
+                    />
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600 sm:col-span-3">
+                    Serie
+                    <input
+                      value={nuevoProducto.serie}
+                      onChange={(event) => setNuevoProducto((current) => ({ ...current, serie: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none"
+                    />
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600 sm:col-span-3">
+                    Numero factura
+                    <input
+                      value={nuevoProducto.factura_numero}
+                      onChange={(event) => setNuevoProducto((current) => ({ ...current, factura_numero: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none"
+                    />
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end border-t border-gray-100 px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={handleCrearProductoEntrada}
+                      disabled={creatingProducto}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-60"
+                    >
+                      {creatingProducto ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      Crear y seleccionar producto
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {selectedProducto && (
                 <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 md:col-span-2 sm:grid-cols-3">
@@ -639,7 +1219,7 @@ export default function InventarioMovimientos() {
               </label>
 
               <label className="text-sm font-semibold text-gray-600">
-                Costo unitario
+                Costo unitario (sin IGV)
                 <input
                   type="number"
                   min="0"
@@ -667,12 +1247,88 @@ export default function InventarioMovimientos() {
 
               <label className="text-sm font-semibold text-gray-600">
                 Proveedor
-                <input
-                  value={entradaForm.proveedor}
-                  onChange={(event) => handleEntradaChange("proveedor", event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
-                />
+                <div className="mt-1 flex gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                    <input
+                      value={proveedorSearch}
+                      onChange={(event) => {
+                        setProveedorSearch(event.target.value);
+                        setEntradaForm((current) => ({
+                          ...current,
+                          proveedor_id: "",
+                          proveedor: event.target.value,
+                        }));
+                        setProveedorResultsOpen(true);
+                      }}
+                      onFocus={() => setProveedorResultsOpen(true)}
+                      placeholder="Buscar proveedor"
+                      className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm text-gray-700 outline-none"
+                    />
+                    {proveedorResultsOpen && proveedorSearch.trim() && (
+                      <div className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                        {filteredProveedores.length > 0 ? (
+                          filteredProveedores.map((proveedor) => (
+                            <button
+                              key={proveedor.id}
+                              type="button"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                handleProveedorEntradaChange(String(proveedor.id));
+                              }}
+                              className="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+                            >
+                              <span className="font-semibold text-gray-800">{proveedor.nombre}</span>
+                              {proveedor.ruc && <span className="ml-2 text-xs text-gray-500">{proveedor.ruc}</span>}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-3 py-2 text-sm text-gray-500">No hay proveedores con esa busqueda</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowNuevoProveedor((current) => !current)}
+                    className="shrink-0 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Nuevo
+                  </button>
+                </div>
               </label>
+
+              {showNuevoProveedor && (
+                <div className="grid grid-cols-1 gap-3 rounded-lg border border-blue-100 bg-blue-50 p-3 md:col-span-2 sm:grid-cols-[1fr_180px_auto]">
+                  <label className="text-xs font-semibold text-gray-600">
+                    Nombre proveedor
+                    <input
+                      value={nuevoProveedor.nombre}
+                      onChange={(event) => setNuevoProveedor((current) => ({ ...current, nombre: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none"
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-gray-600">
+                    RUC
+                    <input
+                      value={nuevoProveedor.ruc}
+                      onChange={(event) => setNuevoProveedor((current) => ({ ...current, ruc: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none"
+                    />
+                  </label>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={handleCrearProveedor}
+                      disabled={creatingProveedor}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-60"
+                    >
+                      {creatingProveedor && <Loader2 className="h-4 w-4 animate-spin" />}
+                      Guardar
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <label className="text-sm font-semibold text-gray-600">
                 Numero de factura
@@ -698,12 +1354,29 @@ export default function InventarioMovimientos() {
                 <div className="mt-1 flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
                   <Upload className="h-4 w-4 text-gray-400" />
                   <input
+                    ref={facturaInputRef}
                     type="file"
                     accept=".pdf,.xml,.doc,.docx,.jpg,.jpeg,.png"
                     onChange={(event) => setFactura(event.target.files?.[0] ?? null)}
                     className="w-full text-sm"
                   />
                 </div>
+                {factura && (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <FileText className="h-4 w-4 shrink-0" />
+                      <span className="truncate font-semibold">{factura.name}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveFactura}
+                      className="shrink-0 rounded-md p-1 text-blue-700 hover:bg-blue-100"
+                      title="Quitar archivo"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
               </label>
 
               <label className="text-sm font-semibold text-gray-600 md:col-span-2">
@@ -733,6 +1406,163 @@ export default function InventarioMovimientos() {
               >
                 {savingEntrada ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePlus2 className="h-4 w-4" />}
                 Guardar entrada
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {salidaModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-lg bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 p-5">
+              <h2 className="text-lg font-bold text-gray-900">Registrar salida Kardex</h2>
+              <button
+                type="button"
+                onClick={() => setSalidaModalOpen(false)}
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
+              <label className="text-sm font-semibold text-gray-600 md:col-span-2">
+                Producto
+                <select
+                  value={salidaForm.producto_id}
+                  onChange={(event) => handleSalidaChange("producto_id", event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+                >
+                  <option value="">Selecciona producto</option>
+                  {productos.map((producto) => (
+                    <option key={producto.id} value={producto.id}>
+                      {producto.nombre} {producto.sku ? `- ${producto.sku}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {selectedSalidaProducto && (
+                <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 md:col-span-2 sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Stock actual</p>
+                    <p className="text-lg font-bold text-gray-900">{formatNumber(selectedSalidaProducto.stock_actual)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Reservado</p>
+                    <p className="text-lg font-bold text-amber-700">{formatNumber(selectedSalidaProducto.stock_reservado)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Disponible</p>
+                    <p className="text-lg font-bold text-emerald-700">{formatNumber(selectedSalidaProducto.stock_disponible)}</p>
+                  </div>
+                </div>
+              )}
+
+              <label className="text-sm font-semibold text-gray-600">
+                Motivo
+                <select
+                  value={salidaForm.motivo}
+                  onChange={(event) => handleSalidaChange("motivo", event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+                >
+                  {salidaMotivoOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="text-sm font-semibold text-gray-600">
+                Cantidad
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={salidaForm.cantidad}
+                  onChange={(event) => handleSalidaChange("cantidad", event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+                />
+              </label>
+
+              <label className="text-sm font-semibold text-gray-600">
+                Numero documento
+                <input
+                  value={salidaForm.documento_numero}
+                  onChange={(event) => handleSalidaChange("documento_numero", event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+                />
+              </label>
+
+              <label className="text-sm font-semibold text-gray-600">
+                Fecha documento
+                <input
+                  type="date"
+                  value={salidaForm.fecha_documento}
+                  onChange={(event) => handleSalidaChange("fecha_documento", event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+                />
+              </label>
+
+              <label className="text-sm font-semibold text-gray-600 md:col-span-2">
+                Archivo documento
+                <div className="mt-1 flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                  <Upload className="h-4 w-4 text-gray-400" />
+                  <input
+                    ref={salidaDocumentoInputRef}
+                    type="file"
+                    accept=".pdf,.xml,.doc,.docx,.jpg,.jpeg,.png"
+                    onChange={(event) => setSalidaDocumento(event.target.files?.[0] ?? null)}
+                    className="w-full text-sm"
+                  />
+                </div>
+                {salidaDocumento && (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <FileText className="h-4 w-4 shrink-0" />
+                      <span className="truncate font-semibold">{salidaDocumento.name}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveSalidaDocumento}
+                      className="shrink-0 rounded-md p-1 text-blue-700 hover:bg-blue-100"
+                      title="Quitar archivo"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </label>
+
+              <label className="text-sm font-semibold text-gray-600 md:col-span-2">
+                Observacion
+                <textarea
+                  value={salidaForm.observacion}
+                  onChange={(event) => handleSalidaChange("observacion", event.target.value)}
+                  rows={3}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-gray-200 p-5">
+              <button
+                type="button"
+                onClick={() => setSalidaModalOpen(false)}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleRegistrarSalida}
+                disabled={savingSalida}
+                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+              >
+                {savingSalida ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4 rotate-90" />}
+                Guardar salida
               </button>
             </div>
           </div>

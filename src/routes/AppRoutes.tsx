@@ -63,20 +63,104 @@ export default function AppRoutes() {
           <Route path="/notificaciones" element={<Notificaciones />} />
 
           {/* MÓDULOS ERP */}
-          <Route path="/productos" element={<Productos />} />
-          <Route path="/clientes" element={<Clientes />} />
-          <Route path="/cotizaciones" element={<Cotizaciones />} />
-          <Route path="/cotizaciones/new" element={<CotizacionDetail />} />
-          <Route path="/cotizaciones/:id/edit" element={<CotizacionDetail />} />
-          <Route path="/cotizaciones/:id/view" element={<CotizacionDetail />} />
-          <Route path="/cotizaciones/modificaciones/:modificacionId/edit" element={<CotizacionDetail />} />
+          <Route
+            path="/productos"
+            element={
+              <ProtectedRoute requiredPermission="productos">
+                <Productos />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/clientes"
+            element={
+              <ProtectedRoute requiredPermission="clientes">
+                <Clientes />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cotizaciones"
+            element={
+              <ProtectedRoute requiredPermission="cotizaciones">
+                <Cotizaciones />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cotizaciones/new"
+            element={
+              <ProtectedRoute requiredPermission="cotizaciones">
+                <CotizacionDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cotizaciones/:id/edit"
+            element={
+              <ProtectedRoute requiredPermission="cotizaciones">
+                <CotizacionDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cotizaciones/:id/view"
+            element={
+              <ProtectedRoute requiredPermission="cotizaciones">
+                <CotizacionDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cotizaciones/modificaciones/:modificacionId/edit"
+            element={
+              <ProtectedRoute requiredPermission="cotizaciones">
+                <CotizacionDetail />
+              </ProtectedRoute>
+            }
+          />
 
           {/* ÓRDENES DE COMPRA */}
-          <Route path="/ordenes-compra" element={<OrdenesCompraPage />} />
-          <Route path="/ordenes-compra/nueva" element={<OrdenesCompraPage />} />
-          <Route path="/ordenes-compra/recibidas/:ocId" element={<OrdenesCompraPage />} />
-          <Route path="/ordenes-compra/emitidas/:ocId" element={<OrdenesCompraPage />} />
-          <Route path="/ordenes-compra/:id" element={<OrdenCompraDetail />} />
+          <Route
+            path="/ordenes-compra"
+            element={
+              <ProtectedRoute requiredPermission="ordenes_compra">
+                <OrdenesCompraPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ordenes-compra/nueva"
+            element={
+              <ProtectedRoute requiredPermission="ordenes_compra">
+                <OrdenesCompraPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ordenes-compra/recibidas/:ocId"
+            element={
+              <ProtectedRoute requiredPermission="ordenes_compra">
+                <OrdenesCompraPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ordenes-compra/emitidas/:ocId"
+            element={
+              <ProtectedRoute requiredPermission="ordenes_compra">
+                <OrdenesCompraPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ordenes-compra/:id"
+            element={
+              <ProtectedRoute requiredPermission="ordenes_compra">
+                <OrdenCompraDetail />
+              </ProtectedRoute>
+            }
+          />
           {/* ADMIN */}
           <Route path="/usuarios" element={<Usuarios />} />
           <Route path="/configuracion" element={<Configuracion />} />
@@ -94,7 +178,7 @@ export default function AppRoutes() {
           <Route
             path="/inventario/movimientos"
             element={
-              <ProtectedRoute requiredRole="SUPERADMIN">
+              <ProtectedRoute requiredPermission="inventario">
                 <InventarioMovimientos />
               </ProtectedRoute>
             }

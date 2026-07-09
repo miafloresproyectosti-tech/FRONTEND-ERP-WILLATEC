@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, Loader2, Key } from 'lucide-react';
 import { useAuth } from '../AuthContext';
-import { getUsers, createUser, updateUser, deleteUser, resetPassword, type User as ApiUser, type CreateUserData, type UpdateUserData } from '../services/usuario.service';
+import { getUsers, getRoles, createUser, updateUser, deleteUser, resetPassword, type User as ApiUser, type CreateUserData, type UpdateUserData } from '../services/usuario.service';
 import TempPasswordModal from '../components/ui/TempPasswordModal';
 import { useNotifications } from '../NotificationContext';
 
@@ -13,7 +13,7 @@ interface User {
   email: string;
   role: string;
   status: 'activo' | 'inactivo';
-  area: 'comercial' | 'soporte' | 'administracion';
+  area: 'comercial' | 'soporte' | 'administracion' | 'logistica';
   telefono?: string;
   dni?: string;
   cargo?: string;
@@ -39,7 +39,7 @@ export default function Usuarios() {
     email: '',
     role: 'VENTAS',
     status: 'activo' as 'activo' | 'inactivo',
-    area: 'comercial' as 'comercial' | 'soporte' | 'administracion',
+    area: 'comercial' as 'comercial' | 'soporte' | 'administracion' | 'logistica',
     telefono: '',
     dni: '',
     cargo: '',
@@ -82,12 +82,14 @@ export default function Usuarios() {
     }
   };
 
-  const getAreaFromRole = (role: string): 'comercial' | 'soporte' | 'administracion' => {
+  const getAreaFromRole = (role: string): 'comercial' | 'soporte' | 'administracion' | 'logistica' => {
     switch (role.toUpperCase()) {
       case 'VENTAS':
         return 'comercial';
       case 'SOPORTE':
         return 'soporte';
+      case 'LOGISTICA':
+        return 'logistica';
       case 'ADMIN':
       case 'SUPERADMIN':
         return 'administracion';
@@ -106,6 +108,8 @@ export default function Usuarios() {
         return 3;
       case 'SOPORTE':
         return 4;
+      case 'LOGISTICA':
+        return 5;
       default:
         return 3;
     }
@@ -235,13 +239,19 @@ export default function Usuarios() {
           return;
         }
 
+        const rolesCatalog = await getRoles();
+        const selectedRole = rolesCatalog.find(
+          (role: { id: number; name: string }) =>
+            role.name.toUpperCase() === usuarioSeleccionado.role.toUpperCase()
+        );
+
         const createData: CreateUserData = {
           nombres,
           apellidos,
           email: usuarioSeleccionado.email,
           password: usuarioSeleccionado.password,
           password_confirmation: usuarioSeleccionado.password_confirmation,
-          role: getRoleIdFromName(usuarioSeleccionado.role), // Cambiado de role_id a role
+          role: selectedRole?.id ?? getRoleIdFromName(usuarioSeleccionado.role),
           telefono: usuarioSeleccionado.telefono,
           dni: usuarioSeleccionado.dni,
           cargo: usuarioSeleccionado.cargo,
@@ -608,6 +618,7 @@ export default function Usuarios() {
                     <option value="ADMIN">Administrador</option>
                     <option value="VENTAS">Ventas</option>
                     <option value="SOPORTE">Soporte</option>
+                    <option value="LOGISTICA">Logistica</option>
                   </select>
                 </div>
 

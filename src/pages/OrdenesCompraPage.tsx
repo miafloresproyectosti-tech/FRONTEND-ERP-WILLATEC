@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
@@ -43,6 +43,7 @@ import {
   type OcRecibida,
   type OcRecibidaItem,
 } from "../services/ordenCompra.service";
+import { useAuth } from "../AuthContext";
 import { getCotizacion } from "../services/cotizacion.service";
 import { formatMoney } from "../utils/formatNumber";
 import { getPaginationItems } from "../utils/pagination";
@@ -306,6 +307,7 @@ const getDocumentLinks = (oc: OcEmitida | OcRecibida): DocumentLink[] => {
 };
 
 export default function OrdenesCompraPage() {
+  const { user } = useAuth();
   const { addNotification, showToast } = useNotifications();
   const [searchParams, setSearchParams] = useSearchParams();
   const { ocId } = useParams();
@@ -343,6 +345,15 @@ export default function OrdenesCompraPage() {
 
   const currentPagination = activeTab === "emitidas" ? emitidasPagination : recibidasPagination;
   const paginationItems = getPaginationItems(currentPagination.page, currentPagination.totalPages);
+  const canEditOc = useCallback(
+    (oc: OcEmitida | OcRecibida) => {
+      if (!user) return false;
+      if (user.role === "SUPERADMIN") return true;
+
+      return Number(oc.user_id) === Number(user.id);
+    },
+    [user],
+  );
 
   const proveedorOptions = useMemo(() => {
     const fromPreview = preview?.proveedores || [];
@@ -757,12 +768,7 @@ export default function OrdenesCompraPage() {
       }
 
       showToast({ title: "Documentos actualizados", description: "Los archivos fueron enviados al backend.", type: "success" });
-      setDocumentTarget(null);
-      setFactura(null);
-      setFacturaNumero("");
-      setComprobantePago(null);
-      setOrdenCompraCliente(null);
-      setGuiaEmision(null);
+      closeDocumentModal(true);
       refreshActiveTab();
     } catch (error) {
       showToast({
@@ -853,8 +859,23 @@ export default function OrdenesCompraPage() {
     }
   };
 
-  const handleFile = (setter: (file: File | null) => void) => (event: ChangeEvent<HTMLInputElement>) => {
-    setter(event.target.files?.[0] ?? null);
+  const resetDocumentFiles = () => {
+    setFactura(null);
+    setFacturaNumero("");
+    setComprobantePago(null);
+    setOrdenCompraCliente(null);
+    setGuiaEmision(null);
+  };
+
+  const openDocumentModal = (oc: OcEmitida | OcRecibida) => {
+    resetDocumentFiles();
+    setDocumentTarget(oc);
+  };
+
+  const closeDocumentModal = (force = false) => {
+    if (saving && !force) return;
+    setDocumentTarget(null);
+    resetDocumentFiles();
   };
 
   return (
@@ -964,16 +985,18 @@ export default function OrdenesCompraPage() {
             <EmitidasTable
               rows={emitidas}
               onView={handleViewEmitida}
-              onDocuments={setDocumentTarget}
+              onDocuments={openDocumentModal}
               onDownloadPdf={handleDownloadEmitidaPdf}
+              canEditOc={canEditOc}
             />
           ) : (
             <RecibidasTable
               rows={recibidas}
               onView={handleViewRecibida}
-              onDocuments={setDocumentTarget}
+              onDocuments={openDocumentModal}
               onToggleItem={handleToggleRecibidaItem}
               updatingItemOc={updatingItemOc}
+              canEditOc={canEditOc}
             />
           )}
         </div>
@@ -1109,8 +1132,8 @@ export default function OrdenesCompraPage() {
 
               {modalMode === "recibir" && (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <FileInput label="Orden de compra cliente" onChange={handleFile(setOrdenCompraCliente)} />
-                  <FileInput label="Guia de emision" onChange={handleFile(setGuiaEmision)} />
+                  <FileInput label="Orden de compra cliente" file={ordenCompraCliente} onFileChange={setOrdenCompraCliente} />
+                  <FileInput label="Guia de emision" file={guiaEmision} onFileChange={setGuiaEmision} />
                 </div>
               )}
             </div>
@@ -1142,6 +1165,7 @@ export default function OrdenesCompraPage() {
           oc={selectedOc}
           loading={loadingDetail}
           updatingItemOc={updatingItemOc}
+          canEditOc={canEditOc(selectedOc)}
           onClose={() => setSelectedOc(null)}
           onToggleItem={handleToggleRecibidaItem}
         />
@@ -1150,17 +1174,17 @@ export default function OrdenesCompraPage() {
       {documentTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl dark:bg-slate-950">
-            <ModalHeader title={`Subir documentos - ${getOcLabel(documentTarget)}`} onClose={() => setDocumentTarget(null)} />
+            <ModalHeader title={`Subir documentos - ${getOcLabel(documentTarget)}`} onClose={closeDocumentModal} />
             <div className="space-y-4 p-6">
               {"proveedor" in documentTarget ? (
                 <>
-                  <FileInput label="Factura" onChange={handleFile(setFactura)} />
-                  <FileInput label="Comprobante de pago" onChange={handleFile(setComprobantePago)} />
+                  <FileInput label="Factura" file={factura} onFileChange={setFactura} />
+                  <FileInput label="Comprobante de pago" file={comprobantePago} onFileChange={setComprobantePago} />
                 </>
               ) : (
                 <>
-                  <FileInput label="Orden de compra cliente" onChange={handleFile(setOrdenCompraCliente)} />
-                  <FileInput label="Guia de emision" onChange={handleFile(setGuiaEmision)} />
+                  <FileInput label="Orden de compra cliente" file={ordenCompraCliente} onFileChange={setOrdenCompraCliente} />
+                  <FileInput label="Guia de emision" file={guiaEmision} onFileChange={setGuiaEmision} />
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
                     Numero de factura
                     <input
@@ -1169,14 +1193,15 @@ export default function OrdenesCompraPage() {
                       className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                     />
                   </label>
-                  <FileInput label="Factura" onChange={handleFile(setFactura)} />
+                  <FileInput label="Factura" file={factura} onFileChange={setFactura} />
                 </>
               )}
             </div>
             <div className="flex justify-end gap-3 border-t border-gray-200 p-6 dark:border-slate-800">
               <button
                 type="button"
-                onClick={() => setDocumentTarget(null)}
+                onClick={() => closeDocumentModal()}
+                disabled={saving}
                 className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200"
               >
                 Cancelar
@@ -1262,14 +1287,52 @@ function ModalHeader({ title, onClose }: { title: string; onClose: () => void })
   );
 }
 
-function FileInput({ label, onChange }: { label: string; onChange: (event: ChangeEvent<HTMLInputElement>) => void }) {
+function FileInput({
+  label,
+  file,
+  onFileChange,
+}: {
+  label: string;
+  file: File | null;
+  onFileChange: (file: File | null) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleRemove = () => {
+    onFileChange(null);
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+  };
+
   return (
-    <label className="block rounded-xl border border-dashed border-slate-300 p-4 dark:border-slate-700">
+    <div className="rounded-xl border border-dashed border-slate-300 p-4 dark:border-slate-700">
       <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
         <Paperclip size={16} /> {label}
       </span>
-      <input type="file" onChange={onChange} className="w-full text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-slate-700" />
-    </label>
+      <input
+        ref={inputRef}
+        type="file"
+        onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
+        className="w-full text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-slate-700"
+      />
+      {file && (
+        <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-100">
+          <div className="flex min-w-0 items-center gap-2">
+            <FileText className="h-4 w-4 shrink-0" />
+            <span className="truncate font-semibold">{file.name}</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleRemove}
+            className="shrink-0 rounded-md p-1 text-blue-700 hover:bg-blue-100 dark:text-blue-100 dark:hover:bg-blue-900/60"
+            title="Quitar archivo"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1278,11 +1341,13 @@ function EmitidasTable({
   onView,
   onDocuments,
   onDownloadPdf,
+  canEditOc,
 }: {
   rows: OcEmitida[];
   onView: (oc: OcEmitida) => void;
   onDocuments: (oc: OcEmitida) => void;
   onDownloadPdf: (oc: OcEmitida) => void;
+  canEditOc: (oc: OcEmitida) => boolean;
 }) {
   return (
     <table className="w-full min-w-[980px]">
@@ -1311,7 +1376,12 @@ function EmitidasTable({
             <td className="px-5 py-4">
               <div className="flex justify-center gap-2">
                 <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
-                <IconButton title="Subir documentos" onClick={() => onDocuments(oc)} icon={<Upload size={17} />} />
+                <IconButton
+                  title={canEditOc(oc) ? "Subir documentos" : "Solo el usuario que registro esta OC puede editarla"}
+                  onClick={() => onDocuments(oc)}
+                  icon={<Upload size={17} />}
+                  disabled={!canEditOc(oc)}
+                />
                 <button
                   type="button"
                   onClick={() => onDownloadPdf(oc)}
@@ -1337,12 +1407,14 @@ function RecibidasTable({
   onDocuments,
   onToggleItem,
   updatingItemOc,
+  canEditOc,
 }: {
   rows: OcRecibida[];
   onView: (oc: OcRecibida) => void;
   onDocuments: (oc: OcRecibida) => void;
   onToggleItem: (oc: OcRecibida, item: OcRecibidaItem, field: "comprado" | "entregado", checked: boolean) => void;
   updatingItemOc: number | null;
+  canEditOc: (oc: OcRecibida) => boolean;
 }) {
   return (
     <table className="w-full min-w-[1080px]">
@@ -1372,8 +1444,9 @@ function RecibidasTable({
                         <input
                           type="checkbox"
                           checked={Boolean(item.comprado)}
-                          disabled={updatingItemOc === oc.id}
+                          disabled={updatingItemOc === oc.id || !canEditOc(oc)}
                           onChange={(event) => onToggleItem(oc, item, "comprado", event.target.checked)}
+                          title={canEditOc(oc) ? "Marcar comprado" : "Solo el usuario que registro esta OC puede editarla"}
                         />
                         Comprado
                       </label>
@@ -1381,8 +1454,9 @@ function RecibidasTable({
                         <input
                           type="checkbox"
                           checked={Boolean(item.entregado)}
-                          disabled={updatingItemOc === oc.id}
+                          disabled={updatingItemOc === oc.id || !canEditOc(oc)}
                           onChange={(event) => onToggleItem(oc, item, "entregado", event.target.checked)}
+                          title={canEditOc(oc) ? "Marcar entregado" : "Solo el usuario que registro esta OC puede editarla"}
                         />
                         Entregado
                       </label>
@@ -1401,7 +1475,12 @@ function RecibidasTable({
             <td className="px-5 py-4">
               <div className="flex justify-center gap-2">
                 <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
-                <IconButton title="Subir documentos" onClick={() => onDocuments(oc)} icon={<Upload size={17} />} />
+                <IconButton
+                  title={canEditOc(oc) ? "Subir documentos" : "Solo el usuario que registro esta OC puede editarla"}
+                  onClick={() => onDocuments(oc)}
+                  icon={<Upload size={17} />}
+                  disabled={!canEditOc(oc)}
+                />
               </div>
             </td>
           </tr>
@@ -1553,12 +1632,23 @@ function EstadoBadge({ estado, labels }: { estado?: string; labels: Record<strin
   );
 }
 
-function IconButton({ title, onClick, icon }: { title: string; onClick: () => void; icon: React.ReactNode }) {
+function IconButton({
+  title,
+  onClick,
+  icon,
+  disabled = false,
+}: {
+  title: string;
+  onClick: () => void;
+  icon: React.ReactNode;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200"
+      disabled={disabled}
+      className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-slate-800 dark:text-slate-200"
       title={title}
     >
       {icon}
@@ -1580,12 +1670,14 @@ function DetailModal({
   oc,
   loading,
   updatingItemOc,
+  canEditOc,
   onClose,
   onToggleItem,
 }: {
   oc: OcEmitida | OcRecibida;
   loading: boolean;
   updatingItemOc: number | null;
+  canEditOc: boolean;
   onClose: () => void;
   onToggleItem: (oc: OcRecibida, item: OcRecibidaItem, field: "comprado" | "entregado", checked: boolean) => void;
 }) {
@@ -1685,10 +1777,11 @@ function DetailModal({
                               <input
                                 type="checkbox"
                                 checked={Boolean(item.comprado)}
-                                disabled={updatingItemOc === oc.id}
+                                disabled={updatingItemOc === oc.id || !canEditOc}
                                 onChange={(event) =>
                                   onToggleItem(oc as OcRecibida, item as OcRecibidaItem, "comprado", event.target.checked)
                                 }
+                                title={canEditOc ? "Marcar comprado" : "Solo el usuario que registro esta OC puede editarla"}
                                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
                               {item.comprado ? "Si" : "No"}
@@ -1699,10 +1792,11 @@ function DetailModal({
                               <input
                                 type="checkbox"
                                 checked={Boolean(item.entregado)}
-                                disabled={updatingItemOc === oc.id}
+                                disabled={updatingItemOc === oc.id || !canEditOc}
                                 onChange={(event) =>
                                   onToggleItem(oc as OcRecibida, item as OcRecibidaItem, "entregado", event.target.checked)
                                 }
+                                title={canEditOc ? "Marcar entregado" : "Solo el usuario que registro esta OC puede editarla"}
                                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
                               {item.entregado ? "Si" : "No"}

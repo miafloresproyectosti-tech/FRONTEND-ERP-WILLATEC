@@ -8,6 +8,8 @@ export interface Producto {
     marca: string;
     modelo: string;
     codigo:string;
+    serie?: string | null;
+    factura_numero?: string | null;
     descripcion: string | null;
     precio_referencial: number;
     unidad_medida: string;
@@ -183,6 +185,8 @@ export interface ProductoPayload {
     marca: string;
     modelo: string;
     codigo:string;
+    serie?: string;
+    factura_numero?: string;
     descripcion?: string;
     imagen?: string;
     precio_referencial: number;
@@ -390,7 +394,7 @@ function buildFormData(payload: ProductoPayload): FormData {
  
     const fields: (keyof ProductoPayload)[] = [
         "sku", "nombre", "marca", "modelo", "codigo",
-        "descripcion", "precio_referencial",
+        "serie", "factura_numero", "descripcion", "precio_referencial",
         "unidad_medida", "stock", "categoria_id", "estado",
         "tipo_producto", "stock_actual", "stock_minimo",
         "costo_unitario", "precio_venta", "codigo_barras", "moneda_id",

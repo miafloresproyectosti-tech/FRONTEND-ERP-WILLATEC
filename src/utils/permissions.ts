@@ -11,7 +11,8 @@ export const rolePermissions: Record<UserRole, string[]> = {
     "usuarios",
     "configuracion",
     "mensajes",
-    "ordenes_compra"
+    "ordenes_compra",
+    "inventario"
   ],
 
   ADMIN: [
@@ -32,5 +33,10 @@ export const rolePermissions: Record<UserRole, string[]> = {
   SOPORTE: [
     "productos",
     "mensajes"
+  ],
+
+  LOGISTICA: [
+    "productos",
+    "inventario"
   ]
 };

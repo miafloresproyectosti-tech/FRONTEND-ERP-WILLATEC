@@ -9,6 +9,7 @@ export interface InventarioMovimientoFilters {
   origen?: string;
   created_by?: string | number;
   ip_origen?: string;
+  serie?: string;
   date_from?: string;
   date_to?: string;
 }
@@ -16,6 +17,7 @@ export interface InventarioMovimientoFilters {
 export interface InventarioMovimiento {
   id: number;
   producto_id: number;
+  producto_serie_id?: number | string | null;
   tipo_movimiento: string;
   cantidad: number | string;
   entrada_cantidad?: number | string;
@@ -45,6 +47,12 @@ export interface InventarioMovimiento {
   documento_path?: string | null;
   fecha_documento?: string | null;
   proveedor?: string | null;
+  proveedor_id?: number | string | null;
+  proveedor_catalogo?: {
+    id?: number;
+    nombre?: string | null;
+    ruc?: string | null;
+  } | null;
   ip_origen?: string | null;
   user_agent?: string | null;
   created_by?: {
@@ -58,6 +66,25 @@ export interface InventarioMovimiento {
     nombre?: string | null;
     sku?: string | null;
     codigo?: string | null;
+    serie?: string | null;
+  } | null;
+  producto_serie?: {
+    id?: number;
+    producto_id?: number;
+    serie?: string | null;
+    factura_numero?: string | null;
+    estado?: string | null;
+  } | null;
+  garantia_info?: {
+    garantia_meses: number;
+    fecha_inicio: string;
+    fecha_vencimiento: string;
+    vigente: boolean;
+    dias_restantes: number;
+    oc_numero?: string | null;
+    cliente_nombre?: string | null;
+    cliente_ruc?: string | null;
+    cotizacion_numero?: string | null;
   } | null;
   created_at: string;
 }
@@ -67,6 +94,7 @@ export interface ProductoInventarioOption {
   nombre: string;
   sku?: string | null;
   codigo?: string | null;
+  serie?: string | null;
   stock_actual?: number | string | null;
   stock_reservado?: number | string | null;
   stock_disponible?: number | string | null;
@@ -86,12 +114,25 @@ export interface RegistrarEntradaKardexPayload {
   cantidad: number;
   costo_unitario: number;
   moneda_id: number;
+  proveedor_id?: number | null;
   proveedor?: string;
   documento_tipo?: string;
   documento_numero?: string;
   fecha_documento?: string;
   observacion?: string;
   factura?: File | null;
+}
+
+export interface RegistrarSalidaKardexPayload {
+  producto_id: number;
+  cantidad: number;
+  motivo: string;
+  moneda_id?: number;
+  documento_tipo?: string;
+  documento_numero?: string;
+  fecha_documento?: string;
+  observacion?: string;
+  documento?: File | null;
 }
 
 export interface InventarioMovimientoPagination {
@@ -159,6 +200,7 @@ export async function registrarEntradaKardex(payload: RegistrarEntradaKardexPayl
   formData.append("documento_tipo", payload.documento_tipo || "factura");
 
   if (payload.proveedor) formData.append("proveedor", payload.proveedor);
+  if (payload.proveedor_id) formData.append("proveedor_id", String(payload.proveedor_id));
   if (payload.documento_numero) formData.append("documento_numero", payload.documento_numero);
   if (payload.fecha_documento) formData.append("fecha_documento", payload.fecha_documento);
   if (payload.observacion) formData.append("observacion", payload.observacion);
@@ -166,6 +208,27 @@ export async function registrarEntradaKardex(payload: RegistrarEntradaKardexPayl
 
   const response = await api.post(
     `/productos/${payload.producto_id}/registrar-entrada`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+
+  return response.data;
+}
+
+export async function registrarSalidaKardex(payload: RegistrarSalidaKardexPayload) {
+  const formData = new FormData();
+  formData.append("cantidad", String(payload.cantidad));
+  formData.append("motivo", payload.motivo);
+
+  if (payload.moneda_id) formData.append("moneda_id", String(payload.moneda_id));
+  if (payload.documento_tipo) formData.append("documento_tipo", payload.documento_tipo);
+  if (payload.documento_numero) formData.append("documento_numero", payload.documento_numero);
+  if (payload.fecha_documento) formData.append("fecha_documento", payload.fecha_documento);
+  if (payload.observacion) formData.append("observacion", payload.observacion);
+  if (payload.documento) formData.append("documento", payload.documento);
+
+  const response = await api.post(
+    `/productos/${payload.producto_id}/registrar-salida`,
     formData,
     { headers: { "Content-Type": "multipart/form-data" } },
   );

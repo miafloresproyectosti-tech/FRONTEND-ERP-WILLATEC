@@ -1,1 +1,1 @@
-export type UserRole = 'SUPERADMIN' | 'ADMIN' | 'VENTAS' | 'SOPORTE';
+export type UserRole = 'SUPERADMIN' | 'ADMIN' | 'VENTAS' | 'SOPORTE' | 'LOGISTICA';

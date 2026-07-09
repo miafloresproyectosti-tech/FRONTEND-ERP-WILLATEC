@@ -80,6 +80,8 @@ export default function LoginComponent() {
               ? '/cotizaciones'
               : role === 'SOPORTE'
                 ? '/productos'
+                : role === 'LOGISTICA'
+                  ? '/productos'
                 : '/login';
       navigate(targetRoute);
     } catch (err: any) {
