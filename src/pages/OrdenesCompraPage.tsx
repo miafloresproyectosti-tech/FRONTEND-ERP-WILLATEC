@@ -837,16 +837,33 @@ export default function OrdenesCompraPage() {
     checked: boolean,
   ) => {
     if (!oc.items) return;
+    if (field === "comprado") {
+      showToast({
+        title: "Comprado automatico",
+        description: "Este estado se marca segun conversion o stock interno reservado.",
+        type: "warning",
+      });
+      return;
+    }
+    if (field === "entregado" && checked && !item.comprado) {
+      showToast({
+        title: "Item no comprado",
+        description: "Primero debe estar comprado con stock interno reservado para poder marcarlo como entregado.",
+        type: "warning",
+      });
+      return;
+    }
+
     const nextItems = oc.items.map((row) => ({
       id: row.id,
-      comprado: row.id === item.id && field === "comprado" ? checked : Boolean(row.comprado),
+      comprado: Boolean(row.comprado),
       entregado: row.id === item.id && field === "entregado" ? checked : Boolean(row.entregado),
     }));
     try {
       setUpdatingItemOc(oc.id);
       await updateOcRecibidaItems(oc.id, { items: nextItems });
       setSelectedOc(await getOcRecibida(oc.id));
-      showToast({ title: "Items actualizados", description: "Comprado/entregado fue sincronizado.", type: "success" });
+      showToast({ title: "Items actualizados", description: "Entregado fue sincronizado y comprado se recalculo con inventario.", type: "success" });
       void loadRecibidas(recibidasPagination.page);
     } catch (error) {
       showToast({
@@ -1444,9 +1461,9 @@ function RecibidasTable({
                         <input
                           type="checkbox"
                           checked={Boolean(item.comprado)}
-                          disabled={updatingItemOc === oc.id || !canEditOc(oc)}
+                          disabled
                           onChange={(event) => onToggleItem(oc, item, "comprado", event.target.checked)}
-                          title={canEditOc(oc) ? "Marcar comprado" : "Solo el usuario que registro esta OC puede editarla"}
+                          title="Se marca automaticamente cuando el item tiene producto interno reservado con stock suficiente"
                         />
                         Comprado
                       </label>
@@ -1454,9 +1471,9 @@ function RecibidasTable({
                         <input
                           type="checkbox"
                           checked={Boolean(item.entregado)}
-                          disabled={updatingItemOc === oc.id || !canEditOc(oc)}
+                          disabled={updatingItemOc === oc.id || !canEditOc(oc) || !item.comprado}
                           onChange={(event) => onToggleItem(oc, item, "entregado", event.target.checked)}
-                          title={canEditOc(oc) ? "Marcar entregado" : "Solo el usuario que registro esta OC puede editarla"}
+                          title={!item.comprado ? "Primero debe estar comprado" : canEditOc(oc) ? "Marcar entregado" : "Solo el usuario que registro esta OC puede editarla"}
                         />
                         Entregado
                       </label>
@@ -1777,11 +1794,11 @@ function DetailModal({
                               <input
                                 type="checkbox"
                                 checked={Boolean(item.comprado)}
-                                disabled={updatingItemOc === oc.id || !canEditOc}
+                                disabled
                                 onChange={(event) =>
                                   onToggleItem(oc as OcRecibida, item as OcRecibidaItem, "comprado", event.target.checked)
                                 }
-                                title={canEditOc ? "Marcar comprado" : "Solo el usuario que registro esta OC puede editarla"}
+                                title="Se marca automaticamente cuando el item tiene producto interno reservado con stock suficiente"
                                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
                               {item.comprado ? "Si" : "No"}
@@ -1792,11 +1809,11 @@ function DetailModal({
                               <input
                                 type="checkbox"
                                 checked={Boolean(item.entregado)}
-                                disabled={updatingItemOc === oc.id || !canEditOc}
+                                disabled={updatingItemOc === oc.id || !canEditOc || !item.comprado}
                                 onChange={(event) =>
                                   onToggleItem(oc as OcRecibida, item as OcRecibidaItem, "entregado", event.target.checked)
                                 }
-                                title={canEditOc ? "Marcar entregado" : "Solo el usuario que registro esta OC puede editarla"}
+                                title={!item.comprado ? "Primero debe estar comprado" : canEditOc ? "Marcar entregado" : "Solo el usuario que registro esta OC puede editarla"}
                                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
                               {item.entregado ? "Si" : "No"}
