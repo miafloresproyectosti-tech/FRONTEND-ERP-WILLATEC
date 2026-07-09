@@ -34,6 +34,12 @@ export interface Producto {
     precio_venta?: number | string | null;
     codigo_barras?: string | null;
     moneda_id?: number | null;
+    moneda?: {
+        id?: number;
+        codigo?: string | null;
+        simbolo?: string | null;
+        nombre?: string | null;
+    } | null;
     categoria?: {
         id?: number;
         nombre?: string | null;

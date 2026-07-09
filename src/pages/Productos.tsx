@@ -80,6 +80,7 @@ interface ProductoForm {
   categoria_id: number;
   stock: string;
   precio_referencial: string;
+  moneda_id: string;
   descripcion: string;
   imagen: string;
   activo: "true" | "false";
@@ -97,6 +98,7 @@ type ProductoUI = ProductoForm & {
   stock_reservado?: number | string | null;
   stock_disponible?: number | string | null;
   series?: ProductoSerie[];
+  moneda?: Producto["moneda"];
 };
 
 type ExternalItem = CotizacionItem;
@@ -127,6 +129,8 @@ const mapProducto = (producto: Producto): ProductoUI => ({
   stock_reservado: producto.stock_reservado ?? 0,
   stock_disponible: producto.stock_disponible ?? producto.stock,
   precio_referencial: String(producto.precio_referencial),
+  moneda_id: String(producto.moneda_id || 2),
+  moneda: producto.moneda ?? null,
   descripcion: producto.descripcion ?? "",
   imagen: normalizeStorageImageUrl(producto.imagen_url || producto.imagen || producto.imagen_path),
   activo: producto.activo ? "true" : "false",
@@ -140,6 +144,19 @@ const getExternalItemCurrencySymbol = (item: ExternalItem) => {
 
   const codigo = String(item.moneda?.codigo || "").toUpperCase();
   const monedaId = Number(item.moneda_id || 1);
+
+  if (monedaId === 2 || codigo.includes("USD") || codigo.includes("DOLAR")) {
+    return "$";
+  }
+
+  return "S/.";
+};
+
+const getProductoCurrencySymbol = (item: ProductoUI | Producto) => {
+  if (item.moneda?.simbolo) return item.moneda.simbolo;
+
+  const codigo = String(item.moneda?.codigo || "").toUpperCase();
+  const monedaId = Number(item.moneda_id || 2);
 
   if (monedaId === 2 || codigo.includes("USD") || codigo.includes("DOLAR")) {
     return "$";
@@ -265,6 +282,7 @@ export default function Productos() {
       series_text: "",
       factura_numero: "",
       unidad_medida: "unidad",
+      moneda_id: "2",
     });
 
   const [productoAEliminar, setProductoAEliminar] =
@@ -465,6 +483,7 @@ export default function Productos() {
       series_text: "",
       factura_numero: "",
       unidad_medida: "unidad",
+      moneda_id: "2",
     });
 
     setModoEdicion(false);
@@ -493,6 +512,7 @@ export default function Productos() {
         .join("\n") || producto.serie || "",
       factura_numero: producto.factura_numero || "",
       unidad_medida: producto.unidad_medida || "unidad",
+      moneda_id: String(producto.moneda_id || 2),
     });
 
     setModoEdicion(true);
@@ -608,6 +628,7 @@ export default function Productos() {
       descripcion: productoSeleccionado.descripcion || "",
       imagen: productoSeleccionado.imagen || undefined,
       precio_referencial: isNaN(precioNum) ? 0 : precioNum,
+      moneda_id: Number(productoSeleccionado.moneda_id || 2),
       unidad_medida:
         productoSeleccionado.unidad_medida || "unidad",
       activo: productoSeleccionado.activo === "true",
@@ -1310,7 +1331,7 @@ export default function Productos() {
                         </div>
                       </td>
                       <td className="px-6 py-5 font-semibold text-gray-800">
-                        S/. {Number(item.precio_referencial || "0").toLocaleString()}
+                        {getProductoCurrencySymbol(item)} {Number(item.precio_referencial || "0").toLocaleString()}
                       </td>
                       <td className="px-6 py-5 text-gray-600">
                         {item.descripcion || "Sin descripción"}
@@ -1979,6 +2000,26 @@ export default function Productos() {
                     placeholder="Precio"
                     className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-gray-500 uppercase">Moneda</label>
+                  <select
+                    value={productoSeleccionado.moneda_id}
+                    onChange={(e) =>
+                      setProductoSeleccionado({
+                        ...productoSeleccionado,
+                        moneda_id: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
+                  >
+                    {monedaOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.symbol} {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1">

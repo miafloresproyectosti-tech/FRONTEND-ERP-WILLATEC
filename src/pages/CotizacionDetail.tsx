@@ -111,23 +111,6 @@ const plantillaIncluyeIgv = (plantillaId: number, plantilla?: { incluye_igv?: bo
   return Boolean(plantilla?.incluye_igv);
 };
 
-const normalizePlantillaDescriptor = (plantilla?: {
-  nombre?: string;
-  formato_pdf?: string;
-  codigo_moneda?: string;
-}) =>
-  [
-    plantilla?.nombre,
-    plantilla?.formato_pdf,
-    plantilla?.codigo_moneda,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[_\s]+/g, '-');
-
 const toFiniteNumber = (value: unknown) => {
   const numericValue = Number(value);
 
@@ -136,7 +119,7 @@ const toFiniteNumber = (value: unknown) => {
 
 const roundMoney = (value: number) => Number(value.toFixed(2));
 
-const getProductoPrecioSolesInclIgv = (producto: Producto) => {
+const getProductoPrecioBase = (producto: Producto) => {
   const precio = [
     producto.precio_referencial,
     producto.precio_venta,
@@ -152,30 +135,37 @@ const getProductoPrecioSolesInclIgv = (producto: Producto) => {
 
 const calcularPrecioProductoCatalogo = (
   producto: Producto,
-  plantilla: {
-    nombre?: string;
-    formato_pdf?: string;
-    codigo_moneda?: string;
-  } | undefined,
-  tipoCambioSolesADolar: number
+  targetMonedaId: number,
+  targetIncluyeIgv: boolean,
+  tipoCambioSolesADolar: number,
+  tipoCambioDolarASoles: number
 ) => {
-  const precioSolesInclIgv = getProductoPrecioSolesInclIgv(producto);
-  const descriptor = normalizePlantillaDescriptor(plantilla);
-  const tipoCambio = tipoCambioSolesADolar > 0 ? tipoCambioSolesADolar : 3.3;
+  const sourceValue = getProductoPrecioBase(producto);
+  const sourceMonedaId = Number(producto.moneda_id || 2);
+  const sourceIncluyeIgv = sourceMonedaId === 1;
+  const usdToPen = tipoCambioDolarASoles > 0 ? tipoCambioDolarASoles : 3.5;
+  const penToUsd = tipoCambioSolesADolar > 0 ? tipoCambioSolesADolar : 3.3;
 
-  if (descriptor.includes('willatec-soles-estado')) {
-    return roundMoney(precioSolesInclIgv);
+  if (sourceMonedaId === targetMonedaId) {
+    if (sourceMonedaId === 2 || sourceIncluyeIgv === targetIncluyeIgv) {
+      return roundMoney(sourceValue);
+    }
+
+    return roundMoney(sourceIncluyeIgv ? sourceValue / 1.18 : sourceValue * 1.18);
   }
 
-  if (descriptor.includes('willatec-dolares')) {
-    return roundMoney(precioSolesInclIgv / 1.18 / tipoCambio);
+  const solesSinIgv =
+    sourceMonedaId === 2
+      ? sourceValue * usdToPen
+      : sourceIncluyeIgv
+        ? sourceValue / 1.18
+        : sourceValue;
+
+  if (targetMonedaId === 2) {
+    return roundMoney(solesSinIgv / penToUsd);
   }
 
-  if (descriptor.includes('willatec-soles')) {
-    return roundMoney(precioSolesInclIgv / 1.18);
-  }
-
-  return roundMoney(precioSolesInclIgv);
+  return roundMoney(targetIncluyeIgv ? solesSinIgv * 1.18 : solesSinIgv);
 };
 
 const convertirPrecioExternoAPlantilla = (
@@ -1953,8 +1943,10 @@ export function CotizacionDetail() {
 
     const precioCatalogo = calcularPrecioProductoCatalogo(
       producto,
-      selectedPlantilla,
-      tipoCambioSolesADolar
+      currentMonedaId,
+      currentIncludeIgv,
+      tipoCambioSolesADolar,
+      tipoCambioDolarASoles
     );
 
     setItemForm({
@@ -1974,6 +1966,8 @@ export function CotizacionDetail() {
       cotizacion_id: currentCotizacionId || 0,
       producto_id: producto.id,
       producto_externo_id: undefined,
+      moneda_id: currentMonedaId,
+      precio_incluye_igv: currentIncludeIgv,
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
       tipo: 'catalogo',
