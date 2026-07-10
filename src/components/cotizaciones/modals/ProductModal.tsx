@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import type { Producto } from "../../../services/producto.service";
 import { formatMoney } from "../../../utils/formatNumber";
@@ -8,6 +7,10 @@ interface Props {
   onClose: () => void;
   productos: Producto[];
   simboloMoneda: string;
+  searchTerm: string;
+  loading?: boolean;
+  total?: number;
+  onSearchChange: (value: string) => void;
   onSelect: (producto: Producto) => void;
 }
 
@@ -16,40 +19,15 @@ export function ProductModal({
   onClose,
   productos,
   simboloMoneda,
+  searchTerm,
+  loading = false,
+  total = productos.length,
+  onSearchChange,
   onSelect,
 }: Props) {
-  const [searchTerm, setSearchTerm] = useState("");
   const toNumber = (value: number | string | null | undefined) => Number(value ?? 0) || 0;
   const formatUnits = (value: number) =>
     value.toLocaleString("es-PE", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-
-  useEffect(() => {
-    if (open) {
-      setSearchTerm("");
-    }
-  }, [open]);
-
-  const filteredProductos = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-
-    if (!term) return productos;
-
-    return productos.filter((producto) => {
-      const searchableText = [
-        producto.sku,
-        producto.nombre,
-        producto.marca,
-        producto.modelo,
-        producto.codigo,
-        producto.descripcion,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return searchableText.includes(term);
-    });
-  }, [productos, searchTerm]);
 
   if (!open) return null;
 
@@ -69,7 +47,7 @@ export function ProductModal({
             <input
               type="text"
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              onChange={(event) => onSearchChange(event.target.value)}
               placeholder="Buscar por nombre, marca, modelo, SKU o codigo..."
               className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             />
@@ -78,7 +56,13 @@ export function ProductModal({
 
         <div className="p-4 overflow-y-auto">
           <div className="space-y-2">
-            {filteredProductos.map((producto) => {
+            {loading && (
+              <div className="py-10 text-center text-sm text-gray-500">
+                Cargando productos...
+              </div>
+            )}
+
+            {!loading && productos.map((producto) => {
               const stockActual = toNumber(producto.stock_actual ?? producto.stock);
               const stockReservado = toNumber(producto.stock_reservado);
               const stockDisponible = toNumber(producto.stock_disponible ?? producto.stock);
@@ -131,9 +115,15 @@ export function ProductModal({
               );
             })}
 
-            {filteredProductos.length === 0 && (
+            {!loading && productos.length === 0 && (
               <div className="py-10 text-center text-sm text-gray-500">
                 No se encontraron productos
+              </div>
+            )}
+
+            {!loading && total > productos.length && (
+              <div className="py-2 text-center text-xs text-gray-500">
+                Mostrando {productos.length} de {total}. Afina la busqueda para ver resultados mas precisos.
               </div>
             )}
           </div>

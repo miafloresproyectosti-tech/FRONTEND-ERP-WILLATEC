@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
@@ -14,7 +14,7 @@ import {
   Upload,
 } from "lucide-react";
 
-import { getProductos, getExternalItems, createProducto, updateProducto, deleteProducto, updateCotizacionItem, convertirProductoExternoAInterno, type Producto, type ProductoPayload, type CotizacionItem, type ProductoSerie } from "../services/producto.service";
+import { getProductosPaginated, getExternalItems, createProducto, updateProducto, deleteProducto, updateCotizacionItem, convertirProductoExternoAInterno, type Producto, type ProductoPayload, type CotizacionItem, type ProductoSerie } from "../services/producto.service";
 import {
   getCotizacion,
   getCotizacionesPaginated,
@@ -228,6 +228,14 @@ export default function Productos() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"stock" | "externos">("stock");
+  const [productosMeta, setProductosMeta] = useState({
+    current_page: 1,
+    last_page: 1,
+    total: 0,
+    per_page: 10,
+    from: 0,
+    to: 0,
+  });
   const [externalItems, setExternalItems] = useState<ExternalItem[]>([]);
   const [externalPage, setExternalPage] = useState(1);
   const [externalLoading, setExternalLoading] = useState(false);
@@ -255,17 +263,6 @@ export default function Productos() {
   const [cotizacionSearchTerm, setCotizacionSearchTerm] = useState("");
   const [loadingCotizaciones, setLoadingCotizaciones] = useState(false);
   const [addingToCotizacion, setAddingToCotizacion] = useState(false);
-  const nextCodigo = useMemo(() => {
-    const maxCodigo = productos.reduce((max, producto) => {
-      const value = parseInt(producto.codigo ?? "", 10);
-      return Number.isFinite(value) ? Math.max(max, value) : max;
-    }, 0);
-
-    return productos.length > 0 ? maxCodigo + 1 : 1;
-  }, [productos]);
-
-  const nextCodigoStr = String(nextCodigo).padStart(4, "0");
-
   const [productoSeleccionado, setProductoSeleccionado] =
     useState<ProductoForm>({
       codigo: "",
@@ -317,43 +314,9 @@ export default function Productos() {
   });
   const [savingExternal, setSavingExternal] = useState(false);
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
+  const userRole = String(user?.role || "").toUpperCase();
   const canUseExternalProducts = user?.role !== "SOPORTE" && user?.role !== "LOGISTICA";
-
-  // FILTRAR PRODUCTOS
-  const productosFiltrados = productos.filter((producto) => {
-    const search = searchTerm.trim().toLowerCase();
-
-    if (!search) return true;
-
-    return [
-      producto.nombre,
-      producto.codigo,
-      producto.categoria_label,
-      producto.marca,
-      producto.modelo,
-      producto.serie,
-      producto.factura_numero,
-      ...(producto.series ?? []).flatMap((serie) => [
-        serie.serie,
-        serie.factura_numero,
-        serie.estado,
-      ]),
-    ].some((value) => String(value || "").toLowerCase().includes(search));
-  });
-
-  // PAGINACION
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem =
-    indexOfLastItem - itemsPerPage;
-
-  const currentItems = productosFiltrados.slice(
-    indexOfFirstItem,
-    indexOfLastItem
-  );
-
-  const totalPages = Math.ceil(
-    productosFiltrados.length / itemsPerPage
-  );
+  const canManageInternalProducts = userRole !== "VENTAS";
 
   const isStockTab = activeTab === "stock";
   const cotizacionesFiltradas = cotizaciones.filter((cotizacion) => {
@@ -379,22 +342,22 @@ export default function Productos() {
       item.link_proveedor,
     ].some((value) => String(value || "").toLowerCase().includes(search));
   });
-  const tableItems = isStockTab ? currentItems : externalItemsFiltrados;
+  const tableItems = isStockTab ? productos : externalItemsFiltrados;
   const totalItems = isStockTab
-    ? productosFiltrados.length
+    ? productosMeta.total
     : externalMeta.total;
-  const pageNumber = isStockTab ? currentPage : externalMeta.current_page;
-  const pageCount = isStockTab ? totalPages : externalMeta.last_page;
+  const pageNumber = isStockTab ? productosMeta.current_page : externalMeta.current_page;
+  const pageCount = isStockTab ? productosMeta.last_page : externalMeta.last_page;
   const paginationItems = getPaginationItems(pageNumber, pageCount);
   const showingFrom = totalItems === 0
     ? 0
     : isStockTab
-    ? indexOfFirstItem + 1
+    ? productosMeta.from
     : (externalMeta.current_page - 1) * externalMeta.per_page + 1;
   const showingTo = totalItems === 0
     ? 0
     : isStockTab
-    ? Math.min(indexOfLastItem, productosFiltrados.length)
+    ? productosMeta.to
     : Math.min(externalMeta.current_page * externalMeta.per_page, totalItems);
 
   // RESETEAR PAGINA EN BUSQUEDA
@@ -405,29 +368,42 @@ export default function Productos() {
     }
   }, [searchTerm, activeTab]);
 
-  useEffect(() => {
-    const fetchProductos = async () => {
-      try {
-        setLoading(true);
-        const productos = await getProductos();
-        setProductos(productos.map(mapProducto));
-      } catch (error) {
-        console.error(error);
-        addNotification({
-          title: "Error al cargar productos",
-          description: "No se pudo obtener la lista de productos.",
-          type: "warning",
-          icon: "MessageCircle",
-          route: "/productos",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchProductos = useCallback(async (page = currentPage, search = debouncedSearchTerm) => {
+    try {
+      setLoading(true);
+      const response = await getProductosPaginated({
+        page,
+        search,
+        perPage: itemsPerPage,
+      });
+      setProductos(response.data.map(mapProducto));
+      setProductosMeta({
+        current_page: response.current_page,
+        last_page: response.last_page,
+        total: response.total,
+        per_page: response.per_page,
+        from: response.from,
+        to: response.to,
+      });
+    } catch (error) {
+      console.error(error);
+      addNotification({
+        title: "Error al cargar productos",
+        description: "No se pudo obtener la lista de productos.",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/productos",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [addNotification, currentPage, debouncedSearchTerm, itemsPerPage]);
 
-    fetchProductos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => {
+    if (activeTab === "stock") {
+      void fetchProductos(currentPage, debouncedSearchTerm);
+    }
+  }, [activeTab, currentPage, debouncedSearchTerm, fetchProductos]);
 
   const fetchExternalItems = async (page = 1, search = searchTerm) => {
     try {
@@ -468,8 +444,10 @@ export default function Productos() {
 
   // NUEVO
   const handleNuevo = () => {
+    if (!canManageInternalProducts) return;
+
     setProductoSeleccionado({
-      codigo: nextCodigoStr,
+      codigo: "",
       nombre: "",
       categoria_id: 1,
       stock: "",
@@ -493,6 +471,8 @@ export default function Productos() {
 
   // EDITAR
   const handleEditar = (producto: any) => {
+    if (!canManageInternalProducts) return;
+
     setProductoSeleccionado({
       id: producto.id,
       codigo: producto.codigo || "",
@@ -522,6 +502,8 @@ export default function Productos() {
 
   // ELIMINAR
   const handleEliminar = (producto: any) => {
+    if (!canManageInternalProducts) return;
+
     setProductoAEliminar(producto);
   };
 
@@ -532,9 +514,7 @@ export default function Productos() {
     try {
       setSaving(true);
       await deleteProducto(productoAEliminar.id);
-      setProductos((prev) =>
-        prev.filter((p) => p.id !== productoAEliminar.id)
-      );
+      await fetchProductos(currentPage, debouncedSearchTerm);
       addNotification({
         title: "Producto eliminado",
         description: `El producto ${productoAEliminar.nombre} se eliminó correctamente.`,
@@ -652,13 +632,7 @@ export default function Productos() {
           productoSeleccionado.id,
           payload
         );
-        setProductos((prev) =>
-          prev.map((p) =>
-            p.id === updated.id
-              ? mapProducto(updated)
-              : p
-          )
-        );
+        await fetchProductos(currentPage, debouncedSearchTerm);
         addNotification({
           title: "Producto actualizado",
           description: `El producto ${updated.nombre} se actualizó correctamente.`,
@@ -668,7 +642,8 @@ export default function Productos() {
         });
       } else {
         const created = await createProducto(payload);
-        setProductos((prev) => [mapProducto(created), ...prev]);
+        setCurrentPage(1);
+        await fetchProductos(1, debouncedSearchTerm);
         addNotification({
           title: "Producto creado",
           description: `El producto ${created.nombre} se creó correctamente.`,
@@ -894,8 +869,7 @@ export default function Productos() {
       setConversionExternalItem(null);
       setConversionFactura(null);
       await fetchExternalItems(externalMeta.current_page, debouncedSearchTerm);
-      const productosActualizados = await getProductos();
-      setProductos(productosActualizados.map(mapProducto));
+      await fetchProductos(currentPage, debouncedSearchTerm);
     } catch (error: any) {
       console.error(error);
       addNotification({
@@ -1136,12 +1110,12 @@ export default function Productos() {
 
           <p className="text-gray-500 mt-1">
             {isStockTab
-              ? `Gestión de productos del sistema (${productos.length} total)`
+              ? `Gestión de productos del sistema (${productosMeta.total} total)`
               : `Catálogo de productos externos (${externalMeta.total} total)`}
           </p>
         </div>
 
-        {isStockTab && (
+        {isStockTab && canManageInternalProducts && (
           <button
             onClick={handleNuevo}
             className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
@@ -1349,24 +1323,30 @@ export default function Productos() {
                         </span>
                       </td>
                       <td className="px-6 py-5">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() =>
-                              handleEditar(item)
-                            }
-                            className="w-11 h-11 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
-                          >
-                            <Pencil size={18} />
-                          </button>
-                          <button
-                            onClick={() =>
-                              handleEliminar(item)
-                            }
-                            className="w-11 h-11 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
+                        {canManageInternalProducts ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() =>
+                                handleEditar(item)
+                              }
+                              className="w-11 h-11 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                            >
+                              <Pencil size={18} />
+                            </button>
+                            <button
+                              onClick={() =>
+                                handleEliminar(item)
+                              }
+                              className="w-11 h-11 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="block text-center text-xs font-semibold text-gray-400">
+                            Solo lectura
+                          </span>
+                        )}
                       </td>
                     </>
                   ) : (
@@ -1930,7 +1910,7 @@ export default function Productos() {
                 <div className="space-y-1">
                   <label className="block text-[11px] text-gray-500 uppercase">Código</label>
                   <input
-                    value={productoSeleccionado.codigo}
+                    value={productoSeleccionado.codigo || "Automático"}
                     disabled
                     className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed"
                   />

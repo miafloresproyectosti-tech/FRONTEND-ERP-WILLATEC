@@ -4,7 +4,7 @@ import { useNotifications } from '../NotificationContext';
 import { useAuth } from '../AuthContext';
 import { useLocation } from 'react-router-dom';
 import { getActiveClientesSearchCached, type Cliente } from '../services/cliente.service';
-import { getExternalItems, getProductos, type Producto } from "../services/producto.service";
+import { getExternalItems, getProductosPaginated, type Producto } from "../services/producto.service";
 import { getPlantillas } from '../services/plantilla.service';
 import { getPlataformas } from '../services/plataforma.service';
 import { getUsers, type User as ApiUser } from '../services/usuario.service';
@@ -14,6 +14,7 @@ import { CotizacionGeneralForm } from '../components/cotizaciones/CotizacionGene
 import { CotizacionItemsTable } from '../components/cotizaciones/CotizacionItemsTable';
 import type { ItemForm } from '../types/cotizaciones.type';
 import { normalizeStorageImageUrl } from '../utils/storageImage';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { ExportModal } from '../components/cotizaciones/modals/ExportModal';
 import { ItemTypeModal } from '../components/cotizaciones/modals/ItemTypeModal';
 import { ProductModal } from '../components/cotizaciones/modals/ProductModal';
@@ -268,6 +269,10 @@ export function CotizacionDetail() {
   const [costos, setCostos] = useState<CotizacionCostosAdicional[]>([]);
   const [historial, setHistorial] = useState<CotizacionHistorial[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [productosSearchTerm, setProductosSearchTerm] = useState('');
+  const debouncedProductosSearchTerm = useDebouncedValue(productosSearchTerm, 350);
+  const [productosLoading, setProductosLoading] = useState(false);
+  const [productosTotal, setProductosTotal] = useState(0);
   const [usuarios, setUsuarios] = useState<ApiUser[]>([]);
   const [externalItemSuggestions, setExternalItemSuggestions] = useState<ItemForm[]>([]);
 
@@ -791,8 +796,14 @@ export function CotizacionDetail() {
 
     const fetchProductos = async () => {
       try {
-        const data = await getProductos();
-        setProductos(data);
+        setProductosLoading(true);
+        const response = await getProductosPaginated({
+          page: 1,
+          perPage: 20,
+          search: debouncedProductosSearchTerm,
+        });
+        setProductos(response.data);
+        setProductosTotal(response.total);
       } catch (error) {
         addNotification({
           title: 'Error',
@@ -801,10 +812,18 @@ export function CotizacionDetail() {
           type: 'error',
           duration: 4000,
         } as any);
+      } finally {
+        setProductosLoading(false);
       }
     };
-    fetchProductos();
-  }, [isCotizacionReadOnly, showProductModal]);
+    void fetchProductos();
+  }, [addNotification, debouncedProductosSearchTerm, isCotizacionReadOnly, showProductModal]);
+
+  useEffect(() => {
+    if (showProductModal) {
+      setProductosSearchTerm('');
+    }
+  }, [showProductModal]);
 
   useEffect(() => {
     if (isCotizacionReadOnly || !showItemFormModal || itemForm.tipo !== 'externo') return;
@@ -2870,6 +2889,10 @@ export function CotizacionDetail() {
         onClose={() => setShowProductModal(false)}
         productos={productos}
         simboloMoneda={simboloMoneda}
+        searchTerm={productosSearchTerm}
+        loading={productosLoading}
+        total={productosTotal}
+        onSearchChange={setProductosSearchTerm}
         onSelect={handleProductSelection}
       />
 

@@ -238,6 +238,19 @@ export interface ConvertirProductoExternoPayload {
     observacion?: string;
 }
 
+export interface ProductoPaginationMeta {
+    current_page: number;
+    last_page: number;
+    total: number;
+    per_page: number;
+    from: number;
+    to: number;
+}
+
+export interface ProductoPaginatedResponse extends ProductoPaginationMeta {
+    data: Producto[];
+}
+
 function buildCotizacionItemFormData(payload: Partial<CotizacionItem>): FormData {
     const formData = new FormData();
 
@@ -444,15 +457,40 @@ function buildFormData(payload: ProductoPayload): FormData {
 }
 
 //Backend devuelve productos paginados
-export const getProductos = async (): Promise<Producto[]> => {
+export const getProductosPaginated = async ({
+    page = 1,
+    search = "",
+    perPage = 10,
+}: {
+    page?: number;
+    search?: string;
+    perPage?: number;
+} = {}): Promise<ProductoPaginatedResponse> => {
     const res = await api.get("/productos", {
         params: {
             activo: true,
-            per_page: 1000,
+            page,
+            search: search.trim() || undefined,
+            per_page: perPage,
         },
     });
-    const productos = res.data?.data ?? [];
-    return Array.isArray(productos) ? productos.map(normalizeProducto) : [];
+    const raw = res.data ?? {};
+    const productos = raw.data ?? [];
+
+    return {
+        data: Array.isArray(productos) ? productos.map(normalizeProducto) : [],
+        current_page: raw.current_page ?? page,
+        last_page: raw.last_page ?? 1,
+        total: raw.total ?? (Array.isArray(productos) ? productos.length : 0),
+        per_page: raw.per_page ?? perPage,
+        from: raw.from ?? 0,
+        to: raw.to ?? 0,
+    };
+};
+
+export const getProductos = async (): Promise<Producto[]> => {
+    const response = await getProductosPaginated({ page: 1, perPage: 1000 });
+    return response.data;
 };
 
 export const getExternalItems = async (page = 1, search = ""): Promise<{
