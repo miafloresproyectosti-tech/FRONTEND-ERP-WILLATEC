@@ -69,6 +69,7 @@ const productoCategoriaOptions = [
   { id: 10, label: "SEGURIDAD" },
   { id: 11, label: "COMPONENTES" },
   { id: 12, label: "ALMACENAMIENTO" },
+  { id: 13, label: "IMPRESORAS" },
 ];
 
 const estadoProductoOptions = [
