@@ -54,6 +54,9 @@ export interface ProductoSerie {
     factura_numero?: string | null;
     estado?: string | null;
     fecha_ingreso?: string | null;
+    fecha_salida?: string | null;
+    oc_recibida_id?: number | string | null;
+    cotizacion_item_id?: number | string | null;
 }
 
 export interface CotizacionItem {

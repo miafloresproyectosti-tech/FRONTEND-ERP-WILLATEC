@@ -118,6 +118,14 @@ export interface ProductoInventarioOption {
     simbolo?: string | null;
     nombre?: string | null;
   } | null;
+  series?: {
+    id: number;
+    producto_id?: number;
+    serie?: string | null;
+    factura_numero?: string | null;
+    estado?: string | null;
+    fecha_ingreso?: string | null;
+  }[];
 }
 
 export interface RegistrarEntradaKardexPayload {
@@ -144,6 +152,7 @@ export interface RegistrarSalidaKardexPayload {
   documento_numero?: string;
   fecha_documento?: string;
   observacion?: string;
+  producto_serie_ids?: number[];
   documento?: File | null;
 }
 
@@ -240,6 +249,9 @@ export async function registrarSalidaKardex(payload: RegistrarSalidaKardexPayloa
   if (payload.documento_numero) formData.append("documento_numero", payload.documento_numero);
   if (payload.fecha_documento) formData.append("fecha_documento", payload.fecha_documento);
   if (payload.observacion) formData.append("observacion", payload.observacion);
+  payload.producto_serie_ids?.forEach((id, index) => {
+    formData.append(`producto_serie_ids[${index}]`, String(id));
+  });
   if (payload.documento) formData.append("documento", payload.documento);
 
   const response = await api.post(

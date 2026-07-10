@@ -259,6 +259,7 @@ export default function InventarioMovimientos() {
     fecha_documento: today,
     observacion: "",
   });
+  const [salidaSerieIds, setSalidaSerieIds] = useState<number[]>([]);
   const [salidaDocumento, setSalidaDocumento] = useState<File | null>(null);
   const [nuevoProveedor, setNuevoProveedor] = useState({
     nombre: "",
@@ -313,6 +314,11 @@ export default function InventarioMovimientos() {
     () => productos.find((producto) => producto.id === Number(salidaForm.producto_id)) || null,
     [salidaForm.producto_id, productos],
   );
+  const salidaSeriesDisponibles = useMemo(
+    () => (selectedSalidaProducto?.series ?? []).filter((serie) => serie.estado === "disponible" && serie.id),
+    [selectedSalidaProducto],
+  );
+  const salidaRequiereSeries = salidaSeriesDisponibles.length > 0;
 
   const nextProductoCodigo = useMemo(() => {
     const maxCodigo = productos.reduce((max, producto) => {
@@ -422,6 +428,19 @@ export default function InventarioMovimientos() {
 
   const handleSalidaChange = (key: keyof typeof salidaForm, value: string) => {
     setSalidaForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleSalidaProductoChange = (productoId: string) => {
+    setSalidaForm((current) => ({ ...current, producto_id: productoId }));
+    setSalidaSerieIds([]);
+  };
+
+  const toggleSalidaSerie = (serieId: number) => {
+    setSalidaSerieIds((current) =>
+      current.includes(serieId)
+        ? current.filter((id) => id !== serieId)
+        : [...current, serieId],
+    );
   };
 
   const handleProductoEntradaChange = (productoId: string) => {
@@ -616,6 +635,18 @@ export default function InventarioMovimientos() {
       return;
     }
 
+    if (salidaRequiereSeries) {
+      if (!Number.isInteger(cantidad)) {
+        setError("Para productos con series, la cantidad de salida debe ser entera.");
+        return;
+      }
+
+      if (salidaSerieIds.length !== cantidad) {
+        setError("Selecciona una serie por cada unidad que sale.");
+        return;
+      }
+    }
+
     try {
       setSavingSalida(true);
       setError(null);
@@ -628,6 +659,7 @@ export default function InventarioMovimientos() {
         documento_numero: salidaForm.documento_numero,
         fecha_documento: salidaForm.fecha_documento,
         observacion: salidaForm.observacion,
+        producto_serie_ids: salidaRequiereSeries ? salidaSerieIds : [],
         documento: salidaDocumento,
       });
       setSalidaModalOpen(false);
@@ -639,6 +671,7 @@ export default function InventarioMovimientos() {
         fecha_documento: today,
         observacion: "",
       });
+      setSalidaSerieIds([]);
       setSalidaDocumento(null);
       if (salidaDocumentoInputRef.current) {
         salidaDocumentoInputRef.current.value = "";
@@ -1496,7 +1529,7 @@ export default function InventarioMovimientos() {
                 Producto
                 <select
                   value={salidaForm.producto_id}
-                  onChange={(event) => handleSalidaChange("producto_id", event.target.value)}
+                  onChange={(event) => handleSalidaProductoChange(event.target.value)}
                   className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
                 >
                   <option value="">Selecciona producto</option>
@@ -1521,6 +1554,45 @@ export default function InventarioMovimientos() {
                   <div>
                     <p className="text-xs font-semibold uppercase text-gray-500">Disponible</p>
                     <p className="text-lg font-bold text-emerald-700">{formatNumber(selectedSalidaProducto.stock_disponible)}</p>
+                  </div>
+                </div>
+              )}
+
+              {selectedSalidaProducto && salidaRequiereSeries && (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 md:col-span-2">
+                  <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-blue-900">Series que salen</p>
+                      <p className="text-xs text-blue-700">
+                        Selecciona {formatNumber(salidaForm.cantidad || 0)} serie(s). Estas series quedaran asociadas al movimiento.
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700">
+                      {salidaSerieIds.length}/{Number(salidaForm.cantidad || 0)}
+                    </span>
+                  </div>
+                  <div className="grid max-h-52 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                    {salidaSeriesDisponibles.map((serie) => (
+                      <label
+                        key={serie.id}
+                        className="flex cursor-pointer items-start gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-blue-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={salidaSerieIds.includes(Number(serie.id))}
+                          onChange={() => toggleSalidaSerie(Number(serie.id))}
+                          className="mt-1"
+                        />
+                        <span className="min-w-0">
+                          <span className="block font-semibold">{serie.serie || `Serie #${serie.id}`}</span>
+                          <span className="block text-xs text-gray-500">
+                            {[serie.factura_numero ? `Factura ${serie.factura_numero}` : null, serie.fecha_ingreso ? `Ingreso ${formatDateOnly(serie.fecha_ingreso)}` : null]
+                              .filter(Boolean)
+                              .join(" / ") || "Disponible"}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
                   </div>
                 </div>
               )}

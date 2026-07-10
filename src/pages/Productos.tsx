@@ -1619,6 +1619,7 @@ export default function Productos() {
                         <th className="px-4 py-3">Factura</th>
                         <th className="px-4 py-3">Estado</th>
                         <th className="px-4 py-3">Ingreso</th>
+                        <th className="px-4 py-3">Salida / Referencia</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -1630,6 +1631,9 @@ export default function Productos() {
                           factura_numero: productoSeriesModal.factura_numero,
                           estado: productoSeriesModal.estado,
                           fecha_ingreso: null,
+                          fecha_salida: null,
+                          oc_recibida_id: null,
+                          cotizacion_item_id: null,
                         }]
                       ).map((serie) => (
                         <tr key={serie.id} className="hover:bg-gray-50">
@@ -1641,6 +1645,16 @@ export default function Productos() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-gray-700">{serie.fecha_ingreso || "-"}</td>
+                          <td className="px-4 py-3 text-gray-700">
+                            <div>{serie.fecha_salida || "-"}</div>
+                            {(serie.oc_recibida_id || serie.cotizacion_item_id) && (
+                              <div className="text-xs text-gray-500">
+                                {[serie.oc_recibida_id ? `OC #${serie.oc_recibida_id}` : null, serie.cotizacion_item_id ? `Item #${serie.cotizacion_item_id}` : null]
+                                  .filter(Boolean)
+                                  .join(" / ")}
+                              </div>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

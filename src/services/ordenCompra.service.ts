@@ -93,6 +93,22 @@ export interface OcRecibidaItem {
   cantidad_recibida?: number | string;
   comprado?: boolean;
   entregado?: boolean;
+  cotizacion_item?: {
+    id?: number;
+    producto_id?: number | string | null;
+    producto?: {
+      id?: number;
+      nombre?: string | null;
+      series?: {
+        id: number;
+        producto_id?: number;
+        serie?: string | null;
+        factura_numero?: string | null;
+        estado?: string | null;
+        fecha_ingreso?: string | null;
+      }[];
+    } | null;
+  } | null;
 }
 
 export interface OcEmitida {
@@ -164,6 +180,7 @@ export interface UpdateOcRecibidaItemsPayload {
     id: number;
     comprado: boolean;
     entregado: boolean;
+    producto_serie_ids?: number[];
   }>;
 }
 

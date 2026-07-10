@@ -342,6 +342,7 @@ export default function OrdenesCompraPage() {
   const [facturaNumero, setFacturaNumero] = useState("");
   const [comprobantePago, setComprobantePago] = useState<File | null>(null);
   const [updatingItemOc, setUpdatingItemOc] = useState<number | null>(null);
+  const [ocItemSeries, setOcItemSeries] = useState<Record<number, number[]>>({});
 
   const currentPagination = activeTab === "emitidas" ? emitidasPagination : recibidasPagination;
   const paginationItems = getPaginationItems(currentPagination.page, currentPagination.totalPages);
@@ -783,6 +784,7 @@ export default function OrdenesCompraPage() {
 
   const handleViewRecibida = async (oc: OcRecibida) => {
     setSelectedOc(oc);
+    setOcItemSeries({});
     try {
       setLoadingDetail(true);
       setSelectedOc(await getOcRecibida(oc.id));
@@ -811,6 +813,22 @@ export default function OrdenesCompraPage() {
     } finally {
       setLoadingDetail(false);
     }
+  };
+
+  const getAvailableItemSeries = (item: OcRecibidaItem) =>
+    item.cotizacion_item?.producto?.series?.filter((serie) => serie.estado === "disponible") || [];
+
+  const handleSelectOcItemSeries = (itemId: number, serieId: number) => {
+    setOcItemSeries((current) => {
+      const selected = current[itemId] || [];
+
+      return {
+        ...current,
+        [itemId]: selected.includes(serieId)
+          ? selected.filter((id) => id !== serieId)
+          : [...selected, serieId],
+      };
+    });
   };
 
   const handleDownloadEmitidaPdf = async (oc: OcEmitida) => {
@@ -853,11 +871,36 @@ export default function OrdenesCompraPage() {
       });
       return;
     }
+    const availableSeries = getAvailableItemSeries(item);
+    const selectedSeries = ocItemSeries[item.id] || [];
+
+    if (field === "entregado" && checked && availableSeries.length > 0) {
+      const cantidad = Number(item.cantidad_recibida || 0);
+
+      if (!Number.isInteger(cantidad)) {
+        showToast({
+          title: "Cantidad no valida",
+          description: "Para productos con series, la cantidad entregada debe ser entera.",
+          type: "warning",
+        });
+        return;
+      }
+
+      if (selectedSeries.length !== cantidad) {
+        showToast({
+          title: "Selecciona las series",
+          description: `Debes seleccionar ${cantidad} serie(s) para este item antes de marcarlo como entregado.`,
+          type: "warning",
+        });
+        return;
+      }
+    }
 
     const nextItems = oc.items.map((row) => ({
       id: row.id,
       comprado: Boolean(row.comprado),
       entregado: row.id === item.id && field === "entregado" ? checked : Boolean(row.entregado),
+      producto_serie_ids: row.id === item.id ? selectedSeries : ocItemSeries[row.id] || [],
     }));
     try {
       setUpdatingItemOc(oc.id);
@@ -1185,6 +1228,8 @@ export default function OrdenesCompraPage() {
           canEditOc={canEditOc(selectedOc)}
           onClose={() => setSelectedOc(null)}
           onToggleItem={handleToggleRecibidaItem}
+          selectedSeries={ocItemSeries}
+          onSelectSerie={handleSelectOcItemSeries}
         />
       )}
 
@@ -1690,6 +1735,8 @@ function DetailModal({
   canEditOc,
   onClose,
   onToggleItem,
+  selectedSeries,
+  onSelectSerie,
 }: {
   oc: OcEmitida | OcRecibida;
   loading: boolean;
@@ -1697,6 +1744,8 @@ function DetailModal({
   canEditOc: boolean;
   onClose: () => void;
   onToggleItem: (oc: OcRecibida, item: OcRecibidaItem, field: "comprado" | "entregado", checked: boolean) => void;
+  selectedSeries: Record<number, number[]>;
+  onSelectSerie: (itemId: number, serieId: number) => void;
 }) {
   const isEmitida = "proveedor" in oc;
   const items = oc.items || [];
@@ -1781,9 +1830,51 @@ function DetailModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item: any) => (
+                  {items.map((item: any) => {
+                    const availableSeries = (item.cotizacion_item?.producto?.series || [])
+                      .filter((serie: any) => serie.estado === "disponible");
+                    const currentSeries = selectedSeries[item.id] || [];
+                    const cantidadRecibida = Number(item.cantidad_recibida || 0);
+
+                    return (
                     <tr key={item.id} className="border-t border-gray-100 dark:border-slate-800">
-                      <td className="px-4 py-3">{itemDescription(item)}</td>
+                      <td className="px-4 py-3">
+                        <div>{itemDescription(item)}</div>
+                        {!isEmitida && availableSeries.length > 0 && (
+                          <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-blue-900">Series a entregar</span>
+                              <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-blue-700">
+                                {currentSeries.length}/{cantidadRecibida}
+                              </span>
+                            </div>
+                            <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                              {availableSeries.map((serie: any) => (
+                                <label
+                                  key={serie.id}
+                                  className="flex cursor-pointer items-start gap-2 rounded-md border border-blue-100 bg-white px-2 py-1.5 text-xs text-slate-700 hover:bg-blue-50"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={currentSeries.includes(Number(serie.id))}
+                                    onChange={() => onSelectSerie(Number(item.id), Number(serie.id))}
+                                    disabled={!canEditOc}
+                                    className="mt-0.5"
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="block font-semibold">{serie.serie || `Serie #${serie.id}`}</span>
+                                    <span className="block text-[11px] text-slate-500">
+                                      {[serie.factura_numero ? `Factura ${serie.factura_numero}` : null, serie.fecha_ingreso ? `Ingreso ${formatDate(serie.fecha_ingreso)}` : null]
+                                        .filter(Boolean)
+                                        .join(" / ") || "Disponible"}
+                                    </span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3">{item.cantidad ?? item.cantidad_recibida ?? "N/A"}</td>
                       {isEmitida ? (
                         <td className="px-4 py-3">{formatMoney(item.precio_unitario, "S/")}</td>
@@ -1822,7 +1913,8 @@ function DetailModal({
                         </>
                       )}
                     </tr>
-                  ))}
+                    );
+                  })}
                   {!items.length && <EmptyRow colSpan={isEmitida ? 3 : 4} message="No hay items registrados en esta orden." />}
                 </tbody>
               </table>
