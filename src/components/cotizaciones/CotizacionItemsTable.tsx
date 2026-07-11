@@ -22,6 +22,7 @@ interface Props{
   todosItemsAprobados?: boolean;
   onAddItem: () => void;
   isOwnCotizacion?: boolean;
+  isAlquiler?: boolean;
 }
 
 export function CotizacionItemsTable ({ 
@@ -39,7 +40,8 @@ export function CotizacionItemsTable ({
   todosItemsAprobados,
   onAddItem,
   readOnly,
-  isOwnCotizacion = true
+  isOwnCotizacion = true,
+  isAlquiler = false
 }: Props){
 const showCostosAdicionalesToggle = modoDistribucion !== "POR_CANTIDAD";
 const emptyColSpan =
@@ -95,7 +97,7 @@ return (
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Cant.</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Tipo</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Días</th>
-            <th className="py-2.5 px-2 text-center font-medium text-gray-500">Garantía</th>
+            <th className="py-2.5 px-2 text-center font-medium text-gray-500">{isAlquiler ? "Periodo" : "Garantía"}</th>
             {showCostosAdicionalesToggle && (
               <th className="py-2.5 px-2 text-center font-medium text-gray-500">Costos add.</th>
             )}
@@ -108,9 +110,9 @@ return (
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Costo un.</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Costo tot.</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Margen</th>
-            <th className="py-2.5 px-2 text-center font-medium text-gray-500">P. venta</th>
+            <th className="py-2.5 px-2 text-center font-medium text-gray-500">{isAlquiler ? "P. unit. mensual" : "P. venta"}</th>
             {isOwnCotizacion && <th className="py-2.5 px-2 text-center font-medium text-gray-500">Ganancia</th>}
-            <th className="py-2.5 px-2 text-center font-medium text-gray-500">Subtotal</th>
+            <th className="py-2.5 px-2 text-center font-medium text-gray-500">{isAlquiler ? "Total x meses" : "Subtotal"}</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Acc.</th>
           </tr>
         </thead>
@@ -135,7 +137,7 @@ return (
                 <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                   <td
                     className="py-2.5 px-3 font-medium text-gray-800 overflow-hidden"
-                    style={{ maxWidth: 140, textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    style={{ maxWidth: 140, textOverflow: 'ellipsis' }}
                     title={item.descripcion}
                   >
                     <div className="flex items-center gap-2 min-w-0">
@@ -149,6 +151,14 @@ return (
                       )}
                       <span className="truncate">{item.descripcion}</span>
                     </div>
+                    {item.nota && (
+                      <div
+                        className="mt-1 text-[10px] leading-snug font-normal text-gray-500 break-words"
+                        style={{ whiteSpace: 'pre-line' }}
+                      >
+                        Nota: {item.nota}
+                      </div>
+                    )}
                   </td>
                   <td className="py-2.5 px-2 text-center text-gray-700">{item.cantidad}</td>
                   <td className="py-2.5 px-2 text-center">

@@ -5,13 +5,16 @@ interface CostoAdicional {
 }
 
 type ModoDistribucion = "POR_ITEM" | "POR_CANTIDAD";
+type TipoCalculo = "VENTA" | "ALQUILER";
 
 export function recalcularItems(
   items: CotizacionItem[],
   costos: CostoAdicional[],
   modoDistribucion: ModoDistribucion,
   includeIgv: boolean = false,
+  options: { tipoCalculo?: TipoCalculo } = {},
 ) {
+  const tipoCalculo = options.tipoCalculo ?? "VENTA";
   // ===== TOTAL COSTOS =====
   const costosTotal = costos.reduce((acc, c) => acc + Number(c.monto || 0), 0);
 
@@ -48,6 +51,7 @@ export function recalcularItems(
     const costoBase = Number(item.costo_base || 0);
 
     const margen = Number(item.margen || 0);
+    const periodoMeses = Math.max(0, Number(item.garantia_meses || 0));
 
     const aplicaCostoExtra =
       modoDistribucion === "POR_CANTIDAD" ||
@@ -59,14 +63,17 @@ export function recalcularItems(
     // Precio de venta unitario (fórmula igual en ambos casos)
     // - includeIgv=false: precio SIN IGV
     // - includeIgv=true:  precio CON IGV (porque costo_base ya lo traía)
-    const precioVenta =
+    const precioVentaBase =
       margen < 100 ? costoUnitario / (1 - margen / 100) : costoUnitario;
+    const precioVenta = precioVentaBase;
 
     const precioVentaRedondeado = Number(precioVenta.toFixed(2));
     // Subtotal del ítem = precio_venta × cantidad
     // - includeIgv=false: subtotal SIN IGV
     // - includeIgv=true:  subtotal CON IGV
-    const subtotalItem = Number((precioVentaRedondeado * cantidad).toFixed(2));
+    const subtotalItem = Number((
+      precioVentaRedondeado * cantidad * (tipoCalculo === "ALQUILER" ? periodoMeses : 1)
+    ).toFixed(2));
 
     // Costo total del ítem = cuánto costó comprarlo
     const costoTotal = Number((costoUnitario * cantidad).toFixed(2));

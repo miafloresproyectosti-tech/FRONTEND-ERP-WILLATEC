@@ -492,8 +492,17 @@ export const getProductosPaginated = async ({
 };
 
 export const getProductos = async (): Promise<Producto[]> => {
-    const response = await getProductosPaginated({ page: 1, perPage: 1000 });
-    return response.data;
+    const perPage = 100;
+    const first = await getProductosPaginated({ page: 1, perPage });
+    const rows = [...first.data];
+    const lastPage = Number(first.last_page || 1);
+
+    for (let page = 2; page <= lastPage; page += 1) {
+        const response = await getProductosPaginated({ page, perPage });
+        rows.push(...response.data);
+    }
+
+    return rows;
 };
 
 export const getExternalItems = async (page = 1, search = ""): Promise<{

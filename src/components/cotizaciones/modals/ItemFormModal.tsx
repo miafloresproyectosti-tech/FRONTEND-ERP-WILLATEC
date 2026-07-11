@@ -26,6 +26,7 @@ interface Props {
   readOnly?: boolean;
   externalItemSuggestions?: ItemForm[];
   onSelectExternalSuggestion?: (item: ItemForm) => void;
+  isAlquiler?: boolean;
 }
 
 export function ItemFormModal({
@@ -44,7 +45,8 @@ export function ItemFormModal({
   handleIntercambiarMoneda,
   readOnly = false,
   externalItemSuggestions = [],
-  onSelectExternalSuggestion
+  onSelectExternalSuggestion,
+  isAlquiler = false
 }: Props) {
   const [importCalcOpen, setImportCalcOpen] = React.useState(false);
   const [importCalcType, setImportCalcType] = React.useState<'under200' | 'from201to1999' | 'from2000up'>('under200');
@@ -65,6 +67,10 @@ export function ItemFormModal({
     monedaId === 2
       ? Number((Number(itemForm.ganancia || 0) * (tipoCambioSolesADolar || 1)).toFixed(2))
       : null;
+  const periodoMeses = Math.max(0, Number(itemForm.garantia_meses || 0));
+  const precioUnitMensual = Number(itemForm.precio_venta || 0);
+  const precioCantidadMensual = Number((precioUnitMensual * Number(itemForm.cantidad || 0)).toFixed(2));
+  const precioTotalMeses = Number(itemForm.subtotal || 0);
 
   const field = (label: string, children: React.ReactNode) => (
     <div>
@@ -489,7 +495,7 @@ export function ItemFormModal({
                   value={itemForm.cantidad?.toString() ?? ''}
                   onChange={e => setItemForm({ ...itemForm, cantidad: e.target.value ? parseInt(e.target.value) : 0 })} />
               )}
-              {field('Garantía (meses)',
+              {field(isAlquiler ? 'Periodo (meses)' : 'Garantía (meses)',
                 <select className={inp}
                   disabled={readOnly}
                   value={itemForm.garantia_meses?.toString() ?? '12'}
@@ -659,27 +665,58 @@ export function ItemFormModal({
 
           {/* Resumen estimado */}
           <hr className="border-gray-200 my-2" />
-          <div className={`grid gap-2 ${canViewGanancia ? "grid-cols-3" : "grid-cols-2"}`}>
-            <div className="bg-blue-50 rounded-lg p-2">
-              <p className="text-[9px] text-gray-500 mb-0.5">Precio venta</p>
-              <p className="text-xs font-semibold text-gray-800">{formatMoney(itemForm.precio_venta || 0, simboloMoneda)}</p>
-            </div>
-            {canViewGanancia && (
-              <div className="bg-green-50 rounded-lg p-2">
-                <p className="text-[9px] text-gray-500 mb-0.5">Ganancia</p>
-                <p className="text-xs font-semibold text-green-700">{formatMoney(itemForm.ganancia || 0, simboloMoneda)}</p>
-                {gananciaSoles !== null && (
-                  <p className="mt-0.5 text-[10px] leading-none font-semibold text-emerald-600">
-                    {formatMoney(gananciaSoles, "S/")}
-                  </p>
-                )}
+          {isAlquiler ? (
+            <div className={`grid gap-2 ${canViewGanancia ? "grid-cols-2" : "grid-cols-1"}`}>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-blue-50 rounded-lg p-2">
+                  <p className="text-[9px] text-gray-500 mb-0.5">Precio Unit Mensual</p>
+                  <p className="text-xs font-semibold text-gray-800">{formatMoney(precioUnitMensual, simboloMoneda)}</p>
+                </div>
+                <div className="bg-sky-50 rounded-lg p-2">
+                  <p className="text-[9px] text-gray-500 mb-0.5">Precio Cantidad Mensual</p>
+                  <p className="text-xs font-semibold text-gray-800">{formatMoney(precioCantidadMensual, simboloMoneda)}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-2">
+                  <p className="text-[9px] text-gray-500 mb-0.5">Precio Total x Meses</p>
+                  <p className="text-xs font-semibold text-gray-800">{formatMoney(precioTotalMeses, simboloMoneda)}</p>
+                  <p className="mt-0.5 text-[9px] text-gray-500">{periodoMeses || 0} meses</p>
+                </div>
               </div>
-            )}
-            <div className="bg-gray-50 rounded-lg p-2">
-              <p className="text-[9px] text-gray-500 mb-0.5">Subtotal</p>
-              <p className="text-xs font-semibold text-gray-800">{formatMoney(itemForm.subtotal || 0, simboloMoneda)}</p>
+              {canViewGanancia && (
+                <div className="bg-green-50 rounded-lg p-2">
+                  <p className="text-[9px] text-gray-500 mb-0.5">Ganancia</p>
+                  <p className="text-xs font-semibold text-green-700">{formatMoney(itemForm.ganancia || 0, simboloMoneda)}</p>
+                  {gananciaSoles !== null && (
+                    <p className="mt-0.5 text-[10px] leading-none font-semibold text-emerald-600">
+                      {formatMoney(gananciaSoles, "S/")}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
+          ) : (
+            <div className={`grid gap-2 ${canViewGanancia ? "grid-cols-3" : "grid-cols-2"}`}>
+              <div className="bg-blue-50 rounded-lg p-2">
+                <p className="text-[9px] text-gray-500 mb-0.5">Precio venta</p>
+                <p className="text-xs font-semibold text-gray-800">{formatMoney(itemForm.precio_venta || 0, simboloMoneda)}</p>
+              </div>
+              {canViewGanancia && (
+                <div className="bg-green-50 rounded-lg p-2">
+                  <p className="text-[9px] text-gray-500 mb-0.5">Ganancia</p>
+                  <p className="text-xs font-semibold text-green-700">{formatMoney(itemForm.ganancia || 0, simboloMoneda)}</p>
+                  {gananciaSoles !== null && (
+                    <p className="mt-0.5 text-[10px] leading-none font-semibold text-emerald-600">
+                      {formatMoney(gananciaSoles, "S/")}
+                    </p>
+                  )}
+                </div>
+              )}
+              <div className="bg-gray-50 rounded-lg p-2">
+                <p className="text-[9px] text-gray-500 mb-0.5">Subtotal</p>
+                <p className="text-xs font-semibold text-gray-800">{formatMoney(itemForm.subtotal || 0, simboloMoneda)}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

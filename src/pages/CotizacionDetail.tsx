@@ -9,6 +9,7 @@ import { getPlantillas } from '../services/plantilla.service';
 import { getPlataformas } from '../services/plataforma.service';
 import { getUsers, type User as ApiUser } from '../services/usuario.service';
 import { recalcularItems } from "../utils/recalcularItems";
+import { isPlantillaAlquiler } from "../utils/plantillas";
 import { CotizacionResumen } from '../components/cotizaciones/CotizacionResumen';
 import { CotizacionGeneralForm } from '../components/cotizaciones/CotizacionGeneralForm';
 import { CotizacionItemsTable } from '../components/cotizaciones/CotizacionItemsTable';
@@ -80,6 +81,7 @@ const detectPlantillaMonedaId = (plantilla?: {
   codigo_moneda?: string;
 }): number | null => {
   if (!plantilla) return null;
+  if (isPlantillaAlquiler(plantilla)) return 1;
   if (plantilla.moneda_id === 1 || plantilla.moneda_id === 2) return plantilla.moneda_id;
 
   const descriptor = [
@@ -257,6 +259,7 @@ export function CotizacionDetail() {
   const [entregaDestino, setEntregaDestino] = useState('');
   const [clienteContacto, setClienteContacto] = useState('');
   const selectedPlantilla = plantillas.find((plantilla) => Number(plantilla.id) === Number(plantillaId));
+  const isAlquilerPlantilla = isPlantillaAlquiler(selectedPlantilla);
   const plantillaMonedaId = detectPlantillaMonedaId(selectedPlantilla);
   const currentMonedaId = plantillaMonedaId ?? monedaId;
   const currentIncludeIgv = plantillaIncluyeIgv(plantillaId, selectedPlantilla);
@@ -700,8 +703,10 @@ export function CotizacionDetail() {
     const itemAplicaCostos = itemForm.aplica_costos_adicionales !== false;
     const aplicaCostoExtra = itemAplicaCostos;
     const costoUnitario = costoBase + (aplicaCostoExtra ? costoExtraUnitario : 0);
-    const precioVenta = margen < 100 ? costoUnitario / (1 - margen / 100) : costoUnitario;
-    const subtotal = precioVenta * cantidad;
+    const periodoMeses = Math.max(0, Number(itemForm.garantia_meses || 0));
+    const precioVentaBase = margen < 100 ? costoUnitario / (1 - margen / 100) : costoUnitario;
+    const precioVenta = precioVentaBase;
+    const subtotal = precioVenta * cantidad * (isAlquilerPlantilla ? periodoMeses : 1);
     const costoTotal = costoUnitario * cantidad;
     const gananciaItem = subtotal - costoTotal;
     const ganancia = currentIncludeIgv ? gananciaItem / 1.18 : gananciaItem;
@@ -718,6 +723,7 @@ export function CotizacionDetail() {
     itemForm.costo_base,
     itemForm.margen,
     itemForm.cantidad,
+    itemForm.garantia_meses,
     itemForm.aplica_costos_adicionales,
     costos,
     items,
@@ -725,6 +731,7 @@ export function CotizacionDetail() {
     showItemFormModal,
     modoDistribucion,
     currentIncludeIgv,
+    isAlquilerPlantilla,
   ]);
 
   const [costoForm, setCostoForm] = useState({
@@ -2219,9 +2226,10 @@ export function CotizacionDetail() {
       items,
       costos,
       modoDistribucion,
-      currentIncludeIgv
+      currentIncludeIgv,
+      { tipoCalculo: isAlquilerPlantilla ? "ALQUILER" : "VENTA" }
     );
-  }, [items, costos, modoDistribucion, currentIncludeIgv]);
+  }, [items, costos, modoDistribucion, currentIncludeIgv, isAlquilerPlantilla]);
 
   const estadoLabels: Record<number, string> = {
     1: 'Borrador',
@@ -2457,6 +2465,7 @@ export function CotizacionDetail() {
 
             readOnly={isCotizacionReadOnly}
             isOwnCotizacion={canViewGanancia}
+            isAlquiler={isAlquilerPlantilla}
           />
 
         </div>
@@ -2914,6 +2923,7 @@ export function CotizacionDetail() {
         readOnly={isCotizacionReadOnly}
         externalItemSuggestions={externalItemSuggestions}
         onSelectExternalSuggestion={handleExternalSuggestionSelection}
+        isAlquiler={isAlquilerPlantilla}
       />
 
       {/* 4. Modal Costos Adicionales */}

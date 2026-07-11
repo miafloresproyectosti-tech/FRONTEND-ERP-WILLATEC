@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { Cliente } from "../../types/cotizaciones.type";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { getPlantillaDisplayName, isPlantillaAlquiler } from "../../utils/plantillas";
 
 interface Props {
   usuarioNombre?: string;
@@ -111,6 +112,8 @@ export function CotizacionGeneralForm({
   const clienteInputValue = clienteId
     ? searchClienteInput || selectedCliente?.nombre || cotizacion?.cliente_nombre || cotizacion?.cliente?.nombre || ''
     : searchClienteInput;
+  const selectedPlantilla = plantillas.find((plantilla) => Number(plantilla.id) === Number(plantillaId));
+  const isAlquilerPlantilla = isPlantillaAlquiler(selectedPlantilla);
 
   const [plantillaImposesMoneda, setPlantillaImposesMoneda] = useState(false);
 
@@ -121,6 +124,7 @@ export function CotizacionGeneralForm({
     codigo_moneda?: string;
   }): number | null => {
     if (!plantilla) return null;
+    if (isPlantillaAlquiler(plantilla)) return 1;
     if (plantilla.moneda_id === 1 || plantilla.moneda_id === 2) return plantilla.moneda_id;
 
     const up = [
@@ -274,6 +278,9 @@ export function CotizacionGeneralForm({
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="AL CONTADO">AL CONTADO</option>
+                  {isAlquilerPlantilla && (
+                    <option value="CRÉDITO A 5 DÍAS">CRÉDITO A 5 DÍAS</option>
+                  )}
                   <option value="CRÉDITO 15 DÍAS">CRÉDITO 15 DÍAS</option>
                   <option value="CRÉDITO 30 DÍAS">CRÉDITO 30 DÍAS</option>
                 </select>
@@ -342,7 +349,7 @@ export function CotizacionGeneralForm({
                       key={plantilla.id}
                       value={plantilla.id}
                     >
-                      {plantilla.nombre}
+                      {getPlantillaDisplayName(plantilla)}
                     </option>
                   ))}
                 </select>
