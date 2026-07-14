@@ -12,6 +12,7 @@ import {
   PackageCheck,
   List,
   Upload,
+  Download,
 } from "lucide-react";
 
 import { getProductosPaginated, getExternalItems, createProducto, updateProducto, deleteProducto, updateCotizacionItem, convertirProductoExternoAInterno, type Producto, type ProductoPayload, type CotizacionItem, type ProductoSerie } from "../services/producto.service";
@@ -1074,7 +1075,7 @@ export default function Productos() {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="min-w-0 space-y-4 p-3 sm:space-y-6 sm:p-6">
       {/* HEADER */}
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
@@ -1104,7 +1105,7 @@ export default function Productos() {
             )}
           </div>
 
-          <h1 className="text-3xl font-bold text-gray-800">
+          <h1 className="text-2xl font-bold text-gray-800 sm:text-3xl">
             {isStockTab ? "Productos Stock" : "Productos Externos"}
           </h1>
 
@@ -1118,18 +1119,19 @@ export default function Productos() {
         {isStockTab && canManageInternalProducts && (
           <button
             onClick={handleNuevo}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl sm:h-auto sm:w-auto sm:gap-2 sm:px-5 sm:py-3"
+            title="Nuevo Producto"
           >
             <Plus size={20} />
-            Nuevo Producto
+            <span className="hidden sm:inline">Nuevo Producto</span>
           </button>
         )}
       </div>
 
       {/* BUSCADOR */}
       {(isStockTab || activeTab === "externos") && (
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-200">
-          <div className="flex items-center gap-3 bg-gray-100 px-4 py-3 rounded-2xl w-full md:w-96">
+        <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:rounded-3xl sm:p-5">
+          <div className="flex w-full min-w-0 items-center gap-3 rounded-2xl bg-gray-100 px-4 py-3 md:w-96">
             <Search
               size={18}
               className="text-gray-500 flex-shrink-0"
@@ -1151,28 +1153,224 @@ export default function Productos() {
       )}
 
       {/* TABLA */}
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
-        <table className="w-full table-fixed">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm sm:rounded-3xl">
+        {(isStockTab ? loading : externalLoading) ? (
+          <div className="flex items-center justify-center gap-3 px-6 py-12 text-gray-500 xl:hidden">
+            <Loader2 className="animate-spin" size={18} />
+            Cargando productos...
+          </div>
+        ) : tableItems.length > 0 ? (
+          <div className="grid min-w-0 gap-3 p-3 sm:p-4 xl:hidden">
+            {tableItems.map((item: any) => {
+              const itemImage = resolveItemImageUrl(item.imagen_url, item.imagen);
+
+              return (
+                <div key={item.id ?? item.codigo ?? JSON.stringify(item)} className="min-w-0 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+                  <div className="flex items-start gap-3">
+                    {itemImage && (
+                      <img
+                        src={itemImage}
+                        alt=""
+                        className="h-12 w-12 shrink-0 rounded-xl border border-gray-200 bg-white object-contain"
+                        loading="lazy"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate font-bold text-gray-900">{isStockTab ? item.nombre : item.descripcion}</h3>
+                      <p className="truncate text-sm text-gray-500">#{item.codigo || "Sin codigo"}</p>
+                      {isStockTab ? (
+                        (item.marca || item.modelo) && (
+                          <p className="truncate text-xs text-gray-500">{[item.marca, item.modelo].filter(Boolean).join(" / ")}</p>
+                        )
+                      ) : (
+                        <>
+                          {item.marca && <p className="truncate text-xs text-gray-500">{item.marca}</p>}
+                          {(item.plantilla_ultimo_uso_nombre || item.plantilla_origen_nombre) && (
+                            <p className="truncate text-[11px] font-semibold text-blue-700">
+                              Ultima plantilla: {item.plantilla_ultimo_uso_nombre || item.plantilla_origen_nombre}
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    {isStockTab && (
+                      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                        item.estado === "usado"
+                          ? "border-amber-200 bg-amber-100 text-amber-700"
+                          : "border-green-200 bg-green-100 text-green-700"
+                      }`}>
+                        {item.estado === "usado" ? "Usado" : "Nuevo"}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-4 grid min-w-0 grid-cols-2 gap-3 text-sm">
+                    {isStockTab ? (
+                      <>
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-gray-400">Categoria</p>
+                          <p className="mt-1 font-medium text-gray-700">{item.categoria_label}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-gray-400">Precio</p>
+                          <p className="mt-1 font-bold text-gray-900">{getProductoCurrencySymbol(item)} {Number(item.precio_referencial || "0").toLocaleString()}</p>
+                        </div>
+                        <div className="col-span-2 min-w-0 rounded-xl bg-gray-50 p-3">
+                          <p className="mb-2 text-xs font-semibold uppercase text-gray-400">Stock real</p>
+                          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                            <div className="min-w-0">
+                              <p className="text-gray-500">Actual</p>
+                              <p className="font-bold text-gray-900">{Number(item.stock_actual ?? item.stock ?? 0).toLocaleString()}</p>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-gray-500">Reservado</p>
+                              <p className="font-bold text-amber-700">{Number(item.stock_reservado ?? 0).toLocaleString()}</p>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-gray-500">Disponible</p>
+                              <p className="font-bold text-emerald-700">{Number(item.stock_disponible ?? item.stock ?? 0).toLocaleString()}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-gray-400">Costo unit.</p>
+                          <p className="mt-1 font-bold text-gray-900">
+                            {formatExternalItemMoney(item, item.costo_base_referencial || item.costo_base || item.costo_unitario || "0")}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-gray-400">Precio venta</p>
+                          <p className="mt-1 font-bold text-gray-900">
+                            {formatExternalItemMoney(item, item.ultimo_precio_venta || item.precio_venta || "0")}
+                          </p>
+                        </div>
+                        <div className="col-span-2 min-w-0 rounded-xl bg-gray-50 p-3 text-xs">
+                          {item.producto_id ? (
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                              <div>
+                                <p className="text-gray-500">Actual</p>
+                                <p className="font-bold text-gray-900">{Number(item.producto?.stock_actual ?? 0).toLocaleString()}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Reservado</p>
+                                <p className="font-bold text-amber-700">{Number(item.producto?.stock_reservado ?? 0).toLocaleString()}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Disponible</p>
+                                <p className="font-bold text-emerald-700">{Number(item.producto?.stock_disponible ?? 0).toLocaleString()}</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="font-medium text-gray-700">Stock: {Number(item.stock || 0).toLocaleString()}</p>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {isStockTab && (item.series?.length || item.serie) && (
+                    <button
+                      type="button"
+                      onClick={() => setProductoSeriesModal(item)}
+                      className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                    >
+                      <List size={16} />
+                      Ver series ({item.series?.length || 1})
+                    </button>
+                  )}
+
+                  <div className="mt-4 border-t border-gray-100 pt-3">
+                    {isStockTab ? (
+                      canManageInternalProducts ? (
+                        <div className="grid grid-cols-[minmax(0,1fr)_3rem] gap-2 sm:grid-cols-2">
+                          <button
+                            onClick={() => handleEditar(item)}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-100 text-sm font-semibold text-blue-700 hover:bg-blue-200"
+                          >
+                            <Pencil size={16} />
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => handleEliminar(item)}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-100 text-sm font-semibold text-red-700 hover:bg-red-200"
+                            title="Eliminar"
+                          >
+                            <Trash2 size={16} />
+                            <span className="hidden sm:inline">Eliminar</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="block rounded-xl bg-gray-50 px-3 py-2 text-center text-xs font-semibold text-gray-400">Solo lectura</span>
+                      )
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          onClick={() => handleOpenExternalEditModal(item)}
+                          className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-100 text-blue-700 hover:bg-blue-200"
+                          title="Editar Item Externo"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleAddExternalItem(item)}
+                          className="inline-flex h-11 items-center justify-center rounded-xl bg-gray-100 text-blue-700 hover:bg-blue-200"
+                          title="Agregar item a cotizacion"
+                        >
+                          <Plus size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleOpenConvertExternal(item)}
+                          className={`inline-flex h-11 items-center justify-center rounded-xl ${
+                            item.producto_id
+                              ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                              : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                          }`}
+                          title={item.producto_id ? "Registrar nueva entrada al inventario" : "Convertir a producto interno"}
+                        >
+                          <PackageCheck size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="px-6 py-12 text-center text-gray-500 xl:hidden">
+            {isStockTab
+              ? searchTerm
+                ? "No se encontraron productos"
+                : "No hay productos"
+              : "No hay productos externos"}
+          </div>
+        )}
+
+        <div className="hidden overflow-x-auto xl:block">
+        <table className="w-full min-w-[1160px] table-fixed">
           <colgroup>
             {isStockTab ? (
               <>
-                <col className="w-[21%]" />
-                <col className="w-[12%]" />
-                <col className="w-[16%]" />
+                <col className="w-[24%]" />
                 <col className="w-[11%]" />
-                <col className="w-[18%]" />
+                <col className="w-[16%]" />
+                <col className="w-[10%]" />
+                <col className="w-[19%]" />
                 <col className="w-[9%]" />
-                <col className="w-[120px]" />
+                <col className="w-[11%]" />
               </>
             ) : (
               <>
                 <col className="w-[30%]" />
+                <col className="w-[10%]" />
+                <col className="w-[11%]" />
+                <col className="w-[10%]" />
+                <col className="w-[13%]" />
                 <col className="w-[12%]" />
-                <col className="w-[12%]" />
-                <col className="w-[8%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
-                <col className="w-[180px]" />
+                <col className="w-[14%]" />
               </>
             )}
           </colgroup>
@@ -1195,10 +1393,10 @@ export default function Productos() {
                   <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                     Descripción
                   </th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                  <th className="text-left px-4 py-4 text-sm font-semibold text-gray-600">
                     Estado
                   </th>
-                  <th className="text-center px-6 py-4 text-sm font-semibold text-gray-600">
+                  <th className="bg-gray-50 text-center px-3 py-4 text-sm font-semibold text-gray-600">
                     Acciones
                   </th>
                 </>
@@ -1222,7 +1420,7 @@ export default function Productos() {
                   <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                     Precio Venta
                   </th>
-                  <th className="text-center px-6 py-4 text-sm font-semibold text-gray-600">
+                  <th className="bg-gray-50 text-center px-3 py-4 text-sm font-semibold text-gray-600">
                     Acciones
                   </th>
                 </>
@@ -1311,9 +1509,9 @@ export default function Productos() {
                       <td className="px-6 py-5 text-gray-600">
                         {item.descripcion || "Sin descripción"}
                       </td>
-                      <td className="px-6 py-5">
+                      <td className="px-4 py-5">
                         <span
-                          className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          className={`inline-flex whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium ${
                             item.estado === "usado"
                               ? "bg-amber-100 text-amber-700 border border-amber-200"
                               : "bg-green-100 text-green-700 border border-green-200"
@@ -1322,14 +1520,14 @@ export default function Productos() {
                           {item.estado === "usado" ? "Usado" : "Nuevo"}
                         </span>
                       </td>
-                      <td className="px-6 py-5">
+                      <td className="bg-white px-3 py-5">
                         {canManageInternalProducts ? (
-                          <div className="flex items-center justify-center gap-2">
+                          <div className="flex items-center justify-center gap-1.5">
                             <button
                               onClick={() =>
                                 handleEditar(item)
                               }
-                              className="w-11 h-11 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                              className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
                             >
                               <Pencil size={18} />
                             </button>
@@ -1337,7 +1535,7 @@ export default function Productos() {
                               onClick={() =>
                                 handleEliminar(item)
                               }
-                              className="w-11 h-11 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                              className="w-9 h-9 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
                             >
                               <Trash2 size={18} />
                             </button>
@@ -1421,32 +1619,34 @@ export default function Productos() {
                         )}
                       </td>
                       <td className="px-6 py-5 font-semibold text-gray-800">
-                        {formatExternalItemMoney(
-                          item,
-                          item.ultimo_precio_venta || item.precio_venta || "0"
-                        )}
+                        <span className="block truncate" title={formatExternalItemMoney(item, item.ultimo_precio_venta || item.precio_venta || "0")}>
+                          {formatExternalItemMoney(
+                            item,
+                            item.ultimo_precio_venta || item.precio_venta || "0"
+                          )}
+                        </span>
                       </td>
-                      <td className="px-4 py-5">
-                        <div className="flex items-center justify-center gap-2">
+                      <td className="bg-white px-3 py-5">
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() =>
                               handleOpenExternalEditModal(item)
                             }
-                            className="w-11 h-11 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                            className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
                             title="Editar Item Externo"
                           >
                             <Pencil size={18} />
                           </button>
                           <button
                             onClick={() => handleAddExternalItem(item)}
-                            className="w-11 h-11 rounded-xl bg-gray-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                            className="w-9 h-9 rounded-xl bg-gray-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
                             title="Agregar item a cotización"
                           >
                             <Plus size={18} />
                           </button>
                           <button
                             onClick={() => handleOpenConvertExternal(item)}
-                            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-sm ${
+                            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-sm ${
                               item.producto_id
                                 ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
                                 : "bg-amber-100 text-amber-700 hover:bg-amber-200"
@@ -1478,16 +1678,17 @@ export default function Productos() {
             )}
           </tbody>
         </table>
+        </div>
 
         {/* PAGINACION */}
         {pageCount > 1 && (
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-gray-600">
                 Mostrando {showingFrom} a {showingTo} de {totalItems} productos
               </div>
 
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1">
                 <button
                   onClick={() =>
                     isStockTab
@@ -1592,7 +1793,7 @@ export default function Productos() {
 
       {productoSeriesModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
+          <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
             <div className="flex items-start justify-between px-6 py-5 border-b border-gray-100">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Series del producto</h2>
@@ -1611,12 +1812,13 @@ export default function Productos() {
 
             <div className="p-6">
               {(productoSeriesModal.series?.length || productoSeriesModal.serie) ? (
-                <div className="overflow-hidden rounded-2xl border border-gray-200">
+                <div className="overflow-x-auto rounded-2xl border border-gray-200">
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
                     <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
                       <tr>
                         <th className="px-4 py-3">Serie</th>
                         <th className="px-4 py-3">Factura</th>
+                        <th className="px-4 py-3">Archivo</th>
                         <th className="px-4 py-3">Estado</th>
                         <th className="px-4 py-3">Ingreso</th>
                         <th className="px-4 py-3">Salida / Referencia</th>
@@ -1629,6 +1831,7 @@ export default function Productos() {
                           id: productoSeriesModal.id,
                           serie: productoSeriesModal.serie,
                           factura_numero: productoSeriesModal.factura_numero,
+                          documento_path: null,
                           estado: productoSeriesModal.estado,
                           fecha_ingreso: null,
                           fecha_salida: null,
@@ -1639,6 +1842,21 @@ export default function Productos() {
                         <tr key={serie.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 font-semibold text-gray-900">{serie.serie || "Sin serie"}</td>
                           <td className="px-4 py-3 text-gray-700">{serie.factura_numero || "-"}</td>
+                          <td className="px-4 py-3">
+                            {normalizeStorageImageUrl(serie.documento_path) ? (
+                              <a
+                                href={normalizeStorageImageUrl(serie.documento_path) || undefined}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                                Ver factura
+                              </a>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3">
                             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
                               {serie.estado || "disponible"}

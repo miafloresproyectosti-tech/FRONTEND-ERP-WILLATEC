@@ -1066,7 +1066,7 @@ export default function OrdenesCompraPage() {
             <p className="text-sm text-slate-500">
               Mostrando {currentPagination.from} a {currentPagination.to} de {currentPagination.total}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <PageButton
                 disabled={currentPagination.page <= 1}
                 onClick={() => activeTab === "emitidas" ? loadEmitidas(currentPagination.page - 1) : loadRecibidas(currentPagination.page - 1)}
@@ -1412,6 +1412,61 @@ function EmitidasTable({
   canEditOc: (oc: OcEmitida) => boolean;
 }) {
   return (
+    <>
+    <div className="grid gap-3 p-4 lg:hidden">
+      {rows.length ? rows.map((oc) => (
+        <div key={oc.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate font-bold text-blue-600">{getOcLabel(oc)}</p>
+              <p className="mt-1 truncate text-sm text-slate-500">{getCotizacionLabel(oc)}</p>
+            </div>
+            <EstadoBadge estado={oc.estado} labels={estadoEmitidaLabels} />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p className="text-xs font-semibold uppercase text-slate-400">Proveedor</p>
+              <p className="mt-1 truncate font-medium text-slate-700 dark:text-slate-200">{oc.proveedor || "N/A"}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase text-slate-400">Fecha</p>
+              <p className="mt-1 flex items-center gap-1 text-slate-600 dark:text-slate-300"><Calendar size={14} />{formatDate(oc.fecha_emision)}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase text-slate-400">Total</p>
+              <p className="mt-1 font-bold text-slate-900 dark:text-slate-100">{formatMoney(oc.total, "S/")}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase text-slate-400">Documentos</p>
+              <div className="mt-1"><DocumentStatus oc={oc} /></div>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
+            <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
+            <IconButton
+              title={canEditOc(oc) ? "Subir documentos" : "Solo el usuario que registro esta OC puede editarla"}
+              onClick={() => onDocuments(oc)}
+              icon={<Upload size={17} />}
+              disabled={!canEditOc(oc)}
+            />
+            <button
+              type="button"
+              onClick={() => onDownloadPdf(oc)}
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100"
+              title="Descargar PDF"
+            >
+              <Download size={17} />
+            </button>
+          </div>
+        </div>
+      )) : (
+        <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800">
+          No hay registros
+        </div>
+      )}
+    </div>
+
+    <div className="hidden overflow-x-auto lg:block">
     <table className="w-full min-w-[980px]">
       <thead className="bg-gray-50 text-left text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
         <tr>
@@ -1422,7 +1477,7 @@ function EmitidasTable({
           <th className="px-5 py-4">Total</th>
           <th className="px-5 py-4">Documentos</th>
           <th className="px-5 py-4">Estado</th>
-          <th className="px-5 py-4 text-center">Acciones</th>
+          <th className="sticky right-0 z-10 bg-gray-50 px-5 py-4 text-center shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">Acciones</th>
         </tr>
       </thead>
       <tbody>
@@ -1435,7 +1490,7 @@ function EmitidasTable({
             <td className="px-5 py-4 font-semibold">{formatMoney(oc.total, "S/")}</td>
             <td className="px-5 py-4"><DocumentStatus oc={oc} /></td>
             <td className="px-5 py-4"><EstadoBadge estado={oc.estado} labels={estadoEmitidaLabels} /></td>
-            <td className="px-5 py-4">
+            <td className="sticky right-0 bg-white px-5 py-4 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">
               <div className="flex justify-center gap-2">
                 <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
                 <IconButton
@@ -1460,6 +1515,8 @@ function EmitidasTable({
         )}
       </tbody>
     </table>
+    </div>
+    </>
   );
 }
 
@@ -1479,6 +1536,72 @@ function RecibidasTable({
   canEditOc: (oc: OcRecibida) => boolean;
 }) {
   return (
+    <>
+    <div className="grid gap-3 p-4 lg:hidden">
+      {rows.length ? rows.map((oc) => (
+        <div key={oc.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate font-bold text-emerald-600">{getOcLabel(oc)}</p>
+              <p className="mt-1 truncate text-sm text-slate-500">{getCotizacionLabel(oc)}</p>
+            </div>
+            <EstadoBadge estado={oc.estado} labels={estadoRecibidaLabels} />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p className="text-xs font-semibold uppercase text-slate-400">Fecha</p>
+              <p className="mt-1 flex items-center gap-1 text-slate-600 dark:text-slate-300"><Calendar size={14} />{formatDate(oc.fecha_recepcion)}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase text-slate-400">Documentos</p>
+              <div className="mt-1"><DocumentStatus oc={oc} /></div>
+            </div>
+          </div>
+          <div className="mt-3 space-y-2">
+            {(oc.items || []).length > 0 ? (oc.items || []).slice(0, 2).map((item) => (
+              <div key={item.id} className="rounded-xl bg-slate-50 px-3 py-2 text-xs dark:bg-slate-900">
+                <p className="font-semibold text-slate-700 dark:text-slate-200">{itemDescription(item)}</p>
+                <div className="mt-2 flex flex-wrap gap-3 text-slate-500">
+                  <label className="inline-flex items-center gap-1">
+                    <input type="checkbox" checked={Boolean(item.comprado)} disabled onChange={(event) => onToggleItem(oc, item, "comprado", event.target.checked)} />
+                    Comprado
+                  </label>
+                  <label className="inline-flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(item.entregado)}
+                      disabled={updatingItemOc === oc.id || !canEditOc(oc) || !item.comprado}
+                      onChange={(event) => onToggleItem(oc, item, "entregado", event.target.checked)}
+                    />
+                    Entregado
+                  </label>
+                </div>
+              </div>
+            )) : (
+              <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                {getOcItemsCount(oc)} items
+              </span>
+            )}
+            {(oc.items || []).length > 2 && <p className="text-xs text-slate-400">+{(oc.items || []).length - 2} items mas</p>}
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
+            <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
+            <IconButton
+              title={canEditOc(oc) ? "Subir documentos" : "Solo el usuario que registro esta OC puede editarla"}
+              onClick={() => onDocuments(oc)}
+              icon={<Upload size={17} />}
+              disabled={!canEditOc(oc)}
+            />
+          </div>
+        </div>
+      )) : (
+        <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800">
+          No hay registros
+        </div>
+      )}
+    </div>
+
+    <div className="hidden overflow-x-auto lg:block">
     <table className="w-full min-w-[1080px]">
       <thead className="bg-gray-50 text-left text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
         <tr>
@@ -1488,7 +1611,7 @@ function RecibidasTable({
           <th className="px-5 py-4">Items</th>
           <th className="px-5 py-4">Documentos</th>
           <th className="px-5 py-4">Estado</th>
-          <th className="px-5 py-4 text-center">Acciones</th>
+          <th className="sticky right-0 z-10 bg-gray-50 px-5 py-4 text-center shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">Acciones</th>
         </tr>
       </thead>
       <tbody>
@@ -1497,7 +1620,7 @@ function RecibidasTable({
             <td className="px-5 py-4 font-semibold text-emerald-600">{getOcLabel(oc)}</td>
             <td className="px-5 py-4">{getCotizacionLabel(oc)}</td>
             <td className="px-5 py-4"><span className="inline-flex items-center gap-2"><Calendar size={15} />{formatDate(oc.fecha_recepcion)}</span></td>
-            <td className="px-5 py-4">
+            <td className="sticky right-0 bg-white px-5 py-4 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">
               <div className="space-y-2">
                 {(oc.items || []).length > 0 ? (oc.items || []).slice(0, 3).map((item) => (
                     <div key={item.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-950">
@@ -1551,6 +1674,8 @@ function RecibidasTable({
         )}
       </tbody>
     </table>
+    </div>
+    </>
   );
 }
 

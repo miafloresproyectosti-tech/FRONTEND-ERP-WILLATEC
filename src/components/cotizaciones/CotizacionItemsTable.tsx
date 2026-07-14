@@ -58,22 +58,151 @@ const formatGananciaSoles = (ganancia: number) => {
 
 // CotizacionItemsTable.tsx — reemplaza el return completo
 return (
-  <div className="bg-white rounded-xl shadow-sm border p-6">
-    <div className="flex items-center justify-between mb-4">
+  <div className="bg-white rounded-xl shadow-sm border p-4 sm:p-6">
+    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h2 className="text-base font-medium text-gray-800">
         Items <span className="text-gray-400 font-normal">({items.length})</span>
       </h2>
       {!readOnly && (
       <button
         onClick={onAddItem}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium"
+        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 sm:py-1.5"
       >
         <Plus className="w-3.5 h-3.5" /> Agregar ítem
       </button>
       )}
     </div>
 
-    <div className="overflow-x-auto rounded-lg border border-gray-100">
+    <div className="grid gap-3 xl:hidden">
+      {items.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-10 text-center text-sm text-gray-400">
+          Sin items - agrega el primero
+        </div>
+      ) : (
+        items.map((item) => {
+          const precioVenta = parseFloat(item.precio_venta as any) || 0;
+          const costoUnitario = parseFloat(item.costo_unitario as any) || 0;
+          const costoTotal = parseFloat(item.costo_total as any) || 0;
+          const ganancia = parseFloat(item.ganancia as any) || 0;
+          const subtotal = parseFloat(item.subtotal as any) || 0;
+          const margen = parseFloat(item.margen as any) || 0;
+          const itemImage = resolveItemImageUrl(item.imagen_url, item.imagen);
+
+          return (
+            <div key={item.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                {itemImage && (
+                  <img
+                    src={itemImage}
+                    alt=""
+                    className="h-12 w-12 shrink-0 rounded-xl border border-gray-200 bg-white object-contain"
+                    loading="lazy"
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-gray-900">{item.descripcion}</p>
+                  {item.nota && (
+                    <p className="mt-1 line-clamp-2 text-xs text-gray-500">Nota: {item.nota}</p>
+                  )}
+                </div>
+                <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${
+                  item.tipo === 'catalogo' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {item.tipo === 'catalogo' ? 'Cat' : 'Ext'}
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-2 rounded-xl bg-gray-50 p-3 text-xs sm:grid-cols-3 sm:text-center">
+                <div className="flex items-center justify-between sm:block">
+                  <p className="text-gray-500">Cant.</p>
+                  <p className="font-bold text-gray-900">{item.cantidad}</p>
+                </div>
+                <div className="flex items-center justify-between sm:block">
+                  <p className="text-gray-500">{isAlquiler ? "Periodo" : "Garantia"}</p>
+                  <p className="font-bold text-amber-700">{item.garantia_meses}m</p>
+                </div>
+                <div className="flex items-center justify-between sm:block">
+                  <p className="text-gray-500">Margen</p>
+                  <p className="font-bold text-gray-900">{(margen ?? 0).toFixed(1)}%</p>
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
+                <div>
+                  <p className="font-semibold uppercase text-gray-400">Costo un.</p>
+                  <p className="mt-1 font-bold text-gray-800">{formatMoney(costoUnitario, simboloMoneda)}</p>
+                </div>
+                <div>
+                  <p className="font-semibold uppercase text-gray-400">Costo total</p>
+                  <p className="mt-1 font-bold text-gray-800">{formatMoney(costoTotal, simboloMoneda)}</p>
+                </div>
+                <div>
+                  <p className="font-semibold uppercase text-gray-400">{isAlquiler ? "P. unit. mensual" : "P. venta"}</p>
+                  <p className="mt-1 font-bold text-gray-800">{formatMoney(precioVenta, simboloMoneda)}</p>
+                </div>
+                <div>
+                  <p className="font-semibold uppercase text-gray-400">{isAlquiler ? "Total x meses" : "Subtotal"}</p>
+                  <p className="mt-1 font-bold text-gray-900">{formatMoney(subtotal, simboloMoneda)}</p>
+                </div>
+                {isOwnCotizacion && (
+                  <div className="col-span-2 rounded-xl bg-gray-50 px-3 py-2">
+                    <p className="font-semibold uppercase text-gray-400">Ganancia</p>
+                    <p className={`mt-1 font-bold ${ganancia > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                      {formatMoney(ganancia, simboloMoneda)}
+                      {monedaId === 2 && <span className="ml-2 text-emerald-600">{formatGananciaSoles(ganancia)}</span>}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {showCostosAdicionalesToggle && (
+                <label className="mt-3 flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600">
+                  Costos adicionales
+                  <input
+                    type="checkbox"
+                    checked={item.aplica_costos_adicionales !== false}
+                    disabled={readOnly}
+                    onChange={(event) => onToggleAplicaCostosAdicionales?.(item.id, event.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 disabled:opacity-50"
+                  />
+                </label>
+              )}
+
+              <div className="mt-4 border-t border-gray-100 pt-3">
+                {readOnly ? (
+                  <button
+                    onClick={() => onOpenEdit(item)}
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-50 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                  >
+                    <Eye className="h-4 w-4" />
+                    Ver detalle
+                  </button>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => onDeleteItem(item.id)}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-50 text-sm font-semibold text-red-700 hover:bg-red-100"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Eliminar
+                    </button>
+                    <button
+                      onClick={() => onOpenEdit(item)}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-50 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Editar
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+
+    <div className="hidden overflow-x-auto rounded-lg border border-gray-100 xl:block">
       <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
         <colgroup>
           <col style={{ width: '140px' }} />

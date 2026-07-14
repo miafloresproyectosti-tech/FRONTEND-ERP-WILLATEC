@@ -326,7 +326,87 @@ export default function Auditoria() {
       )}
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
+        {loading ? (
+          <div className="flex items-center justify-center px-4 py-12 text-slate-500 lg:hidden">
+            <Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-600" />
+            Cargando auditoria...
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="px-4 py-12 text-center text-slate-500 lg:hidden">
+            No hay registros para los filtros seleccionados.
+          </div>
+        ) : (
+          <div className="grid gap-3 p-4 lg:hidden">
+            {logs.map((log) => {
+              const isExpanded = expandedId === log.id;
+
+              return (
+                <div key={log.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-900">{getTipoLabel(log.entidad.tipo)}</p>
+                      <p className="truncate text-sm text-slate-500">{log.entidad.nombre ?? `ID ${log.entidad.id ?? "-"}`}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${getEventBadgeClass(log.accion)}`}>
+                      {getEventLabel(log.accion)}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                    <User size={16} className="mt-0.5 shrink-0 text-slate-400" />
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-900">{log.usuario?.nombre ?? "Sistema"}</p>
+                      <p className="truncate text-xs text-slate-500">{log.usuario?.email ?? `Usuario #${log.usuario?.id ?? "-"}`}</p>
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-sm text-slate-700">{log.descripcion}</p>
+                  <p className="mt-2 inline-flex items-center gap-1 text-xs text-slate-500">
+                    <Calendar size={14} />
+                    {formatDate(log.created_at)}
+                  </p>
+
+                  <div className="mt-3 border-t border-slate-100 pt-3">
+                    {log.cambios.length === 0 ? (
+                      <span className="text-sm text-slate-500">Sin campos</span>
+                    ) : (
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => setExpandedId(isExpanded ? null : log.id)}
+                          className="text-sm font-semibold text-blue-700 hover:text-blue-800"
+                        >
+                          {isExpanded ? "Ocultar cambios" : `Ver ${log.cambios.length} cambio${log.cambios.length === 1 ? "" : "s"}`}
+                        </button>
+
+                        {isExpanded && (
+                          <div className="space-y-2">
+                            {log.cambios.map((change) => (
+                              <div key={`${log.id}-${change.campo}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <p className="mb-2 text-xs font-semibold uppercase text-slate-500">{change.campo}</p>
+                                <div className="grid gap-2 text-sm">
+                                  <div>
+                                    <p className="text-xs text-slate-500">Antes</p>
+                                    <p className="break-words text-slate-800">{formatValue(change.antes)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-slate-500">Despues</p>
+                                    <p className="break-words font-medium text-slate-900">{formatValue(change.despues)}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="hidden overflow-x-auto lg:block">
           <table className="w-full min-w-[980px] text-left">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
               <tr>

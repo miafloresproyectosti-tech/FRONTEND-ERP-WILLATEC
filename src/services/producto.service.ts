@@ -52,6 +52,7 @@ export interface ProductoSerie {
     producto_id?: number;
     serie?: string | null;
     factura_numero?: string | null;
+    documento_path?: string | null;
     estado?: string | null;
     fecha_ingreso?: string | null;
     fecha_salida?: string | null;

@@ -199,6 +199,7 @@ export default function Cotizaciones() {
       3: "bg-green-100 text-green-700",
       4: "bg-yellow-100 text-yellow-700",
       5: "bg-red-100 text-red-700",
+      6: "bg-emerald-100 text-emerald-700",
     };
 
     const labels: Record<number, string> = {
@@ -677,14 +678,154 @@ export default function Cotizaciones() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div>
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 size={32} className="animate-spin text-blue-600" />
               <span className="ml-3 text-gray-600">Cargando cotizaciones...</span>
             </div>
           ) : (
-            <table className="w-full">
+            <>
+            <div className="grid gap-3 p-4 lg:hidden">
+              {paginatedCotizaciones.length > 0 ? (
+                paginatedCotizaciones.map((cotizacion) => {
+                  const cotizacionListItem = cotizacion as CotizacionListItem;
+                  const estadoBadge = getEstadoBadge(cotizacion.estado_cotizacion_id);
+                  const userId = Number(user?.id);
+                  const cotizacionUserId = Number(cotizacion.user_id);
+                  const delegadoCotizacionId = Number(
+                    cotizacionListItem.delegado_cotizacion_id ?? cotizacionListItem.delegadoCotizacionId ?? 0
+                  );
+                  const puedeEditar =
+                    Boolean(user?.id) &&
+                    (cotizacionUserId === userId || delegadoCotizacionId === userId);
+                  const estadoActualId = Number(cotizacion.estado_cotizacion_id);
+                  const bloqueaEdicion = [
+                    ESTADO_FILTER_MAP.parcialmente_aprobada,
+                    ESTADO_FILTER_MAP.aprobada,
+                    ESTADO_FILTER_MAP.oc_registrada,
+                  ].includes(estadoActualId);
+                  const puedeEditarDirecto = puedeEditar && !bloqueaEdicion;
+                  const puedeGenerarOc = puedeEditar && estadoActualId === ESTADO_FILTER_MAP.aprobada;
+                  const modificacionesPendientes = Number(cotizacion.modificaciones_pendientes_count || 0);
+
+                  return (
+                    <div key={cotizacion.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-bold text-blue-600 dark:text-blue-300">{cotizacion.numero}</p>
+                          {cotizacion.titulo && (
+                            <p className="mt-1 truncate text-xs font-medium text-slate-500 dark:text-slate-400">{cotizacion.titulo}</p>
+                          )}
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${estadoBadge.style}`}>
+                          {estadoBadge.label}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                        <div className="col-span-2">
+                          <p className="text-xs font-semibold uppercase text-slate-400">Cliente</p>
+                          <p className="mt-1 truncate font-medium text-slate-800 dark:text-slate-100">{cotizacion.cliente_nombre}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-slate-400">Fecha</p>
+                          <p className="mt-1 flex items-center gap-1 text-slate-600 dark:text-slate-300">
+                            <Calendar size={14} />
+                            {formatCotizacionDate(cotizacion.fecha)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-slate-400">Total</p>
+                          <p className="mt-1 font-bold text-slate-900 dark:text-slate-100">{formatMoney(cotizacion.total, getSimboloMoneda(cotizacion))}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-slate-400">Ejecutivo</p>
+                          <p className="mt-1 truncate text-slate-600 dark:text-slate-300">{getEjecutivoNombre(cotizacion)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-slate-400">Items</p>
+                          <p className="mt-1 text-slate-600 dark:text-slate-300">{cotizacionListItem.items_count ?? 0}</p>
+                        </div>
+                        <div className="col-span-2 rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-900">
+                          <p className="text-xs font-semibold uppercase text-slate-400">Estado</p>
+                          <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${estadoBadge.style}`}>
+                            {estadoBadge.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
+                        <button
+                          onClick={() => navigate(`/cotizaciones/${cotizacion.id}/view`)}
+                          className="relative inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                          title={modificacionesPendientes > 0 ? `${modificacionesPendientes} modificacion pendiente` : "Ver detalle"}
+                        >
+                          <Eye size={16} />
+                          Ver
+                          {modificacionesPendientes > 0 && (
+                            <span className="absolute right-2 top-1 min-w-[18px] rounded-full bg-red-600 px-1 text-[10px] font-bold leading-[18px] text-white">
+                              {modificacionesPendientes > 9 ? "9+" : modificacionesPendientes}
+                            </span>
+                          )}
+                        </button>
+
+                        {puedeEditarDirecto && (
+                          <button
+                            onClick={() => navigate(`/cotizaciones/${cotizacion.id}/edit`)}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-100 text-sm font-semibold text-blue-700 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:hover:bg-blue-800"
+                          >
+                            <Pencil size={16} />
+                            Editar
+                          </button>
+                        )}
+
+                        {puedeEditarDirecto && (
+                          <button
+                            onClick={() => {
+                              setCotizacionToDelete(cotizacion);
+                              setDeleteConfirmationText("");
+                            }}
+                            disabled={deletingCotizacionId === Number(cotizacion.id)}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-100 text-sm font-semibold text-red-700 hover:bg-red-200 disabled:opacity-60"
+                          >
+                            {deletingCotizacionId === Number(cotizacion.id) ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                            Eliminar
+                          </button>
+                        )}
+
+                        {puedeGenerarOc && (
+                          <button
+                            onClick={() => setCotizacionForOc(cotizacion)}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-green-100 text-sm font-semibold text-green-700 hover:bg-green-200"
+                          >
+                            <ShoppingCart size={16} />
+                            Generar OC
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-10 text-center text-slate-500 dark:border-slate-800">
+                  {searchTerm || fechaDesde || fechaHasta || filterEstado !== "todos" || filterEjecutivo !== "todos" ? "No se encontraron cotizaciones" : "No hay cotizaciones"}
+                </div>
+              )}
+            </div>
+
+            <div className="hidden overflow-x-auto lg:block">
+            <table className="w-full min-w-[1120px] table-fixed">
+              <colgroup>
+                <col className="w-[24%]" />
+                <col className="w-[10%]" />
+                <col className="w-[18%]" />
+                <col className="w-[13%]" />
+                <col className="w-[6%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[150px]" />
+              </colgroup>
               <thead className="bg-gray-50 dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700">
                 <tr>
                   <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300">
@@ -711,11 +852,11 @@ export default function Cotizaciones() {
                     Total
                   </th>
 
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                  <th className="text-left px-4 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300">
                     Estado
                   </th>
 
-                  <th className="text-center px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                  <th className="sticky right-0 z-10 bg-gray-50 px-4 py-4 text-center text-sm font-semibold text-slate-600 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-900 dark:text-slate-300">
                     Acciones
                   </th>
                 </tr>
@@ -750,7 +891,7 @@ export default function Cotizaciones() {
                         className="border-b border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-900 transition"
                       >
                         <td className="px-6 py-5">
-                          <div className="max-w-64">
+                          <div className="min-w-0">
                             <span
                               className="font-semibold text-blue-600 dark:text-blue-300"
                               title={cotizacion.titulo ? `${cotizacion.numero} - ${cotizacion.titulo}` : cotizacion.numero}
@@ -791,16 +932,16 @@ export default function Cotizaciones() {
                           {formatMoney(cotizacion.total, getSimboloMoneda(cotizacion))}
                         </td>
 
-                        <td className="px-6 py-5">
+                        <td className="px-4 py-5">
                           <span
-                            className={`px-3 py-1 rounded-full text-xs font-medium ${estadoBadge.style}`}
+                            className={`inline-flex whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium ${estadoBadge.style}`}
                           >
                             {estadoBadge.label}
                           </span>
                         </td>
 
-                        <td className="px-6 py-5">
-                          <div className="flex items-center justify-center gap-3">
+                        <td className="sticky right-0 bg-white px-4 py-5 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">
+                          <div className="flex items-center justify-center gap-2">
                             {/* VER */}
                             <button
                               onClick={() =>
@@ -877,17 +1018,19 @@ export default function Cotizaciones() {
                 )}
               </tbody>
             </table>
+            </div>
+            </>
           )}
         </div>
 
         {/* PAGINACIÓN */}
         {totalCotizaciones > 0 && (
-          <div className="px-6 py-4 border-t border-gray-200 dark:border-slate-800 flex items-center justify-between">
+          <div className="flex flex-col gap-3 border-t border-gray-200 px-6 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-slate-600 dark:text-slate-400">
               Mostrando {paginationFrom} a {paginationTo} de {totalCotizaciones} cotizaciones
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
@@ -897,7 +1040,7 @@ export default function Cotizaciones() {
                 <ChevronLeft size={18} />
               </button>
 
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1">
                 {paginationItems.map((item) =>
                   typeof item === "number" ? (
                     <button

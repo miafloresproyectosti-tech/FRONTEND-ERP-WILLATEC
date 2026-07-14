@@ -198,9 +198,10 @@ const getDocumentoLink = (movimiento: InventarioMovimiento) => {
       target="_blank"
       rel="noreferrer"
       className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+      title="Ver factura o documento asociado"
     >
       <Download className="h-3.5 w-3.5" />
-      Ver
+      {movimiento.documento_tipo === "factura" ? "Ver factura" : "Ver documento"}
     </a>
   );
 };
@@ -960,7 +961,99 @@ export default function InventarioMovimientos() {
       )}
 
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <div className="overflow-x-auto">
+        {loading ? (
+          <div className="flex items-center justify-center px-4 py-12 text-gray-500 lg:hidden">
+            <Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-600" />
+            Cargando movimientos...
+          </div>
+        ) : movimientos.length === 0 ? (
+          <div className="px-4 py-12 text-center text-gray-500 lg:hidden">
+            No se encontraron movimientos
+          </div>
+        ) : (
+          <div className="grid gap-3 p-4 lg:hidden">
+            {movimientos.map((movimiento) => (
+              <div key={movimiento.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-900">{getProductLabel(movimiento)}</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {[movimiento.producto?.sku, movimiento.producto?.codigo]
+                        .filter(Boolean)
+                        .join(" / ") || `ID ${movimiento.producto_id}`}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">{formatDate(movimiento.created_at)}</p>
+                  </div>
+                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${getTipoBadge(movimiento.tipo_movimiento)}`}>
+                    {getTipoLabel(movimiento.tipo_movimiento)}
+                  </span>
+                </div>
+
+                <div className="mt-3 rounded-xl bg-gray-50 p-3 text-xs">
+                  <p className="mb-2 font-semibold uppercase text-gray-400">Series</p>
+                  <p className="font-medium text-gray-700">
+                    {[
+                      ...(movimiento.producto_series ?? []),
+                      ...(movimiento.producto_serie ? [movimiento.producto_serie] : []),
+                    ]
+                      .map((serie) => serie.serie)
+                      .filter(Boolean)
+                      .filter((serie, index, series) => series.indexOf(serie) === index)
+                      .slice(0, 4)
+                      .join(", ") || "-"}
+                  </p>
+                </div>
+
+                <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-gray-50 p-3 text-center text-xs">
+                  <div>
+                    <p className="text-gray-500">Entrada</p>
+                    <p className="font-bold text-emerald-700">{formatNumber(movimiento.entrada_cantidad)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Salida</p>
+                    <p className="font-bold text-red-700">{formatNumber(movimiento.salida_cantidad)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Saldo</p>
+                    <p className="font-bold text-gray-900">{formatNumber(movimiento.saldo_cantidad ?? movimiento.stock_despues)}</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <p className="font-semibold uppercase text-gray-400">Costo</p>
+                    <p className="mt-1 font-bold text-gray-800">{formatMoney(movimiento.costo_promedio_despues ?? movimiento.costo_unitario, movimiento.moneda_id, movimiento.moneda)}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold uppercase text-gray-400">Movimiento</p>
+                    <p className="mt-1 font-bold text-gray-800">{formatMoney(movimiento.valor_movimiento, movimiento.moneda_id, movimiento.moneda)}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="font-semibold uppercase text-gray-400">Documento</p>
+                    <div className="mt-1 flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2">
+                      <span className="min-w-0 truncate font-medium text-gray-700">
+                        {movimiento.documento_numero || "-"}
+                      </span>
+                      {getDocumentoLink(movimiento)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-600">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {getGarantiaBadge(movimiento) || <span className="text-gray-400">Sin garantia</span>}
+                    <span className="font-semibold text-gray-700">{getUserName(movimiento)}</span>
+                  </div>
+                  <p className="mt-2 line-clamp-2">
+                    {[getProveedorLabel(movimiento), movimiento.observacion].filter(Boolean).join(" - ") || "-"}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="hidden overflow-x-auto lg:block">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
               <tr>
@@ -1512,9 +1605,12 @@ export default function InventarioMovimientos() {
 
       {salidaModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-lg bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 p-5">
-              <h2 className="text-lg font-bold text-gray-900">Registrar salida Kardex</h2>
+          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Registrar salida Kardex</h2>
+                <p className="text-xs text-gray-500">Registra la salida y, si aplica, selecciona las series exactas.</p>
+              </div>
               <button
                 type="button"
                 onClick={() => setSalidaModalOpen(false)}
@@ -1524,7 +1620,7 @@ export default function InventarioMovimientos() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
+            <div className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto px-5 py-4 md:grid-cols-2">
               <label className="text-sm font-semibold text-gray-600 md:col-span-2">
                 Producto
                 <select
@@ -1559,33 +1655,34 @@ export default function InventarioMovimientos() {
               )}
 
               {selectedSalidaProducto && salidaRequiereSeries && (
-                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 md:col-span-2">
-                  <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div className="rounded-xl border border-blue-100 bg-blue-50/80 p-3 md:col-span-2">
+                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-sm font-bold text-blue-900">Series que salen</p>
                       <p className="text-xs text-blue-700">
                         Selecciona {formatNumber(salidaForm.cantidad || 0)} serie(s). Estas series quedaran asociadas al movimiento.
                       </p>
                     </div>
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700">
+                    <span className="w-fit rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm">
                       {salidaSerieIds.length}/{Number(salidaForm.cantidad || 0)}
                     </span>
                   </div>
-                  <div className="grid max-h-52 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                  <div className="max-h-64 overflow-y-auto rounded-lg border border-blue-100 bg-white p-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {salidaSeriesDisponibles.map((serie) => (
                       <label
                         key={serie.id}
-                        className="flex cursor-pointer items-start gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-blue-50"
+                        className="flex min-w-0 cursor-pointer items-start gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm text-gray-700 transition hover:border-blue-200 hover:bg-blue-50"
                       >
                         <input
                           type="checkbox"
                           checked={salidaSerieIds.includes(Number(serie.id))}
                           onChange={() => toggleSalidaSerie(Number(serie.id))}
-                          className="mt-1"
+                          className="mt-1 h-4 w-4 shrink-0 rounded border-gray-300 text-blue-600"
                         />
                         <span className="min-w-0">
-                          <span className="block font-semibold">{serie.serie || `Serie #${serie.id}`}</span>
-                          <span className="block text-xs text-gray-500">
+                          <span className="block truncate font-semibold">{serie.serie || `Serie #${serie.id}`}</span>
+                          <span className="block truncate text-xs text-gray-500">
                             {[serie.factura_numero ? `Factura ${serie.factura_numero}` : null, serie.fecha_ingreso ? `Ingreso ${formatDateOnly(serie.fecha_ingreso)}` : null]
                               .filter(Boolean)
                               .join(" / ") || "Disponible"}
@@ -1593,6 +1690,12 @@ export default function InventarioMovimientos() {
                         </span>
                       </label>
                     ))}
+                    </div>
+                    {salidaSeriesDisponibles.length === 0 && (
+                      <div className="rounded-lg border border-dashed border-blue-100 bg-blue-50/60 px-3 py-4 text-center text-xs font-semibold text-blue-700">
+                        No hay series disponibles para este producto.
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1684,7 +1787,7 @@ export default function InventarioMovimientos() {
               </label>
             </div>
 
-            <div className="flex justify-end gap-3 border-t border-gray-200 p-5">
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-gray-200 bg-white px-5 py-4 sm:flex-row sm:justify-end sm:gap-3">
               <button
                 type="button"
                 onClick={() => setSalidaModalOpen(false)}

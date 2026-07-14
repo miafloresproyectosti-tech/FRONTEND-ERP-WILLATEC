@@ -100,7 +100,7 @@ export default function OrdenCompraDetail() {
 
       {/* TITULO */}
       <div className="bg-white p-6 rounded-2xl shadow">
-        <div className="flex justify-between items-start">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">
               Orden de Compra {oc.numero}
@@ -141,7 +141,30 @@ export default function OrdenCompraDetail() {
           <h2 className="font-semibold text-gray-700">Ítems</h2>
         </div>
 
-        <table className="w-full text-sm">
+        <div className="grid gap-3 p-4 md:hidden">
+          {oc.items.map((item) => (
+            <div key={item.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="font-bold text-gray-900">{item.producto}</p>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-400">Cantidad</p>
+                  <p className="mt-1 font-medium text-gray-700">{item.cantidad}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-400">Precio</p>
+                  <p className="mt-1 font-medium text-gray-700">S/ {item.precio}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-400">Subtotal</p>
+                  <p className="mt-1 font-bold text-green-700">S/ {(item.cantidad * item.precio).toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
+        <table className="w-full min-w-[620px] text-sm">
           <thead className="bg-gray-100 text-gray-600">
             <tr>
               <th className="text-left p-4">Producto</th>
@@ -164,6 +187,7 @@ export default function OrdenCompraDetail() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
     </div>

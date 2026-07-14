@@ -100,16 +100,18 @@ export default function Sidebar({
         className="
           bg-gray-950 text-white flex flex-col justify-between
           h-full
-          w-[290px]
-          p-5
+          w-[min(74vw,248px)] lg:w-[248px]
+          p-3 sm:p-4
           border-r border-gray-800
+          [&_nav_a]:px-3 [&_nav_a]:py-2.5
+          [&_nav_button]:px-3 [&_nav_button]:py-2.5
         "
       >
         {/* TOP */}
-        <div>
+        <div className="flex min-h-0 flex-col">
           {/* MOBILE CLOSE */}
           {mobile && (
-            <div className="flex justify-end mb-4 lg:hidden">
+            <div className="mb-3 flex justify-end lg:hidden">
               <button
                 onClick={onClose}
                 className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 transition"
@@ -120,16 +122,16 @@ export default function Sidebar({
           )}
 
           {/* LOGO */}
-          <div className="mb-10 flex justify-center">
+          <div className="mb-6 flex justify-center">
             <img
               src="/logoWILLATEC-white.png"
               alt="Willatec"
-              className="h-16 sm:h-20 object-contain"
+              className="h-12 object-contain sm:h-14"
             />
           </div>
 
           {/* MENU */}
-          <nav className="flex flex-col gap-2">
+          <nav className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
             {/* DASHBOARD */}
             {user?.role === "SUPERADMIN" && (
               <Link
@@ -192,7 +194,7 @@ export default function Sidebar({
 
                   {/* SUBMENU */}
                   {commercialOpen && (
-                    <div className="ml-4 mt-2 flex flex-col gap-2 border-l border-gray-800 pl-3">
+                    <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
                       {/* COTIZACIONES */}
                       <Link
                         to="/cotizaciones"
@@ -442,13 +444,13 @@ export default function Sidebar({
           {/* USER */}
           <div
             onMouseEnter={handleMouseEnter}
-            className="w-full bg-gray-900 hover:bg-gray-800 rounded-2xl p-4 mt-4 transition relative z-10 cursor-pointer"
+            className="relative z-10 mt-4 w-full cursor-pointer rounded-2xl bg-gray-900 p-3 transition hover:bg-gray-800"
           >
             <button
               onClick={() => setProfileModalOpen(true)}
               className="w-full flex items-center gap-3 hover:opacity-80 transition"
             >
-              <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center font-bold text-lg">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-base font-bold">
                 {user?.name?.charAt(0).toUpperCase() || "M"}
               </div>
 

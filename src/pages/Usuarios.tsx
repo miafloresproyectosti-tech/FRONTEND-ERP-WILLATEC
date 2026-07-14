@@ -279,9 +279,9 @@ export default function Usuarios() {
   return (
     <div className="space-y-6 p-6">
       {/* HEADER */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">
+          <h1 className="text-2xl font-bold text-gray-800 sm:text-3xl">
             Usuarios
           </h1>
           <p className="text-gray-500 mt-1">
@@ -292,17 +292,18 @@ export default function Usuarios() {
         {canAddUser && (
           <button
             onClick={handleNuevo}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl sm:h-auto sm:w-auto sm:gap-2 sm:px-5 sm:py-3"
+            title="Nuevo Usuario"
           >
             <Plus size={20} />
-            Nuevo Usuario
+            <span className="hidden sm:inline">Nuevo Usuario</span>
           </button>
         )}
       </div>
 
       {/* BUSCADOR Y FILTRO */}
       <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-200">
-        <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex flex-col gap-4 md:flex-row">
           <div className="flex items-center gap-3 bg-gray-100 px-4 py-3 rounded-2xl flex-1">
             <Search size={18} className="text-gray-500 flex-shrink-0" />
             <input
@@ -313,12 +314,12 @@ export default function Usuarios() {
               className="bg-transparent outline-none w-full text-sm"
             />
           </div>
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-semibold text-gray-700">Filtrar por Estado:</label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <label className="text-sm font-semibold text-gray-700">Estado</label>
             <select
               value={filterEstado}
               onChange={(e) => setFilterEstado(e.target.value)}
-              className="px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+              className="w-full rounded-2xl border-2 border-gray-200 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 sm:w-44"
             >
               <option value="">Todos</option>
               <option value="activo">Activo</option>
@@ -331,18 +332,98 @@ export default function Usuarios() {
       {/* TABLA */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex items-center justify-center py-12 xl:hidden">
             <Loader2 size={32} className="animate-spin text-blue-600" />
             <span className="ml-3 text-gray-600">Cargando usuarios...</span>
           </div>
         ) : (
-          <table className="w-full">
+          <div className="grid gap-3 p-4 xl:hidden">
+            {currentItems.length > 0 ? (
+              currentItems.map((u) => (
+                <div key={u.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate font-bold text-gray-900">{u.name}</h3>
+                      <p className="truncate text-sm text-gray-500">{u.email}</p>
+                      {u.cargo && <p className="truncate text-xs text-gray-400">{u.cargo}</p>}
+                    </div>
+                    <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                      u.status === 'activo'
+                        ? 'border-green-200 bg-green-100 text-green-700'
+                        : 'border-red-200 bg-red-100 text-red-700'
+                    }`}>
+                      {u.status}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 rounded-xl bg-gray-50 px-3 py-2 text-sm">
+                    <p className="text-xs font-semibold uppercase text-gray-400">Rol</p>
+                    <p className="mt-1 font-medium text-gray-700">{u.role}</p>
+                  </div>
+
+                  {canAddUser && (
+                    <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
+                      <button
+                        onClick={() => handleEditar(u)}
+                        className="inline-flex h-11 items-center justify-center gap-1 rounded-xl bg-blue-100 text-sm font-semibold text-blue-700 hover:bg-blue-200"
+                        title="Editar"
+                      >
+                        <Pencil size={16} />
+                        <span className="hidden sm:inline">Editar</span>
+                      </button>
+                      <button
+                        onClick={() => handleEliminar(u)}
+                        className="inline-flex h-11 items-center justify-center gap-1 rounded-xl bg-red-100 text-sm font-semibold text-red-700 hover:bg-red-200"
+                        title="Eliminar"
+                      >
+                        <Trash2 size={16} />
+                        <span className="hidden sm:inline">Eliminar</span>
+                      </button>
+                      <button
+                        onClick={async () => {
+                          try{
+                            const res = await resetPassword(u.id);
+                            const temp = res?.temporary_password || res?.password || res?.temporay_password || null;
+                            setTempPassword(temp);
+                            setShowTempModal(true);
+                            showToast({ title: 'Contraseña generada', description: 'Se generó una contraseña temporal', type: 'info' });
+                          }catch(err){
+                            console.error('Error al resetear contraseña', err);
+                            showToast({ title: 'Error', description: 'No se pudo resetear la contraseña', type: 'warning' });
+                          }
+                        }}
+                        className="inline-flex h-11 items-center justify-center gap-1 rounded-xl bg-yellow-100 text-sm font-semibold text-yellow-700 hover:bg-yellow-200"
+                        title="Resetear contraseña"
+                      >
+                        <Key size={16} />
+                        <span className="hidden sm:inline">Reset</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-10 text-center text-gray-500">
+                {searchTerm || filterEstado ? 'No se encontraron usuarios' : 'No hay usuarios'}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="hidden overflow-x-auto xl:block">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 size={32} className="animate-spin text-blue-600" />
+              <span className="ml-3 text-gray-600">Cargando usuarios...</span>
+            </div>
+          ) : (
+          <table className="w-full min-w-[760px]">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">Usuario</th>
                 <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">Rol</th>
                 <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">Estado</th>
-                <th className="text-center px-6 py-4 text-sm font-semibold text-gray-600">Acciones</th>
+                <th className="sticky right-0 z-10 bg-gray-50 text-center px-6 py-4 text-sm font-semibold text-gray-600 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)]">Acciones</th>
               </tr>
             </thead>
 
@@ -368,7 +449,7 @@ export default function Usuarios() {
                       </span>
                     </td>
 
-                    <td className="px-6 py-5">
+                    <td className="sticky right-0 bg-white px-6 py-5 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)]">
                       {canAddUser && (
                         <div className="flex items-center justify-center gap-2">
                           <button
@@ -420,16 +501,17 @@ export default function Usuarios() {
             </tbody>
           </table>
         )}
+        </div>
 
         {/* PAGINACION */}
         {totalPages > 1 && (
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-gray-600">
                 Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, usuariosFiltrados.length)} de {usuariosFiltrados.length} usuarios
               </div>
 
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1">
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}

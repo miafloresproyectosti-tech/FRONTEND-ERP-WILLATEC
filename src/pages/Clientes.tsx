@@ -311,9 +311,9 @@ export default function Clientes() {
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">
+          <h1 className="text-2xl font-bold text-gray-800 sm:text-3xl">
             Clientes
           </h1>
           <p className="text-gray-500 mt-1">
@@ -323,10 +323,11 @@ export default function Clientes() {
 
         <button
           onClick={handleNuevo}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl sm:h-auto sm:w-auto sm:gap-2 sm:px-5 sm:py-3"
+          title="Nuevo Cliente"
         >
           <Plus size={20} />
-          Nuevo Cliente
+          <span className="hidden sm:inline">Nuevo Cliente</span>
         </button>
       </div>
 
@@ -378,7 +379,88 @@ export default function Clientes() {
 
       {/* Tabla */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
-        <table className="w-full">
+        {loading ? (
+          <div className="flex items-center justify-center gap-3 px-6 py-12 text-gray-500 lg:hidden">
+            <Loader2 className="animate-spin" size={18} />
+            Cargando clientes...
+          </div>
+        ) : currentItems.length > 0 ? (
+          <div className="grid gap-3 p-4 lg:hidden">
+            {currentItems.map((cliente) => (
+              <div key={cliente.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate font-bold text-gray-900">{cliente.nombre}</h3>
+                    <p className="mt-1 text-sm text-gray-500">RUC {cliente.ruc || "-"}</p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${cliente.estado === "activo"
+                        ? "border-green-200 bg-green-100 text-green-700"
+                        : "border-red-200 bg-red-100 text-red-700"
+                      }`}
+                  >
+                    {cliente.estado}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid gap-2 text-sm text-gray-600">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Mail size={15} className="shrink-0 text-gray-400" />
+                    <span className="truncate">{cliente.correo || "-"}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Phone size={15} className="shrink-0 text-gray-400" />
+                    <span>{cliente.telefono || "-"}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 pt-1 text-xs">
+                    <div>
+                      <p className="font-semibold uppercase text-gray-400">Tipo</p>
+                      <p className="mt-1 font-medium text-gray-700">{getTipoClienteLabel(cliente)}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold uppercase text-gray-400">Moneda</p>
+                      <p className="mt-1 font-medium text-gray-700">{getMonedaLabel(cliente)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2 border-t border-gray-100 pt-3">
+                  <button
+                    onClick={() => handleEditar(cliente)}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-100 text-sm font-semibold text-blue-700 hover:bg-blue-200"
+                  >
+                    <Pencil size={16} />
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => setClienteAEliminar(cliente)}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-100 text-sm font-semibold text-red-700 hover:bg-red-200"
+                  >
+                    <Trash2 size={16} />
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="px-6 py-12 text-center text-gray-500 lg:hidden">
+            {searchTerm || filterEstado !== "todos" || filterTipoCliente !== "todos" ? "No se encontraron clientes" : "No hay clientes"}
+          </div>
+        )}
+
+        <div className="hidden overflow-x-auto lg:block">
+        <table className="w-full min-w-[1060px] table-fixed">
+          <colgroup>
+            <col className="w-[18%]" />
+            <col className="w-[11%]" />
+            <col className="w-[20%]" />
+            <col className="w-[11%]" />
+            <col className="w-[10%]" />
+            <col className="w-[12%]" />
+            <col className="w-[10%]" />
+            <col className="w-[118px]" />
+          </colgroup>
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
@@ -402,7 +484,7 @@ export default function Clientes() {
               <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                 Moneda
               </th>
-              <th className="text-center px-6 py-4 text-sm font-semibold text-gray-600">
+              <th className="sticky right-0 z-10 bg-gray-50 text-center px-4 py-4 text-sm font-semibold text-gray-600 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)]">
                 Acciones
               </th>
             </tr>
@@ -426,7 +508,7 @@ export default function Clientes() {
                 >
                   <td className="px-6 py-5">
                     <div>
-                      <h3 className="font-semibold text-gray-800">
+                      <h3 className="truncate font-semibold text-gray-800" title={cliente.nombre}>
                         {cliente.nombre}
                       </h3>
                     </div>
@@ -466,18 +548,22 @@ export default function Clientes() {
                   </td>
 
                   <td className="px-6 py-5 text-gray-600">
-                    {getTipoClienteLabel(cliente)}
+                    <span className="block truncate" title={getTipoClienteLabel(cliente)}>
+                      {getTipoClienteLabel(cliente)}
+                    </span>
                   </td>
 
-                  <td className="px-6 py-5 text-gray-600">
-                    {getMonedaLabel(cliente)}
+                  <td className="px-4 py-5 text-gray-600">
+                    <span className="block truncate" title={getMonedaLabel(cliente)}>
+                      {getMonedaLabel(cliente)}
+                    </span>
                   </td>
 
-                  <td className="px-6 py-5">
+                  <td className="sticky right-0 bg-white px-4 py-5 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)]">
                     <div className="flex items-center justify-center gap-2">
                       <button
                         onClick={() => handleEditar(cliente)}
-                        className="w-11 h-11 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                        className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
                         title="Editar"
                       >
                         <Pencil size={18} />
@@ -485,7 +571,7 @@ export default function Clientes() {
 
                       <button
                         onClick={() => setClienteAEliminar(cliente)}
-                        className="w-11 h-11 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                        className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
                         title="Eliminar"
                       >
                         <Trash2 size={18} />
@@ -503,16 +589,17 @@ export default function Clientes() {
             )}
           </tbody>
         </table>
+        </div>
 
         {/* PAGINACION */}
         {totalPages > 1 && (
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-gray-600">
                 Mostrando página {currentPage} de {totalPages} — {totalClientes} clientes
               </div>
 
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1">
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
