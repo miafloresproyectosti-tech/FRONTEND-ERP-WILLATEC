@@ -8,6 +8,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Eye,
   Loader2,
   PackageCheck,
   List,
@@ -167,6 +168,43 @@ const getProductoCurrencySymbol = (item: ProductoUI | Producto) => {
   return "S/.";
 };
 
+const getSerieEstadoBadge = (estado?: string | null) => {
+  const normalized = String(estado || "sin_estado").toLowerCase();
+
+  if (normalized === "disponible") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (["vendido", "entregado"].includes(normalized)) return "border-blue-200 bg-blue-50 text-blue-700";
+  if (["reservado", "en_reserva"].includes(normalized)) return "border-amber-200 bg-amber-50 text-amber-700";
+  if (["en_uso", "prestado"].includes(normalized)) return "border-indigo-200 bg-indigo-50 text-indigo-700";
+  if (["garantia", "en_garantia"].includes(normalized)) return "border-purple-200 bg-purple-50 text-purple-700";
+  if (["devuelto", "devolucion"].includes(normalized)) return "border-cyan-200 bg-cyan-50 text-cyan-700";
+  if (["baja", "merma", "danado", "dañado", "no_disponible", "otro"].includes(normalized)) return "border-red-200 bg-red-50 text-red-700";
+
+  return "border-gray-200 bg-gray-50 text-gray-700";
+};
+
+const getSerieEstadoLabel = (estado?: string | null) => {
+  const normalized = String(estado || "").toLowerCase();
+
+  if (normalized === "en_uso") return "En uso";
+  if (normalized === "no_disponible" || normalized === "otro") return "No disponible";
+
+  return String(estado || "Sin estado")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
+
+const getSerieSalidaMotivoLabel = (estado?: string | null) => {
+  const normalized = String(estado || "").toLowerCase();
+
+  if (normalized === "en_uso") return "Uso interno";
+  if (normalized === "prestado") return "Prestamo";
+  if (normalized === "garantia") return "Garantia";
+  if (["baja", "merma"].includes(normalized)) return "Merma / baja";
+  if (normalized === "no_disponible" || normalized === "otro") return "Otro";
+
+  return null;
+};
+
 const getExternalItemPricingSuffix = (item: ExternalItem) =>
   Number(item.moneda_id || 1) === 1 && item.precio_incluye_igv ? " incl. IGV" : "";
 
@@ -287,6 +325,7 @@ export default function Productos() {
   const [productoAEliminar, setProductoAEliminar] =
     useState<ProductoUI | null>(null);
   const [productoSeriesModal, setProductoSeriesModal] = useState<ProductoUI | null>(null);
+  const [productoDetalleModal, setProductoDetalleModal] = useState<ProductoUI | null>(null);
 
   // Estados para editar items externos
   const [editingExternalItem, setEditingExternalItem] =
@@ -1303,7 +1342,15 @@ export default function Productos() {
                           </button>
                         </div>
                       ) : (
-                        <span className="block rounded-xl bg-gray-50 px-3 py-2 text-center text-xs font-semibold text-gray-400">Solo lectura</span>
+                        <button
+                          type="button"
+                          onClick={() => setProductoDetalleModal(item)}
+                          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                          title="Ver detalle del producto"
+                        >
+                          <Eye size={16} />
+                          Ver detalle
+                        </button>
                       )
                     ) : (
                       <div className="grid grid-cols-3 gap-2">
@@ -1541,9 +1588,16 @@ export default function Productos() {
                             </button>
                           </div>
                         ) : (
-                          <span className="block text-center text-xs font-semibold text-gray-400">
-                            Solo lectura
-                          </span>
+                          <div className="flex items-center justify-center">
+                            <button
+                              type="button"
+                              onClick={() => setProductoDetalleModal(item)}
+                              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 shadow-sm transition hover:bg-slate-200 hover:scale-105"
+                              title="Ver detalle del producto"
+                            >
+                              <Eye size={18} />
+                            </button>
+                          </div>
                         )}
                       </td>
                     </>
@@ -1791,6 +1845,140 @@ export default function Productos() {
         </div>
       )}
 
+      {productoDetalleModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
+            <div className="flex items-start justify-between px-6 py-5 border-b border-gray-100">
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold text-gray-900">Detalle del producto</h2>
+                <p className="truncate text-sm text-gray-500">
+                  {productoDetalleModal.nombre} #{productoDetalleModal.codigo || productoDetalleModal.id}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProductoDetalleModal(null)}
+                className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="max-h-[75vh] overflow-y-auto p-6">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-[180px_minmax(0,1fr)]">
+                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                  {productoDetalleModal.imagen ? (
+                    <img
+                      src={productoDetalleModal.imagen}
+                      alt=""
+                      className="mx-auto h-32 w-32 rounded-xl border border-gray-200 bg-white object-contain"
+                    />
+                  ) : (
+                    <div className="flex h-32 w-full items-center justify-center rounded-xl border border-dashed border-gray-200 bg-white text-xs font-semibold text-gray-400">
+                      Sin imagen
+                    </div>
+                  )}
+                  <span
+                    className={`mt-4 inline-flex w-full justify-center rounded-full border px-3 py-1 text-xs font-semibold ${
+                      productoDetalleModal.estado === "usado"
+                        ? "border-amber-200 bg-amber-100 text-amber-700"
+                        : "border-green-200 bg-green-100 text-green-700"
+                    }`}
+                  >
+                    {productoDetalleModal.estado === "usado" ? "Usado" : "Nuevo"}
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl bg-gray-50 p-3">
+                      <p className="text-xs font-semibold uppercase text-gray-400">Stock actual</p>
+                      <p className="mt-1 text-lg font-bold text-gray-900">{Number(productoDetalleModal.stock_actual ?? productoDetalleModal.stock ?? 0).toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-xl bg-amber-50 p-3">
+                      <p className="text-xs font-semibold uppercase text-amber-700">Reservado</p>
+                      <p className="mt-1 text-lg font-bold text-amber-800">{Number(productoDetalleModal.stock_reservado ?? 0).toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-xl bg-emerald-50 p-3">
+                      <p className="text-xs font-semibold uppercase text-emerald-700">Disponible</p>
+                      <p className="mt-1 text-lg font-bold text-emerald-800">{Number(productoDetalleModal.stock_disponible ?? productoDetalleModal.stock ?? 0).toLocaleString()}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-gray-100 p-3">
+                      <p className="text-xs font-semibold uppercase text-gray-400">Categoria</p>
+                      <p className="mt-1 font-semibold text-gray-800">{productoDetalleModal.categoria_label || "-"}</p>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 p-3">
+                      <p className="text-xs font-semibold uppercase text-gray-400">Precio</p>
+                      <p className="mt-1 font-semibold text-gray-800">
+                        {getProductoCurrencySymbol(productoDetalleModal)} {Number(productoDetalleModal.precio_referencial || "0").toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 p-3">
+                      <p className="text-xs font-semibold uppercase text-gray-400">Marca / Modelo</p>
+                      <p className="mt-1 font-semibold text-gray-800">{[productoDetalleModal.marca, productoDetalleModal.modelo].filter(Boolean).join(" / ") || "-"}</p>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 p-3">
+                      <p className="text-xs font-semibold uppercase text-gray-400">Factura</p>
+                      <p className="mt-1 font-semibold text-gray-800">{productoDetalleModal.factura_numero || "-"}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-100 p-3">
+                    <p className="text-xs font-semibold uppercase text-gray-400">Descripcion</p>
+                    <p className="mt-1 text-sm text-gray-700">{productoDetalleModal.descripcion || "Sin descripcion"}</p>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-100 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase text-gray-400">Series</p>
+                      {(productoDetalleModal.series?.length || productoDetalleModal.serie) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProductoSeriesModal(productoDetalleModal);
+                            setProductoDetalleModal(null);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                        >
+                          <List size={13} />
+                          Ver series
+                        </button>
+                      )}
+                    </div>
+                    {(productoDetalleModal.series?.length || productoDetalleModal.serie) ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {(productoDetalleModal.series?.length
+                          ? productoDetalleModal.series
+                          : [{ id: productoDetalleModal.id, serie: productoDetalleModal.serie, estado: productoDetalleModal.estado }]
+                        ).slice(0, 6).map((serie) => (
+                          <span
+                            key={serie.id}
+                            className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold ${getSerieEstadoBadge(serie.estado)}`}
+                          >
+                            <span className="max-w-[160px] truncate">{serie.serie || `Serie #${serie.id}`}</span>
+                            <span className="text-[10px] opacity-80">{getSerieEstadoLabel(serie.estado)}</span>
+                          </span>
+                        ))}
+                        {Number(productoDetalleModal.series?.length || 0) > 6 && (
+                          <span className="rounded-full bg-gray-50 px-2 py-1 text-xs font-semibold text-gray-500">
+                            +{Number(productoDetalleModal.series?.length || 0) - 6}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-sm text-gray-500">Sin series registradas</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {productoSeriesModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
@@ -1858,20 +2046,24 @@ export default function Productos() {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                              {serie.estado || "disponible"}
+                            <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${getSerieEstadoBadge(serie.estado)}`}>
+                              {getSerieEstadoLabel(serie.estado || "disponible")}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-gray-700">{serie.fecha_ingreso || "-"}</td>
                           <td className="px-4 py-3 text-gray-700">
                             <div>{serie.fecha_salida || "-"}</div>
-                            {(serie.oc_recibida_id || serie.cotizacion_item_id) && (
+                            {(serie.oc_recibida_id || serie.cotizacion_item_id) ? (
                               <div className="text-xs text-gray-500">
                                 {[serie.oc_recibida_id ? `OC #${serie.oc_recibida_id}` : null, serie.cotizacion_item_id ? `Item #${serie.cotizacion_item_id}` : null]
                                   .filter(Boolean)
                                   .join(" / ")}
                               </div>
-                            )}
+                            ) : serie.fecha_salida && getSerieSalidaMotivoLabel(serie.estado) ? (
+                              <div className="text-xs text-gray-500">
+                                Salida manual: {getSerieSalidaMotivoLabel(serie.estado)}
+                              </div>
+                            ) : null}
                           </td>
                         </tr>
                       ))}

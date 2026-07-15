@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Eye,
   FileText,
   FilePlus2,
   Filter,
@@ -158,6 +159,14 @@ const getProductLabel = (movimiento: InventarioMovimiento) => {
   return product.nombre || product.sku || product.codigo || `Producto #${product.id}`;
 };
 
+const getProductoOptionLabel = (producto: ProductoInventarioOption) =>
+  [
+    producto.nombre,
+    producto.sku || producto.codigo ? `(${[producto.sku, producto.codigo].filter(Boolean).join(" / ")})` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
 const getProveedorLabel = (movimiento: InventarioMovimiento) =>
   movimiento.proveedor_catalogo?.nombre || movimiento.proveedor || "";
 
@@ -225,10 +234,51 @@ const getTipoBadge = (tipo: string) => {
   return "bg-gray-50 text-gray-700 border-gray-200";
 };
 
+const getSerieEstadoBadge = (estado?: string | null) => {
+  const normalized = String(estado || "sin_estado").toLowerCase();
+
+  if (normalized === "disponible") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (["vendido", "entregado"].includes(normalized)) return "border-blue-200 bg-blue-50 text-blue-700";
+  if (["reservado", "en_reserva"].includes(normalized)) return "border-amber-200 bg-amber-50 text-amber-700";
+  if (["en_uso", "prestado"].includes(normalized)) return "border-indigo-200 bg-indigo-50 text-indigo-700";
+  if (["garantia", "en_garantia"].includes(normalized)) return "border-purple-200 bg-purple-50 text-purple-700";
+  if (["devuelto", "devolucion"].includes(normalized)) return "border-cyan-200 bg-cyan-50 text-cyan-700";
+  if (["baja", "merma", "danado", "dañado", "no_disponible", "otro"].includes(normalized)) return "border-red-200 bg-red-50 text-red-700";
+
+  return "border-gray-200 bg-gray-50 text-gray-700";
+};
+
+const getSerieEstadoLabel = (estado?: string | null) => {
+  const normalized = String(estado || "").toLowerCase();
+
+  if (normalized === "en_uso") return "En uso";
+  if (normalized === "no_disponible" || normalized === "otro") return "No disponible";
+
+  return String(estado || "Sin estado")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
+
+const getMovimientoSeries = (movimiento: InventarioMovimiento) => {
+  const series = [
+    ...(movimiento.producto_series ?? []),
+    ...(movimiento.producto_serie ? [movimiento.producto_serie] : []),
+  ];
+  const seen = new Set<string>();
+
+  return series.filter((serie) => {
+    const key = String(serie.id ?? serie.serie ?? "");
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
 export default function InventarioMovimientos() {
   const facturaInputRef = useRef<HTMLInputElement | null>(null);
   const salidaDocumentoInputRef = useRef<HTMLInputElement | null>(null);
   const [movimientos, setMovimientos] = useState<InventarioMovimiento[]>([]);
+  const [selectedMovimiento, setSelectedMovimiento] = useState<InventarioMovimiento | null>(null);
   const [productos, setProductos] = useState<ProductoInventarioOption[]>([]);
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [meta, setMeta] = useState<InventarioMovimientoPagination>(emptyMeta);
@@ -238,6 +288,8 @@ export default function InventarioMovimientos() {
   const [error, setError] = useState<string | null>(null);
   const [entradaModalOpen, setEntradaModalOpen] = useState(false);
   const [salidaModalOpen, setSalidaModalOpen] = useState(false);
+  const [salidaProductoSearch, setSalidaProductoSearch] = useState("");
+  const [salidaProductoResultsOpen, setSalidaProductoResultsOpen] = useState(false);
   const [proveedoresModalOpen, setProveedoresModalOpen] = useState(false);
   const [entradaForm, setEntradaForm] = useState({
     producto_id: "",
@@ -322,6 +374,31 @@ export default function InventarioMovimientos() {
     [selectedSalidaProducto],
   );
   const salidaRequiereSeries = salidaSeriesDisponibles.length > 0;
+
+  const filteredSalidaProductos = useMemo(() => {
+    const term = salidaProductoSearch.trim().toLowerCase();
+
+    if (!term) return productos.slice(0, 10);
+
+    return productos
+      .filter((producto) => {
+        const series = producto.series?.map((serie) => serie.serie).filter(Boolean).join(" ") || "";
+
+        return [
+          producto.nombre,
+          producto.sku,
+          producto.codigo,
+          producto.serie,
+          producto.marca,
+          producto.modelo,
+          producto.moneda?.codigo,
+          series,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(term));
+      })
+      .slice(0, 10);
+  }, [productos, salidaProductoSearch]);
 
   const nextProductoCodigo = useMemo(() => {
     const maxCodigo = productos.reduce((max, producto) => {
@@ -434,7 +511,11 @@ export default function InventarioMovimientos() {
   };
 
   const handleSalidaProductoChange = (productoId: string) => {
+    const producto = productos.find((item) => item.id === Number(productoId));
+
     setSalidaForm((current) => ({ ...current, producto_id: productoId }));
+    setSalidaProductoSearch(producto ? getProductoOptionLabel(producto) : "");
+    setSalidaProductoResultsOpen(false);
     setSalidaSerieIds([]);
   };
 
@@ -677,6 +758,8 @@ export default function InventarioMovimientos() {
         observacion: "",
       });
       setSalidaSerieIds([]);
+      setSalidaProductoSearch("");
+      setSalidaProductoResultsOpen(false);
       setSalidaDocumento(null);
       if (salidaDocumentoInputRef.current) {
         salidaDocumentoInputRef.current.value = "";
@@ -729,7 +812,11 @@ export default function InventarioMovimientos() {
             Proveedores
           </button>
           <button
-            onClick={() => setSalidaModalOpen(true)}
+            onClick={() => {
+              setSalidaProductoSearch(selectedSalidaProducto ? getProductoOptionLabel(selectedSalidaProducto) : "");
+              setSalidaProductoResultsOpen(false);
+              setSalidaModalOpen(true);
+            }}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
           >
             <Upload className="h-4 w-4 rotate-90" />
@@ -995,17 +1082,27 @@ export default function InventarioMovimientos() {
 
                 <div className="mt-3 rounded-xl bg-gray-50 p-3 text-xs">
                   <p className="mb-2 font-semibold uppercase text-gray-400">Series</p>
-                  <p className="font-medium text-gray-700">
-                    {[
-                      ...(movimiento.producto_series ?? []),
-                      ...(movimiento.producto_serie ? [movimiento.producto_serie] : []),
-                    ]
-                      .map((serie) => serie.serie)
-                      .filter(Boolean)
-                      .filter((serie, index, series) => series.indexOf(serie) === index)
-                      .slice(0, 4)
-                      .join(", ") || "-"}
-                  </p>
+                  {getMovimientoSeries(movimiento).length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {getMovimientoSeries(movimiento).slice(0, 4).map((serie) => (
+                        <span
+                          key={serie.id ?? serie.serie}
+                          className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold ${getSerieEstadoBadge(serie.estado)}`}
+                          title={getSerieEstadoLabel(serie.estado)}
+                        >
+                          <span className="max-w-[160px] truncate">{serie.serie || `Serie #${serie.id}`}</span>
+                          <span className="text-[10px] opacity-80">{getSerieEstadoLabel(serie.estado)}</span>
+                        </span>
+                      ))}
+                      {getMovimientoSeries(movimiento).length > 4 && (
+                        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-gray-500">
+                          +{getMovimientoSeries(movimiento).length - 4}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="font-medium text-gray-700">-</p>
+                  )}
                 </div>
 
                 <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-gray-50 p-3 text-center text-xs">
@@ -1052,25 +1149,48 @@ export default function InventarioMovimientos() {
                     {[getProveedorLabel(movimiento), movimiento.observacion].filter(Boolean).join(" - ") || "-"}
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMovimiento(movimiento)}
+                  className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                  title="Ver detalle del movimiento"
+                >
+                  <Eye className="h-4 w-4" />
+                  Ver detalle
+                </button>
               </div>
             ))}
           </div>
         )}
 
         <div className="hidden overflow-x-auto lg:block">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <table className="w-full min-w-[1720px] table-fixed divide-y divide-gray-200 text-sm">
+            <colgroup>
+              <col className="w-[130px]" />
+              <col className="w-[240px]" />
+              <col className="w-[190px]" />
+              <col className="w-[120px]" />
+              <col className="w-[205px]" />
+              <col className="w-[135px]" />
+              <col className="w-[170px]" />
+              <col className="w-[150px]" />
+              <col className="w-[180px]" />
+              <col className="w-[260px]" />
+              <col className="w-[70px]" />
+            </colgroup>
             <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
               <tr>
-                <th className="px-4 py-3">Fecha</th>
-                <th className="px-4 py-3">Producto</th>
-                <th className="px-4 py-3">Serie</th>
-                <th className="px-4 py-3">Tipo</th>
-                <th className="px-4 py-3">Documento</th>
-                <th className="px-4 py-3 text-right">Cantidades</th>
-                <th className="px-4 py-3 text-right">Valores</th>
-                <th className="px-4 py-3">Garantia</th>
-                <th className="px-4 py-3">Usuario</th>
-                <th className="px-4 py-3">Observacion</th>
+                <th className="px-3 py-3">Fecha</th>
+                <th className="px-3 py-3">Producto</th>
+                <th className="px-3 py-3">Serie</th>
+                <th className="px-3 py-3">Tipo</th>
+                <th className="px-3 py-3">Documento</th>
+                <th className="px-3 py-3 text-right">Cantidades</th>
+                <th className="px-3 py-3 text-right">Valores</th>
+                <th className="px-3 py-3">Garantia</th>
+                <th className="px-3 py-3">Usuario</th>
+                <th className="px-3 py-3">Observacion</th>
+                <th className="px-3 py-3 text-center">Ver</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -1089,52 +1209,61 @@ export default function InventarioMovimientos() {
                 </tr>
               ) : (
                 movimientos.map((movimiento) => (
-                  <tr key={movimiento.id} className="hover:bg-gray-50">
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-700">
+                  <tr key={movimiento.id} className="align-top hover:bg-gray-50">
+                    <td className="whitespace-nowrap px-3 py-3 text-xs text-gray-700">
                       {formatDate(movimiento.created_at)}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-gray-900">{getProductLabel(movimiento)}</div>
-                      <div className="text-xs text-gray-500">
+                    <td className="px-3 py-3">
+                      <div className="truncate font-semibold text-gray-900" title={getProductLabel(movimiento)}>
+                        {getProductLabel(movimiento)}
+                      </div>
+                      <div className="truncate text-xs text-gray-500">
                         {[movimiento.producto?.sku, movimiento.producto?.codigo]
                           .filter(Boolean)
                         .join(" / ") || `ID ${movimiento.producto_id}`}
                       </div>
                     </td>
-                    <td className="px-4 py-3 font-semibold text-gray-700">
-                      {[
-                        ...(movimiento.producto_series ?? []),
-                        ...(movimiento.producto_serie ? [movimiento.producto_serie] : []),
-                      ]
-                        .map((serie) => serie.serie)
-                        .filter(Boolean)
-                        .filter((serie, index, series) => series.indexOf(serie) === index)
-                        .slice(0, 3)
-                        .join(", ") || "-"}
-                      {Number(movimiento.producto_series?.length || 0) > 3 && (
-                        <span className="ml-1 text-xs text-gray-500">
-                          +{Number(movimiento.producto_series?.length || 0) - 3}
-                        </span>
+                    <td className="px-3 py-3">
+                      {getMovimientoSeries(movimiento).length > 0 ? (
+                        <div className="flex max-w-full flex-wrap gap-1.5">
+                          {getMovimientoSeries(movimiento).slice(0, 3).map((serie) => (
+                            <span
+                              key={serie.id ?? serie.serie}
+                              className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold ${getSerieEstadoBadge(serie.estado)}`}
+                              title={getSerieEstadoLabel(serie.estado)}
+                            >
+                              <span className="max-w-[110px] truncate">{serie.serie || `Serie #${serie.id}`}</span>
+                              <span className="text-[10px] opacity-80">{getSerieEstadoLabel(serie.estado)}</span>
+                            </span>
+                          ))}
+                          {getMovimientoSeries(movimiento).length > 3 && (
+                            <span className="rounded-full bg-gray-50 px-2 py-1 text-[11px] font-semibold text-gray-500">
+                              +{getMovimientoSeries(movimiento).length - 3}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="font-semibold text-gray-400">-</span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${getTipoBadge(movimiento.tipo_movimiento)}`}>
                         {getTipoLabel(movimiento.tipo_movimiento)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">
+                    <td className="px-3 py-3 text-gray-700">
                       <div className="flex items-start gap-2">
                         <FileText className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                         <div className="min-w-0">
-                          <div className="font-semibold">{movimiento.documento_numero || "-"}</div>
-                          <div className="text-xs text-gray-500">
+                          <div className="truncate font-semibold" title={movimiento.documento_numero || ""}>{movimiento.documento_numero || "-"}</div>
+                          <div className="truncate text-xs text-gray-500">
                             {[movimiento.documento_tipo, movimiento.fecha_documento].filter(Boolean).join(" / ")}
                           </div>
                           <div className="mt-1">{getDocumentoLink(movimiento)}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-3 py-3 text-right">
                       <div className="space-y-1 text-xs">
                         <div className="flex justify-end gap-2">
                           <span className="text-gray-500">Entrada</span>
@@ -1150,7 +1279,7 @@ export default function InventarioMovimientos() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-3 py-3 text-right">
                       <div className="space-y-1 text-xs">
                         <div className="flex justify-end gap-2">
                           <span className="text-gray-500">Costo</span>
@@ -1172,22 +1301,32 @@ export default function InventarioMovimientos() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">
+                    <td className="px-3 py-3 text-gray-700">
                       {getGarantiaBadge(movimiento) || <span className="text-gray-400">-</span>}
                     </td>
-                    <td className="px-4 py-3 text-gray-700">
-                      <div className="font-semibold">{getUserName(movimiento)}</div>
+                    <td className="px-3 py-3 text-gray-700">
+                      <div className="truncate font-semibold" title={getUserName(movimiento)}>{getUserName(movimiento)}</div>
                       {movimiento.created_by?.email && (
-                        <div className="text-xs text-gray-500">{movimiento.created_by.email}</div>
+                        <div className="truncate text-xs text-gray-500" title={movimiento.created_by.email}>{movimiento.created_by.email}</div>
                       )}
                     </td>
-                    <td className="max-w-[260px] px-4 py-3 text-gray-600">
+                    <td className="px-3 py-3 text-gray-600">
                       <span className="line-clamp-2" title={movimiento.observacion || ""}>
                         {[getProveedorLabel(movimiento), movimiento.observacion].filter(Boolean).join(" - ") || "-"}
                       </span>
-                      <div className="mt-1 text-xs text-gray-400">
+                      <div className="mt-1 truncate text-xs text-gray-400">
                         {[movimiento.origen, movimiento.referencia_tipo, movimiento.referencia_id].filter(Boolean).join(" / ")}
                       </div>
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMovimiento(movimiento)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 shadow-sm transition hover:bg-slate-200 hover:scale-105"
+                        title="Ver detalle del movimiento"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -1622,6 +1761,113 @@ export default function InventarioMovimientos() {
         </div>
       )}
 
+      {selectedMovimiento && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex shrink-0 items-start justify-between border-b border-gray-200 px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Detalle del movimiento</h2>
+                <p className="text-xs text-gray-500">
+                  {getProductLabel(selectedMovimiento)} - {formatDate(selectedMovimiento.created_at)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedMovimiento(null)}
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto px-5 py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getTipoBadge(selectedMovimiento.tipo_movimiento)}`}>
+                  {getTipoLabel(selectedMovimiento.tipo_movimiento)}
+                </span>
+                <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-600">
+                  Origen: {selectedMovimiento.origen || "-"}
+                </span>
+                {selectedMovimiento.referencia_tipo && (
+                  <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                    Referencia: {[selectedMovimiento.referencia_tipo, selectedMovimiento.referencia_id].filter(Boolean).join(" #")}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl bg-emerald-50 p-3">
+                  <p className="text-xs font-semibold uppercase text-emerald-700">Entrada</p>
+                  <p className="mt-1 text-lg font-bold text-emerald-800">{formatNumber(selectedMovimiento.entrada_cantidad)}</p>
+                </div>
+                <div className="rounded-xl bg-red-50 p-3">
+                  <p className="text-xs font-semibold uppercase text-red-700">Salida</p>
+                  <p className="mt-1 text-lg font-bold text-red-800">{formatNumber(selectedMovimiento.salida_cantidad)}</p>
+                </div>
+                <div className="rounded-xl bg-gray-50 p-3">
+                  <p className="text-xs font-semibold uppercase text-gray-500">Saldo</p>
+                  <p className="mt-1 text-lg font-bold text-gray-900">{formatNumber(selectedMovimiento.saldo_cantidad ?? selectedMovimiento.stock_despues)}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-gray-100 p-3">
+                  <p className="text-xs font-semibold uppercase text-gray-400">Costo promedio</p>
+                  <p className="mt-1 font-bold text-gray-800">{formatMoney(selectedMovimiento.costo_promedio_despues ?? selectedMovimiento.costo_unitario, selectedMovimiento.moneda_id, selectedMovimiento.moneda)}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 p-3">
+                  <p className="text-xs font-semibold uppercase text-gray-400">Valor movimiento</p>
+                  <p className="mt-1 font-bold text-gray-800">{formatMoney(selectedMovimiento.valor_movimiento, selectedMovimiento.moneda_id, selectedMovimiento.moneda)}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 p-3">
+                  <p className="text-xs font-semibold uppercase text-gray-400">Valor stock</p>
+                  <p className="mt-1 font-bold text-gray-800">{formatMoney(selectedMovimiento.valor_stock_despues, selectedMovimiento.moneda_id, selectedMovimiento.moneda)}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-gray-100 p-3">
+                  <p className="text-xs font-semibold uppercase text-gray-400">Documento</p>
+                  <p className="mt-1 font-semibold text-gray-800">{selectedMovimiento.documento_numero || "-"}</p>
+                  <p className="text-xs text-gray-500">{[selectedMovimiento.documento_tipo, selectedMovimiento.fecha_documento].filter(Boolean).join(" / ") || "-"}</p>
+                  <div className="mt-2">{getDocumentoLink(selectedMovimiento)}</div>
+                </div>
+                <div className="rounded-xl border border-gray-100 p-3">
+                  <p className="text-xs font-semibold uppercase text-gray-400">Usuario / Auditoria</p>
+                  <p className="mt-1 font-semibold text-gray-800">{getUserName(selectedMovimiento)}</p>
+                  <p className="text-xs text-gray-500">{selectedMovimiento.created_by?.email || "-"}</p>
+                  <p className="mt-2 text-xs text-gray-500">IP: {selectedMovimiento.ip_origen || "-"}</p>
+                  <p className="truncate text-xs text-gray-500" title={selectedMovimiento.user_agent || ""}>Equipo: {selectedMovimiento.user_agent || "-"}</p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 p-3">
+                <p className="text-xs font-semibold uppercase text-gray-400">Series</p>
+                {getMovimientoSeries(selectedMovimiento).length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {getMovimientoSeries(selectedMovimiento).map((serie) => (
+                      <span
+                        key={serie.id ?? serie.serie}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold ${getSerieEstadoBadge(serie.estado)}`}
+                      >
+                        {serie.serie || `Serie #${serie.id}`} - {getSerieEstadoLabel(serie.estado)}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm text-gray-500">Sin series asociadas</p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-gray-100 p-3">
+                <p className="text-xs font-semibold uppercase text-gray-400">Proveedor / Observacion</p>
+                <p className="mt-1 text-sm text-gray-700">{[getProveedorLabel(selectedMovimiento), selectedMovimiento.observacion].filter(Boolean).join(" - ") || "-"}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {salidaModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
@@ -1642,18 +1888,77 @@ export default function InventarioMovimientos() {
             <div className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto px-5 py-4 md:grid-cols-2">
               <label className="text-sm font-semibold text-gray-600 md:col-span-2">
                 Producto
-                <select
-                  value={salidaForm.producto_id}
-                  onChange={(event) => handleSalidaProductoChange(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
-                >
-                  <option value="">Selecciona producto</option>
-                  {productos.map((producto) => (
-                    <option key={producto.id} value={producto.id}>
-                      {producto.nombre} {producto.sku ? `- ${producto.sku}` : ""}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative mt-1">
+                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <input
+                    value={salidaProductoSearch}
+                    onChange={(event) => {
+                      setSalidaProductoSearch(event.target.value);
+                      setSalidaProductoResultsOpen(true);
+                      if (salidaForm.producto_id) {
+                        setSalidaForm((current) => ({ ...current, producto_id: "" }));
+                        setSalidaSerieIds([]);
+                      }
+                    }}
+                    onFocus={() => setSalidaProductoResultsOpen(true)}
+                    onBlur={() => window.setTimeout(() => setSalidaProductoResultsOpen(false), 120)}
+                    placeholder="Buscar por producto, SKU, codigo, marca, modelo o serie"
+                    className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-9 text-sm text-gray-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                  />
+                  {salidaProductoSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleSalidaProductoChange("");
+                        setSalidaProductoSearch("");
+                        setSalidaProductoResultsOpen(false);
+                      }}
+                      className="absolute right-2 top-2 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                      title="Limpiar producto"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+
+                  {salidaProductoResultsOpen && (
+                    <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl">
+                      {filteredSalidaProductos.map((producto) => (
+                        <button
+                          key={producto.id}
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => handleSalidaProductoChange(String(producto.id))}
+                          className="flex w-full flex-col gap-2 border-b border-gray-100 px-3 py-2 text-left last:border-b-0 hover:bg-blue-50 sm:flex-row sm:items-start sm:justify-between sm:gap-3"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-bold text-gray-900">
+                              {producto.nombre}
+                            </span>
+                            <span className="block truncate text-xs text-gray-500">
+                              {[producto.sku, producto.codigo, producto.marca, producto.modelo].filter(Boolean).join(" / ") || `ID ${producto.id}`}
+                            </span>
+                          </span>
+                          <span className="grid w-full shrink-0 grid-cols-3 gap-1 text-center text-[10px] font-semibold sm:w-auto">
+                            <span className="rounded-md bg-gray-50 px-2 py-1 text-gray-600">
+                              Stock {formatNumber(producto.stock_actual)}
+                            </span>
+                            <span className="rounded-md bg-amber-50 px-2 py-1 text-amber-700">
+                              Res. {formatNumber(producto.stock_reservado)}
+                            </span>
+                            <span className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-700">
+                              Disp. {formatNumber(producto.stock_disponible)}
+                            </span>
+                          </span>
+                        </button>
+                      ))}
+                      {filteredSalidaProductos.length === 0 && (
+                        <div className="px-3 py-4 text-center text-xs font-semibold text-gray-500">
+                          No se encontraron productos
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </label>
 
               {selectedSalidaProducto && (
@@ -1700,11 +2005,16 @@ export default function InventarioMovimientos() {
                           className="mt-1 h-4 w-4 shrink-0 rounded border-gray-300 text-blue-600"
                         />
                         <span className="min-w-0">
-                          <span className="block truncate font-semibold">{serie.serie || `Serie #${serie.id}`}</span>
-                          <span className="block truncate text-xs text-gray-500">
+                          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            <span className="max-w-[150px] truncate font-semibold">{serie.serie || `Serie #${serie.id}`}</span>
+                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getSerieEstadoBadge(serie.estado)}`}>
+                              {getSerieEstadoLabel(serie.estado)}
+                            </span>
+                          </span>
+                          <span className="mt-1 block truncate text-xs text-gray-500">
                             {[serie.factura_numero ? `Factura ${serie.factura_numero}` : null, serie.fecha_ingreso ? `Ingreso ${formatDateOnly(serie.fecha_ingreso)}` : null]
                               .filter(Boolean)
-                              .join(" / ") || "Disponible"}
+                              .join(" / ") || "Sin documento"}
                           </span>
                         </span>
                       </label>

@@ -106,6 +106,8 @@ export interface ProductoInventarioOption {
   sku?: string | null;
   codigo?: string | null;
   serie?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
   stock_actual?: number | string | null;
   stock_reservado?: number | string | null;
   stock_disponible?: number | string | null;
