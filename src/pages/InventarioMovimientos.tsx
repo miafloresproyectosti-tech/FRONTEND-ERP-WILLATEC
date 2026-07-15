@@ -241,6 +241,7 @@ export default function InventarioMovimientos() {
   const [proveedoresModalOpen, setProveedoresModalOpen] = useState(false);
   const [entradaForm, setEntradaForm] = useState({
     producto_id: "",
+    tipo_movimiento: "entrada",
     cantidad: "",
     costo_unitario: "",
     moneda_id: "1",
@@ -310,6 +311,7 @@ export default function InventarioMovimientos() {
     () => productos.find((producto) => producto.id === Number(entradaForm.producto_id)) || null,
     [entradaForm.producto_id, productos],
   );
+  const entradaEsDevolucion = entradaForm.tipo_movimiento === "devolucion";
 
   const selectedSalidaProducto = useMemo(
     () => productos.find((producto) => producto.id === Number(salidaForm.producto_id)) || null,
@@ -587,6 +589,7 @@ export default function InventarioMovimientos() {
       setError(null);
       await registrarEntradaKardex({
         producto_id: productoId,
+        tipo_movimiento: entradaForm.tipo_movimiento as "entrada" | "devolucion",
         cantidad,
         costo_unitario: costoUnitario,
         moneda_id: Number(entradaForm.moneda_id || 1),
@@ -602,6 +605,7 @@ export default function InventarioMovimientos() {
       setEntradaModalOpen(false);
       setEntradaForm({
         producto_id: "",
+        tipo_movimiento: "entrada",
         cantidad: "",
         costo_unitario: "",
         moneda_id: "1",
@@ -1383,6 +1387,21 @@ export default function InventarioMovimientos() {
                 </div>
               )}
 
+              <label className="text-sm font-semibold text-gray-600 md:col-span-2">
+                Tipo de entrada
+                <select
+                  value={entradaForm.tipo_movimiento}
+                  onChange={(event) => handleEntradaChange("tipo_movimiento", event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+                >
+                  <option value="entrada">Compra / entrada nueva</option>
+                  <option value="devolucion">Devolucion de cliente</option>
+                </select>
+                <span className="mt-1 block text-xs font-normal text-gray-500">
+                  Usa devolucion cuando el producto retorna al almacen despues de una venta o atencion.
+                </span>
+              </label>
+
               <label className="text-sm font-semibold text-gray-600">
                 Cantidad
                 <input
@@ -1508,7 +1527,7 @@ export default function InventarioMovimientos() {
               )}
 
               <label className="text-sm font-semibold text-gray-600">
-                Numero de factura
+                {entradaEsDevolucion ? "Numero documento devolucion" : "Numero de factura"}
                 <input
                   value={entradaForm.documento_numero}
                   onChange={(event) => handleEntradaChange("documento_numero", event.target.value)}
@@ -1517,7 +1536,7 @@ export default function InventarioMovimientos() {
               </label>
 
               <label className="text-sm font-semibold text-gray-600">
-                Fecha factura
+                {entradaEsDevolucion ? "Fecha devolucion" : "Fecha factura"}
                 <input
                   type="date"
                   value={entradaForm.fecha_documento}
@@ -1527,7 +1546,7 @@ export default function InventarioMovimientos() {
               </label>
 
               <label className="text-sm font-semibold text-gray-600">
-                Archivo factura
+                {entradaEsDevolucion ? "Archivo devolucion" : "Archivo factura"}
                 <div className="mt-1 flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
                   <Upload className="h-4 w-4 text-gray-400" />
                   <input

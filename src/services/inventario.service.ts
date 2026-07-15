@@ -131,6 +131,7 @@ export interface ProductoInventarioOption {
 export interface RegistrarEntradaKardexPayload {
   producto_id: number;
   cantidad: number;
+  tipo_movimiento?: "entrada" | "devolucion";
   costo_unitario: number;
   moneda_id: number;
   proveedor_id?: number | null;
@@ -216,6 +217,7 @@ export async function getProductosInventario(): Promise<ProductoInventarioOption
 export async function registrarEntradaKardex(payload: RegistrarEntradaKardexPayload) {
   const formData = new FormData();
   formData.append("cantidad", String(payload.cantidad));
+  formData.append("tipo_movimiento", payload.tipo_movimiento || "entrada");
   formData.append("costo_unitario", String(payload.costo_unitario));
   formData.append("moneda_id", String(payload.moneda_id));
   formData.append("documento_tipo", payload.documento_tipo || "factura");

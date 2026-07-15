@@ -4,6 +4,8 @@ import { RefreshProvider } from "./RefreshContext";
 import { NotificationProvider } from "./NotificationContext";
 import { CotizacionesProvider } from "./CotizacionesContext";
 import { AuditProvider } from "./context/AuditContext";
+import InactivityTimeout from "./components/security/InactivityTimeout";
+import ReleaseAnnouncement from "./components/announcements/ReleaseAnnouncement";
 
 function App() {
   return (
@@ -12,6 +14,8 @@ function App() {
         <AuditProvider>
           <CotizacionesProvider>
             <NotificationProvider>
+              <InactivityTimeout />
+              <ReleaseAnnouncement />
               <AppRoutes />
             </NotificationProvider>
           </CotizacionesProvider>

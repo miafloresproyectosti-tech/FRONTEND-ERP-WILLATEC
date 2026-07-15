@@ -1,14 +1,14 @@
 import {
   createContext,
   useContext,
-  useState,
   useEffect,
+  useState,
   type ReactNode,
 } from "react";
 
+import { logoutRequest, meRequest } from "./services/auth.service";
 import type { UserRole } from "./types/roles";
 import { rolePermissions } from "./utils/permissions";
-import { logoutRequest } from "./services/auth.service";
 
 interface User {
   id: number;
@@ -40,7 +40,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // LOGIN
   const login = (
     id: number,
     email: string,
@@ -49,9 +48,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     twoFactorEnabled = false
   ) => {
     const role = roleStr as UserRole;
-
     const name =
-      email.split("@")[0]?.replace(/\b\w/g, (l) => l.toUpperCase()) ||
+      email.split("@")[0]?.replace(/\b\w/g, (letter) => letter.toUpperCase()) ||
       "Usuario";
 
     const userData: User = {
@@ -81,7 +79,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  // LOGOUT
   const logout = async () => {
     try {
       await logoutRequest();
@@ -94,38 +91,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // PERMISOS
   const hasPermission = (permission: string): boolean => {
     if (!user) return false;
-
-    // SUPERADMIN acceso total
     if (user.role === "SUPERADMIN") return true;
 
     const permissions = rolePermissions[user.role] || [];
-
     return permissions.includes(permission);
   };
 
-  // CARGA INICIAL (EVITA REDIRECT FALSO A LOGIN)
   useEffect(() => {
-    const saved = localStorage.getItem("user");
+    let cancelled = false;
 
-    if (saved) {
+    const loadSavedSession = async () => {
+      const saved = localStorage.getItem("user");
+      const token = localStorage.getItem("token");
+
+      if (!saved || !token) {
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        if (!cancelled) setLoading(false);
+        return;
+      }
+
       try {
         const parsed = JSON.parse(saved);
 
-        // validación básica
-        if (parsed?.id && parsed?.email && parsed?.role) {
-          setUser(parsed);
-        } else {
-          localStorage.removeItem("user");
+        if (!parsed?.id || !parsed?.email || !parsed?.role) {
+          throw new Error("Invalid saved user");
+        }
+
+        const response = await meRequest();
+        const backendUser = response.data?.user;
+        const backendRole =
+          backendUser?.roles && backendUser.roles.length > 0
+            ? backendUser.roles[0].name.toUpperCase()
+            : parsed.role;
+
+        const userData: User = {
+          id: backendUser?.id ?? parsed.id,
+          email: backendUser?.email ?? parsed.email,
+          role: backendRole as UserRole,
+          name:
+            backendUser?.nombres ||
+            parsed.name ||
+            (backendUser?.email ?? parsed.email).split("@")[0],
+          last_login_at: backendUser?.last_login_at ?? parsed.last_login_at ?? null,
+          two_factor_enabled:
+            Boolean(backendUser?.two_factor_confirmed_at) ||
+            Boolean(parsed.two_factor_enabled),
+        };
+
+        if (!cancelled) {
+          setUser(userData);
+          localStorage.setItem("user", JSON.stringify(userData));
         }
       } catch {
         localStorage.removeItem("user");
+        localStorage.removeItem("token");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    }
+    };
 
-    setLoading(false);
+    void loadSavedSession();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (

@@ -42,6 +42,7 @@ import {
   type OcPreviewItem,
   type OcRecibida,
   type OcRecibidaItem,
+  cancelarOcRecibida,
 } from "../services/ordenCompra.service";
 import { useAuth } from "../AuthContext";
 import { getCotizacion } from "../services/cotizacion.service";
@@ -122,6 +123,7 @@ const estadoRecibidaLabels: Record<string, string> = {
   en_proceso: "En proceso",
   por_entrega: "Por entrega",
   atendido: "Atendido",
+  cancelado: "Cancelado",
 };
 
 const estadoEmitidaLabels: Record<string, string> = {
@@ -178,6 +180,45 @@ const itemDescription = (item: OcPreviewItem | OcRecibidaItem) =>
   toDisplayText(item.descripcion, "") ||
   toDisplayText(item.producto, "") ||
   `Item #${item.cotizacion_item_id ?? item.id}`;
+
+const getItemSeries = (item: OcRecibidaItem) =>
+  item.cotizacion_item?.producto?.series || [];
+
+const isSerieAssignedToItem = (
+  serie: ReturnType<typeof getItemSeries>[number],
+  item: OcRecibidaItem,
+  oc?: OcRecibida,
+) =>
+  Number(serie.oc_recibida_id || 0) === Number(oc?.id || 0) &&
+  Number(serie.cotizacion_item_id || 0) === Number(item.cotizacion_item_id || 0);
+
+const getSelectableItemSeries = (item: OcRecibidaItem, oc?: OcRecibida) =>
+  getItemSeries(item).filter((serie) =>
+    serie.estado === "disponible" || isSerieAssignedToItem(serie, item, oc),
+  );
+
+const itemRequiresSeries = (item: OcRecibidaItem) => getItemSeries(item).length > 0;
+
+const getAssignedItemSerieIds = (item: OcRecibidaItem, oc: OcRecibida) =>
+  getItemSeries(item)
+    .filter((serie) => isSerieAssignedToItem(serie, item, oc))
+    .map((serie) => Number(serie.id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+
+const hasSoldAssignedSeries = (item: OcRecibidaItem, oc?: OcRecibida) =>
+  getItemSeries(item).some((serie) =>
+    serie.estado === "vendido" && isSerieAssignedToItem(serie, item, oc),
+  );
+
+const getOcSerieSelectionMap = (oc: OcRecibida): Record<number, number[]> =>
+  (oc.items || []).reduce<Record<number, number[]>>((acc, item) => {
+    const ids = getAssignedItemSerieIds(item, oc);
+    if (ids.length > 0) {
+      acc[item.id] = ids;
+    }
+
+    return acc;
+  }, {});
 
 const getCotizacionLabel = (oc: OcEmitida | OcRecibida) =>
   toDisplayText(oc.cotizacion?.numero ?? (oc as any).cotizacion_numero, "") ||
@@ -239,6 +280,8 @@ const getBadgeClass = (estado?: string) => {
       return "bg-indigo-100 text-indigo-700";
     case "pendiente":
       return "bg-yellow-100 text-yellow-700";
+    case "cancelado":
+      return "bg-red-100 text-red-700";
     default:
       return "bg-slate-100 text-slate-700";
   }
@@ -355,6 +398,10 @@ export default function OrdenesCompraPage() {
     },
     [user],
   );
+  const canCancelRecibida = useCallback(
+    (oc: OcRecibida) => canEditOc(oc) && !["atendido", "cancelado"].includes(String(oc.estado)),
+    [canEditOc],
+  );
 
   const proveedorOptions = useMemo(() => {
     const fromPreview = preview?.proveedores || [];
@@ -466,7 +513,10 @@ export default function OrdenesCompraPage() {
         if (isRecibidaRoute) {
           setActiveTab("recibidas");
           const oc = await getOcRecibida(ocId);
-          if (!cancelled) setSelectedOc(oc);
+          if (!cancelled) {
+            setOcItemSeries(getOcSerieSelectionMap(oc));
+            setSelectedOc(oc);
+          }
           return;
         }
 
@@ -765,7 +815,9 @@ export default function OrdenesCompraPage() {
           factura_numero: facturaNumero,
           factura,
         });
-        setSelectedOc(await getOcRecibida(documentTarget.id));
+        const detail = await getOcRecibida(documentTarget.id);
+        setOcItemSeries(getOcSerieSelectionMap(detail));
+        setSelectedOc(detail);
       }
 
       showToast({ title: "Documentos actualizados", description: "Los archivos fueron enviados al backend.", type: "success" });
@@ -787,7 +839,9 @@ export default function OrdenesCompraPage() {
     setOcItemSeries({});
     try {
       setLoadingDetail(true);
-      setSelectedOc(await getOcRecibida(oc.id));
+      const detail = await getOcRecibida(oc.id);
+      setOcItemSeries(getOcSerieSelectionMap(detail));
+      setSelectedOc(detail);
     } catch (error) {
       showToast({
         title: "Error al cargar detalle",
@@ -815,8 +869,8 @@ export default function OrdenesCompraPage() {
     }
   };
 
-  const getAvailableItemSeries = (item: OcRecibidaItem) =>
-    item.cotizacion_item?.producto?.series?.filter((serie) => serie.estado === "disponible") || [];
+  const getAvailableItemSeries = (item: OcRecibidaItem, oc?: OcRecibida) =>
+    getSelectableItemSeries(item, oc);
 
   const handleSelectOcItemSeries = (itemId: number, serieId: number) => {
     setOcItemSeries((current) => {
@@ -871,10 +925,10 @@ export default function OrdenesCompraPage() {
       });
       return;
     }
-    const availableSeries = getAvailableItemSeries(item);
-    const selectedSeries = ocItemSeries[item.id] || [];
+    const availableSeries = getAvailableItemSeries(item, oc);
+    const selectedSeries = ocItemSeries[item.id] || getAssignedItemSerieIds(item, oc);
 
-    if (field === "entregado" && checked && availableSeries.length > 0) {
+    if (field === "entregado" && checked && itemRequiresSeries(item)) {
       const cantidad = Number(item.cantidad_recibida || 0);
 
       if (!Number.isInteger(cantidad)) {
@@ -905,7 +959,9 @@ export default function OrdenesCompraPage() {
     try {
       setUpdatingItemOc(oc.id);
       await updateOcRecibidaItems(oc.id, { items: nextItems });
-      setSelectedOc(await getOcRecibida(oc.id));
+      const detail = await getOcRecibida(oc.id);
+      setOcItemSeries(getOcSerieSelectionMap(detail));
+      setSelectedOc(detail);
       showToast({ title: "Items actualizados", description: "Entregado fue sincronizado y comprado se recalculo con inventario.", type: "success" });
       void loadRecibidas(recibidasPagination.page);
     } catch (error) {
@@ -925,6 +981,42 @@ export default function OrdenesCompraPage() {
     setComprobantePago(null);
     setOrdenCompraCliente(null);
     setGuiaEmision(null);
+  };
+
+  const handleCancelRecibida = async (oc: OcRecibida) => {
+    if (!canCancelRecibida(oc)) return;
+
+    const confirmed = window.confirm(
+      `Se cancelara ${getOcLabel(oc)} y se liberaran sus reservas de inventario. Deseas continuar?`,
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setUpdatingItemOc(oc.id);
+      await cancelarOcRecibida(oc.id);
+      showToast({
+        title: "OC cancelada",
+        description: "Las reservas asociadas fueron liberadas.",
+        type: "success",
+      });
+
+      if (selectedOc && "fecha_recepcion" in selectedOc && Number(selectedOc.id) === Number(oc.id)) {
+        const detail = await getOcRecibida(oc.id);
+        setOcItemSeries(getOcSerieSelectionMap(detail));
+        setSelectedOc(detail);
+      }
+
+      void loadRecibidas(recibidasPagination.page);
+    } catch (error) {
+      showToast({
+        title: "No se pudo cancelar la OC",
+        description: getErrorMessage(error, "Revisa si la OC ya fue atendida o si tiene salidas de inventario."),
+        type: "error",
+      });
+    } finally {
+      setUpdatingItemOc(null);
+    }
   };
 
   const openDocumentModal = (oc: OcEmitida | OcRecibida) => {
@@ -1054,9 +1146,11 @@ export default function OrdenesCompraPage() {
               rows={recibidas}
               onView={handleViewRecibida}
               onDocuments={openDocumentModal}
+              onCancel={handleCancelRecibida}
               onToggleItem={handleToggleRecibidaItem}
               updatingItemOc={updatingItemOc}
               canEditOc={canEditOc}
+              canCancelOc={canCancelRecibida}
             />
           )}
         </div>
@@ -1524,16 +1618,20 @@ function RecibidasTable({
   rows,
   onView,
   onDocuments,
+  onCancel,
   onToggleItem,
   updatingItemOc,
   canEditOc,
+  canCancelOc,
 }: {
   rows: OcRecibida[];
   onView: (oc: OcRecibida) => void;
   onDocuments: (oc: OcRecibida) => void;
+  onCancel: (oc: OcRecibida) => void;
   onToggleItem: (oc: OcRecibida, item: OcRecibidaItem, field: "comprado" | "entregado", checked: boolean) => void;
   updatingItemOc: number | null;
   canEditOc: (oc: OcRecibida) => boolean;
+  canCancelOc: (oc: OcRecibida) => boolean;
 }) {
   return (
     <>
@@ -1584,13 +1682,19 @@ function RecibidasTable({
             )}
             {(oc.items || []).length > 2 && <p className="text-xs text-slate-400">+{(oc.items || []).length - 2} items mas</p>}
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
+          <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
             <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
             <IconButton
               title={canEditOc(oc) ? "Subir documentos" : "Solo el usuario que registro esta OC puede editarla"}
               onClick={() => onDocuments(oc)}
               icon={<Upload size={17} />}
               disabled={!canEditOc(oc)}
+            />
+            <IconButton
+              title={canCancelOc(oc) ? "Cancelar OC y liberar reservas" : "Solo se puede cancelar antes de atender"}
+              onClick={() => onCancel(oc)}
+              icon={<X size={17} />}
+              disabled={!canCancelOc(oc) || updatingItemOc === oc.id}
             />
           </div>
         </div>
@@ -1665,6 +1769,12 @@ function RecibidasTable({
                   onClick={() => onDocuments(oc)}
                   icon={<Upload size={17} />}
                   disabled={!canEditOc(oc)}
+                />
+                <IconButton
+                  title={canCancelOc(oc) ? "Cancelar OC y liberar reservas" : "Solo se puede cancelar antes de atender"}
+                  onClick={() => onCancel(oc)}
+                  icon={<X size={17} />}
+                  disabled={!canCancelOc(oc) || updatingItemOc === oc.id}
                 />
               </div>
             </td>
@@ -1956,10 +2066,10 @@ function DetailModal({
                 </thead>
                 <tbody>
                   {items.map((item: any) => {
-                    const availableSeries = (item.cotizacion_item?.producto?.series || [])
-                      .filter((serie: any) => serie.estado === "disponible");
-                    const currentSeries = selectedSeries[item.id] || [];
+                    const availableSeries = getSelectableItemSeries(item as OcRecibidaItem, oc as OcRecibida);
+                    const currentSeries = selectedSeries[item.id] || getAssignedItemSerieIds(item as OcRecibidaItem, oc as OcRecibida);
                     const cantidadRecibida = Number(item.cantidad_recibida || 0);
+                    const itemHasSoldSeries = hasSoldAssignedSeries(item as OcRecibidaItem, oc as OcRecibida);
 
                     return (
                     <tr key={item.id} className="border-t border-gray-100 dark:border-slate-800">
@@ -1983,7 +2093,7 @@ function DetailModal({
                                     type="checkbox"
                                     checked={currentSeries.includes(Number(serie.id))}
                                     onChange={() => onSelectSerie(Number(item.id), Number(serie.id))}
-                                    disabled={!canEditOc}
+                                    disabled={!canEditOc || itemHasSoldSeries}
                                     className="mt-0.5"
                                   />
                                   <span className="min-w-0">
@@ -1991,7 +2101,8 @@ function DetailModal({
                                     <span className="block text-[11px] text-slate-500">
                                       {[serie.factura_numero ? `Factura ${serie.factura_numero}` : null, serie.fecha_ingreso ? `Ingreso ${formatDate(serie.fecha_ingreso)}` : null]
                                         .filter(Boolean)
-                                        .join(" / ") || "Disponible"}
+                                        .join(" / ") || "Sin datos"}
+                                      {serie.estado && ` / ${serie.estado}`}
                                     </span>
                                   </span>
                                 </label>
@@ -2025,11 +2136,19 @@ function DetailModal({
                               <input
                                 type="checkbox"
                                 checked={Boolean(item.entregado)}
-                                disabled={updatingItemOc === oc.id || !canEditOc || !item.comprado}
+                                disabled={updatingItemOc === oc.id || !canEditOc || !item.comprado || itemHasSoldSeries}
                                 onChange={(event) =>
                                   onToggleItem(oc as OcRecibida, item as OcRecibidaItem, "entregado", event.target.checked)
                                 }
-                                title={!item.comprado ? "Primero debe estar comprado" : canEditOc ? "Marcar entregado" : "Solo el usuario que registro esta OC puede editarla"}
+                                title={
+                                  itemHasSoldSeries
+                                    ? "Este item ya registro salida de series vendidas"
+                                    : !item.comprado
+                                      ? "Primero debe estar comprado"
+                                      : canEditOc
+                                        ? "Marcar entregado"
+                                        : "Solo el usuario que registro esta OC puede editarla"
+                                }
                                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
                               {item.entregado ? "Si" : "No"}

@@ -4,7 +4,8 @@ export type OcRecibidaEstado =
   | "pendiente"
   | "en_proceso"
   | "por_entrega"
-  | "atendido";
+  | "atendido"
+  | "cancelado";
 
 export type OcEmitidaEstado = "emitida" | "pendiente" | "en_proceso" | "atendido";
 
@@ -106,6 +107,9 @@ export interface OcRecibidaItem {
         factura_numero?: string | null;
         estado?: string | null;
         fecha_ingreso?: string | null;
+        fecha_salida?: string | null;
+        oc_recibida_id?: number | string | null;
+        cotizacion_item_id?: number | string | null;
       }[];
     } | null;
   } | null;
@@ -412,6 +416,11 @@ export async function updateOcRecibidaItems(
   payload: UpdateOcRecibidaItemsPayload,
 ) {
   const response = await api.patch(`/oc-recibidas/${id}/items`, payload);
+  return response.data;
+}
+
+export async function cancelarOcRecibida(id: number | string) {
+  const response = await api.patch(`/oc-recibidas/${id}/cancelar`);
   return response.data;
 }
 
