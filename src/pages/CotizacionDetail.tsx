@@ -700,7 +700,10 @@ export function CotizacionDetail() {
         ? totalCantidad > 0 ? totalCantidad : 1
         : totalCantidadSeleccionada > 0 ? totalCantidadSeleccionada : 1;
     const costoExtraUnitario = costosTotal / divisor;
-    const itemAplicaCostos = itemForm.aplica_costos_adicionales !== false;
+    const itemAplicaCostos =
+      modoDistribucion === 'POR_CANTIDAD'
+        ? true
+        : itemForm.aplica_costos_adicionales !== false;
     const aplicaCostoExtra = itemAplicaCostos;
     const costoUnitario = costoBase + (aplicaCostoExtra ? costoExtraUnitario : 0);
     const periodoMeses = Math.max(0, Number(itemForm.garantia_meses || 0));
