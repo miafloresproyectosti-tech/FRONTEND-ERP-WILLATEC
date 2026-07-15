@@ -633,7 +633,7 @@ export function CotizacionDetail() {
       plantilla_origen_nombre: source.plantilla_origen_nombre,
       plantilla_ultimo_uso_nombre: source.plantilla_ultimo_uso_nombre,
       estado_cotizacion_item_id: undefined,
-      aplica_costos_adicionales: false,
+      aplica_costos_adicionales: source.aplica_costos_adicionales ?? true,
       tipo: 'externo',
       ...primaryProveedor,
       proveedores,
@@ -2071,7 +2071,7 @@ export function CotizacionDetail() {
       imagen_url: suggestion.imagen_url || image || null,
       imagen_path: suggestion.imagen_path || image || null,
       tipo: 'externo',
-      aplica_costos_adicionales: false,
+      aplica_costos_adicionales: suggestion.aplica_costos_adicionales ?? true,
       importacion_calculo: null,
     }));
   };

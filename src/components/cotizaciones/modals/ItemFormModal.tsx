@@ -68,6 +68,10 @@ export function ItemFormModal({
       ? Number((Number(itemForm.ganancia || 0) * (tipoCambioSolesADolar || 1)).toFixed(2))
       : null;
   const periodoMeses = Math.max(0, Number(itemForm.garantia_meses || 0));
+  const costoBaseUnitario = Number(itemForm.costo_base || 0);
+  const costoUnitarioCalculado = Number(itemForm.costo_unitario ?? itemForm.costo_base ?? 0);
+  const costoAdicionalUnitario = Math.max(0, Number((costoUnitarioCalculado - costoBaseUnitario).toFixed(2)));
+  const muestraCostoConAdicionales = costoAdicionalUnitario > 0.009;
   const precioUnitMensual = Number(itemForm.precio_venta || 0);
   const precioCantidadMensual = Number((precioUnitMensual * Number(itemForm.cantidad || 0)).toFixed(2));
   const precioTotalMeses = Number(itemForm.subtotal || 0);
@@ -665,6 +669,15 @@ export function ItemFormModal({
 
           {/* Resumen estimado */}
           <hr className="border-gray-200 my-2" />
+          {muestraCostoConAdicionales && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+              <span className="font-semibold">Costo usado para margen:</span>{" "}
+              {formatMoney(costoUnitarioCalculado, simboloMoneda)} por unidad
+              <span className="text-amber-700">
+                {" "}({formatMoney(costoBaseUnitario, simboloMoneda)} base + {formatMoney(costoAdicionalUnitario, simboloMoneda)} adicionales)
+              </span>
+            </div>
+          )}
           {isAlquiler ? (
             <div className={`grid gap-2 ${canViewGanancia ? "grid-cols-2" : "grid-cols-1"}`}>
               <div className="grid grid-cols-3 gap-2">
@@ -695,7 +708,11 @@ export function ItemFormModal({
               )}
             </div>
           ) : (
-            <div className={`grid gap-2 ${canViewGanancia ? "grid-cols-3" : "grid-cols-2"}`}>
+            <div className={`grid gap-2 ${canViewGanancia ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}>
+              <div className="bg-amber-50 rounded-lg p-2">
+                <p className="text-[9px] text-gray-500 mb-0.5">Costo unit.</p>
+                <p className="text-xs font-semibold text-amber-800">{formatMoney(costoUnitarioCalculado, simboloMoneda)}</p>
+              </div>
               <div className="bg-blue-50 rounded-lg p-2">
                 <p className="text-[9px] text-gray-500 mb-0.5">Precio venta</p>
                 <p className="text-xs font-semibold text-gray-800">{formatMoney(itemForm.precio_venta || 0, simboloMoneda)}</p>
