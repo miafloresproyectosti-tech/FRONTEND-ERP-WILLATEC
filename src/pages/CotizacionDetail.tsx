@@ -63,6 +63,15 @@ import {
 } from 'lucide-react';
 
 const ESTADO_COTIZACION_APROBADA_ID = 4;
+const COTIZACION_DRAFT_VERSION = 1;
+const COTIZACION_DRAFT_PREFIX = 'erp_cotizacion_draft';
+const UNSAVED_CHANGES_MESSAGE = 'Tienes cambios sin guardar en esta cotizacion. Si sales ahora, podrias perderlos.';
+
+interface CotizacionLocalDraft {
+  version: number;
+  savedAt: string;
+  payload: any;
+}
 
 const getLocalDateString = (value?: string | null) => {
   const date = value ? new Date(value) : new Date();
@@ -226,11 +235,22 @@ export function CotizacionDetail() {
   const [isRejecting, setIsRejecting] = useState(false);
   const [isSendingReview, setIsSendingReview] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [availableDraft, setAvailableDraft] = useState<CotizacionLocalDraft | null>(null);
+  const [showDraftModal, setShowDraftModal] = useState(false);
+  const baselineDraftRef = useRef<string>('');
+  const lastSavedDraftRef = useRef<string>('');
+  const allowNextNavigationRef = useRef(false);
 
   //LOCALIZACIÓN
   const location = useLocation();
 
   const isViewMode = location.pathname.includes('/view');
+  const draftScope = isModificationMode
+    ? `modificacion-${currentModificacionId || 'new'}`
+    : currentCotizacionId
+      ? `cotizacion-${currentCotizacionId}`
+      : 'cotizacion-new';
+  const draftStorageKey = `${COTIZACION_DRAFT_PREFIX}:${user?.id || 'anon'}:${draftScope}`;
 
   // Cotización header
   const [cotizacion, setCotizacion] = useState<Cotizacion | null>(null);
@@ -1609,6 +1629,8 @@ export function CotizacionDetail() {
 
     setSaving(true);
     try {
+      let postSavePath = '/cotizaciones';
+
       if (isModificationMode && currentModificacionId) {
         const updated = await updateCotizacionModificacion(
           currentModificacionId,
@@ -1626,7 +1648,7 @@ export function CotizacionDetail() {
           type: 'success',
           duration: 4000,
         } as any);
-        navigate(`/cotizaciones/${updated.cotizacion_id}/view`);
+        postSavePath = `/cotizaciones/${updated.cotizacion_id}/view`;
       } else if (isEditing && currentCotizacionId) {
         // Actualizar
         const updated = await updateCotizacion(currentCotizacionId, payload);
@@ -1668,7 +1690,10 @@ export function CotizacionDetail() {
         } as any);
         setCotizacion(newCotizacion);
       }
-      navigate('/cotizaciones');
+      clearLocalDraft();
+      markCurrentStateAsSaved();
+      allowProgrammaticNavigation();
+      navigate(postSavePath);
     } catch (error: any) {
       console.error('Error al guardar cotización:', error);
       showToast({
@@ -2234,6 +2259,214 @@ export function CotizacionDetail() {
     );
   }, [items, costos, modoDistribucion, currentIncludeIgv, isAlquilerPlantilla]);
 
+  const buildDraftSnapshot = useCallback(() => {
+    if (isCotizacionReadOnly) return '';
+
+    try {
+      return JSON.stringify(buildCotizacionPayload());
+    } catch (error) {
+      console.warn('No se pudo construir el snapshot del borrador', error);
+      return '';
+    }
+  }, [
+    isCotizacionReadOnly,
+    estadoCotizacionId,
+    canChangeReviewEstado,
+    cotizacion?.estado_cotizacion_id,
+    itemsCalculados,
+    clienteContacto,
+    currentCotizacionId,
+    modificacion?.cotizacion_id,
+    clienteId,
+    plantillaId,
+    plataformaId,
+    currentMonedaId,
+    modoDistribucion,
+    fecha,
+    titulo,
+    formaPago,
+    entregaProvincia,
+    entregaDestino,
+    tipoCambioSolesADolar,
+    tipoCambioDolarASoles,
+    validezDias,
+    resumen,
+    costos,
+    user?.role,
+    delegadoId,
+  ]);
+
+  const hasUnsavedChanges = useMemo(() => {
+    const currentSnapshot = buildDraftSnapshot();
+
+    return Boolean(
+      currentSnapshot &&
+      baselineDraftRef.current &&
+      currentSnapshot !== baselineDraftRef.current
+    );
+  }, [buildDraftSnapshot]);
+
+  const clearLocalDraft = useCallback(() => {
+    try {
+      localStorage.removeItem(draftStorageKey);
+    } catch (error) {
+      console.warn('No se pudo limpiar el borrador local', error);
+    }
+
+    setAvailableDraft(null);
+    setShowDraftModal(false);
+    lastSavedDraftRef.current = '';
+  }, [draftStorageKey]);
+
+  const markCurrentStateAsSaved = useCallback(() => {
+    const snapshot = buildDraftSnapshot();
+
+    baselineDraftRef.current = snapshot;
+    lastSavedDraftRef.current = snapshot;
+  }, [buildDraftSnapshot]);
+
+  const allowProgrammaticNavigation = useCallback(() => {
+    allowNextNavigationRef.current = true;
+  }, []);
+
+  const confirmDiscardUnsavedChanges = useCallback(() => {
+    if (!hasUnsavedChanges) return true;
+
+    return window.confirm(`${UNSAVED_CHANGES_MESSAGE}\n\n¿Deseas salir de todos modos?`);
+  }, [hasUnsavedChanges]);
+
+  const guardedNavigate = useCallback((to: string | number) => {
+    if (!confirmDiscardUnsavedChanges()) return;
+
+    allowProgrammaticNavigation();
+    navigate(to as any);
+  }, [allowProgrammaticNavigation, confirmDiscardUnsavedChanges, navigate]);
+
+  useEffect(() => {
+    if (loading || isInitialLoad || isCotizacionReadOnly) return;
+    if (baselineDraftRef.current) return;
+
+    const snapshot = buildDraftSnapshot();
+    baselineDraftRef.current = snapshot;
+    lastSavedDraftRef.current = snapshot;
+
+    try {
+      const rawDraft = localStorage.getItem(draftStorageKey);
+      if (!rawDraft) return;
+
+      const parsedDraft = JSON.parse(rawDraft) as CotizacionLocalDraft;
+      if (
+        parsedDraft?.version === COTIZACION_DRAFT_VERSION &&
+        parsedDraft.payload &&
+        JSON.stringify(parsedDraft.payload) !== snapshot
+      ) {
+        setAvailableDraft(parsedDraft);
+        setShowDraftModal(true);
+      }
+    } catch (error) {
+      console.warn('No se pudo leer el borrador local de cotizacion', error);
+    }
+  }, [buildDraftSnapshot, draftStorageKey, isCotizacionReadOnly, isInitialLoad, loading]);
+
+  useEffect(() => {
+    if (loading || isInitialLoad || isCotizacionReadOnly || showDraftModal) return;
+
+    const timeout = window.setTimeout(() => {
+      const snapshot = buildDraftSnapshot();
+      if (!snapshot || !baselineDraftRef.current || snapshot === baselineDraftRef.current) return;
+      if (snapshot === lastSavedDraftRef.current) return;
+
+      try {
+        localStorage.setItem(
+          draftStorageKey,
+          JSON.stringify({
+            version: COTIZACION_DRAFT_VERSION,
+            savedAt: new Date().toISOString(),
+            payload: JSON.parse(snapshot),
+          } satisfies CotizacionLocalDraft)
+        );
+        lastSavedDraftRef.current = snapshot;
+      } catch (error) {
+        console.warn('No se pudo guardar el borrador local de cotizacion', error);
+      }
+    }, 700);
+
+    return () => window.clearTimeout(timeout);
+  }, [buildDraftSnapshot, draftStorageKey, isCotizacionReadOnly, isInitialLoad, loading, showDraftModal]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = UNSAVED_CHANGES_MESSAGE;
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+
+    const handlePopState = () => {
+      if (allowNextNavigationRef.current) {
+        allowNextNavigationRef.current = false;
+        return;
+      }
+
+      if (confirmDiscardUnsavedChanges()) return;
+
+      allowNextNavigationRef.current = true;
+      window.history.go(1);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [confirmDiscardUnsavedChanges, hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (allowNextNavigationRef.current) {
+        allowNextNavigationRef.current = false;
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      const anchor = target?.closest('a[href]') as HTMLAnchorElement | null;
+      if (!anchor || anchor.target || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+      const destination = new URL(anchor.href, window.location.href);
+      if (destination.origin !== window.location.origin) return;
+      if (destination.pathname === location.pathname && destination.search === location.search && destination.hash === location.hash) return;
+      if (confirmDiscardUnsavedChanges()) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    document.addEventListener('click', handleDocumentClick, true);
+
+    return () => document.removeEventListener('click', handleDocumentClick, true);
+  }, [confirmDiscardUnsavedChanges, hasUnsavedChanges, location.hash, location.pathname, location.search]);
+
+  const restoreLocalDraft = () => {
+    if (!availableDraft?.payload) return;
+
+    applyEditablePayload(availableDraft.payload, cotizacion);
+    setEstadoCotizacionId(Number(availableDraft.payload.estado_cotizacion_id || estadoCotizacionId));
+    setShowDraftModal(false);
+  };
+
+  const discardLocalDraft = () => {
+    clearLocalDraft();
+    markCurrentStateAsSaved();
+  };
+
   const estadoLabels: Record<number, string> = {
     1: 'Borrador',
     2: 'Enviada',
@@ -2300,7 +2533,7 @@ export function CotizacionDetail() {
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg">
+          <button onClick={() => guardedNavigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg">
             <ArrowLeft className="w-6 h-6 text-gray-600" />
           </button>
           <div>
@@ -2329,7 +2562,7 @@ export function CotizacionDetail() {
           {modificacionPendiente ? (
             <button
               type="button"
-              onClick={() => navigate(`/cotizaciones/modificaciones/${modificacionPendiente.id}/edit`)}
+              onClick={() => guardedNavigate(`/cotizaciones/modificaciones/${modificacionPendiente.id}/edit`)}
               className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700"
             >
               <GitBranch className="w-4 h-4" />
@@ -2368,7 +2601,7 @@ export function CotizacionDetail() {
             </div>
             <button
               type="button"
-              onClick={() => navigate(`/cotizaciones/${modificacion.cotizacion_id}/view`)}
+              onClick={() => guardedNavigate(`/cotizaciones/${modificacion.cotizacion_id}/view`)}
               className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-100"
             >
               <History className="w-4 h-4" /> Ver aprobada actual
@@ -2582,7 +2815,7 @@ export function CotizacionDetail() {
                   <button
                     key={`mod-${item.id}`}
                     type="button"
-                    onClick={() => navigate(`/cotizaciones/modificaciones/${item.id}/edit`)}
+                    onClick={() => guardedNavigate(`/cotizaciones/modificaciones/${item.id}/edit`)}
                     className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-left transition hover:border-amber-300 hover:bg-amber-100"
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -2889,6 +3122,43 @@ export function CotizacionDetail() {
       {/* --- MODALES --- */}
 
       {/* 1. Modal Selección de Tipo de Item */}
+      {showDraftModal && availableDraft && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-gray-100 px-6 py-4">
+              <h2 className="text-lg font-bold text-gray-900">Borrador encontrado</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Hay cambios no guardados de esta cotizacion en este equipo.
+              </p>
+            </div>
+            <div className="space-y-3 px-6 py-5 text-sm text-gray-600">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+                Ultimo guardado local: {new Date(availableDraft.savedAt).toLocaleString('es-PE')}
+              </div>
+              <p>
+                Puedes recuperar el borrador para continuar editando, o descartarlo y seguir con la version cargada del sistema.
+              </p>
+            </div>
+            <div className="flex flex-col-reverse gap-2 border-t border-gray-100 px-6 py-4 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={discardLocalDraft}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Descartar
+              </button>
+              <button
+                type="button"
+                onClick={restoreLocalDraft}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Recuperar borrador
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ItemTypeModal
         open={!isCotizacionReadOnly && showItemTypeModal}
         onClose={() => setShowItemTypeModal(false)}
