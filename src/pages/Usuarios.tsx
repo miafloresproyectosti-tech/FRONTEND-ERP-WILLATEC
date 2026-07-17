@@ -13,7 +13,7 @@ interface User {
   email: string;
   role: string;
   status: 'activo' | 'inactivo';
-  area: 'comercial' | 'soporte' | 'administracion' | 'logistica';
+  area: 'comercial' | 'soporte' | 'administracion' | 'logistica' | 'contabilidad';
   telefono?: string;
   dni?: string;
   cargo?: string;
@@ -39,7 +39,7 @@ export default function Usuarios() {
     email: '',
     role: 'VENTAS',
     status: 'activo' as 'activo' | 'inactivo',
-    area: 'comercial' as 'comercial' | 'soporte' | 'administracion' | 'logistica',
+    area: 'comercial' as 'comercial' | 'soporte' | 'administracion' | 'logistica' | 'contabilidad',
     telefono: '',
     dni: '',
     cargo: '',
@@ -82,7 +82,7 @@ export default function Usuarios() {
     }
   };
 
-  const getAreaFromRole = (role: string): 'comercial' | 'soporte' | 'administracion' | 'logistica' => {
+  const getAreaFromRole = (role: string): 'comercial' | 'soporte' | 'administracion' | 'logistica' | 'contabilidad' => {
     switch (role.toUpperCase()) {
       case 'VENTAS':
         return 'comercial';
@@ -90,6 +90,8 @@ export default function Usuarios() {
         return 'soporte';
       case 'LOGISTICA':
         return 'logistica';
+      case 'CONTABILIDAD':
+        return 'contabilidad';
       case 'ADMIN':
       case 'SUPERADMIN':
         return 'administracion';
@@ -110,6 +112,8 @@ export default function Usuarios() {
         return 4;
       case 'LOGISTICA':
         return 5;
+      case 'CONTABILIDAD':
+        return 6;
       default:
         return 3;
     }
@@ -701,6 +705,7 @@ export default function Usuarios() {
                     <option value="VENTAS">Ventas</option>
                     <option value="SOPORTE">Soporte</option>
                     <option value="LOGISTICA">Logistica</option>
+                    <option value="CONTABILIDAD">Contabilidad</option>
                   </select>
                 </div>
 

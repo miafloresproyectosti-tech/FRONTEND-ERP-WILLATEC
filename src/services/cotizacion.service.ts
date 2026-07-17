@@ -511,15 +511,18 @@ export interface GetCotizacionesParams {
   search?: string;
   perPage?: number;
   estadoCotizacionId?: number;
+  pendienteRevision?: boolean;
   fechaDesde?: string;
   fechaHasta?: string;
 }
 
 const COTIZACIONES_COUNT_CACHE_PREFIX = "cotizaciones:count:";
+const COTIZACIONES_PENDIENTES_REVISION_CACHE_PREFIX = "cotizaciones:pendientes-revision:";
 const COTIZACIONES_COUNT_TTL_MS = 30_000;
 
 function clearCotizacionesReadCache() {
   clearCacheByPrefix(COTIZACIONES_COUNT_CACHE_PREFIX);
+  clearCacheByPrefix(COTIZACIONES_PENDIENTES_REVISION_CACHE_PREFIX);
 }
 
 // ========================
@@ -550,6 +553,7 @@ export async function getCotizacionesPaginated({
   search = "",
   perPage = 10,
   estadoCotizacionId,
+  pendienteRevision,
   fechaDesde,
   fechaHasta,
 }: GetCotizacionesParams = {}): Promise<CotizacionesPaginatedResponse> {
@@ -562,6 +566,7 @@ export async function getCotizacionesPaginated({
         cliente_id: clienteId,
         user_id: ejecutivoId,
         estado_cotizacion_id: estadoCotizacionId,
+        pendiente_revision: pendienteRevision ? 1 : undefined,
         fecha_desde: fechaDesde || undefined,
         fecha_hasta: fechaHasta || undefined,
       },
@@ -582,6 +587,7 @@ export async function getCotizacionesCount(
     clienteId: params.clienteId ?? null,
     ejecutivoId: params.ejecutivoId ?? null,
     estadoCotizacionId: params.estadoCotizacionId ?? null,
+    pendienteRevision: params.pendienteRevision ?? null,
     fechaDesde: params.fechaDesde || null,
     fechaHasta: params.fechaHasta || null,
     search: params.search?.trim() || "",
@@ -598,6 +604,42 @@ export async function getCotizacionesCount(
       });
 
       return response.total || 0;
+    },
+    {
+      ttlMs: COTIZACIONES_COUNT_TTL_MS,
+      persist: false,
+      force: options.force,
+    }
+  );
+}
+
+export async function getCotizacionesPendientesRevisionCount(
+  params: Omit<GetCotizacionesParams, "page" | "perPage" | "estadoCotizacionId"> = {},
+  options: { force?: boolean } = {}
+): Promise<number> {
+  const normalized = {
+    clienteId: params.clienteId ?? null,
+    ejecutivoId: params.ejecutivoId ?? null,
+    fechaDesde: params.fechaDesde || null,
+    fechaHasta: params.fechaHasta || null,
+    search: params.search?.trim() || "",
+  };
+  const cacheKey = `${COTIZACIONES_PENDIENTES_REVISION_CACHE_PREFIX}${JSON.stringify(normalized)}`;
+
+  return cachedRequest(
+    cacheKey,
+    async () => {
+      const response = await api.get("/cotizaciones/resumen-pendientes-revision", {
+        params: {
+          cliente_id: params.clienteId,
+          user_id: params.ejecutivoId,
+          fecha_desde: params.fechaDesde || undefined,
+          fecha_hasta: params.fechaHasta || undefined,
+          search: params.search?.trim() || undefined,
+        },
+      });
+
+      return Number(response.data?.modificaciones_pendientes || 0);
     },
     {
       ttlMs: COTIZACIONES_COUNT_TTL_MS,

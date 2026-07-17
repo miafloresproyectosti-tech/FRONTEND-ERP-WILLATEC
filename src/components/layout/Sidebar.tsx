@@ -32,13 +32,19 @@ export default function Sidebar({
   const location = useLocation();
   const navigate = useNavigate();
 
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   // ✅ CARPETA COMERCIAL
   const [commercialOpen, setCommercialOpen] = useState(true);
+  const showCommercialGroup =
+    user?.role !== "VENTAS" &&
+    (hasPermission("cotizaciones") ||
+      hasPermission("ordenes_compra") ||
+      hasPermission("productos") ||
+      hasPermission("clientes"));
 
   const dropdownTimeoutRef = useRef<number | null>(null);
   const formatLastLogin = (value?: string | null) => {
@@ -156,8 +162,7 @@ export default function Sidebar({
             )}
 
             {/* ✅ SUPERADMIN Y ADMIN */}
-            {(user?.role === "SUPERADMIN" ||
-              user?.role === "ADMIN") && (
+            {showCommercialGroup && (
               <>
                 {/* CARPETA COMERCIAL */}
                 <div className="mt-2">
@@ -196,6 +201,7 @@ export default function Sidebar({
                   {commercialOpen && (
                     <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
                       {/* COTIZACIONES */}
+                      {hasPermission("cotizaciones") && (
                       <Link
                         to="/cotizaciones"
                         className={`
@@ -215,8 +221,10 @@ export default function Sidebar({
                         <FileText size={18} />
                         Cotizaciones
                       </Link>
+                      )}
 
                       {/* ORDENES */}
+                      {hasPermission("ordenes_compra") && (
                       <Link
                         to="/ordenes-compra"
                         className={`
@@ -236,8 +244,10 @@ export default function Sidebar({
                         <ShoppingCart size={18} />
                         Órdenes de Compra
                       </Link>
+                      )}
 
                       {/* PRODUCTOS */}
+                      {hasPermission("productos") && (
                       <Link
                         to="/productos"
                         className={`
@@ -257,8 +267,10 @@ export default function Sidebar({
                         <Package size={18} />
                         Productos
                       </Link>
+                      )}
 
                       {/* CLIENTES */}
+                      {hasPermission("clientes") && (
                       <Link
                         to="/clientes"
                         className={`
@@ -278,11 +290,13 @@ export default function Sidebar({
                         <UserCheck size={18} />
                         Clientes
                       </Link>
+                      )}
                     </div>
                   )}
                 </div>
 
                 {/* USUARIOS */}
+                {hasPermission("usuarios") && (
                 <Link
                   to="/usuarios"
                   onClick={() => mobile && onClose?.()}
@@ -302,8 +316,10 @@ export default function Sidebar({
                   <Users size={20} />
                   <span className="font-medium">Usuarios</span>
                 </Link>
+                )}
 
                 {/* AUDITORIA */}
+                {hasPermission("auditoria") && (
                 <Link
                   to="/auditoria"
                   onClick={() => mobile && onClose?.()}
@@ -325,6 +341,7 @@ export default function Sidebar({
                     Auditoría
                   </span>
                 </Link>
+                )}
               </>
             )}
 

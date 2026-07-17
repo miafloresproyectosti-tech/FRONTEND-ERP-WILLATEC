@@ -22,7 +22,13 @@ import {
 
 import { useAuth } from "../AuthContext";
 import { useNotifications } from "../NotificationContext";
-import { deleteCotizacion, getCotizacionesCount, getCotizacionesPaginated, type Cotizacion as ApiCotizacion } from "../services/cotizacion.service";
+import {
+  deleteCotizacion,
+  getCotizacionesCount,
+  getCotizacionesPaginated,
+  getCotizacionesPendientesRevisionCount,
+  type Cotizacion as ApiCotizacion,
+} from "../services/cotizacion.service";
 import { getUsers, type User as ApiUser } from "../services/usuario.service";
 import { formatMoney } from "../utils/formatNumber";
 import { getPaginationItems } from "../utils/pagination";
@@ -144,6 +150,7 @@ export default function Cotizaciones() {
   const [fechaHasta, setFechaHasta] = useState("");
   const [ejecutivoOptions, setEjecutivoOptions] = useState<EjecutivoOption[]>([]);
   const [totalPorEstado, setTotalPorEstado] = useState<Record<EstadoResumenKey, number>>(EMPTY_TOTAL_POR_ESTADO);
+  const [totalModificacionesPendientes, setTotalModificacionesPendientes] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCotizaciones, setTotalCotizaciones] = useState(0);
@@ -165,6 +172,7 @@ export default function Cotizaciones() {
         search: debouncedSearchTerm,
         perPage: itemsPerPage,
         estadoCotizacionId: ESTADO_FILTER_MAP[filterEstado as EstadoResumenKey],
+        pendienteRevision: filterEstado === "pendientes_revision",
         ejecutivoId: filterEjecutivo === "todos" ? undefined : Number(filterEjecutivo),
         fechaDesde,
         fechaHasta,
@@ -190,6 +198,7 @@ export default function Cotizaciones() {
   }, [addNotification, currentPage, debouncedSearchTerm, fechaDesde, fechaHasta, filterEjecutivo, filterEstado]);
 
   const paginatedCotizaciones = cotizaciones;
+  const canReviewCotizaciones = user?.role === "SUPERADMIN" || user?.role === "ADMIN";
 
   // ✅ BADGES
   const getEstadoBadge = (estadoId: number) => {
@@ -265,6 +274,7 @@ export default function Cotizaciones() {
           const total = await getCotizacionesCount({
             search: debouncedSearchTerm,
             estadoCotizacionId: ESTADO_FILTER_MAP[filterEstado as EstadoResumenKey],
+            pendienteRevision: filterEstado === "pendientes_revision",
             ejecutivoId: apiUser.id,
             fechaDesde,
             fechaHasta,
@@ -294,7 +304,8 @@ export default function Cotizaciones() {
   const loadResumenEstados = useCallback(async (force = false) => {
     try {
       const ejecutivoId = filterEjecutivo === "todos" ? undefined : Number(filterEjecutivo);
-      const resumen = await Promise.all(
+      const [resumen, modificacionesPendientes] = await Promise.all([
+        Promise.all(
         Object.entries(ESTADO_FILTER_MAP).map(async ([key, estadoCotizacionId]) => {
           const total = await getCotizacionesCount({
             search: debouncedSearchTerm,
@@ -306,16 +317,26 @@ export default function Cotizaciones() {
 
           return [key, total] as const;
         })
-      );
+        ),
+        canReviewCotizaciones
+          ? getCotizacionesPendientesRevisionCount({
+            search: debouncedSearchTerm,
+            ejecutivoId,
+            fechaDesde,
+            fechaHasta,
+          }, { force })
+          : Promise.resolve(0),
+      ]);
 
       setTotalPorEstado({
         ...EMPTY_TOTAL_POR_ESTADO,
         ...Object.fromEntries(resumen),
       });
+      setTotalModificacionesPendientes(modificacionesPendientes);
     } catch (error) {
       console.error("Error al cargar resumen de cotizaciones por estado:", error);
     }
-  }, [debouncedSearchTerm, fechaDesde, fechaHasta, filterEjecutivo]);
+  }, [canReviewCotizaciones, debouncedSearchTerm, fechaDesde, fechaHasta, filterEjecutivo]);
 
   // Cargar cotizaciones al montar el componente
   useEffect(() => {
@@ -362,7 +383,7 @@ export default function Cotizaciones() {
     return Number(cotizacion.moneda_id) === 2 ? "$" : "S/";
   };
 
-  const porRevisar = totalPorEstado.enviada;
+  const porRevisar = totalPorEstado.enviada + totalModificacionesPendientes;
 
   const selectedEjecutivo = ejecutivoOptions.find((ejecutivo) => String(ejecutivo.id) === filterEjecutivo);
 
@@ -511,7 +532,7 @@ export default function Cotizaciones() {
           </div>
         </div>
 
-        {user?.role === "SUPERADMIN" && (
+        {canReviewCotizaciones && (
           <div className="bg-white rounded-3xl p-5 shadow-sm border border-yellow-200 dark:border-yellow-700">
             <div className="flex items-center gap-4">
               <div className="bg-yellow-100 dark:bg-yellow-900 p-3 rounded-2xl">
@@ -526,12 +547,17 @@ export default function Cotizaciones() {
                 <h2 className="text-2xl font-bold text-yellow-600">
                   {porRevisar}
                 </h2>
+                {totalModificacionesPendientes > 0 && (
+                  <p className="text-xs font-semibold text-yellow-700">
+                    {totalModificacionesPendientes} modificacion(es)
+                  </p>
+                )}
               </div>
             </div>
 
             <button
               type="button"
-              onClick={() => setFilterEstado("enviada")}
+              onClick={() => setFilterEstado("pendientes_revision")}
               className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-yellow-700 bg-yellow-50 px-4 py-2 rounded-2xl hover:bg-yellow-100"
             >
               Ver pendientes
@@ -668,6 +694,9 @@ export default function Cotizaciones() {
               className="w-full px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white sm:w-56"
             >
               <option value="todos">Todos los estados</option>
+              {canReviewCotizaciones && (
+                <option value="pendientes_revision">Pendientes de aprobar</option>
+              )}
               <option value="borrador">Borrador</option>
               <option value="enviada">Enviada</option>
               <option value="parcialmente_aprobada">Parcialmente Aprobada</option>

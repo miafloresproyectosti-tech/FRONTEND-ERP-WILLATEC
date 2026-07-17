@@ -19,6 +19,8 @@ export const rolePermissions: Record<UserRole, string[]> = {
     "productos",
     "clientes",
     "cotizaciones",
+    "usuarios",
+    "auditoria",
     "mensajes",
     "ordenes_compra"
   ],
@@ -38,5 +40,9 @@ export const rolePermissions: Record<UserRole, string[]> = {
   LOGISTICA: [
     "productos",
     "inventario"
+  ],
+
+  CONTABILIDAD: [
+    "ordenes_compra"
   ]
 };

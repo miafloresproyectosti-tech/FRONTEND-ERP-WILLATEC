@@ -1,11 +1,25 @@
 import api from "./api";
 
-export type AuditEvent = "created" | "updated" | "deleted";
+export type AuditEvent = "created" | "updated" | "deleted" | "uploaded";
 export type AuditTipo =
   | "cliente"
   | "cotizacion"
   | "cotizacion_item"
-  | "cotizacion_costo";
+  | "cotizacion_costo"
+  | "cotizacion_item_proveedor"
+  | "cotizacion_historial"
+  | "cotizacion_modificacion"
+  | "cotizacion_version"
+  | "producto"
+  | "producto_externo"
+  | "producto_serie"
+  | "inventario_movimiento"
+  | "proveedor"
+  | "oc_recibida"
+  | "oc_recibida_item"
+  | "oc_emitida"
+  | "oc_emitida_item"
+  | "oc_documento_adicional";
 
 export interface AuditoriaCambio {
   campo: string;

@@ -74,6 +74,7 @@ export interface CotizacionItem {
     precio_venta: number;
     ganancia: number;
     margen: number;
+    nota?: string | null;
     subtotal: number;
     tipo: string;
     disponibilidad_tipo: string;
@@ -132,6 +133,7 @@ export interface CotizacionItem {
 export interface ProductoExterno {
     id: number;
     descripcion: string;
+    nota?: string | null;
     marca?: string | null;
     codigo?: string | null;
     unidad_medida?: string | null;
@@ -176,6 +178,7 @@ export interface ProductoExterno {
     ultimo_precio_venta?: number | string | null;
     ultima_fecha_cotizacion?: string | null;
     ultimo_cotizacion_item?: {
+        nota?: string | null;
         proveedores?: CotizacionItem["proveedores"];
         cotizacion?: {
             plantilla_id?: number | string | null;
@@ -189,6 +192,7 @@ export interface ProductoExterno {
         } | null;
     } | null;
     ultimo_cotizacion_item_con_proveedores?: {
+        nota?: string | null;
         proveedores?: CotizacionItem["proveedores"];
         cotizacion?: {
             plantilla_id?: number | string | null;
@@ -347,6 +351,11 @@ function normalizeProductoExterno(item: ProductoExterno): CotizacionItem {
             : [{ nombre: "", link: "", precio: null, notas: "" }];
     const latestCotizacion = item.ultimo_cotizacion_item?.cotizacion;
     const latestWithProvidersCotizacion = item.ultimo_cotizacion_item_con_proveedores?.cotizacion;
+    const nota =
+        item.ultimo_cotizacion_item?.nota ||
+        item.ultimo_cotizacion_item_con_proveedores?.nota ||
+        item.nota ||
+        "";
     const resolvedMonedaId =
         item.moneda_id === null || item.moneda_id === undefined
             ? Number(latestCotizacion?.moneda_id || latestWithProvidersCotizacion?.moneda_id || 1)
@@ -379,6 +388,7 @@ function normalizeProductoExterno(item: ProductoExterno): CotizacionItem {
         precio_venta: ultimoPrecioVenta,
         ganancia: Math.max(ultimoPrecioVenta - costoBase, 0),
         margen: 0,
+        nota,
         subtotal: ultimoPrecioVenta,
         tipo: "externo",
         disponibilidad_tipo: item.disponibilidad_tipo || "stock",

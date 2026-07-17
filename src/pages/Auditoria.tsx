@@ -24,6 +24,7 @@ const eventOptions = [
   { value: "created", label: "Creado" },
   { value: "updated", label: "Actualizado" },
   { value: "deleted", label: "Eliminado" },
+  { value: "uploaded", label: "Archivo subido" },
 ];
 
 const tipoOptions = [
@@ -32,6 +33,20 @@ const tipoOptions = [
   { value: "cotizacion", label: "Cotizacion" },
   { value: "cotizacion_item", label: "Item de cotizacion" },
   { value: "cotizacion_costo", label: "Costo adicional" },
+  { value: "cotizacion_item_proveedor", label: "Proveedor de item" },
+  { value: "cotizacion_historial", label: "Historial de cotizacion" },
+  { value: "cotizacion_modificacion", label: "Modificacion de cotizacion" },
+  { value: "cotizacion_version", label: "Version de cotizacion" },
+  { value: "producto", label: "Producto interno" },
+  { value: "producto_externo", label: "Producto externo" },
+  { value: "producto_serie", label: "Serie de producto" },
+  { value: "inventario_movimiento", label: "Kardex" },
+  { value: "proveedor", label: "Proveedor" },
+  { value: "oc_recibida", label: "OC recibida" },
+  { value: "oc_recibida_item", label: "Item OC recibida" },
+  { value: "oc_emitida", label: "OC emitida" },
+  { value: "oc_emitida_item", label: "Item OC emitida" },
+  { value: "oc_documento_adicional", label: "Documento adicional OC" },
 ];
 
 const perPageOptions = [15, 25, 50, 100];
@@ -86,6 +101,10 @@ const getEventBadgeClass = (event: string) => {
 
   if (event === "deleted") {
     return "bg-red-50 text-red-700 border-red-200";
+  }
+
+  if (event === "uploaded") {
+    return "bg-purple-50 text-purple-700 border-purple-200";
   }
 
   return "bg-gray-50 text-gray-700 border-gray-200";
@@ -144,7 +163,7 @@ export default function Auditoria() {
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       void loadAuditoria();
-    }, 250);
+    }, 600);
 
     return () => window.clearTimeout(timeout);
   }, [queryFilters]);
@@ -214,8 +233,8 @@ export default function Auditoria() {
             </h1>
           </div>
           <p className="mt-1 text-slate-500">
-            Acciones registradas por el backend en clientes, cotizaciones, items
-            y costos adicionales.
+            Acciones registradas por el backend en cotizaciones, OC, Kardex,
+            productos, proveedores, documentos y cambios relevantes.
           </p>
         </div>
 
@@ -245,7 +264,7 @@ export default function Auditoria() {
             <input
               value={filters.search ?? ""}
               onChange={(event) => updateFilter("search", event.target.value)}
-              placeholder="Buscar texto"
+              placeholder="Buscar cotizacion, OC, factura, serie, SKU..."
               className="w-full bg-transparent text-sm outline-none"
             />
           </label>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
@@ -17,6 +18,7 @@ import {
   RefreshCw,
   Search,
   Send,
+  Trash2,
   Truck,
   Upload,
   X,
@@ -26,6 +28,10 @@ import { useNotifications } from "../NotificationContext";
 import {
   createOcEmitida,
   createOcRecibida,
+  deleteOcEmitidaDocumento,
+  deleteOcEmitidaDocumentoAdicional,
+  deleteOcRecibidaDocumento,
+  deleteOcRecibidaDocumentoAdicional,
   downloadOcEmitidaPdf,
   getOcEmitida,
   getOcEmitidaItems,
@@ -37,6 +43,7 @@ import {
   updateOcRecibidaItems,
   uploadOcEmitidaDocumentos,
   uploadOcRecibidaDocumentos,
+  type OcDocumentoAdicional,
   type OcEmitida,
   type OcPreview,
   type OcPreviewItem,
@@ -291,6 +298,10 @@ type DocumentLink = {
   key: string;
   label: string;
   url: string;
+  id?: number | string;
+  additional?: boolean;
+  tipo?: string;
+  uploadedBy?: number | string | null;
 };
 
 const apiOrigin = String(import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api").replace(/\/api\/?$/, "");
@@ -313,6 +324,13 @@ const pickDocumentValue = (source: any, key: string) =>
   source?.documentos?.[key]?.url ??
   source?.documentos?.[key]?.path ??
   source?.documentos?.[key];
+
+const pickDocumentUploader = (source: any, key: string) =>
+  source?.[`${key}_uploaded_by`] ??
+  source?.documentos?.[`${key}_uploaded_by`] ??
+  source?.documentos?.[key]?.uploaded_by ??
+  source?.documentos?.[key]?.created_by ??
+  null;
 
 const getDocumentLinks = (oc: OcEmitida | OcRecibida): DocumentLink[] => {
   const labels = "proveedor" in oc
@@ -343,11 +361,59 @@ const getDocumentLinks = (oc: OcEmitida | OcRecibida): DocumentLink[] => {
       }))
       .filter((document: DocumentLink) => document.url)
     : [];
+  const additionalLinks = ((oc as any).documentos_adicionales || [])
+    .map((documento: OcDocumentoAdicional, index: number) => ({
+      key: `adicional-${documento.id ?? index}`,
+      id: documento.id,
+      additional: true,
+      label: documento.nombre_original || `Documento adicional ${index + 1}`,
+      url: toDocumentUrl(documento.url || documento.path),
+    }))
+    .filter((document: DocumentLink) => document.url);
 
   const byUrl = new Map<string, DocumentLink>();
-  [...directLinks, ...arrayLinks].forEach((document) => byUrl.set(document.url, document));
+  [...directLinks, ...arrayLinks, ...additionalLinks].forEach((document) => byUrl.set(document.url, document));
   return Array.from(byUrl.values());
 };
+
+const getManagedDocumentLinks = (oc: OcEmitida | OcRecibida): DocumentLink[] => {
+  const labels = "proveedor" in oc
+    ? [
+      ["factura", "Factura"],
+      ["comprobante_pago", "Comprobante de pago"],
+    ]
+    : [
+      ["orden_compra_cliente", "Orden de compra cliente"],
+      ["guia_emision", "Guia de emision"],
+      ["factura", "Factura"],
+    ];
+
+  const fixedLinks = labels
+    .map(([key, label]) => ({
+      key,
+      tipo: key,
+      label,
+      url: toDocumentUrl(pickDocumentValue(oc as any, key)),
+      uploadedBy: pickDocumentUploader(oc as any, key),
+    }))
+    .filter((document) => document.url);
+
+  const additionalLinks = ((oc as any).documentos_adicionales || [])
+    .map((documento: OcDocumentoAdicional, index: number) => ({
+      key: `adicional-${documento.id ?? index}`,
+      id: documento.id,
+      additional: true,
+      label: documento.nombre_original || `Documento adicional ${index + 1}`,
+      url: toDocumentUrl(documento.url || documento.path),
+      uploadedBy: documento.created_by,
+    }))
+    .filter((document: DocumentLink) => document.url);
+
+  return [...fixedLinks, ...additionalLinks];
+};
+
+const hasOcDocument = (oc: OcEmitida | OcRecibida, key: string) =>
+  Boolean(toDocumentUrl(pickDocumentValue(oc as any, key)));
 
 export default function OrdenesCompraPage() {
   const { user } = useAuth();
@@ -384,6 +450,7 @@ export default function OrdenesCompraPage() {
   const [factura, setFactura] = useState<File | null>(null);
   const [facturaNumero, setFacturaNumero] = useState("");
   const [comprobantePago, setComprobantePago] = useState<File | null>(null);
+  const [documentosAdicionales, setDocumentosAdicionales] = useState<File[]>([]);
   const [updatingItemOc, setUpdatingItemOc] = useState<number | null>(null);
   const [ocItemSeries, setOcItemSeries] = useState<Record<number, number[]>>({});
 
@@ -398,9 +465,31 @@ export default function OrdenesCompraPage() {
     },
     [user],
   );
+  const canUploadOcDocuments = useCallback(
+    (oc: OcEmitida | OcRecibida) => {
+      if (!user) return false;
+      if (["SUPERADMIN", "ADMIN", "CONTABILIDAD"].includes(user.role)) return true;
+
+      return Number(oc.user_id) === Number(user.id);
+    },
+    [user],
+  );
   const canCancelRecibida = useCallback(
     (oc: OcRecibida) => canEditOc(oc) && !["atendido", "cancelado"].includes(String(oc.estado)),
     [canEditOc],
+  );
+  const canCreateOc = user ? ["SUPERADMIN", "VENTAS"].includes(user.role) : false;
+  const canDeleteOcDocument = useCallback(
+    (oc: OcEmitida | OcRecibida, document: DocumentLink) => {
+      if (!user) return false;
+      if (["ADMIN", "CONTABILIDAD"].includes(user.role)) {
+        return Boolean(document.uploadedBy) && Number(document.uploadedBy) === Number(user.id);
+      }
+      if (canEditOc(oc)) return true;
+
+      return false;
+    },
+    [canEditOc, user],
   );
 
   const proveedorOptions = useMemo(() => {
@@ -806,7 +895,11 @@ export default function OrdenesCompraPage() {
     try {
       setSaving(true);
       if (isEmitida) {
-        await uploadOcEmitidaDocumentos(documentTarget.id, { factura, comprobante_pago: comprobantePago });
+        await uploadOcEmitidaDocumentos(documentTarget.id, {
+          factura,
+          comprobante_pago: comprobantePago,
+          documentos_adicionales: documentosAdicionales,
+        });
         setSelectedOc(await getOcEmitida(documentTarget.id));
       } else {
         await uploadOcRecibidaDocumentos(documentTarget.id, {
@@ -814,6 +907,7 @@ export default function OrdenesCompraPage() {
           guia_emision: guiaEmision,
           factura_numero: facturaNumero,
           factura,
+          documentos_adicionales: documentosAdicionales,
         });
         const detail = await getOcRecibida(documentTarget.id);
         setOcItemSeries(getOcSerieSelectionMap(detail));
@@ -827,6 +921,50 @@ export default function OrdenesCompraPage() {
       showToast({
         title: "Error al subir documentos",
         description: getErrorMessage(error, "No se pudieron guardar los documentos."),
+        type: "error",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteDocument = async (tipo: string, additionalId?: number | string) => {
+    if (!documentTarget) return;
+
+    const confirmed = window.confirm("Se eliminara el documento seleccionado. Deseas continuar?");
+    if (!confirmed) return;
+
+    const isEmitida = "proveedor" in documentTarget;
+
+    try {
+      setSaving(true);
+      if (isEmitida) {
+        if (additionalId) {
+          await deleteOcEmitidaDocumentoAdicional(documentTarget.id, additionalId);
+        } else {
+          await deleteOcEmitidaDocumento(documentTarget.id, tipo);
+        }
+        const detail = await getOcEmitida(documentTarget.id);
+        setDocumentTarget(detail);
+        setSelectedOc(detail);
+      } else {
+        if (additionalId) {
+          await deleteOcRecibidaDocumentoAdicional(documentTarget.id, additionalId);
+        } else {
+          await deleteOcRecibidaDocumento(documentTarget.id, tipo);
+        }
+        const detail = await getOcRecibida(documentTarget.id);
+        setDocumentTarget(detail);
+        setOcItemSeries(getOcSerieSelectionMap(detail));
+        setSelectedOc(detail);
+      }
+
+      showToast({ title: "Documento eliminado", description: "El archivo fue retirado de la orden de compra.", type: "success" });
+      refreshActiveTab();
+    } catch (error) {
+      showToast({
+        title: "No se pudo eliminar el documento",
+        description: getErrorMessage(error, "Verifica tu sesion o permisos."),
         type: "error",
       });
     } finally {
@@ -981,6 +1119,7 @@ export default function OrdenesCompraPage() {
     setComprobantePago(null);
     setOrdenCompraCliente(null);
     setGuiaEmision(null);
+    setDocumentosAdicionales([]);
   };
 
   const handleCancelRecibida = async (oc: OcRecibida) => {
@@ -1042,22 +1181,24 @@ export default function OrdenesCompraPage() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={() => openCreateModal("recibir")}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
-          >
-            <ClipboardCheck size={18} /> Registrar OC recibida
-          </button>
-          <button
-            type="button"
-            onClick={() => openCreateModal("emitir")}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
-          >
-            <Send size={18} /> Emitir OC
-          </button>
-        </div>
+        {canCreateOc && (
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => openCreateModal("recibir")}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+            >
+              <ClipboardCheck size={18} /> Registrar OC recibida
+            </button>
+            <button
+              type="button"
+              onClick={() => openCreateModal("emitir")}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              <Send size={18} /> Emitir OC
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -1140,6 +1281,7 @@ export default function OrdenesCompraPage() {
               onDocuments={openDocumentModal}
               onDownloadPdf={handleDownloadEmitidaPdf}
               canEditOc={canEditOc}
+              canUploadDocuments={canUploadOcDocuments}
             />
           ) : (
             <RecibidasTable
@@ -1150,6 +1292,7 @@ export default function OrdenesCompraPage() {
               onToggleItem={handleToggleRecibidaItem}
               updatingItemOc={updatingItemOc}
               canEditOc={canEditOc}
+              canUploadDocuments={canUploadOcDocuments}
               canCancelOc={canCancelRecibida}
             />
           )}
@@ -1332,26 +1475,92 @@ export default function OrdenesCompraPage() {
           <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl dark:bg-slate-950">
             <ModalHeader title={`Subir documentos - ${getOcLabel(documentTarget)}`} onClose={closeDocumentModal} />
             <div className="space-y-4 p-6">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Documentos subidos</h3>
+                  <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-500 dark:bg-slate-950">
+                    {getManagedDocumentLinks(documentTarget).length}
+                  </span>
+                </div>
+                {getManagedDocumentLinks(documentTarget).length > 0 ? (
+                  <div className="space-y-2">
+                    {getManagedDocumentLinks(documentTarget).map((document) => (
+                      <div
+                        key={`${document.key}-${document.url}`}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-white bg-white px-3 py-2 text-sm shadow-sm dark:border-slate-800 dark:bg-slate-950"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-slate-800 dark:text-slate-100">{document.label}</p>
+                          <p className="text-xs text-slate-500">
+                            {document.additional ? "Documento adicional" : "Documento unico"}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <a
+                            href={document.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100"
+                            title="Ver documento"
+                          >
+                            <Eye size={15} />
+                          </a>
+                          {canDeleteOcDocument(documentTarget, document) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDocument(document.tipo || "", document.id)}
+                              disabled={saving}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              title="Eliminar documento"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">Aun no hay documentos subidos para esta orden.</p>
+                )}
+              </div>
               {"proveedor" in documentTarget ? (
                 <>
-                  <FileInput label="Factura" file={factura} onFileChange={setFactura} />
-                  <FileInput label="Comprobante de pago" file={comprobantePago} onFileChange={setComprobantePago} />
+                  {!hasOcDocument(documentTarget, "factura") && (
+                    <FileInput label="Factura" file={factura} onFileChange={setFactura} />
+                  )}
+                  {!hasOcDocument(documentTarget, "comprobante_pago") && (
+                    <FileInput label="Comprobante de pago" file={comprobantePago} onFileChange={setComprobantePago} />
+                  )}
                 </>
               ) : (
                 <>
-                  <FileInput label="Orden de compra cliente" file={ordenCompraCliente} onFileChange={setOrdenCompraCliente} />
-                  <FileInput label="Guia de emision" file={guiaEmision} onFileChange={setGuiaEmision} />
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    Numero de factura
-                    <input
-                      value={facturaNumero}
-                      onChange={(event) => setFacturaNumero(event.target.value)}
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                    />
-                  </label>
-                  <FileInput label="Factura" file={factura} onFileChange={setFactura} />
+                  {!hasOcDocument(documentTarget, "orden_compra_cliente") && (
+                    <FileInput label="Orden de compra cliente" file={ordenCompraCliente} onFileChange={setOrdenCompraCliente} />
+                  )}
+                  {!hasOcDocument(documentTarget, "guia_emision") && (
+                    <FileInput label="Guia de emision" file={guiaEmision} onFileChange={setGuiaEmision} />
+                  )}
+                  {(!hasOcDocument(documentTarget, "factura") || !(documentTarget as OcRecibida).factura_numero) && (
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      Numero de factura
+                      <input
+                        value={facturaNumero}
+                        onChange={(event) => setFacturaNumero(event.target.value)}
+                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                  )}
+                  {!hasOcDocument(documentTarget, "factura") && (
+                    <FileInput label="Factura" file={factura} onFileChange={setFactura} />
+                  )}
                 </>
               )}
+              <MultipleFileInput
+                label="Documentos adicionales"
+                files={documentosAdicionales}
+                onFilesChange={setDocumentosAdicionales}
+              />
             </div>
             <div className="flex justify-end gap-3 border-t border-gray-200 p-6 dark:border-slate-800">
               <button
@@ -1492,18 +1701,84 @@ function FileInput({
   );
 }
 
+function MultipleFileInput({
+  label,
+  files,
+  onFilesChange,
+}: {
+  label: string;
+  files: File[];
+  onFilesChange: (files: File[]) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextFiles = Array.from(event.target.files || []);
+    if (nextFiles.length > 0) {
+      onFilesChange([...files, ...nextFiles]);
+    }
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+  };
+
+  const handleRemove = (index: number) => {
+    onFilesChange(files.filter((_, fileIndex) => fileIndex !== index));
+  };
+
+  return (
+    <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/40 p-4 dark:border-blue-900/60 dark:bg-blue-950/20">
+      <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+        <Paperclip size={16} /> {label}
+      </span>
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        onChange={handleChange}
+        className="w-full text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-100 file:px-3 file:py-2 file:text-blue-700"
+      />
+      {files.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {files.map((file, index) => (
+            <div
+              key={`${file.name}-${file.lastModified}-${index}`}
+              className="flex items-center justify-between gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-slate-950 dark:text-blue-100"
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <FileText className="h-4 w-4 shrink-0" />
+                <span className="truncate font-semibold">{file.name}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleRemove(index)}
+                className="shrink-0 rounded-md p-1 text-blue-700 hover:bg-blue-100 dark:text-blue-100 dark:hover:bg-blue-900/60"
+                title="Quitar archivo"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmitidasTable({
   rows,
   onView,
   onDocuments,
   onDownloadPdf,
   canEditOc,
+  canUploadDocuments,
 }: {
   rows: OcEmitida[];
   onView: (oc: OcEmitida) => void;
   onDocuments: (oc: OcEmitida) => void;
   onDownloadPdf: (oc: OcEmitida) => void;
   canEditOc: (oc: OcEmitida) => boolean;
+  canUploadDocuments: (oc: OcEmitida) => boolean;
 }) {
   return (
     <>
@@ -1538,10 +1813,10 @@ function EmitidasTable({
           <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
             <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
             <IconButton
-              title={canEditOc(oc) ? "Subir documentos" : "Solo el usuario que registro esta OC puede editarla"}
+              title={canUploadDocuments(oc) ? "Subir documentos" : "No tienes permisos para subir documentos"}
               onClick={() => onDocuments(oc)}
               icon={<Upload size={17} />}
-              disabled={!canEditOc(oc)}
+              disabled={!canUploadDocuments(oc)}
             />
             <button
               type="button"
@@ -1588,10 +1863,10 @@ function EmitidasTable({
               <div className="flex justify-center gap-2">
                 <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
                 <IconButton
-                  title={canEditOc(oc) ? "Subir documentos" : "Solo el usuario que registro esta OC puede editarla"}
+                  title={canUploadDocuments(oc) ? "Subir documentos" : "No tienes permisos para subir documentos"}
                   onClick={() => onDocuments(oc)}
                   icon={<Upload size={17} />}
-                  disabled={!canEditOc(oc)}
+                  disabled={!canUploadDocuments(oc)}
                 />
                 <button
                   type="button"
@@ -1622,6 +1897,7 @@ function RecibidasTable({
   onToggleItem,
   updatingItemOc,
   canEditOc,
+  canUploadDocuments,
   canCancelOc,
 }: {
   rows: OcRecibida[];
@@ -1631,6 +1907,7 @@ function RecibidasTable({
   onToggleItem: (oc: OcRecibida, item: OcRecibidaItem, field: "comprado" | "entregado", checked: boolean) => void;
   updatingItemOc: number | null;
   canEditOc: (oc: OcRecibida) => boolean;
+  canUploadDocuments: (oc: OcRecibida) => boolean;
   canCancelOc: (oc: OcRecibida) => boolean;
 }) {
   return (
@@ -1685,10 +1962,10 @@ function RecibidasTable({
           <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
             <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
             <IconButton
-              title={canEditOc(oc) ? "Subir documentos" : "Solo el usuario que registro esta OC puede editarla"}
+              title={canUploadDocuments(oc) ? "Subir documentos" : "No tienes permisos para subir documentos"}
               onClick={() => onDocuments(oc)}
               icon={<Upload size={17} />}
-              disabled={!canEditOc(oc)}
+              disabled={!canUploadDocuments(oc)}
             />
             <IconButton
               title={canCancelOc(oc) ? "Cancelar OC y liberar reservas" : "Solo se puede cancelar antes de atender"}
@@ -1765,10 +2042,10 @@ function RecibidasTable({
               <div className="flex justify-center gap-2">
                 <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
                 <IconButton
-                  title={canEditOc(oc) ? "Subir documentos" : "Solo el usuario que registro esta OC puede editarla"}
+                  title={canUploadDocuments(oc) ? "Subir documentos" : "No tienes permisos para subir documentos"}
                   onClick={() => onDocuments(oc)}
                   icon={<Upload size={17} />}
-                  disabled={!canEditOc(oc)}
+                  disabled={!canUploadDocuments(oc)}
                 />
                 <IconButton
                   title={canCancelOc(oc) ? "Cancelar OC y liberar reservas" : "Solo se puede cancelar antes de atender"}

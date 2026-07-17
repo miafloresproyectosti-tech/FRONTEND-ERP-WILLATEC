@@ -27,6 +27,7 @@ interface Props {
   externalItemSuggestions?: ItemForm[];
   onSelectExternalSuggestion?: (item: ItemForm) => void;
   isAlquiler?: boolean;
+  costoSinIgv?: boolean;
 }
 
 export function ItemFormModal({
@@ -46,7 +47,8 @@ export function ItemFormModal({
   readOnly = false,
   externalItemSuggestions = [],
   onSelectExternalSuggestion,
-  isAlquiler = false
+  isAlquiler = false,
+  costoSinIgv = false
 }: Props) {
   const [importCalcOpen, setImportCalcOpen] = React.useState(false);
   const [importCalcType, setImportCalcType] = React.useState<'under200' | 'from201to1999' | 'from2000up'>('under200');
@@ -75,6 +77,7 @@ export function ItemFormModal({
   const precioUnitMensual = Number(itemForm.precio_venta || 0);
   const precioCantidadMensual = Number((precioUnitMensual * Number(itemForm.cantidad || 0)).toFixed(2));
   const precioTotalMeses = Number(itemForm.subtotal || 0);
+  const costoLabel = `Costo${costoSinIgv ? ' (SIN IGV)' : ''} (${monedaId === 1 ? 'S/.' : '$'})`;
 
   const field = (label: string, children: React.ReactNode) => (
     <div>
@@ -522,7 +525,7 @@ export function ItemFormModal({
               )}
             </div>
             <div className="grid grid-cols-3 gap-2">
-              {field(`Costo (${monedaId === 1 ? 'S/.' : '$'})`,
+              {field(costoLabel,
                 <div className="flex gap-1">
                   <input className={`${inp} flex-1`} type="number"
                     disabled={readOnly}

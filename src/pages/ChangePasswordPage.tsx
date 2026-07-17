@@ -92,6 +92,10 @@ export default function ChangePasswordPage() {
           ? "/cotizaciones"
           : nextRole === "SOPORTE"
           ? "/productos"
+          : nextRole === "LOGISTICA"
+          ? "/productos"
+          : nextRole === "CONTABILIDAD"
+          ? "/ordenes-compra"
           : "/not-authorized"
       );
     } catch (err: unknown) {

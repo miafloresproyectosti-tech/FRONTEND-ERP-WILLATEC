@@ -378,7 +378,9 @@ export function CotizacionDetail() {
   const currentEstadoCotizacionId = Number(estadoCotizacionId);
   const currentDelegadoId = delegadoId === null || delegadoId === undefined ? null : Number(delegadoId);
   const currentDelegadoCotizacionId =
-    cotizacion?.delegado_cotizacion_id ?? (cotizacion as any)?.delegadoCotizacionId ?? delegadoCotizacionId;
+    isModificationMode
+      ? delegadoCotizacionId
+      : cotizacion?.delegado_cotizacion_id ?? (cotizacion as any)?.delegadoCotizacionId ?? delegadoCotizacionId;
   const currentDelegadoCotizacionIdNumber =
     currentDelegadoCotizacionId === null || currentDelegadoCotizacionId === undefined
       ? null
@@ -413,7 +415,11 @@ export function CotizacionDetail() {
     canEditCotizacion &&
     !modificacionPendiente
   );
-  const canDelegateCotizacionEdit = Boolean(currentCotizacionId && cotizacion && isCotizacionCreator && !isCotizacionAprobada);
+  const canDelegateModificationEdit = Boolean(isModificationMode && canEditModificacion);
+  const canDelegateCotizacionEdit = Boolean(
+    (currentCotizacionId && cotizacion && isCotizacionCreator && !isCotizacionAprobada) ||
+    canDelegateModificationEdit
+  );
   const canSendCotizacionToReview = Boolean(
     currentCotizacionId &&
     currentEstadoCotizacionId === 1 &&
@@ -561,7 +567,11 @@ export function CotizacionDetail() {
     setEntregaDestino(source.entrega_destino ?? baseCotizacion?.entrega_destino ?? '');
     setClienteContacto(source.cliente_contacto ?? baseCotizacion?.cliente_contacto ?? baseCotizacion?.cliente?.contacto ?? '');
     setDelegadoId(source.delegado_id ?? baseCotizacion?.delegado_id ?? null);
-    setDelegadoCotizacionId(source.delegado_cotizacion_id ?? baseCotizacion?.delegado_cotizacion_id ?? (baseCotizacion as any)?.delegadoCotizacionId ?? null);
+    setDelegadoCotizacionId(
+      isModificationMode
+        ? (source.delegado_cotizacion_id ?? null)
+        : source.delegado_cotizacion_id ?? baseCotizacion?.delegado_cotizacion_id ?? (baseCotizacion as any)?.delegadoCotizacionId ?? null
+    );
     setItems(normalizeEditableItems(source.items || baseCotizacion?.items || []));
     setCostos(normalizeEditableCostos(source.costos || source.costos_adicionales || baseCotizacion?.costosAdicionales || baseCotizacion?.costos_adicionales || []));
   };
@@ -1307,6 +1317,8 @@ export function CotizacionDetail() {
 
     setIsSendingReview(true);
     try {
+      const payload = buildCotizacionPayload();
+      await updateCotizacionModificacion(currentModificacionId, payload);
       const updated = await enviarModificacionRevision(currentModificacionId, comentarioReenvioRevision);
       setComentarioReenvioRevision('');
       setModificacion(updated);
@@ -1435,7 +1447,7 @@ export function CotizacionDetail() {
   };
 
   const handleDelegarEdicionCotizacion = async () => {
-    if (!currentCotizacionId) return;
+    if (!currentCotizacionId && !isModificationMode) return;
     if (!canDelegateCotizacionEdit) {
       showToast({
         title: 'Acción no permitida',
@@ -1454,6 +1466,20 @@ export function CotizacionDetail() {
       } as any);
       return;
     }
+
+    if (isModificationMode) {
+      setDelegadoCotizacionId(delegadoCotizacionSelectionId);
+      setShowDelegacionEdicionModal(false);
+      showToast({
+        title: 'Edicion delegada en borrador',
+        description: 'Guarda el borrador para que el delegado pueda continuar la modificacion.',
+        type: 'success',
+        duration: 4000,
+      } as any);
+      return;
+    }
+
+    if (!currentCotizacionId) return;
 
     try {
       setSaving(true);
@@ -1585,6 +1611,10 @@ export function CotizacionDetail() {
       payload.delegado_id = delegadoId;
     }
 
+    if (delegadoCotizacionId) {
+      payload.delegado_cotizacion_id = delegadoCotizacionId;
+    }
+
     return payload;
   };
 
@@ -1642,13 +1672,13 @@ export function CotizacionDetail() {
           setComentarioReenvioRevision('');
         }
         showToast({
-          title: 'Modificacion enviada',
-          description: 'La propuesta fue guardada y enviada para revision.',
-          message: 'Modificacion enviada',
+          title: 'Borrador guardado',
+          description: 'La propuesta fue guardada como borrador. Puedes enviarla a revision cuando este lista.',
+          message: 'Borrador guardado',
           type: 'success',
           duration: 4000,
         } as any);
-        postSavePath = `/cotizaciones/${updated.cotizacion_id}/view`;
+        postSavePath = `/cotizaciones/modificaciones/${updated.id}/edit`;
       } else if (isEditing && currentCotizacionId) {
         // Actualizar
         const updated = await updateCotizacion(currentCotizacionId, payload);
@@ -2721,6 +2751,7 @@ export function CotizacionDetail() {
             includeIgv={currentIncludeIgv}
           />
 
+          {!isModificationMode && (
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <h2 className="text-base font-semibold text-gray-800 mb-3">
               Delegado de aprobación
@@ -2758,8 +2789,9 @@ export function CotizacionDetail() {
               </p>
             )}
           </div>
+          )}
 
-          {isEditing && (
+          {(isEditing || isModificationMode) && (
             <div className="bg-white rounded-xl shadow-sm border p-6">
               <h2 className="text-base font-semibold text-gray-800 mb-3">
                 Delegado de edición
@@ -3054,7 +3086,7 @@ export function CotizacionDetail() {
                   </>
                 ) : (
                   <>
-                    <Save className="w-5 h-5" /> {isModificationMode ? 'Guardar y enviar a revision' : 'Guardar'}
+                    <Save className="w-5 h-5" /> {isModificationMode ? 'Guardar borrador' : 'Guardar'}
                   </>
                 )}
               </button>
@@ -3071,7 +3103,7 @@ export function CotizacionDetail() {
                     </>
                   ) : (
                     <>
-                      <Send className="w-5 h-5" /> Enviar sin cambios
+                      <Send className="w-5 h-5" /> Enviar a revision
                     </>
                   )}
                 </button>
@@ -3197,6 +3229,7 @@ export function CotizacionDetail() {
         externalItemSuggestions={externalItemSuggestions}
         onSelectExternalSuggestion={handleExternalSuggestionSelection}
         isAlquiler={isAlquilerPlantilla}
+        costoSinIgv={!currentIncludeIgv}
       />
 
       {/* 4. Modal Costos Adicionales */}

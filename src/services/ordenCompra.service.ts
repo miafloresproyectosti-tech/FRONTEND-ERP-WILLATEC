@@ -52,6 +52,19 @@ export interface OcPreview {
   proveedores?: string[];
 }
 
+export interface OcDocumentoAdicional {
+  id: number;
+  oc_recibida_id?: number | string | null;
+  oc_emitida_id?: number | string | null;
+  nombre_original?: string | null;
+  path?: string | null;
+  url?: string | null;
+  mime_type?: string | null;
+  size?: number | string | null;
+  created_by?: number | string | null;
+  created_at?: string | null;
+}
+
 export interface OcRecibida {
   id: number;
   numero?: string;
@@ -74,11 +87,17 @@ export interface OcRecibida {
   };
   fecha_recepcion?: string;
   observaciones?: string | null;
+  orden_compra_cliente_path?: string | null;
+  orden_compra_cliente_uploaded_by?: number | string | null;
+  guia_emision_path?: string | null;
+  guia_emision_uploaded_by?: number | string | null;
   factura_numero?: string | null;
   factura_path?: string | null;
+  factura_uploaded_by?: number | string | null;
   estado: OcRecibidaEstado | string;
   documentos_completos?: boolean;
   documentos_faltantes?: string[];
+  documentos_adicionales?: OcDocumentoAdicional[];
   items_count?: number | string;
   total_items?: number | string;
   items?: OcRecibidaItem[];
@@ -132,12 +151,17 @@ export interface OcEmitida {
   proveedor?: string;
   fecha_emision?: string;
   observaciones?: string | null;
+  factura_path?: string | null;
+  factura_uploaded_by?: number | string | null;
+  comprobante_pago_path?: string | null;
+  comprobante_pago_uploaded_by?: number | string | null;
   estado: OcEmitidaEstado | string;
   subtotal?: number | string;
   igv?: number | string;
   total?: number | string;
   documentos_completos?: boolean;
   documentos_faltantes?: string[];
+  documentos_adicionales?: OcDocumentoAdicional[];
   pdf_url?: string;
   items?: OcEmitidaItem[];
 }
@@ -426,7 +450,7 @@ export async function cancelarOcRecibida(id: number | string) {
 
 export async function uploadOcRecibidaDocumentos(
   id: number | string,
-  files: { orden_compra_cliente?: File | null; guia_emision?: File | null; factura_numero?: string; factura?: File | null },
+  files: { orden_compra_cliente?: File | null; guia_emision?: File | null; factura_numero?: string; factura?: File | null; documentos_adicionales?: File[] },
 ) {
   const formData = new FormData();
   if (files.orden_compra_cliente) {
@@ -441,10 +465,23 @@ export async function uploadOcRecibidaDocumentos(
   if (files.factura) {
     formData.append("factura", files.factura);
   }
+  files.documentos_adicionales?.forEach((file) => {
+    formData.append("documentos_adicionales[]", file);
+  });
 
   const response = await api.post(`/oc-recibidas/${id}/documentos`, formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
+  return response.data;
+}
+
+export async function deleteOcRecibidaDocumento(id: number | string, tipo: string) {
+  const response = await api.delete(`/oc-recibidas/${id}/documentos/${tipo}`);
+  return response.data;
+}
+
+export async function deleteOcRecibidaDocumentoAdicional(id: number | string, documentoId: number | string) {
+  const response = await api.delete(`/oc-recibidas/${id}/documentos-adicionales/${documentoId}`);
   return response.data;
 }
 
@@ -520,15 +557,28 @@ export async function downloadOcEmitidaPdf(id: number | string, fallbackFilename
 
 export async function uploadOcEmitidaDocumentos(
   id: number | string,
-  files: { factura?: File | null; comprobante_pago?: File | null },
+  files: { factura?: File | null; comprobante_pago?: File | null; documentos_adicionales?: File[] },
 ) {
   const formData = new FormData();
   if (files.factura) formData.append("factura", files.factura);
   if (files.comprobante_pago) formData.append("comprobante_pago", files.comprobante_pago);
+  files.documentos_adicionales?.forEach((file) => {
+    formData.append("documentos_adicionales[]", file);
+  });
 
   const response = await api.post(`/oc-emitidas/${id}/documentos`, formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
+  return response.data;
+}
+
+export async function deleteOcEmitidaDocumento(id: number | string, tipo: string) {
+  const response = await api.delete(`/oc-emitidas/${id}/documentos/${tipo}`);
+  return response.data;
+}
+
+export async function deleteOcEmitidaDocumentoAdicional(id: number | string, documentoId: number | string) {
+  const response = await api.delete(`/oc-emitidas/${id}/documentos-adicionales/${documentoId}`);
   return response.data;
 }
 

@@ -78,10 +78,12 @@ export default function LoginComponent() {
             ? '/clientes'
             : role === 'VENTAS'
               ? '/cotizaciones'
-              : role === 'SOPORTE'
-                ? '/productos'
+                : role === 'SOPORTE'
+                  ? '/productos'
                 : role === 'LOGISTICA'
                   ? '/productos'
+                : role === 'CONTABILIDAD'
+                  ? '/ordenes-compra'
                 : '/login';
       navigate(targetRoute);
     } catch (err: any) {
