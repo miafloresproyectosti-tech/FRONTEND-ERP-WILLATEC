@@ -503,19 +503,13 @@ export function ItemFormModal({
                   onChange={e => setItemForm({ ...itemForm, cantidad: e.target.value ? parseInt(e.target.value) : 0 })} />
               )}
               {field(isAlquiler ? 'Periodo (meses)' : 'Garantía (meses)',
-                <select className={inp}
+                <input className={inp} type="number" min={0} max={255} step={1}
                   disabled={readOnly}
-                  value={itemForm.garantia_meses?.toString() ?? '12'}
-                  onChange={e => setItemForm({ ...itemForm, garantia_meses: parseInt(e.target.value) })}>
-                  {[3, 6, 12, 24, 36, 48, 60].map((meses) => (
-                    <option key={meses} value={meses}>{meses}</option>
-                  ))}
-                  {itemForm.garantia_meses && ![3, 6, 12, 24, 36, 48, 60].includes(Number(itemForm.garantia_meses)) && (
-                    <option value={itemForm.garantia_meses}>
-                      {itemForm.garantia_meses} actual
-                    </option>
-                  )}
-                </select>
+                  value={itemForm.garantia_meses?.toString() ?? ''}
+                  onChange={e => setItemForm({
+                    ...itemForm,
+                    garantia_meses: e.target.value ? parseInt(e.target.value, 10) : 0
+                  })} />
               )}
               {field('Días entrega',
                 <input className={inp} type="number"
