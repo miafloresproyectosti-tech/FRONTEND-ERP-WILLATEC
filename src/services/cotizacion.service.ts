@@ -1165,6 +1165,16 @@ function getFilenameFromContentDisposition(value?: string): string | null {
   return filenameMatch?.[1] || null;
 }
 
+function decodeHeaderFilename(value?: string): string | null {
+  if (!value) return null;
+
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 /**
  * Exportar cotización a PDF
  */
@@ -1177,8 +1187,8 @@ export async function exportarCotizacionPdf(id: number): Promise<CotizacionPdfEx
     return {
       blob: response.data,
       filename:
-        response.headers["x-suggested-filename"] ||
         getFilenameFromContentDisposition(response.headers["content-disposition"]) ||
+        decodeHeaderFilename(response.headers["x-suggested-filename"]) ||
         null,
     };
   } catch (error) {
