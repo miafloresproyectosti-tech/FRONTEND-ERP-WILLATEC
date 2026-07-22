@@ -1932,25 +1932,46 @@ export function CotizacionDetail() {
       return;
     }
 
-    const nuevoCosto = {
-      id: Date.now(),
+    if (costoForm.id) {
+      setCostos((prev) =>
+        prev.map((costo) =>
+          costo.id === costoForm.id
+            ? {
+                ...costo,
+                tipo: costoForm.tipo,
+                monto: Number(costoForm.monto),
+                descripcion: costoForm.descripcion || '',
+              }
+            : costo
+        )
+      );
 
-      tipo: costoForm.tipo,
+      addNotification({
+        message: 'Costo actualizado',
+        type: 'success',
+        duration: 4000,
+      } as any);
+    } else {
+      const nuevoCosto = {
+        id: Date.now(),
 
-      cotizacion_id: currentCotizacionId,
+        tipo: costoForm.tipo,
 
-      monto: Number(costoForm.monto),
+        cotizacion_id: currentCotizacionId,
 
-      descripcion: costoForm.descripcion || '',
-    };
+        monto: Number(costoForm.monto),
 
-    setCostos((prev) => [...prev, nuevoCosto]);
+        descripcion: costoForm.descripcion || '',
+      };
 
-    addNotification({
-      message: 'Costo agregado',
-      type: 'success',
-      duration: 4000,
-    } as any);
+      setCostos((prev) => [...prev, nuevoCosto]);
+
+      addNotification({
+        message: 'Costo agregado',
+        type: 'success',
+        duration: 4000,
+      } as any);
+    }
 
     setCostoForm({
       id: 0,
@@ -1970,6 +1991,32 @@ export function CotizacionDetail() {
     setCostos((prev) =>
       prev.filter((costo) => costo.id !== id)
     );
+
+    if (costoForm.id === id) {
+      handleCancelEditCosto();
+    }
+  };
+
+  const handleEditCosto = (costo: CotizacionCostosAdicional) => {
+    if (isCotizacionReadOnly) return;
+
+    setCostoForm({
+      id: costo.id,
+      cotizacion_id: costo.cotizacion_id ?? currentCotizacionId ?? null,
+      tipo: costo.tipo,
+      monto: Number(costo.monto || 0),
+      descripcion: costo.descripcion || '',
+    });
+  };
+
+  const handleCancelEditCosto = () => {
+    setCostoForm({
+      id: 0,
+      cotizacion_id: currentCotizacionId || null,
+      tipo: 'viaje',
+      monto: 0,
+      descripcion: '',
+    });
   };
 
   //PRUEBA
@@ -3241,6 +3288,8 @@ export function CotizacionDetail() {
         setCostoForm={setCostoForm}
         onAddCosto={handleAddCosto}
         onDeleteCosto={handleDeleteCosto}
+        onEditCosto={handleEditCosto}
+        onCancelEditCosto={handleCancelEditCosto}
         readOnly={isCotizacionReadOnly}
         simboloMoneda={simboloMoneda}
       />

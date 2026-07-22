@@ -39,8 +39,9 @@ export default function Sidebar({
 
   // ✅ CARPETA COMERCIAL
   const [commercialOpen, setCommercialOpen] = useState(true);
+  const canSeeCommercialGroup = user?.role === "SUPERADMIN" || user?.role === "ADMIN";
   const showCommercialGroup =
-    user?.role !== "VENTAS" &&
+    canSeeCommercialGroup &&
     (hasPermission("cotizaciones") ||
       hasPermission("ordenes_compra") ||
       hasPermission("productos") ||

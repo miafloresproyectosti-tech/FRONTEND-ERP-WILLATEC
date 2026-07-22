@@ -28,6 +28,7 @@ import { useAuth } from "../AuthContext";
 import { normalizeStorageImageUrl, resolveItemImageUrl } from "../utils/storageImage";
 import { getPaginationItems } from "../utils/pagination";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { formatMoney } from "../utils/formatNumber";
 // import { Plus as PlusIcon } from "lucide-react";
 
 /*
@@ -168,6 +169,11 @@ const getProductoCurrencySymbol = (item: ProductoUI | Producto) => {
   return "S/.";
 };
 
+const formatProductoMoney = (
+  item: ProductoUI | Producto,
+  value: number | string | null | undefined
+) => formatMoney(value, getProductoCurrencySymbol(item));
+
 const getSerieEstadoBadge = (estado?: string | null) => {
   const normalized = String(estado || "sin_estado").toLowerCase();
 
@@ -254,7 +260,7 @@ const convertExternalItemValue = (
 };
 
 export default function Productos() {
-  const { addNotification } = useNotifications();
+  const { addNotification, showToast } = useNotifications();
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -841,6 +847,17 @@ export default function Productos() {
   };
 
   const handleOpenConvertExternal = (externalItem: ExternalItem) => {
+    if (externalItem.producto_id) {
+      addNotification({
+        title: "Producto ya convertido",
+        description: "Este producto externo ya esta asociado a un producto interno.",
+        type: "info",
+        icon: "MessageCircle",
+        route: "/productos",
+      });
+      return;
+    }
+
     setConversionExternalItem(externalItem);
     setConversionFactura(null);
     setConversionForm({
@@ -861,30 +878,35 @@ export default function Productos() {
   };
 
   const handleConvertExternal = async () => {
-    if (!conversionExternalItem || !conversionFactura) {
-      addNotification({
-        title: "Factura requerida",
-        description: "Para convertir un producto externo debes adjuntar la factura de compra.",
+    if (!conversionExternalItem) {
+      showToast({
+        title: "Producto no seleccionado",
+        description: "Vuelve a seleccionar el producto externo que deseas convertir.",
         type: "warning",
-        icon: "MessageCircle",
-        route: "/productos",
       });
       return;
     }
 
     const cantidad = Number(conversionForm.cantidad);
     const costoUnitario = Number(conversionForm.costo_unitario);
+    const missingFields = [
+      cantidad > 0 ? null : "cantidad comprada",
+      costoUnitario >= 0 ? null : "costo unitario",
+      conversionForm.documento_numero.trim() ? null : "numero de factura",
+      conversionFactura ? null : "archivo de factura",
+    ].filter(Boolean);
 
-    if (cantidad <= 0 || costoUnitario < 0 || !conversionForm.documento_numero.trim()) {
-      addNotification({
-        title: "Datos incompletos",
-        description: "Ingresa cantidad, costo unitario y numero de factura.",
+    if (missingFields.length > 0) {
+      showToast({
+        title: "Faltan datos para convertir",
+        description: `Completa: ${missingFields.join(", ")}.`,
         type: "warning",
-        icon: "MessageCircle",
-        route: "/productos",
       });
       return;
     }
+
+    const factura = conversionFactura;
+    if (!factura) return;
 
     try {
       setConvertingExternal(true);
@@ -893,7 +915,7 @@ export default function Productos() {
         costo_unitario: costoUnitario,
         moneda_id: Number(conversionForm.moneda_id || 1),
         documento_numero: conversionForm.documento_numero,
-        factura: conversionFactura,
+        factura,
         categoria_id: conversionForm.categoria_id,
         estado: conversionForm.estado,
         observacion: conversionForm.observacion,
@@ -1252,7 +1274,7 @@ export default function Productos() {
                         </div>
                         <div>
                           <p className="text-xs font-semibold uppercase text-gray-400">Precio</p>
-                          <p className="mt-1 font-bold text-gray-900">{getProductoCurrencySymbol(item)} {Number(item.precio_referencial || "0").toLocaleString()}</p>
+                          <p className="mt-1 font-bold text-gray-900">{formatProductoMoney(item, item.precio_referencial || "0")}</p>
                         </div>
                         <div className="col-span-2 min-w-0 rounded-xl bg-gray-50 p-3">
                           <p className="mb-2 text-xs font-semibold uppercase text-gray-400">Stock real</p>
@@ -1370,12 +1392,13 @@ export default function Productos() {
                         </button>
                         <button
                           onClick={() => handleOpenConvertExternal(item)}
+                          disabled={Boolean(item.producto_id)}
                           className={`inline-flex h-11 items-center justify-center rounded-xl ${
                             item.producto_id
-                              ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                              ? "cursor-not-allowed bg-gray-100 text-gray-400"
                               : "bg-amber-100 text-amber-700 hover:bg-amber-200"
                           }`}
-                          title={item.producto_id ? "Registrar nueva entrada al inventario" : "Convertir a producto interno"}
+                          title={item.producto_id ? "Ya convertido a producto interno" : "Convertir a producto interno"}
                         >
                           <PackageCheck size={16} />
                         </button>
@@ -1551,7 +1574,7 @@ export default function Productos() {
                         </div>
                       </td>
                       <td className="px-6 py-5 font-semibold text-gray-800">
-                        {getProductoCurrencySymbol(item)} {Number(item.precio_referencial || "0").toLocaleString()}
+                        {formatProductoMoney(item, item.precio_referencial || "0")}
                       </td>
                       <td className="px-6 py-5 text-gray-600">
                         {item.descripcion || "Sin descripción"}
@@ -1700,12 +1723,13 @@ export default function Productos() {
                           </button>
                           <button
                             onClick={() => handleOpenConvertExternal(item)}
+                            disabled={Boolean(item.producto_id)}
                             className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-sm ${
                               item.producto_id
-                                ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                ? "cursor-not-allowed bg-gray-100 text-gray-400 hover:scale-100"
                                 : "bg-amber-100 text-amber-700 hover:bg-amber-200"
                             }`}
-                            title={item.producto_id ? "Registrar nueva entrada al inventario" : "Convertir a producto interno"}
+                            title={item.producto_id ? "Ya convertido a producto interno" : "Convertir a producto interno"}
                           >
                             <PackageCheck size={18} />
                           </button>
@@ -1913,7 +1937,7 @@ export default function Productos() {
                     <div className="rounded-xl border border-gray-100 p-3">
                       <p className="text-xs font-semibold uppercase text-gray-400">Precio</p>
                       <p className="mt-1 font-semibold text-gray-800">
-                        {getProductoCurrencySymbol(productoDetalleModal)} {Number(productoDetalleModal.precio_referencial || "0").toLocaleString()}
+                        {formatProductoMoney(productoDetalleModal, productoDetalleModal.precio_referencial || "0")}
                       </p>
                     </div>
                     <div className="rounded-xl border border-gray-100 p-3">

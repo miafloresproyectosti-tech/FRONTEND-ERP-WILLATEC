@@ -1,5 +1,5 @@
 import type { CotizacionCostosAdicional } from "../../../services/cotizacion.service";
-import { X, DollarSign, Trash2 } from "lucide-react";
+import { X, DollarSign, Trash2, Pencil } from "lucide-react";
 import { formatMoney } from "../../../utils/formatNumber";
 
 interface Props{
@@ -20,6 +20,8 @@ interface Props{
 
   onAddCosto: () => void;
   onDeleteCosto: (id: number) => void;
+  onEditCosto: (costo: CotizacionCostosAdicional) => void;
+  onCancelEditCosto: () => void;
   readOnly?: boolean;
   simboloMoneda?: string;
 }
@@ -32,6 +34,8 @@ export function CostosModal({
   setCostoForm, 
   onAddCosto, 
   onDeleteCosto,
+  onEditCosto,
+  onCancelEditCosto,
   readOnly = false,
   simboloMoneda = "S/",
 }: Props) {
@@ -80,12 +84,22 @@ export function CostosModal({
             </div>
 
             {!readOnly && (
-            <button
-              onClick={() => onDeleteCosto(costo.id)}
-              className="p-1 hover:bg-red-50 rounded"
-            >
-              <Trash2 className="w-4 h-4 text-red-600" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => onEditCosto(costo)}
+                className="p-1 hover:bg-blue-50 rounded"
+                title="Editar costo"
+              >
+                <Pencil className="w-4 h-4 text-blue-600" />
+              </button>
+              <button
+                onClick={() => onDeleteCosto(costo.id)}
+                className="p-1 hover:bg-red-50 rounded"
+                title="Eliminar costo"
+              >
+                <Trash2 className="w-4 h-4 text-red-600" />
+              </button>
+            </div>
             )}
           </div>
         ))}
@@ -96,6 +110,19 @@ export function CostosModal({
 
         {!readOnly && (
         <>
+        {costoForm.id ? (
+          <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+            <span className="font-semibold">Editando costo adicional</span>
+            <button
+              type="button"
+              onClick={onCancelEditCosto}
+              className="font-semibold hover:text-blue-900"
+            >
+              Cancelar
+            </button>
+          </div>
+        ) : null}
+
         <select
           value={costoForm.tipo}
           onChange={(e) =>
@@ -144,7 +171,7 @@ export function CostosModal({
           onClick={onAddCosto}
           className="w-full py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold"
         >
-          Agregar costo
+          {costoForm.id ? "Guardar cambios" : "Agregar costo"}
         </button>
         </>
         )}

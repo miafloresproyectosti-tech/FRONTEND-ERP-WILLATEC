@@ -316,6 +316,24 @@ export default function Topbar({
     window.location.assign(route);
   };
 
+  const handleMarkNotificationRead = async (notification: DatabaseNotification) => {
+    if (notification.read_at) return;
+
+    setNotifications((prev) =>
+      prev.map((item) =>
+        item.id === notification.id
+          ? { ...item, read_at: new Date().toISOString() }
+          : item
+      )
+    );
+
+    try {
+      await notificationService.markAsRead(notification.id);
+    } catch (error) {
+      console.error("Error al marcar notificacion como leida:", error);
+    }
+  };
+
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
       <div className="flex items-center gap-3">
@@ -436,10 +454,18 @@ export default function Topbar({
                           });
 
                       return (
-                        <button
+                        <div
                           key={notification.id}
                           onClick={() => handleNotificationClick(notification)}
-                          className={`w-full p-4 sm:p-5 border-b border-slate-100 last:border-b-0 bg-white hover:bg-gradient-to-r hover:from-emerald-50/80 hover:to-blue-50/80 transition-all duration-300 group text-left ${
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              void handleNotificationClick(notification);
+                            }
+                          }}
+                          className={`w-full cursor-pointer p-4 sm:p-5 border-b border-slate-100 last:border-b-0 bg-white hover:bg-gradient-to-r hover:from-emerald-50/80 hover:to-blue-50/80 transition-all duration-300 group text-left ${
                             isRead ? "opacity-80" : ""
                           }`}
                           style={{ animationDelay: `${index * 75}ms` }}
@@ -483,15 +509,39 @@ export default function Topbar({
                               </div>
                             </div>
 
-                            <div className="hidden sm:flex flex-col items-end opacity-0 group-hover:opacity-100 transition-all duration-300">
-                              <Eye
-                                size={18}
-                                className="text-slate-400 group-hover:text-emerald-500 mb-1"
-                              />
-                              <ArrowRight size={16} className="text-emerald-400" />
+                            <div className="flex flex-col items-end gap-2">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleMarkNotificationRead(notification);
+                                }}
+                                disabled={isRead}
+                                className={`flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm transition-all ${
+                                  isRead
+                                    ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                                    : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                                }`}
+                                title={isRead ? "Esta notificacion ya esta leida" : "Marcar esta notificacion como leida"}
+                                aria-label={isRead ? "Esta notificacion ya esta leida" : "Marcar esta notificacion como leida"}
+                              >
+                                <Eye size={17} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleNotificationClick(notification);
+                                }}
+                                className="flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm transition-all hover:bg-emerald-100 hover:text-emerald-800"
+                                title="Abrir esta notificacion"
+                                aria-label="Abrir esta notificacion"
+                              >
+                                <ArrowRight size={17} />
+                              </button>
                             </div>
                           </div>
-                        </button>
+                        </div>
                       );
                     })
                 )}

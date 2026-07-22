@@ -197,11 +197,11 @@ export default function LoginComponent() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-2xl text-lg font-bold hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-4 focus:ring-blue-500/50 shadow-xl hover:shadow-2xl hover:scale-[1.02] active:scale-100 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                className="inline-flex w-full items-center justify-center bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-2xl text-lg font-bold hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-4 focus:ring-blue-500/50 shadow-xl hover:shadow-2xl hover:scale-[1.02] active:scale-100 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
               >
                 {loading ? (
-                  <span className="flex items-center gap-2">
-                    <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <span className="inline-flex w-full items-center justify-center gap-2 text-center">
+                    <div className="h-6 w-6 shrink-0 rounded-full border-2 border-white/30 border-t-white animate-spin"></div>
                     Iniciando sesión...
                   </span>
                 ) : (
