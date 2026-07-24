@@ -2005,11 +2005,11 @@ export default function Productos() {
 
       {productoSeriesModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
-            <div className="flex items-start justify-between px-6 py-5 border-b border-gray-100">
-              <div>
+          <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex flex-shrink-0 items-start justify-between gap-4 border-b border-gray-100 px-6 py-5">
+              <div className="min-w-0">
                 <h2 className="text-lg font-bold text-gray-900">Series del producto</h2>
-                <p className="text-sm text-gray-500">
+                <p className="truncate text-sm text-gray-500">
                   {productoSeriesModal.nombre} #{productoSeriesModal.codigo}
                 </p>
               </div>
@@ -2022,11 +2022,11 @@ export default function Productos() {
               </button>
             </div>
 
-            <div className="p-6">
+            <div className="min-h-0 flex-1 overflow-hidden p-4 sm:p-6">
               {(productoSeriesModal.series?.length || productoSeriesModal.serie) ? (
-                <div className="overflow-x-auto rounded-2xl border border-gray-200">
-                  <table className="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                <div className="max-h-[calc(88vh-132px)] overflow-auto rounded-2xl border border-gray-200">
+                  <table className="min-w-[860px] divide-y divide-gray-200 text-sm">
+                    <thead className="sticky top-0 z-10 bg-gray-50 text-left text-xs uppercase text-gray-500 shadow-sm">
                       <tr>
                         <th className="px-4 py-3">Serie</th>
                         <th className="px-4 py-3">Factura</th>
@@ -2052,7 +2052,11 @@ export default function Productos() {
                         }]
                       ).map((serie) => (
                         <tr key={serie.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-semibold text-gray-900">{serie.serie || "Sin serie"}</td>
+                          <td className="max-w-[220px] px-4 py-3 font-semibold text-gray-900">
+                            <span className="block truncate" title={serie.serie || "Sin serie"}>
+                              {serie.serie || "Sin serie"}
+                            </span>
+                          </td>
                           <td className="px-4 py-3 text-gray-700">{serie.factura_numero || "-"}</td>
                           <td className="px-4 py-3">
                             {normalizeStorageImageUrl(serie.documento_path) ? (

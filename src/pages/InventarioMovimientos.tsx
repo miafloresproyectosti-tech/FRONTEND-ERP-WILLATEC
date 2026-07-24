@@ -288,6 +288,8 @@ export default function InventarioMovimientos() {
   const [error, setError] = useState<string | null>(null);
   const [entradaModalOpen, setEntradaModalOpen] = useState(false);
   const [salidaModalOpen, setSalidaModalOpen] = useState(false);
+  const [entradaProductoSearch, setEntradaProductoSearch] = useState("");
+  const [entradaProductoResultsOpen, setEntradaProductoResultsOpen] = useState(false);
   const [salidaProductoSearch, setSalidaProductoSearch] = useState("");
   const [salidaProductoResultsOpen, setSalidaProductoResultsOpen] = useState(false);
   const [proveedoresModalOpen, setProveedoresModalOpen] = useState(false);
@@ -374,6 +376,31 @@ export default function InventarioMovimientos() {
     [selectedSalidaProducto],
   );
   const salidaRequiereSeries = salidaSeriesDisponibles.length > 0;
+
+  const filteredEntradaProductos = useMemo(() => {
+    const term = entradaProductoSearch.trim().toLowerCase();
+
+    if (!term) return productos.slice(0, 10);
+
+    return productos
+      .filter((producto) => {
+        const series = producto.series?.map((serie) => serie.serie).filter(Boolean).join(" ") || "";
+
+        return [
+          producto.nombre,
+          producto.sku,
+          producto.codigo,
+          producto.serie,
+          producto.marca,
+          producto.modelo,
+          producto.moneda?.codigo,
+          series,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(term));
+      })
+      .slice(0, 10);
+  }, [entradaProductoSearch, productos]);
 
   const filteredSalidaProductos = useMemo(() => {
     const term = salidaProductoSearch.trim().toLowerCase();
@@ -535,6 +562,8 @@ export default function InventarioMovimientos() {
       producto_id: productoId,
       moneda_id: String(producto?.moneda_id || current.moneda_id || 1),
     }));
+    setEntradaProductoSearch(producto ? getProductoOptionLabel(producto) : "");
+    setEntradaProductoResultsOpen(false);
   };
 
   const handleProveedorEntradaChange = (proveedorId: string) => {
@@ -626,6 +655,8 @@ export default function InventarioMovimientos() {
         producto_id: String(producto.id),
         moneda_id: String(producto.moneda_id || current.moneda_id || 1),
       }));
+      setEntradaProductoSearch(getProductoOptionLabel(producto));
+      setEntradaProductoResultsOpen(false);
       setNuevoProducto({
         nombre: "",
         marca: "",
@@ -697,6 +728,8 @@ export default function InventarioMovimientos() {
         observacion: "",
         series_text: "",
       });
+      setEntradaProductoSearch("");
+      setEntradaProductoResultsOpen(false);
       setFactura(null);
       if (facturaInputRef.current) {
         facturaInputRef.current.value = "";
@@ -823,7 +856,11 @@ export default function InventarioMovimientos() {
             Registrar salida
           </button>
           <button
-            onClick={() => setEntradaModalOpen(true)}
+            onClick={() => {
+              setEntradaProductoSearch(selectedProducto ? getProductoOptionLabel(selectedProducto) : "");
+              setEntradaProductoResultsOpen(false);
+              setEntradaModalOpen(true);
+            }}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
           >
             <FilePlus2 className="h-4 w-4" />
@@ -1381,18 +1418,76 @@ export default function InventarioMovimientos() {
               <label className="text-sm font-semibold text-gray-600 md:col-span-2">
                 Producto
                 <div className="mt-1 flex gap-2">
-                  <select
-                    value={entradaForm.producto_id}
-                    onChange={(event) => handleProductoEntradaChange(event.target.value)}
-                    className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
-                  >
-                    <option value="">Selecciona producto</option>
-                    {productos.map((producto) => (
-                      <option key={producto.id} value={producto.id}>
-                        {producto.nombre} {producto.sku ? `- ${producto.sku}` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                    <input
+                      value={entradaProductoSearch}
+                      onChange={(event) => {
+                        setEntradaProductoSearch(event.target.value);
+                        setEntradaProductoResultsOpen(true);
+                        if (entradaForm.producto_id) {
+                          setEntradaForm((current) => ({ ...current, producto_id: "" }));
+                        }
+                      }}
+                      onFocus={() => setEntradaProductoResultsOpen(true)}
+                      onBlur={() => window.setTimeout(() => setEntradaProductoResultsOpen(false), 120)}
+                      placeholder="Buscar por producto, SKU, codigo, marca, modelo o serie"
+                      className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-9 text-sm text-gray-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                    {entradaProductoSearch && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleProductoEntradaChange("");
+                          setEntradaProductoSearch("");
+                          setEntradaProductoResultsOpen(false);
+                        }}
+                        className="absolute right-2 top-2 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                        title="Limpiar producto"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+
+                    {entradaProductoResultsOpen && (
+                      <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl">
+                        {filteredEntradaProductos.map((producto) => (
+                          <button
+                            key={producto.id}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => handleProductoEntradaChange(String(producto.id))}
+                            className="flex w-full flex-col gap-2 border-b border-gray-100 px-3 py-2 text-left last:border-b-0 hover:bg-blue-50 sm:flex-row sm:items-start sm:justify-between sm:gap-3"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-bold text-gray-900">
+                                {producto.nombre}
+                              </span>
+                              <span className="block truncate text-xs text-gray-500">
+                                {[producto.sku, producto.codigo, producto.marca, producto.modelo].filter(Boolean).join(" / ") || `ID ${producto.id}`}
+                              </span>
+                            </span>
+                            <span className="grid w-full shrink-0 grid-cols-3 gap-1 text-center text-[10px] font-semibold sm:w-auto">
+                              <span className="rounded-md bg-gray-50 px-2 py-1 text-gray-600">
+                                Stock {formatNumber(producto.stock_actual)}
+                              </span>
+                              <span className="rounded-md bg-amber-50 px-2 py-1 text-amber-700">
+                                Res. {formatNumber(producto.stock_reservado)}
+                              </span>
+                              <span className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-700">
+                                Disp. {formatNumber(producto.stock_disponible)}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                        {filteredEntradaProductos.length === 0 && (
+                          <div className="px-3 py-4 text-center text-xs font-semibold text-gray-500">
+                            No se encontraron productos
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => setShowNuevoProducto((current) => !current)}
