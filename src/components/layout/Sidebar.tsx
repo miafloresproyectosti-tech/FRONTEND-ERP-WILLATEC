@@ -1,45 +1,50 @@
+import { useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../../AuthContext";
-import { useState, useRef } from "react";
-
 import {
+  Calendar,
+  ChevronDown,
+  ClipboardList,
+  FileText,
+  FolderOpen,
+  HandCoins,
   Home,
+  KeyRound,
+  Landmark,
+  LogOut,
+  Mail,
   Package,
+  Receipt,
+  Server,
+  Settings,
+  ShieldCheck,
+  ShoppingCart,
   UserCheck,
   Users,
-  FileText,
-  Settings,
-  LogOut,
-  ChevronDown,
   X,
-  Mail,
-  Calendar,
-  ShoppingCart,
-  FolderOpen,
-  ShieldCheck,
-  ClipboardList,
 } from "lucide-react";
+
+import { useAuth } from "../../AuthContext";
 
 interface SidebarProps {
   mobile?: boolean;
   onClose?: () => void;
 }
 
-export default function Sidebar({
-  mobile = false,
-  onClose,
-}: SidebarProps) {
+export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
-
   const { user, logout, hasPermission } = useAuth();
 
+  const [commercialOpen, setCommercialOpen] = useState(true);
+  const [servicesOpen, setServicesOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [administrationOpen, setAdministrationOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const dropdownTimeoutRef = useRef<number | null>(null);
 
-  // ✅ CARPETA COMERCIAL
-  const [commercialOpen, setCommercialOpen] = useState(true);
-  const canSeeCommercialGroup = user?.role === "SUPERADMIN" || user?.role === "ADMIN";
+  const canSeeCommercialGroup =
+    user?.role === "SUPERADMIN" || user?.role === "ADMIN";
   const showCommercialGroup =
     canSeeCommercialGroup &&
     (hasPermission("cotizaciones") ||
@@ -47,7 +52,25 @@ export default function Sidebar({
       hasPermission("productos") ||
       hasPermission("clientes"));
 
-  const dropdownTimeoutRef = useRef<number | null>(null);
+  const isActive = (path: string) => location.pathname === path;
+  const closeMobile = () => {
+    if (mobile) onClose?.();
+  };
+
+  const itemClass = (path: string) =>
+    `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all sm:text-base ${
+      isActive(path)
+        ? "bg-blue-600 text-white shadow-lg"
+        : "text-gray-300 hover:bg-gray-900 hover:text-white"
+    }`;
+
+  const subItemClass = (path: string) =>
+    `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all ${
+      isActive(path)
+        ? "bg-blue-600 text-white shadow-lg"
+        : "text-gray-400 hover:bg-gray-900 hover:text-white"
+    }`;
+
   const formatLastLogin = (value?: string | null) => {
     if (!value) return "No disponible";
 
@@ -66,7 +89,6 @@ export default function Sidebar({
     }
 
     const date = new Date(value);
-
     return !Number.isNaN(date.getTime())
       ? date.toLocaleString("es-PE", {
           dateStyle: "long",
@@ -75,15 +97,15 @@ export default function Sidebar({
         })
       : "No disponible";
   };
+
   const formattedLastLogin = formatLastLogin(user?.last_login_at);
 
-  // ✅ LOGOUT
   const handleLogout = async () => {
     try {
       await logout();
       navigate("/login", { replace: true });
     } catch (error) {
-      console.error("Error al cerrar sesión:", error);
+      console.error("Error al cerrar sesion:", error);
     }
   };
 
@@ -91,7 +113,6 @@ export default function Sidebar({
     if (dropdownTimeoutRef.current) {
       clearTimeout(dropdownTimeoutRef.current);
     }
-
     setDropdownOpen(true);
   };
 
@@ -103,32 +124,21 @@ export default function Sidebar({
 
   return (
     <>
-      <aside
-        className="
-          bg-gray-950 text-white flex flex-col justify-between
-          h-full
-          w-[min(74vw,248px)] lg:w-[248px]
-          p-3 sm:p-4
-          border-r border-gray-800
-          [&_nav_a]:px-3 [&_nav_a]:py-2.5
-          [&_nav_button]:px-3 [&_nav_button]:py-2.5
-        "
-      >
-        {/* TOP */}
+      <aside className="flex h-full w-[min(74vw,248px)] flex-col justify-between border-r border-gray-800 bg-gray-950 p-3 text-white sm:p-4 lg:w-[248px] [&_nav_a]:px-3 [&_nav_a]:py-2.5 [&_nav_button]:px-3 [&_nav_button]:py-2.5">
         <div className="flex min-h-0 flex-col">
-          {/* MOBILE CLOSE */}
           {mobile && (
             <div className="mb-3 flex justify-end lg:hidden">
               <button
+                type="button"
                 onClick={onClose}
-                className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 transition"
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-900 text-gray-300 transition hover:bg-gray-800 hover:text-white"
+                title="Cerrar menu"
               >
-                <X size={22} />
+                <X size={20} />
               </button>
             </div>
           )}
 
-          {/* LOGO */}
           <div className="mb-6 flex justify-center">
             <img
               src="/logoWILLATEC-white.png"
@@ -137,272 +147,120 @@ export default function Sidebar({
             />
           </div>
 
-          {/* MENU */}
           <nav className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
-            {/* DASHBOARD */}
             {user?.role === "SUPERADMIN" && (
-              <Link
-                to="/"
-                onClick={() => mobile && onClose?.()}
-                className={`
-                  flex items-center gap-3
-                  px-4 py-3
-                  rounded-2xl
-                  transition-all
-                  text-sm sm:text-base
-                  ${
-                    location.pathname === "/"
-                      ? "bg-blue-600 text-white shadow-lg"
-                      : "text-gray-300 hover:bg-gray-900 hover:text-white"
-                  }
-                `}
-              >
+              <Link to="/" onClick={closeMobile} className={itemClass("/")}>
                 <Home size={20} />
                 <span className="font-medium">Dashboard</span>
               </Link>
             )}
 
-            {/* ✅ SUPERADMIN Y ADMIN */}
             {showCommercialGroup && (
-              <>
-                {/* CARPETA COMERCIAL */}
-                <div className="mt-2">
-                  <button
-                    onClick={() =>
-                      setCommercialOpen(!commercialOpen)
-                    }
-                    className="
-                      w-full
-                      flex items-center justify-between
-                      px-4 py-3
-                      rounded-2xl
-                      text-gray-300
-                      hover:bg-gray-900
-                      hover:text-white
-                      transition
-                    "
-                  >
-                    <div className="flex items-center gap-3">
-                      <FolderOpen size={20} />
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setCommercialOpen(!commercialOpen)}
+                  className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-gray-300 transition hover:bg-gray-900 hover:text-white"
+                >
+                  <div className="flex items-center gap-3">
+                    <FolderOpen size={20} />
+                    <span className="font-medium uppercase">Comercial</span>
+                  </div>
 
-                      <span className="font-medium uppercase">
-                        Comercial
-                      </span>
-                    </div>
+                  <ChevronDown
+                    size={18}
+                    className={`transition-transform ${
+                      commercialOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
 
-                    <ChevronDown
-                      size={18}
-                      className={`transition-transform ${
-                        commercialOpen ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-
-                  {/* SUBMENU */}
-                  {commercialOpen && (
-                    <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
-                      {/* COTIZACIONES */}
-                      {hasPermission("cotizaciones") && (
+                {commercialOpen && (
+                  <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
+                    {hasPermission("cotizaciones") && (
                       <Link
                         to="/cotizaciones"
-                        className={`
-                          flex items-center gap-3
-                          px-4 py-3
-                          rounded-2xl
-                          transition-all
-                          text-sm
-                          ${
-                            location.pathname ===
-                            "/cotizaciones"
-                              ? "bg-blue-600 text-white shadow-lg"
-                              : "text-gray-400 hover:bg-gray-900 hover:text-white"
-                          }
-                        `}
+                        onClick={closeMobile}
+                        className={subItemClass("/cotizaciones")}
                       >
                         <FileText size={18} />
                         Cotizaciones
                       </Link>
-                      )}
+                    )}
 
-                      {/* ORDENES */}
-                      {hasPermission("ordenes_compra") && (
+                    {hasPermission("ordenes_compra") && (
                       <Link
                         to="/ordenes-compra"
-                        className={`
-                          flex items-center gap-3
-                          px-4 py-3
-                          rounded-2xl
-                          transition-all
-                          text-sm
-                          ${
-                            location.pathname ===
-                            "/ordenes-compra"
-                              ? "bg-blue-600 text-white shadow-lg"
-                              : "text-gray-400 hover:bg-gray-900 hover:text-white"
-                          }
-                        `}
+                        onClick={closeMobile}
+                        className={subItemClass("/ordenes-compra")}
                       >
                         <ShoppingCart size={18} />
-                        Órdenes de Compra
+                        Ordenes de Compra
                       </Link>
-                      )}
+                    )}
 
-                      {/* PRODUCTOS */}
-                      {hasPermission("productos") && (
+                    {hasPermission("productos") && (
                       <Link
                         to="/productos"
-                        className={`
-                          flex items-center gap-3
-                          px-4 py-3
-                          rounded-2xl
-                          transition-all
-                          text-sm
-                          ${
-                            location.pathname ===
-                            "/productos"
-                              ? "bg-blue-600 text-white shadow-lg"
-                              : "text-gray-400 hover:bg-gray-900 hover:text-white"
-                          }
-                        `}
+                        onClick={closeMobile}
+                        className={subItemClass("/productos")}
                       >
                         <Package size={18} />
                         Productos
                       </Link>
-                      )}
+                    )}
 
-                      {/* CLIENTES */}
-                      {hasPermission("clientes") && (
+                    {hasPermission("clientes") && (
                       <Link
                         to="/clientes"
-                        className={`
-                          flex items-center gap-3
-                          px-4 py-3
-                          rounded-2xl
-                          transition-all
-                          text-sm
-                          ${
-                            location.pathname ===
-                            "/clientes"
-                              ? "bg-blue-600 text-white shadow-lg"
-                              : "text-gray-400 hover:bg-gray-900 hover:text-white"
-                          }
-                        `}
+                        onClick={closeMobile}
+                        className={subItemClass("/clientes")}
                       >
                         <UserCheck size={18} />
                         Clientes
                       </Link>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* USUARIOS */}
-                {hasPermission("usuarios") && (
-                <Link
-                  to="/usuarios"
-                  onClick={() => mobile && onClose?.()}
-                  className={`
-                    flex items-center gap-3
-                    px-4 py-3
-                    rounded-2xl
-                    transition-all
-                    text-sm sm:text-base
-                    ${
-                      location.pathname === "/usuarios"
-                        ? "bg-blue-600 text-white shadow-lg"
-                        : "text-gray-300 hover:bg-gray-900 hover:text-white"
-                    }
-                  `}
-                >
-                  <Users size={20} />
-                  <span className="font-medium">Usuarios</span>
-                </Link>
+                    )}
+                  </div>
                 )}
-
-                {/* AUDITORIA */}
-                {hasPermission("auditoria") && (
-                <Link
-                  to="/auditoria"
-                  onClick={() => mobile && onClose?.()}
-                  className={`
-                    flex items-center gap-3
-                    px-4 py-3
-                    rounded-2xl
-                    transition-all
-                    text-sm sm:text-base
-                    ${
-                      location.pathname === "/auditoria"
-                        ? "bg-blue-600 text-white shadow-lg"
-                        : "text-gray-300 hover:bg-gray-900 hover:text-white"
-                    }
-                  `}
-                >
-                  <ShieldCheck size={20} />
-                  <span className="font-medium">
-                    Auditoría
-                  </span>
-                </Link>
-                )}
-              </>
+              </div>
             )}
 
-            {user?.role === "SUPERADMIN" && (
-              <Link
-                to="/inventario/movimientos"
-                onClick={() => mobile && onClose?.()}
-                className={`
-                  flex items-center gap-3
-                  px-4 py-3
-                  rounded-2xl
-                  transition-all
-                  text-sm sm:text-base
-                  ${
-                    location.pathname === "/inventario/movimientos"
-                      ? "bg-blue-600 text-white shadow-lg"
-                      : "text-gray-300 hover:bg-gray-900 hover:text-white"
-                  }
-                `}
-              >
-                <ClipboardList size={20} />
-                <span className="font-medium">
-                  KARDEX
-                </span>
-              </Link>
-            )}
-
-            {/* ✅ VENTAS NORMAL */}
             {user?.role === "VENTAS" && (
               <>
                 <Link
                   to="/productos"
-                  className="flex items-center gap-3 px-4 py-3 rounded-2xl text-gray-300 hover:bg-gray-900 hover:text-white transition"
+                  onClick={closeMobile}
+                  className={itemClass("/productos")}
                 >
                   <Package size={20} />
-                  Productos
+                  <span className="font-medium">Productos</span>
                 </Link>
 
                 <Link
                   to="/clientes"
-                  className="flex items-center gap-3 px-4 py-3 rounded-2xl text-gray-300 hover:bg-gray-900 hover:text-white transition"
+                  onClick={closeMobile}
+                  className={itemClass("/clientes")}
                 >
                   <UserCheck size={20} />
-                  Clientes
+                  <span className="font-medium">Clientes</span>
                 </Link>
 
                 <Link
                   to="/cotizaciones"
-                  className="flex items-center gap-3 px-4 py-3 rounded-2xl text-gray-300 hover:bg-gray-900 hover:text-white transition"
+                  onClick={closeMobile}
+                  className={itemClass("/cotizaciones")}
                 >
                   <FileText size={20} />
-                  Cotizaciones
+                  <span className="font-medium">Cotizaciones</span>
                 </Link>
 
                 <Link
                   to="/ordenes-compra"
-                  className="flex items-center gap-3 px-4 py-3 rounded-2xl text-gray-300 hover:bg-gray-900 hover:text-white transition"
+                  onClick={closeMobile}
+                  className={itemClass("/ordenes-compra")}
                 >
                   <ShoppingCart size={20} />
-                  Órdenes de Compra
+                  <span className="font-medium">Ordenes de Compra</span>
                 </Link>
               </>
             )}
@@ -410,12 +268,8 @@ export default function Sidebar({
             {user?.role === "SOPORTE" && (
               <Link
                 to="/productos"
-                onClick={() => mobile && onClose?.()}
-                className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition text-sm sm:text-base ${
-                  location.pathname === "/productos"
-                    ? "bg-blue-600 text-white shadow-lg"
-                    : "text-gray-300 hover:bg-gray-900 hover:text-white"
-                }`}
+                onClick={closeMobile}
+                className={itemClass("/productos")}
               >
                 <Package size={20} />
                 <span className="font-medium">Productos</span>
@@ -426,12 +280,8 @@ export default function Sidebar({
               <>
                 <Link
                   to="/productos"
-                  onClick={() => mobile && onClose?.()}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition text-sm sm:text-base ${
-                    location.pathname === "/productos"
-                      ? "bg-blue-600 text-white shadow-lg"
-                      : "text-gray-300 hover:bg-gray-900 hover:text-white"
-                  }`}
+                  onClick={closeMobile}
+                  className={itemClass("/productos")}
                 >
                   <Package size={20} />
                   <span className="font-medium">Productos</span>
@@ -439,177 +289,328 @@ export default function Sidebar({
 
                 <Link
                   to="/inventario/movimientos"
-                  onClick={() => mobile && onClose?.()}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition text-sm sm:text-base ${
-                    location.pathname === "/inventario/movimientos"
-                      ? "bg-blue-600 text-white shadow-lg"
-                      : "text-gray-300 hover:bg-gray-900 hover:text-white"
-                  }`}
+                  onClick={closeMobile}
+                  className={itemClass("/inventario/movimientos")}
                 >
                   <ClipboardList size={20} />
                   <span className="font-medium">KARDEX</span>
                 </Link>
               </>
             )}
+
+            {user?.role === "CONTABILIDAD" && (
+              <Link
+                to="/ordenes-compra"
+                onClick={closeMobile}
+                className={itemClass("/ordenes-compra")}
+              >
+                <ShoppingCart size={20} />
+                <span className="font-medium">Ordenes de Compra</span>
+              </Link>
+            )}
+
+            {(user?.role === "SUPERADMIN" || user?.role === "ADMIN") && (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setServicesOpen(!servicesOpen)}
+                  className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-gray-300 transition hover:bg-gray-900 hover:text-white"
+                >
+                  <div className="flex items-center gap-3">
+                    <Server size={20} />
+                    <span className="font-medium uppercase">Servicios</span>
+                  </div>
+
+                  <ChevronDown
+                    size={18}
+                    className={`transition-transform ${
+                      servicesOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {servicesOpen && (
+                  <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
+                    <Link
+                      to="/servicios/licencias"
+                      onClick={closeMobile}
+                      className={subItemClass("/servicios/licencias")}
+                    >
+                      <KeyRound size={18} />
+                      Licencias
+                    </Link>
+
+                    <Link
+                      to="/servicios/hosting"
+                      onClick={closeMobile}
+                      className={subItemClass("/servicios/hosting")}
+                    >
+                      <Server size={18} />
+                      Hosting
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {["SUPERADMIN", "SOPORTE"].includes(user?.role ?? "") && (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setSupportOpen(!supportOpen)}
+                  className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-gray-300 transition hover:bg-gray-900 hover:text-white"
+                >
+                  <div className="flex items-center gap-3">
+                    <ShieldCheck size={20} />
+                    <span className="font-medium uppercase">Soporte TI</span>
+                  </div>
+
+                  <ChevronDown
+                    size={18}
+                    className={`transition-transform ${
+                      supportOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {supportOpen && (
+                  <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
+                    <Link
+                      to="/soporte"
+                      onClick={closeMobile}
+                      className={subItemClass("/soporte")}
+                    >
+                      <Home size={18} />
+                      Dashboard
+                    </Link>
+
+                    <Link
+                      to="/soporte/tickets"
+                      onClick={closeMobile}
+                      className={subItemClass("/soporte/tickets")}
+                    >
+                      <FileText size={18} />
+                      Tickets
+                    </Link>
+
+                    <Link
+                      to="/soporte/equipo-garantia"
+                      onClick={closeMobile}
+                      className={subItemClass("/soporte/equipo-garantia")}
+                    >
+                      <ShieldCheck size={18} />
+                      Equipo / Garantia
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(user?.role === "SUPERADMIN" || user?.role === "ADMIN") && (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setAdministrationOpen(!administrationOpen)}
+                  className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-gray-300 transition hover:bg-gray-900 hover:text-white"
+                >
+                  <div className="flex items-center gap-3">
+                    <Landmark size={20} />
+                    <span className="font-medium uppercase">Control ADM</span>
+                  </div>
+
+                  <ChevronDown
+                    size={18}
+                    className={`transition-transform ${
+                      administrationOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {administrationOpen && (
+                  <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
+                    <Link
+                      to="/administracion/control-pagos/facturas-clientes"
+                      onClick={closeMobile}
+                      className={subItemClass(
+                        "/administracion/control-pagos/facturas-clientes"
+                      )}
+                    >
+                      <Receipt size={18} />
+                      Pago Facturas Clientes
+                    </Link>
+
+                    <Link
+                      to="/administracion/control-pagos/pagos-proveedores"
+                      onClick={closeMobile}
+                      className={subItemClass(
+                        "/administracion/control-pagos/pagos-proveedores"
+                      )}
+                    >
+                      <HandCoins size={18} />
+                      Pagos Proveedores
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hasPermission("usuarios") && (
+              <Link
+                to="/usuarios"
+                onClick={closeMobile}
+                className={itemClass("/usuarios")}
+              >
+                <Users size={20} />
+                <span className="font-medium">Usuarios</span>
+              </Link>
+            )}
+
+            {hasPermission("auditoria") && (
+              <Link
+                to="/auditoria"
+                onClick={closeMobile}
+                className={itemClass("/auditoria")}
+              >
+                <ShieldCheck size={20} />
+                <span className="font-medium">Auditoria</span>
+              </Link>
+            )}
+
+            {hasPermission("inventario") && user?.role === "SUPERADMIN" && (
+              <Link
+                to="/inventario/movimientos"
+                onClick={closeMobile}
+                className={itemClass("/inventario/movimientos")}
+              >
+                <ClipboardList size={20} />
+                <span className="font-medium">KARDEX</span>
+              </Link>
+            )}
           </nav>
         </div>
 
-        {/* BOTTOM */}
         <div
-          className="space-y-3 relative"
+          className="sticky bottom-0 space-y-3 bg-gray-950 pt-6"
           onMouseLeave={handleMouseLeave}
         >
-          {/* USER */}
           <div
             onMouseEnter={handleMouseEnter}
-            className="relative z-10 mt-4 w-full cursor-pointer rounded-2xl bg-gray-900 p-3 transition hover:bg-gray-800"
+            className="relative z-10 w-full rounded-2xl bg-gray-900 p-3 transition hover:bg-gray-800"
           >
             <button
+              type="button"
               onClick={() => setProfileModalOpen(true)}
-              className="w-full flex items-center gap-3 hover:opacity-80 transition"
+              className="flex w-full items-center gap-3 text-left transition hover:opacity-80"
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-base font-bold">
                 {user?.name?.charAt(0).toUpperCase() || "M"}
               </div>
 
-              <div className="flex-1 text-left overflow-hidden">
-                <h3 className="font-medium text-white truncate">
+              <div className="min-w-0">
+                <p className="truncate font-medium text-white">
                   {user?.name || "Usuario"}
-                </h3>
-
-                <p className="text-sm text-gray-400 truncate">
-                  {user?.role === "SUPERADMIN"
-                    ? "Super Admin"
-                    : user?.role === "ADMIN"
-                    ? "Administración"
-                    : user?.role || "Usuario"}
                 </p>
+                <p className="truncate text-sm text-gray-400">{user?.role}</p>
               </div>
-
-              {user?.role === "SUPERADMIN" && (
-                <ChevronDown
-                  size={18}
-                  className={`text-gray-300 transition-transform ${
-                    dropdownOpen ? "rotate-180" : ""
-                  }`}
-                />
-              )}
             </button>
+
+            {user?.role === "SUPERADMIN" && dropdownOpen && (
+              <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl">
+                <Link
+                  to="/configuracion"
+                  onClick={closeMobile}
+                  className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 transition hover:bg-gray-800 hover:text-white"
+                >
+                  <Settings size={18} />
+                  Configuracion
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-red-400 transition hover:bg-red-500/10"
+                >
+                  <LogOut size={18} />
+                  Cerrar sesion
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* DROPDOWN SUPERADMIN */}
-          {user?.role === "SUPERADMIN" && dropdownOpen && (
-            <div className="absolute bottom-20 left-0 right-0 bg-gray-800 rounded-2xl border border-gray-700 shadow-lg overflow-hidden z-20">
-              <Link
-                to="/configuracion"
-                onClick={() => mobile && onClose?.()}
-                className="w-full flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-white transition border-b border-gray-700"
-              >
-                <Settings size={18} />
-                Configuración
-              </Link>
-
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 transition"
-              >
-                <LogOut size={18} />
-                Cerrar sesión
-              </button>
-            </div>
-          )}
-
-          {/* OTROS ROLES */}
           {user?.role !== "SUPERADMIN" && (
-            <>
-              <Link
-                to="/configuracion"
-                onClick={() => mobile && onClose?.()}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-gray-300 hover:bg-gray-900 hover:text-white transition"
-              >
-                <Settings size={20} />
-                Configuración
-              </Link>
-
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-red-400 hover:bg-red-500/10 transition"
-              >
-                <LogOut size={20} />
-                Cerrar sesión
-              </button>
-            </>
+            <Link
+              to="/configuracion"
+              onClick={closeMobile}
+              className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-gray-300 transition hover:bg-gray-900 hover:text-white"
+            >
+              <Settings size={20} />
+              Configuracion
+            </Link>
           )}
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-red-400 transition hover:bg-red-500/10"
+          >
+            <LogOut size={20} />
+            Cerrar sesion
+          </button>
         </div>
       </aside>
 
-      {/* MODAL PERFIL */}
       {profileModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-gradient-to-br from-white to-gray-50 w-full max-w-md rounded-3xl p-6 sm:p-8 shadow-2xl border border-white/50">
-            {/* HEADER */}
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-800">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-white/50 bg-gradient-to-br from-white to-gray-50 p-6 shadow-2xl sm:p-8">
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-800 sm:text-2xl">
                 Mi Perfil
               </h2>
 
               <button
+                type="button"
                 onClick={() => setProfileModalOpen(false)}
-                className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition"
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 transition hover:bg-gray-200"
               >
                 <X size={20} className="text-gray-600" />
               </button>
             </div>
 
-            {/* INFO */}
-            <div className="flex flex-col items-center mb-8 pb-8 border-b border-gray-200">
-              <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center font-bold text-3xl text-white mb-4">
+            <div className="mb-8 flex flex-col items-center border-b border-gray-200 pb-8">
+              <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-blue-600 text-3xl font-bold text-white">
                 {user?.name?.charAt(0).toUpperCase() || "M"}
               </div>
 
-              <h3 className="text-xl font-bold text-gray-800 text-center">
+              <h3 className="text-center text-xl font-bold text-gray-800">
                 {user?.name || "Usuario"}
               </h3>
 
-              <p className="text-sm text-blue-600 font-semibold mt-1 text-center">
+              <p className="mt-1 text-center text-sm font-semibold text-blue-600">
                 {user?.role === "SUPERADMIN"
-                  ? "👑 Superadministrador"
+                  ? "Superadministrador"
                   : user?.role === "ADMIN"
-                  ? "Administración"
+                  ? "Administracion"
                   : user?.role || "Usuario"}
               </p>
             </div>
 
-            {/* DATOS */}
-            <div className="space-y-4 mb-8">
-              <div className="flex items-center gap-3 p-3 bg-gray-100 rounded-2xl">
-                <Mail
-                  size={18}
-                  className="text-blue-600 flex-shrink-0"
-                />
+            <div className="mb-8 space-y-4">
+              <div className="flex items-center gap-3 rounded-2xl bg-gray-100 p-3">
+                <Mail size={18} className="shrink-0 text-blue-600" />
 
                 <div className="min-w-0">
-                  <p className="text-xs text-gray-500">
-                    Correo
-                  </p>
-
-                  <p className="text-sm font-medium text-gray-800 truncate">
+                  <p className="text-xs text-gray-500">Correo</p>
+                  <p className="truncate text-sm font-medium text-gray-800">
                     {user?.email || "No disponible"}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 p-3 bg-gray-100 rounded-2xl">
-                <Calendar
-                  size={18}
-                  className="text-green-600 flex-shrink-0"
-                />
+              <div className="flex items-center gap-3 rounded-2xl bg-gray-100 p-3">
+                <Calendar size={18} className="shrink-0 text-green-600" />
 
                 <div className="min-w-0">
-                  <p className="text-xs text-gray-500">
-                    Último acceso
-                  </p>
-
+                  <p className="text-xs text-gray-500">Ultimo acceso</p>
                   <p className="text-sm font-medium text-gray-800">
                     {formattedLastLogin}
                   </p>
@@ -617,16 +618,14 @@ export default function Sidebar({
               </div>
             </div>
 
-            {/* BOTONES */}
-            <div className="space-y-3">
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-medium transition shadow-md"
-              >
-                <LogOut size={18} />
-                Cerrar Sesión
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-3 font-medium text-white shadow-md transition hover:bg-red-700"
+            >
+              <LogOut size={18} />
+              Cerrar Sesion
+            </button>
           </div>
         </div>
       )}

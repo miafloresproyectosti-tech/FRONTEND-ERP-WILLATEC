@@ -26,6 +26,19 @@ const OrdenesCompraPage = lazy(() => import("../pages/OrdenesCompraPage"));
 const OrdenCompraDetail = lazy(() => import("../pages/OrdenCompraDetail"));
 const Notificaciones = lazy(() => import("../pages/Notificaciones"));
 
+// 🆕 SERVICIOS
+import Licencias from "../pages/Servicios/Licencias";
+import Hosting from "../pages/Servicios/Hosting";
+
+// 🆕 HELP DESK (SOPORTE TI)
+import DashboardSoporte from "../modules/helpdesk/DashboardSoporte";
+import Tickets from "../modules/helpdesk/Tickets";
+import EquipoGarantia from "../modules/helpdesk/EquipoGarantia";
+
+import ControlPagoFacturasClientesPage from "../pages/administracion/control-pagos/ControlPagoFacturasClientesPage";
+// 🆕 CONTROL PAGO PROVEEDORES
+import ControlPagoProveedores from "../pages/administracion/control-pagos/ControlPagosProveedoresPage";
+
 export default function AppRoutes() {
   return (
     <BrowserRouter>
@@ -161,11 +174,29 @@ export default function AppRoutes() {
               </ProtectedRoute>
             }
           />
+
+          {/* 🆕 SERVICIOS ERP */}
+          <Route path="/servicios/licencias" element={<Licencias />} />
+          <Route path="/servicios/hosting" element={<Hosting />} />
+
+          {/* 🆕 SOPORTE TI (HELP DESK) */}
+          <Route path="/soporte" element={<DashboardSoporte />} />
+          <Route path="/soporte/tickets" element={<Tickets />} />
+          <Route path="/soporte/equipo-garantia" element={<EquipoGarantia />} />
+
           {/* ADMIN */}
           <Route path="/usuarios" element={<Usuarios />} />
           <Route path="/configuracion" element={<Configuracion />} />
+          <Route
+  path="/administracion/control-pagos/facturas-clientes"
+  element={<ControlPagoFacturasClientesPage />}
+/>
+          <Route
+  path="/administracion/control-pagos/pagos-proveedores"
+  element={<ControlPagoProveedores />}
+/>
 
-          {/* AUDITORÍA (con permiso específico) */}
+          {/* AUDITORÍA */}
           <Route
             path="/auditoria"
             element={
