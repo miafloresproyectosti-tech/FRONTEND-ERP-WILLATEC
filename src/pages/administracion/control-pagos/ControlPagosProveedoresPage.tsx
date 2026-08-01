@@ -217,15 +217,15 @@ export default function ControlPagoProveedores() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100 via-gray-50 to-gray-200 p-6">
+    <div className="space-y-6">
 
-      <div className="bg-white/90 backdrop-blur rounded-3xl shadow-xl border border-gray-200 p-6">
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
 
         {/* HEADER */}
-        <div className="flex items-start justify-between mb-8">
+        <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 
           <div>
-            <h1 className="text-3xl font-bold text-gray-800 tracking-tight">
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
               Pago Facturas Proveedores
             </h1>
 
@@ -241,7 +241,7 @@ export default function ControlPagoProveedores() {
               setModoVista(false);
               setShowModal(true);
             }}
-            className="bg-gray-900 hover:bg-black text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition"
+            className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-medium text-white shadow-sm transition hover:bg-blue-700"
           >
             <Plus size={18} />
             Nuevo Pago
@@ -250,7 +250,7 @@ export default function ControlPagoProveedores() {
         </div>
 
         {/* CARDS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-7">
+        <div className="mb-7 grid grid-cols-1 gap-4 md:grid-cols-3">
 
           {/* PENDIENTES */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
@@ -350,7 +350,7 @@ export default function ControlPagoProveedores() {
         {/* BUSCADOR */}
         <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-6">
 
-          <div className="relative">
+            <div className="relative">
 
             <Search
               size={18}
@@ -372,9 +372,9 @@ export default function ControlPagoProveedores() {
         </div>
 
         {/* TABLA */}
-        <div className="overflow-auto rounded-2xl border border-gray-200">
+        <div className="overflow-x-auto rounded-2xl border border-gray-200">
 
-          <table className="w-full border-collapse">
+          <table className="min-w-[980px] w-full border-collapse">
 
             <thead>
               <tr className="bg-gray-100 text-gray-700 text-sm">
@@ -545,28 +545,28 @@ export default function ControlPagoProveedores() {
           <div className="bg-white w-full max-w-6xl rounded-[32px] shadow-2xl border border-gray-200 overflow-hidden">
 
             {/* HEADER */}
-            <div className="relative overflow-hidden bg-gradient-to-r from-gray-900 via-gray-800 to-black px-8 py-7">
+            <div className="relative overflow-hidden border-b border-gray-100 px-8 py-7">
 
               <div className="relative flex justify-between items-center">
 
                 <div className="flex items-center gap-4">
 
-                  <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur flex items-center justify-center border border-white/10">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50">
 
                     {modoVista ? (
                       <Eye
                         size={28}
-                        className="text-white"
+                        className="text-blue-700"
                       />
                     ) : editando ? (
                       <Pencil
                         size={28}
-                        className="text-white"
+                        className="text-blue-700"
                       />
                     ) : (
                       <FileText
                         size={28}
-                        className="text-white"
+                        className="text-blue-700"
                       />
                     )}
 
@@ -574,7 +574,7 @@ export default function ControlPagoProveedores() {
 
                   <div>
 
-                    <h2 className="text-3xl font-bold text-white">
+                    <h2 className="text-2xl font-bold text-gray-900">
 
                       {modoVista
                         ? "Visualización de Pago"
@@ -584,7 +584,7 @@ export default function ControlPagoProveedores() {
 
                     </h2>
 
-                    <p className="text-gray-300 text-sm mt-1">
+                    <p className="mt-1 text-sm text-gray-500">
                       Gestión y seguimiento de facturas
                     </p>
 
@@ -596,7 +596,7 @@ export default function ControlPagoProveedores() {
                   onClick={() =>
                     setShowModal(false)
                   }
-                  className="w-11 h-11 rounded-2xl bg-white/10 hover:bg-red-500 flex items-center justify-center transition"
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-100 text-gray-600 transition hover:bg-gray-200"
                 >
                   <X
                     size={22}
@@ -609,7 +609,7 @@ export default function ControlPagoProveedores() {
             </div>
 
             {/* BODY */}
-            <div className="p-8 bg-gradient-to-b from-gray-50 to-white max-h-[75vh] overflow-y-auto">
+            <div className="max-h-[75vh] overflow-y-auto bg-white p-8">
 
               {/* RESUMEN */}
               {modoVista && (

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Save, Building, Settings, Shield, Bell, Eye, EyeOff } from "lucide-react";
+import { Save, Building, Settings, Shield, Bell, Eye, EyeOff, AlertTriangle } from "lucide-react";
 import {
   enableTwoFactorRequest,
   getTwoFactorQrRequest,
@@ -11,6 +11,10 @@ import {
 } from "../services/auth.service";
 import { useNotifications } from "../NotificationContext";
 import { useAuth } from "../AuthContext";
+import {
+  getEmpresaConfiguracion,
+  updateEmpresaConfiguracion,
+} from "../services/empresaConfiguracion.service";
 
 const SUPERADMIN_SECURITY_QUESTIONS = [
   "¿Cual es el nombre de tu primera mascota?",
@@ -23,6 +27,15 @@ export default function Configuracion() {
   const { user, updateTwoFactorEnabled } = useAuth();
   const twoFactorEnabled = !!user?.two_factor_enabled;
   const isSuperAdmin = user?.role === "SUPERADMIN";
+  const [loadingEmpresaConfig, setLoadingEmpresaConfig] = useState(false);
+  const [savingEmpresaConfig, setSavingEmpresaConfig] = useState(false);
+  const [empresaForm, setEmpresaForm] = useState({
+    nombre: "",
+    ruc: "",
+    direccion: "",
+    telefono: "",
+    correo: "",
+  });
 
   const tabs = [
     { id: "empresa", name: "Empresa", icon: Building },
@@ -55,6 +68,86 @@ export default function Configuracion() {
     { answer: "" },
     { answer: "" },
   ]);
+
+  useEffect(() => {
+    const loadEmpresaConfig = async () => {
+      try {
+        setLoadingEmpresaConfig(true);
+        const data = await getEmpresaConfiguracion();
+        setEmpresaForm({
+          nombre: data.nombre || "",
+          ruc: data.ruc || "",
+          direccion: data.direccion || "",
+          telefono: data.telefono || "",
+          correo: data.correo || "",
+        });
+      } catch (error) {
+        console.warn("Error al cargar configuracion de empresa:", error);
+      } finally {
+        setLoadingEmpresaConfig(false);
+      }
+    };
+
+    void loadEmpresaConfig();
+  }, []);
+
+  const handleEmpresaChange = (field: keyof typeof empresaForm, value: string) => {
+    setEmpresaForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const saveEmpresaConfig = async () => {
+    try {
+      setSavingEmpresaConfig(true);
+      const data = await updateEmpresaConfiguracion({
+        nombre: empresaForm.nombre.trim() || null,
+        ruc: empresaForm.ruc.trim() || null,
+        direccion: empresaForm.direccion.trim() || null,
+        telefono: empresaForm.telefono.trim() || null,
+        correo: empresaForm.correo.trim() || null,
+      });
+
+      setEmpresaForm({
+        nombre: data.nombre || "",
+        ruc: data.ruc || "",
+        direccion: data.direccion || "",
+        telefono: data.telefono || "",
+        correo: data.correo || "",
+      });
+
+      showToast({
+        title: "Empresa actualizada",
+        description: "Los datos de empresa fueron guardados correctamente",
+        type: "success",
+      });
+    } catch (error: unknown) {
+      const backendMessage =
+        (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+
+      showToast({
+        title: "Error al guardar empresa",
+        description: backendMessage || "No se pudieron guardar los datos de empresa",
+        type: "error",
+      });
+    } finally {
+      setSavingEmpresaConfig(false);
+    }
+  };
+
+  const handleSaveChanges = () => {
+    if (activeTab === "empresa") {
+      void saveEmpresaConfig();
+      return;
+    }
+
+    showToast({
+      title: "Sin cambios pendientes",
+      description: "Por ahora solo el apartado Empresa guarda configuracion",
+      type: "info",
+    });
+  };
 
   useEffect(() => {
     if (!isSuperAdmin || activeTab !== "seguridad") return;
@@ -317,6 +410,24 @@ ${recoveryCodes.join("\n")}
       case "empresa":
         return (
           <div className="max-w-4xl mx-auto space-y-6">
+            <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+              <div>
+                <p className="font-semibold">
+                  Esta direccion sera mostrada en los PDF de cotizacion.
+                </p>
+                <p className="mt-1 text-sm">
+                  Si no configuras una direccion, se seguira usando la direccion actual por defecto.
+                </p>
+              </div>
+            </div>
+
+            {loadingEmpresaConfig && (
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-medium text-blue-700">
+                Cargando datos de empresa...
+              </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-1 space-y-2">
                 <label className="text-sm font-semibold text-gray-700">
@@ -324,7 +435,9 @@ ${recoveryCodes.join("\n")}
                 </label>
                 <input
                   type="text"
-                  defaultValue="Willatec ERP"
+                  value={empresaForm.nombre}
+                  onChange={(event) => handleEmpresaChange("nombre", event.target.value)}
+                  placeholder="WILLATEC S.A.C"
                   className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
                 />
               </div>
@@ -334,7 +447,9 @@ ${recoveryCodes.join("\n")}
                 </label>
                 <input
                   type="text"
-                  defaultValue="12345678901"
+                  value={empresaForm.ruc}
+                  onChange={(event) => handleEmpresaChange("ruc", event.target.value)}
+                  placeholder="20602503331"
                   className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
                 />
               </div>
@@ -345,7 +460,9 @@ ${recoveryCodes.join("\n")}
               </label>
               <input
                 type="text"
-                defaultValue="Av. Principal 123, Lima, Perú"
+                value={empresaForm.direccion}
+                onChange={(event) => handleEmpresaChange("direccion", event.target.value)}
+                placeholder="Jr. Jorge Chavez Nro. 1747 - Of.1002 - Brena - Lima"
                 className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
               />
             </div>
@@ -356,7 +473,9 @@ ${recoveryCodes.join("\n")}
                 </label>
                 <input
                   type="tel"
-                  defaultValue="+51 999 999 999"
+                  value={empresaForm.telefono}
+                  onChange={(event) => handleEmpresaChange("telefono", event.target.value)}
+                  placeholder="(01) 757-1253"
                   className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
                 />
               </div>
@@ -366,7 +485,9 @@ ${recoveryCodes.join("\n")}
                 </label>
                 <input
                   type="email"
-                  defaultValue="info@willatec.com"
+                  value={empresaForm.correo}
+                  onChange={(event) => handleEmpresaChange("correo", event.target.value)}
+                  placeholder="ventas@willatec.com"
                   className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
                 />
               </div>
@@ -802,9 +923,14 @@ ${recoveryCodes.join("\n")}
           </p>
         </div>
 
-        <button className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5">
+        <button
+          type="button"
+          onClick={handleSaveChanges}
+          disabled={activeTab === "empresa" && savingEmpresaConfig}
+          className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+        >
           <Save size={20} />
-          Guardar Cambios
+          {activeTab === "empresa" && savingEmpresaConfig ? "Guardando..." : "Guardar Cambios"}
         </button>
       </div>
 

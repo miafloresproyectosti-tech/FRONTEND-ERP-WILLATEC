@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "../../AuthContext";
+import { featureFlags } from "../../config/featureFlags";
 
 interface SidebarProps {
   mobile?: boolean;
@@ -309,7 +310,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </Link>
             )}
 
-            {(user?.role === "SUPERADMIN" || user?.role === "ADMIN") && (
+            {hasPermission("servicios") && (
               <div className="mt-2">
                 <button
                   type="button"
@@ -353,7 +354,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </div>
             )}
 
-            {["SUPERADMIN", "SOPORTE"].includes(user?.role ?? "") && (
+            {featureFlags.soporteTi && hasPermission("soporte_ti") && (
               <div className="mt-2">
                 <button
                   type="button"
@@ -406,7 +407,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </div>
             )}
 
-            {(user?.role === "SUPERADMIN" || user?.role === "ADMIN") && (
+            {featureFlags.controlAdm && hasPermission("control_pagos") && (
               <div className="mt-2">
                 <button
                   type="button"

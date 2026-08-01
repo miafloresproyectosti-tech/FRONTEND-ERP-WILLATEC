@@ -49,12 +49,12 @@ const tipoOptions = [
   { value: "oc_documento_adicional", label: "Documento adicional OC" },
 ];
 
-const perPageOptions = [15, 25, 50, 100];
+const perPageOptions = [5, 10, 25, 50, 100];
 
 const emptyMeta: AuditoriaPagination = {
   current_page: 1,
   last_page: 1,
-  per_page: 15,
+  per_page: 10,
   total: 0,
   from: null,
   to: null,
@@ -123,7 +123,7 @@ export default function Auditoria() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [filters, setFilters] = useState<AuditoriaFilters>({
     page: 1,
-    per_page: 15,
+    per_page: 10,
     search: "",
     event: "",
     tipo: "",
@@ -136,7 +136,7 @@ export default function Auditoria() {
   const queryFilters = useMemo(
     () => ({
       ...filters,
-      per_page: filters.per_page ?? 15,
+      per_page: filters.per_page ?? 10,
       page: filters.page ?? 1,
     }),
     [filters],
@@ -297,7 +297,7 @@ export default function Auditoria() {
           </select>
 
           <select
-            value={filters.per_page ?? 15}
+            value={filters.per_page ?? 10}
             onChange={(event) => updateFilter("per_page", Number(event.target.value))}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none"
           >

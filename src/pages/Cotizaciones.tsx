@@ -33,6 +33,7 @@ import { getUsers, type User as ApiUser } from "../services/usuario.service";
 import { formatMoney } from "../utils/formatNumber";
 import { getPaginationItems } from "../utils/pagination";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import PageSizeSelect from "../components/ui/PageSizeSelect";
 
 function formatCotizacionDate(value?: string | null): string {
   if (!value) return "N/A";
@@ -161,7 +162,7 @@ export default function Cotizaciones() {
   const [cotizacionForOc, setCotizacionForOc] = useState<ApiCotizacion | null>(null);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
   const [deletingCotizacionId, setDeletingCotizacionId] = useState<number | null>(null);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const paginationItems = getPaginationItems(currentPage, totalPages);
 
   const loadCotizaciones = useCallback(async () => {
@@ -195,7 +196,7 @@ export default function Cotizaciones() {
     } finally {
       setLoading(false);
     }
-  }, [addNotification, currentPage, debouncedSearchTerm, fechaDesde, fechaHasta, filterEjecutivo, filterEstado]);
+  }, [addNotification, currentPage, debouncedSearchTerm, fechaDesde, fechaHasta, filterEjecutivo, filterEstado, itemsPerPage]);
 
   const paginatedCotizaciones = cotizaciones;
   const canReviewCotizaciones = user?.role === "SUPERADMIN" || user?.role === "ADMIN";
@@ -1055,11 +1056,18 @@ export default function Cotizaciones() {
         {/* PAGINACIÓN */}
         {totalCotizaciones > 0 && (
           <div className="flex flex-col gap-3 border-t border-gray-200 px-6 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-slate-600 dark:text-slate-400">
-              Mostrando {paginationFrom} a {paginationTo} de {totalCotizaciones} cotizaciones
+            <div className="flex flex-col gap-2 text-sm text-slate-600 dark:text-slate-400 sm:flex-row sm:items-center sm:gap-4">
+              <span>Mostrando {paginationFrom} a {paginationTo} de {totalCotizaciones} cotizaciones</span>
+              <PageSizeSelect
+                value={itemsPerPage}
+                onChange={(value) => {
+                  setItemsPerPage(value);
+                  setCurrentPage(1);
+                }}
+              />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            {totalPages > 1 && <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
@@ -1102,7 +1110,7 @@ export default function Cotizaciones() {
               >
                 <ChevronRight size={18} />
               </button>
-            </div>
+            </div>}
           </div>
         )}
       </div>

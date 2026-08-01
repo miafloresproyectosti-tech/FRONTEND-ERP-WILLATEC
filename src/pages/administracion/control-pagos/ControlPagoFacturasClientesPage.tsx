@@ -186,11 +186,11 @@ export default function ControlPagoFacturasClientesPage() {
     "w-full bg-white border border-gray-200 rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900 transition";
   <input className={inputClass} />
   return (
-    <div className="bg-gray-50 rounded-3xl p-6 h-full">
+    <div className="space-y-6">
       {/* HEADER */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
             Pago Facturas Clientes
           </h1>
 
@@ -201,7 +201,7 @@ export default function ControlPagoFacturasClientesPage() {
 
         <button
           onClick={abrirNuevo}
-          className="flex items-center gap-2 bg-gray-900 hover:bg-black text-white px-5 py-3 rounded-xl transition"
+          className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-medium text-white shadow-sm transition hover:bg-blue-700"
         >
           <Plus size={18} />
           Nueva Factura
@@ -209,7 +209,7 @@ export default function ControlPagoFacturasClientesPage() {
       </div>
 
       {/* CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
         <div className="bg-white border rounded-2xl p-5 shadow-sm">
           <div className="flex justify-between items-center">
             <div>
@@ -288,7 +288,7 @@ export default function ControlPagoFacturasClientesPage() {
       </div>
 
       {/* BUSCADOR */}
-      <div className="bg-white border rounded-2xl p-4 shadow-sm mb-8">
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="flex items-center bg-gray-100 rounded-xl px-4">
           <Search
             size={18}
@@ -308,9 +308,9 @@ export default function ControlPagoFacturasClientesPage() {
       </div>
 
       {/* TABLA */}
-      <div className="bg-white border rounded-2xl shadow-sm overflow-hidden">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="min-w-[980px] w-full">
             <thead className="bg-gray-50 border-b">
               <tr className="text-left text-sm text-gray-500">
                 <th className="p-5">
@@ -500,7 +500,7 @@ export default function ControlPagoFacturasClientesPage() {
                       </div>
                     </div>
 
-                    <div className="bg-gradient-to-br from-blue-950 to-blue-800 text-white flex flex-col justify-center items-center p-10">
+                    <div className="flex flex-col items-center justify-center bg-blue-950 p-10 text-white">
                       <h2 className="text-6xl font-black">
                         FACTURA
                       </h2>
@@ -1141,7 +1141,7 @@ export default function ControlPagoFacturasClientesPage() {
 
                 <button
                   onClick={guardarFactura}
-                  className="px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-semibold shadow-lg hover:scale-105 transition"
+                  className="rounded-xl bg-blue-600 px-8 py-4 font-semibold text-white shadow-sm transition hover:bg-blue-700"
                 >
                   Guardar Factura
                 </button>

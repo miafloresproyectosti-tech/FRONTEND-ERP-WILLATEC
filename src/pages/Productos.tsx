@@ -16,7 +16,7 @@ import {
   Download,
 } from "lucide-react";
 
-import { getProductosPaginated, getExternalItems, createProducto, updateProducto, deleteProducto, updateCotizacionItem, convertirProductoExternoAInterno, type Producto, type ProductoPayload, type CotizacionItem, type ProductoSerie } from "../services/producto.service";
+import { getProductos, getProductosPaginated, getExternalItems, createProducto, updateProducto, deleteProducto, updateCotizacionItem, convertirProductoExternoAInterno, type Producto, type ProductoPayload, type CotizacionItem, type ProductoSerie } from "../services/producto.service";
 import {
   getCotizacion,
   getCotizacionesPaginated,
@@ -28,6 +28,7 @@ import { useAuth } from "../AuthContext";
 import { normalizeStorageImageUrl, resolveItemImageUrl } from "../utils/storageImage";
 import { getPaginationItems } from "../utils/pagination";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import PageSizeSelect from "../components/ui/PageSizeSelect";
 import { formatMoney } from "../utils/formatNumber";
 // import { Plus as PlusIcon } from "lucide-react";
 
@@ -268,7 +269,7 @@ export default function Productos() {
   const [openModal, setOpenModal] = useState(false);
   const [modoEdicion, setModoEdicion] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(5);
+  const [itemsPerPage, setItemsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -283,6 +284,7 @@ export default function Productos() {
   });
   const [externalItems, setExternalItems] = useState<ExternalItem[]>([]);
   const [externalPage, setExternalPage] = useState(1);
+  const [externalPerPage, setExternalPerPage] = useState(10);
   const [externalLoading, setExternalLoading] = useState(false);
   const [externalMeta, setExternalMeta] = useState({
     current_page: 1,
@@ -359,6 +361,7 @@ export default function Productos() {
     producto_id: "",
   });
   const [savingExternal, setSavingExternal] = useState(false);
+  const [exportingProductos, setExportingProductos] = useState(false);
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
   const userRole = String(user?.role || "").toUpperCase();
   const canUseExternalProducts = user?.role !== "SOPORTE" && user?.role !== "LOGISTICA";
@@ -451,10 +454,10 @@ export default function Productos() {
     }
   }, [activeTab, currentPage, debouncedSearchTerm, fetchProductos]);
 
-  const fetchExternalItems = async (page = 1, search = searchTerm) => {
+  const fetchExternalItems = useCallback(async (page = 1, search = searchTerm, perPage = externalPerPage) => {
     try {
       setExternalLoading(true);
-      const response = await getExternalItems(page, search);
+      const response = await getExternalItems(page, search, perPage);
       setExternalItems(response.data.map((item) => item));
       setExternalMeta(response.meta);
     } catch (error) {
@@ -470,14 +473,13 @@ export default function Productos() {
     } finally {
       setExternalLoading(false);
     }
-  };
+  }, [addNotification, externalPerPage, searchTerm]);
 
   useEffect(() => {
     if (activeTab === "externos" && canUseExternalProducts) {
-      fetchExternalItems(externalPage, debouncedSearchTerm);
+      void fetchExternalItems(externalPage, debouncedSearchTerm, externalPerPage);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, externalPage, debouncedSearchTerm, canUseExternalProducts]);
+  }, [activeTab, externalPage, debouncedSearchTerm, canUseExternalProducts, externalPerPage, fetchExternalItems]);
 
   const handleTabChange = (tab: "stock" | "externos") => {
     if (tab === "externos" && !canUseExternalProducts) return;
@@ -513,6 +515,197 @@ export default function Productos() {
 
     setModoEdicion(false);
     setOpenModal(true);
+  };
+
+  const handleExportProductosInternos = async () => {
+    try {
+      setExportingProductos(true);
+      const rows = await getProductos();
+      const ExcelJS = await import("exceljs");
+
+      const headers = [
+        "Codigo",
+        "Nombre",
+        "Marca",
+        "Modelo",
+        "Categoria",
+        "Estado",
+        "Unidad",
+        "Moneda",
+        "Precio",
+        "Stock actual",
+        "Stock reservado",
+        "Stock disponible",
+        "Series",
+        "Factura numero",
+        "Descripcion",
+        "Activo",
+      ];
+
+      const getLogoBuffer = async () => {
+        try {
+          const response = await fetch("/logoWILLATEC-black.png");
+          return await response.arrayBuffer();
+        } catch (error) {
+          console.error("No se pudo cargar el logo para Excel:", error);
+          return null;
+        }
+      };
+
+      const exportRows = rows.map((producto) => {
+        const productoUI = mapProducto(producto);
+        const moneda = producto.moneda?.simbolo || producto.moneda?.codigo || "";
+        const series = (producto.series ?? [])
+          .map((serie) => serie.serie)
+          .filter(Boolean)
+          .join(" | ");
+
+        return {
+          categoria: productoUI.categoria_label,
+          nombre: productoUI.nombre,
+          codigo: productoUI.codigo,
+          values: [
+          productoUI.codigo,
+          productoUI.nombre,
+          productoUI.marca,
+          productoUI.modelo,
+          productoUI.categoria_label,
+          productoUI.estado === "usado" ? "Usado" : "Nuevo",
+          productoUI.unidad_medida,
+          moneda,
+          productoUI.precio_referencial,
+          productoUI.stock_actual ?? productoUI.stock,
+          productoUI.stock_reservado ?? 0,
+          productoUI.stock_disponible ?? productoUI.stock,
+          series || productoUI.serie,
+          productoUI.factura_numero,
+          productoUI.descripcion,
+          productoUI.activo === "true" ? "Activo" : "Inactivo",
+          ],
+        };
+      }).sort((a, b) => {
+        return (
+          a.categoria.localeCompare(b.categoria, "es") ||
+          a.nombre.localeCompare(b.nombre, "es") ||
+          a.codigo.localeCompare(b.codigo, "es")
+        );
+      });
+
+      const today = new Date().toLocaleDateString("es-PE");
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "Willatec ERP";
+      workbook.created = new Date();
+
+      const worksheet = workbook.addWorksheet("Productos Stock", {
+        views: [{ state: "frozen", ySplit: 6 }],
+      });
+
+      worksheet.mergeCells("A1:P3");
+
+      const logoBuffer = await getLogoBuffer();
+      if (logoBuffer) {
+        const logoId = workbook.addImage({
+          buffer: logoBuffer,
+          extension: "png",
+        });
+        worksheet.addImage(logoId, {
+          tl: { col: 6.3, row: 0.2 },
+          ext: { width: 190, height: 58 },
+        });
+      }
+
+      worksheet.mergeCells("A4:P4");
+      worksheet.getCell("A4").value = "PRODUCTOS STOCK";
+      worksheet.getCell("A4").font = {
+        bold: true,
+        size: 18,
+        color: { argb: "FF0F172A" },
+      };
+      worksheet.getCell("A4").alignment = { horizontal: "center" };
+
+      worksheet.mergeCells("A5:P5");
+      worksheet.getCell("A5").value = `Inventario interno de productos | Exportado: ${today} | Total: ${exportRows.length}`;
+      worksheet.getCell("A5").font = { size: 10, color: { argb: "FF64748B" } };
+      worksheet.getCell("A5").alignment = { horizontal: "center" };
+
+      worksheet.addRow([]);
+      const headerRow = worksheet.addRow(headers);
+      headerRow.eachCell((cell) => {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF0F172A" },
+        };
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFCBD5E1" } },
+          left: { style: "thin", color: { argb: "FFCBD5E1" } },
+          bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
+          right: { style: "thin", color: { argb: "FFCBD5E1" } },
+        };
+      });
+
+      exportRows.forEach((row, index) => {
+        const excelRow = worksheet.addRow(row.values);
+        excelRow.eachCell((cell) => {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: index % 2 === 0 ? "FFFFFFFF" : "FFF8FAFC" },
+          };
+          cell.alignment = { vertical: "top", wrapText: true };
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFE2E8F0" } },
+            left: { style: "thin", color: { argb: "FFE2E8F0" } },
+            bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+            right: { style: "thin", color: { argb: "FFE2E8F0" } },
+          };
+        });
+      });
+
+      worksheet.columns = [
+        { width: 18 },
+        { width: 32 },
+        { width: 18 },
+        { width: 22 },
+        { width: 20 },
+        { width: 13 },
+        { width: 12 },
+        { width: 10 },
+        { width: 13 },
+        { width: 14 },
+        { width: 16 },
+        { width: 16 },
+        { width: 35 },
+        { width: 18 },
+        { width: 42 },
+        { width: 12 },
+      ];
+      worksheet.autoFilter = "A7:P7";
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `productos_stock_${new Date().toISOString().split("T")[0]}.xlsx`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      addNotification({
+        title: "Error al exportar productos",
+        description: "No se pudo generar el archivo de productos internos.",
+        type: "warning",
+        icon: "MessageCircle",
+        route: "/productos",
+      });
+    } finally {
+      setExportingProductos(false);
+    }
   };
 
   // EDITAR
@@ -1177,15 +1370,36 @@ export default function Productos() {
           </p>
         </div>
 
-        {isStockTab && canManageInternalProducts && (
-          <button
-            onClick={handleNuevo}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl sm:h-auto sm:w-auto sm:gap-2 sm:px-5 sm:py-3"
-            title="Nuevo Producto"
-          >
-            <Plus size={20} />
-            <span className="hidden sm:inline">Nuevo Producto</span>
-          </button>
+        {isStockTab && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleExportProductosInternos}
+              disabled={exportingProductos}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-700 shadow-sm transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 sm:h-auto sm:w-auto sm:gap-2 sm:px-5 sm:py-3"
+              title="Descargar productos internos"
+            >
+              {exportingProductos ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : (
+                <Download size={20} />
+              )}
+              <span className="hidden sm:inline">
+                {exportingProductos ? "Descargando..." : "Descargar Excel"}
+              </span>
+            </button>
+
+            {canManageInternalProducts && (
+              <button
+                onClick={handleNuevo}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl sm:h-auto sm:w-auto sm:gap-2 sm:px-5 sm:py-3"
+                title="Nuevo Producto"
+              >
+                <Plus size={20} />
+                <span className="hidden sm:inline">Nuevo Producto</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -1759,14 +1973,26 @@ export default function Productos() {
         </div>
 
         {/* PAGINACION */}
-        {pageCount > 1 && (
+        {totalItems > 0 && (
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-gray-600">
-                Mostrando {showingFrom} a {showingTo} de {totalItems} productos
+              <div className="flex flex-col gap-2 text-sm text-gray-600 sm:flex-row sm:items-center sm:gap-4">
+                <span>Mostrando {showingFrom} a {showingTo} de {totalItems} productos</span>
+                <PageSizeSelect
+                  value={isStockTab ? itemsPerPage : externalPerPage}
+                  onChange={(value) => {
+                    if (isStockTab) {
+                      setItemsPerPage(value);
+                      setCurrentPage(1);
+                    } else {
+                      setExternalPerPage(value);
+                      setExternalPage(1);
+                    }
+                  }}
+                />
               </div>
 
-              <div className="flex flex-wrap items-center gap-1">
+              {pageCount > 1 && <div className="flex flex-wrap items-center gap-1">
                 <button
                   onClick={() =>
                     isStockTab
@@ -1817,7 +2043,7 @@ export default function Productos() {
                 >
                   <ChevronRight size={18} />
                 </button>
-              </div>
+              </div>}
             </div>
           </div>
         )}

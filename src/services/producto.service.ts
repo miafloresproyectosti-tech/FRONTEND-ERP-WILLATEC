@@ -516,7 +516,7 @@ export const getProductos = async (): Promise<Producto[]> => {
     return rows;
 };
 
-export const getExternalItems = async (page = 1, search = ""): Promise<{
+export const getExternalItems = async (page = 1, search = "", perPage = 10): Promise<{
     data: CotizacionItem[];
     meta: {
         current_page: number;
@@ -530,7 +530,7 @@ export const getExternalItems = async (page = 1, search = ""): Promise<{
             page,
             search: search.trim() || undefined,
             activo: true,
-            per_page: 10,
+            per_page: perPage,
         },
     });
     const raw = res.data ?? {};
@@ -541,7 +541,7 @@ export const getExternalItems = async (page = 1, search = ""): Promise<{
             current_page: raw.current_page ?? page,
             last_page: raw.last_page ?? 1,
             total: raw.total ?? (Array.isArray(raw.data) ? raw.data.length : 0),
-            per_page: raw.per_page ?? 10,
+            per_page: raw.per_page ?? perPage,
         },
     };
 };

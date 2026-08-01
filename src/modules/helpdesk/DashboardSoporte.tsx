@@ -36,21 +36,21 @@ export default function DashboardSoporte() {
           value="23"
           subtitle="En espera"
           icon={<Ticket />}
-          color="from-red-500 to-red-600"
+          color="from-red-400 to-red-500"
         />
         <StatCard
           title="En Proceso"
           value="17"
           subtitle="Activos"
           icon={<Clock />}
-          color="from-yellow-500 to-yellow-600"
+          color="from-amber-400 to-amber-500"
         />
         <StatCard
           title="Resueltos Hoy"
           value="45"
           subtitle="Completados"
           icon={<ShieldCheck />}
-          color="from-green-500 to-green-600"
+          color="from-emerald-400 to-emerald-500"
         />
       </div>
 

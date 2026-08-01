@@ -55,6 +55,7 @@ import { useAuth } from "../AuthContext";
 import { getCotizacion } from "../services/cotizacion.service";
 import { formatMoney } from "../utils/formatNumber";
 import { getPaginationItems } from "../utils/pagination";
+import PageSizeSelect from "../components/ui/PageSizeSelect";
 
 type ActiveTab = "emitidas" | "recibidas";
 type ModalMode = "emitir" | "recibir" | null;
@@ -112,8 +113,6 @@ const buildEmitidaDraftItems = (items: OcPreviewItem[], proveedor?: string): Emi
       cantidad: getQuotedQuantity(item),
       precio_unitario: getProveedorPrecio(item, proveedor),
     }));
-
-const perPage = 10;
 
 const emptyPagination: PaginationState = {
   page: 1,
@@ -430,6 +429,7 @@ export default function OrdenesCompraPage() {
   const [recibidas, setRecibidas] = useState<OcRecibida[]>([]);
   const [emitidasPagination, setEmitidasPagination] = useState<PaginationState>(emptyPagination);
   const [recibidasPagination, setRecibidasPagination] = useState<PaginationState>(emptyPagination);
+  const [perPage, setPerPage] = useState(10);
   const [loading, setLoading] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [preview, setPreview] = useState<OcPreview | null>(null);
@@ -527,7 +527,7 @@ export default function OrdenesCompraPage() {
     } finally {
       setLoading(false);
     }
-  }, [emitidasPagination.page, estadoFilter, proveedorFilter, searchTerm, showToast]);
+  }, [emitidasPagination.page, estadoFilter, perPage, proveedorFilter, searchTerm, showToast]);
 
   const loadRecibidas = useCallback(async (page = recibidasPagination.page) => {
     try {
@@ -555,7 +555,7 @@ export default function OrdenesCompraPage() {
     } finally {
       setLoading(false);
     }
-  }, [estadoFilter, recibidasPagination.page, searchTerm, showToast]);
+  }, [estadoFilter, perPage, recibidasPagination.page, searchTerm, showToast]);
 
   const refreshActiveTab = useCallback(() => {
     if (activeTab === "emitidas") {
@@ -571,7 +571,7 @@ export default function OrdenesCompraPage() {
     } else {
       void loadRecibidas(1);
     }
-  }, [activeTab, estadoFilter, proveedorFilter, searchTerm]);
+  }, [activeTab, estadoFilter, perPage, proveedorFilter, searchTerm]);
 
   useEffect(() => {
     const queryCotizacionId = searchParams.get("cotizacion");
@@ -1300,10 +1300,18 @@ export default function OrdenesCompraPage() {
 
         {currentPagination.total > 0 && (
           <div className="flex flex-col gap-3 border-t border-gray-200 px-5 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-slate-500">
-              Mostrando {currentPagination.from} a {currentPagination.to} de {currentPagination.total}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col gap-2 text-sm text-slate-500 sm:flex-row sm:items-center sm:gap-4">
+              <span>Mostrando {currentPagination.from} a {currentPagination.to} de {currentPagination.total}</span>
+              <PageSizeSelect
+                value={perPage}
+                onChange={(value) => {
+                  setPerPage(value);
+                  setEmitidasPagination((prev) => ({ ...prev, page: 1 }));
+                  setRecibidasPagination((prev) => ({ ...prev, page: 1 }));
+                }}
+              />
+            </div>
+            {currentPagination.totalPages > 1 && <div className="flex flex-wrap items-center gap-2">
               <PageButton
                 disabled={currentPagination.page <= 1}
                 onClick={() => activeTab === "emitidas" ? loadEmitidas(currentPagination.page - 1) : loadRecibidas(currentPagination.page - 1)}
@@ -1334,7 +1342,7 @@ export default function OrdenesCompraPage() {
               >
                 <ChevronRight size={17} />
               </PageButton>
-            </div>
+            </div>}
           </div>
         )}
       </div>

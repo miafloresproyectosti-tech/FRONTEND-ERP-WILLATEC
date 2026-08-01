@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import MainLayout from "../components/layout/MainLayout";
 import { ProtectedRoute } from "../components/layout/ProtectedRoute";
+import { featureFlags } from "../config/featureFlags";
 
 import LoginPage from "../pages/LoginPage";
 import ChangePasswordPage from "../pages/ChangePasswordPage";
@@ -176,25 +177,76 @@ export default function AppRoutes() {
           />
 
           {/* 🆕 SERVICIOS ERP */}
-          <Route path="/servicios/licencias" element={<Licencias />} />
-          <Route path="/servicios/hosting" element={<Hosting />} />
+          <Route
+            path="/servicios/licencias"
+            element={
+              <ProtectedRoute requiredPermission="servicios">
+                <Licencias />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/servicios/hosting"
+            element={
+              <ProtectedRoute requiredPermission="servicios">
+                <Hosting />
+              </ProtectedRoute>
+            }
+          />
 
           {/* 🆕 SOPORTE TI (HELP DESK) */}
-          <Route path="/soporte" element={<DashboardSoporte />} />
-          <Route path="/soporte/tickets" element={<Tickets />} />
-          <Route path="/soporte/equipo-garantia" element={<EquipoGarantia />} />
+          {featureFlags.soporteTi && (
+            <>
+              <Route
+                path="/soporte"
+                element={
+                  <ProtectedRoute requiredPermission="soporte_ti">
+                    <DashboardSoporte />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/soporte/tickets"
+                element={
+                  <ProtectedRoute requiredPermission="soporte_ti">
+                    <Tickets />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/soporte/equipo-garantia"
+                element={
+                  <ProtectedRoute requiredPermission="soporte_ti">
+                    <EquipoGarantia />
+                  </ProtectedRoute>
+                }
+              />
+            </>
+          )}
 
           {/* ADMIN */}
           <Route path="/usuarios" element={<Usuarios />} />
           <Route path="/configuracion" element={<Configuracion />} />
-          <Route
-  path="/administracion/control-pagos/facturas-clientes"
-  element={<ControlPagoFacturasClientesPage />}
-/>
-          <Route
-  path="/administracion/control-pagos/pagos-proveedores"
-  element={<ControlPagoProveedores />}
-/>
+          {featureFlags.controlAdm && (
+            <>
+              <Route
+                path="/administracion/control-pagos/facturas-clientes"
+                element={
+                  <ProtectedRoute requiredPermission="control_pagos">
+                    <ControlPagoFacturasClientesPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/administracion/control-pagos/pagos-proveedores"
+                element={
+                  <ProtectedRoute requiredPermission="control_pagos">
+                    <ControlPagoProveedores />
+                  </ProtectedRoute>
+                }
+              />
+            </>
+          )}
 
           {/* AUDITORÍA */}
           <Route

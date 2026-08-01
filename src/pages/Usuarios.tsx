@@ -4,6 +4,7 @@ import { useAuth } from '../AuthContext';
 import { getUsers, getRoles, createUser, updateUser, deleteUser, resetPassword, type User as ApiUser, type CreateUserData, type UpdateUserData } from '../services/usuario.service';
 import TempPasswordModal from '../components/ui/TempPasswordModal';
 import { useNotifications } from '../NotificationContext';
+import PageSizeSelect from '../components/ui/PageSizeSelect';
 
 interface User {
   id: number;
@@ -27,7 +28,7 @@ export default function Usuarios() {
   const [openModal, setOpenModal] = useState(false);
   const [modoEdicion, setModoEdicion] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(5);
+  const [itemsPerPage, setItemsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState<string>('');
 
@@ -134,6 +135,10 @@ export default function Usuarios() {
   const currentItems = usuariosFiltrados.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(usuariosFiltrados.length / itemsPerPage);
   const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterEstado, itemsPerPage, searchTerm]);
 
   // Actualizar área automáticamente cuando cambia el rol
   useEffect(() => {
@@ -508,14 +513,18 @@ export default function Usuarios() {
         </div>
 
         {/* PAGINACION */}
-        {totalPages > 1 && (
+        {usuariosFiltrados.length > 0 && (
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-gray-600">
-                Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, usuariosFiltrados.length)} de {usuariosFiltrados.length} usuarios
+              <div className="flex flex-col gap-2 text-sm text-gray-600 sm:flex-row sm:items-center sm:gap-4">
+                <span>Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, usuariosFiltrados.length)} de {usuariosFiltrados.length} usuarios</span>
+                <PageSizeSelect
+                  value={itemsPerPage}
+                  onChange={setItemsPerPage}
+                />
               </div>
 
-              <div className="flex flex-wrap items-center gap-1">
+              {totalPages > 1 && <div className="flex flex-wrap items-center gap-1">
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
@@ -545,7 +554,7 @@ export default function Usuarios() {
                 >
                   <ChevronRight size={18} />
                 </button>
-              </div>
+              </div>}
             </div>
           </div>
         )}

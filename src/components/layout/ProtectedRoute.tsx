@@ -7,9 +7,10 @@ interface Props {
   children: ReactNode;
   requiredPermission?: string;
   requiredRole?: UserRole;
+  requiredRoles?: UserRole[];
 }
 
-export function ProtectedRoute({ children, requiredPermission, requiredRole }: Props) {
+export function ProtectedRoute({ children, requiredPermission, requiredRole, requiredRoles }: Props) {
   const { user, hasPermission, loading } = useAuth();
 
   if (loading) {
@@ -21,6 +22,10 @@ export function ProtectedRoute({ children, requiredPermission, requiredRole }: P
   }
 
   if (requiredRole && user.role !== requiredRole) {
+    return <Navigate to="/not-authorized" replace />;
+  }
+
+  if (requiredRoles && !requiredRoles.includes(user.role)) {
     return <Navigate to="/not-authorized" replace />;
   }
 

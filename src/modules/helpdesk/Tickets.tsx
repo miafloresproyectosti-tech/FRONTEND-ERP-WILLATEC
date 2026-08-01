@@ -172,17 +172,17 @@ export default function TicketsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-blue-100 p-6">
+    <div className="space-y-6">
       {/* HEADER */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5 mb-8">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <div className="bg-blue-600 text-white p-3 rounded-2xl shadow-lg">
+            <div className="rounded-2xl bg-blue-50 p-3 text-blue-700">
               <Ticket size={28} />
             </div>
 
             <div>
-              <h1 className="text-4xl font-black text-slate-800">
+              <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">
                 Tickets Soporte TI
               </h1>
 
@@ -195,7 +195,7 @@ export default function TicketsPage() {
 
         <button
           onClick={abrirNuevo}
-          className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:scale-105 transition-all text-white px-6 py-4 rounded-2xl shadow-xl font-semibold"
+          className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700"
         >
           <Plus size={20} />
           Nuevo Ticket
@@ -203,8 +203,8 @@ export default function TicketsPage() {
       </div>
 
       {/* CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white/80 backdrop-blur rounded-3xl p-6 border border-white shadow-xl">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-slate-500 text-sm">
@@ -225,7 +225,7 @@ export default function TicketsPage() {
           </div>
         </div>
 
-        <div className="bg-white/80 backdrop-blur rounded-3xl p-6 border border-white shadow-xl">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-slate-500 text-sm">
@@ -250,7 +250,7 @@ export default function TicketsPage() {
           </div>
         </div>
 
-        <div className="bg-white/80 backdrop-blur rounded-3xl p-6 border border-white shadow-xl">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-slate-500 text-sm">
@@ -276,9 +276,9 @@ export default function TicketsPage() {
       </div>
 
       {/* BUSCADOR */}
-      <div className="bg-white/80 backdrop-blur border border-white shadow-xl rounded-3xl p-5 mb-8">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center bg-slate-100 rounded-2xl px-4 flex-1">
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="flex flex-1 items-center rounded-xl bg-slate-100 px-4">
             <Search size={20} className="text-slate-400" />
 
             <input
@@ -292,7 +292,7 @@ export default function TicketsPage() {
             />
           </div>
 
-          <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-5 py-4 rounded-2xl flex items-center gap-2 shadow-lg">
+          <div className="flex items-center gap-2 rounded-xl border border-violet-100 bg-violet-50 px-5 py-3 text-sm font-semibold text-violet-700">
             <Sparkles size={18} />
             Soporte
           </div>
@@ -300,9 +300,9 @@ export default function TicketsPage() {
       </div>
 
       {/* TABLA */}
-      <div className="bg-white/80 backdrop-blur rounded-3xl border border-white shadow-2xl overflow-hidden">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="min-w-[860px] w-full">
             <thead className="bg-slate-100">
               <tr className="text-left text-slate-600 text-sm">
                 <th className="p-5">Ticket</th>
@@ -324,7 +324,7 @@ export default function TicketsPage() {
                 >
                   <td className="p-5">
                     <div className="flex gap-4">
-                      <div className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white p-3 rounded-2xl shadow-lg h-fit">
+                      <div className="h-fit rounded-2xl bg-blue-50 p-3 text-blue-700">
                         <Ticket size={20} />
                       </div>
 
@@ -417,9 +417,9 @@ export default function TicketsPage() {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             {/* HEADER */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white flex items-center justify-between">
+            <div className="flex items-center justify-between border-b border-gray-100 p-6">
               <div>
-                <h2 className="text-3xl font-black">
+                <h2 className="text-2xl font-bold text-slate-900">
                   {modo === "nuevo" &&
                     "Nuevo Ticket"}
                   {modo === "editar" &&
@@ -428,14 +428,14 @@ export default function TicketsPage() {
                     "Detalle del Ticket"}
                 </h2>
 
-                <p className="text-blue-100 mt-1">
+                <p className="mt-1 text-sm text-slate-500">
                   Gestión de soporte TI
                 </p>
               </div>
 
               <button
                 onClick={cerrarModal}
-                className="bg-white/20 hover:bg-white/30 p-3 rounded-xl transition"
+                className="rounded-xl bg-gray-100 p-3 text-gray-600 transition hover:bg-gray-200"
               >
                 <X />
               </button>
@@ -573,7 +573,7 @@ export default function TicketsPage() {
               {modo !== "ver" && (
                 <button
                   onClick={guardarTicket}
-                  className="px-6 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold shadow-lg hover:scale-105 transition"
+                  className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700"
                 >
                   Guardar Ticket
                 </button>

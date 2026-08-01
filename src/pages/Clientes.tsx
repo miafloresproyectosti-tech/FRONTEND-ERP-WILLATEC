@@ -16,6 +16,7 @@ import { getClientes, createCliente, updateCliente, deleteCliente, type Cliente 
 import { useNotifications } from "../NotificationContext";
 import { getPaginationItems } from "../utils/pagination";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import PageSizeSelect from "../components/ui/PageSizeSelect";
 
 // Formulario vacío tipado según la API
 interface ClienteForm {
@@ -63,7 +64,7 @@ export default function Clientes() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalClientes, setTotalClientes] = useState(0);
   const paginationItems = getPaginationItems(currentPage, totalPages);
-  const [perPage] = useState(10);
+  const [perPage, setPerPage] = useState(10);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [openModal, setOpenModal] = useState(false);
@@ -136,7 +137,7 @@ export default function Clientes() {
     };
 
     fetchClientes();
-  }, [currentPage, debouncedSearchTerm, filterEstado, filterTipoCliente]);
+  }, [currentPage, debouncedSearchTerm, filterEstado, filterTipoCliente, perPage]);
 
   const handleNuevo = () => {
     setClienteSeleccionado({
@@ -592,14 +593,21 @@ export default function Clientes() {
         </div>
 
         {/* PAGINACION */}
-        {totalPages > 1 && (
+        {totalClientes > 0 && (
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-gray-600">
-                Mostrando página {currentPage} de {totalPages} — {totalClientes} clientes
+              <div className="flex flex-col gap-2 text-sm text-gray-600 sm:flex-row sm:items-center sm:gap-4">
+                <span>Mostrando página {currentPage} de {totalPages} — {totalClientes} clientes</span>
+                <PageSizeSelect
+                  value={perPage}
+                  onChange={(value) => {
+                    setPerPage(value);
+                    setCurrentPage(1);
+                  }}
+                />
               </div>
 
-              <div className="flex flex-wrap items-center gap-1">
+              {totalPages > 1 && <div className="flex flex-wrap items-center gap-1">
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
@@ -637,7 +645,7 @@ export default function Clientes() {
                 >
                   <ChevronRight size={18} />
                 </button>
-              </div>
+              </div>}
             </div>
           </div>
         )}
