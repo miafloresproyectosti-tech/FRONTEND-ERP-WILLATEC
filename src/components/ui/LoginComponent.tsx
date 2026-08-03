@@ -88,6 +88,10 @@ export default function LoginComponent() {
       navigate(targetRoute);
     } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Error al iniciar sesión, revise sus credenciales');
+
+      if (err?.must_recover_password) {
+        setShowResetModal(true);
+      }
     } finally {
       setPassword('');
       setLoading(false);

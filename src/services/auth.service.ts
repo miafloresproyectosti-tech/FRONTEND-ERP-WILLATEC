@@ -63,8 +63,25 @@ export const loginRequest = async (email: string, password: string) => {
       two_factor_enabled: response.data.two_factor_enabled || false,
       requires_2fa: false,
     };
-  } catch {
-    throw new Error("Error al iniciar sesión");
+  } catch (error) {
+    const response = (error as {
+      response?: {
+        data?: {
+          message?: string;
+          attempts_remaining?: number;
+          must_recover_password?: boolean;
+        };
+      };
+    }).response;
+    const data = response?.data;
+
+    throw Object.assign(
+      new Error(data?.message || "Error al iniciar sesión"),
+      {
+        attempts_remaining: data?.attempts_remaining,
+        must_recover_password: data?.must_recover_password,
+      }
+    );
   }
 };
 
