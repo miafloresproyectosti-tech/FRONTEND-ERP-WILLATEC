@@ -1048,6 +1048,25 @@ export async function updateItem(
 }
 
 /**
+ * Reordenar items de la cotización
+ */
+export async function reorderCotizacionItems(
+  cotizacionId: number,
+  itemIds: number[],
+): Promise<CotizacionItem[]> {
+  try {
+    const response = await api.patch(`/cotizaciones/${cotizacionId}/items/orden`, {
+      item_ids: itemIds,
+    });
+
+    return response.data?.items ?? [];
+  } catch (error) {
+    console.error("Error al reordenar items:", error);
+    throw error;
+  }
+}
+
+/**
  * Eliminar un item de la cotización
  */
 export async function deleteItem(itemId: number): Promise<void> {

@@ -159,6 +159,12 @@ export interface RegistrarSalidaKardexPayload {
   documento?: File | null;
 }
 
+export interface ActualizarMovimientoDocumentoPayload {
+  documento_numero?: string;
+  fecha_documento?: string;
+  factura?: File | null;
+}
+
 export interface InventarioMovimientoPagination {
   current_page: number;
   last_page: number;
@@ -260,6 +266,25 @@ export async function registrarSalidaKardex(payload: RegistrarSalidaKardexPayloa
 
   const response = await api.post(
     `/productos/${payload.producto_id}/registrar-salida`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+
+  return response.data;
+}
+
+export async function actualizarMovimientoDocumento(
+  movimientoId: number,
+  payload: ActualizarMovimientoDocumentoPayload,
+): Promise<{ message: string; movimiento: InventarioMovimiento }> {
+  const formData = new FormData();
+
+  if (payload.documento_numero) formData.append("documento_numero", payload.documento_numero);
+  if (payload.fecha_documento) formData.append("fecha_documento", payload.fecha_documento);
+  if (payload.factura) formData.append("factura", payload.factura);
+
+  const response = await api.post(
+    `/inventario/movimientos/${movimientoId}/documento`,
     formData,
     { headers: { "Content-Type": "multipart/form-data" } },
   );

@@ -36,6 +36,7 @@ import {
   enviarModificacionRevision,
   aprobarModificacionCotizacion,
   rechazarModificacionCotizacion,
+  reorderCotizacionItems,
   // deleteItem,
   exportarCotizacionPdf,
   descargarPdfCotizacion,
@@ -1912,6 +1913,46 @@ export function CotizacionDetail() {
     );
   };
 
+  const handleReorderItems = async (orderedItems: CotizacionItem[]) => {
+    if (isCotizacionReadOnly) return;
+
+    const nextItems = orderedItems.map((item, index) => ({ ...item, orden: index + 1 }));
+    const previousItems = items;
+    setItems(nextItems);
+
+    const canPersistOrder =
+      !isModificationMode &&
+      Boolean(currentCotizacionId) &&
+      nextItems.every((item) => Number(item.cotizacion_id) === Number(currentCotizacionId));
+
+    if (!canPersistOrder || !currentCotizacionId) {
+      return;
+    }
+
+    try {
+      const persistedItems = await reorderCotizacionItems(
+        Number(currentCotizacionId),
+        nextItems.map((item) => Number(item.id)),
+      );
+
+      if (persistedItems.length > 0) {
+        setItems((currentItems) =>
+          persistedItems.map((persistedItem) => ({
+            ...currentItems.find((item) => Number(item.id) === Number(persistedItem.id)),
+            ...persistedItem,
+          }))
+        );
+      }
+    } catch (error: any) {
+      setItems(previousItems);
+      addNotification({
+        message: error?.response?.data?.message || 'No se pudo guardar el orden de los items',
+        type: 'error',
+        duration: 4000,
+      } as any);
+    }
+  };
+
   const puedeExportar = () => {
     if (!user?.role) return false;
     if (isModificationMode) return false;
@@ -2770,6 +2811,7 @@ export function CotizacionDetail() {
             setEstadoCotizacionId={setEstadoCotizacionId}
             onDeleteItem={handleDeleteItem}
             onOpenEdit={handleOpenEditItem}
+            onReorderItems={handleReorderItems}
             onToggleAplicaCostosAdicionales={handleToggleAplicaCostosAdicionales}
             todosItemsAprobados={todosItemsAprobados}
             onApproveAll={() => setEstadoCotizacionId(4)}

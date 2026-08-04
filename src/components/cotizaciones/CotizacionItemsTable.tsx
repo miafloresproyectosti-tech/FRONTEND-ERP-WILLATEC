@@ -1,5 +1,5 @@
 import type { CotizacionItem, } from "../../types/cotizaciones.type";
-import { CheckCircle, Trash2, Plus, Pencil, Eye } from "lucide-react";
+import { CheckCircle, Trash2, Plus, Pencil, Eye, GripVertical } from "lucide-react";
 import { formatMoney } from "../../utils/formatNumber";
 import { resolveItemImageUrl } from "../../utils/storageImage";
 interface Props{
@@ -16,6 +16,7 @@ interface Props{
 
   onDeleteItem: (id: number) => void;
   onOpenEdit: (item: CotizacionItem) => void;
+  onReorderItems?: (items: CotizacionItem[]) => void;
   onToggleAplicaCostosAdicionales?: (id: number, checked: boolean) => void;
 
   onApproveAll?: () => void;
@@ -35,6 +36,7 @@ export function CotizacionItemsTable ({
   setEstadoCotizacionId,
   onDeleteItem, 
   onOpenEdit, 
+  onReorderItems,
   onToggleAplicaCostosAdicionales,
   onApproveAll,
   todosItemsAprobados,
@@ -44,16 +46,28 @@ export function CotizacionItemsTable ({
   isAlquiler = false
 }: Props){
 const showCostosAdicionalesToggle = modoDistribucion !== "POR_CANTIDAD";
+const canReorder = !readOnly && Boolean(onReorderItems) && items.length > 1;
 const emptyColSpan =
   5 +
   (showCostosAdicionalesToggle ? 1 : 0) +
   (estadoCotizacionId === 3 ? 2 : 0) +
   4 +
   (isOwnCotizacion ? 1 : 0) +
-  2;
+  2 +
+  (canReorder ? 1 : 0);
 const formatGananciaSoles = (ganancia: number) => {
   const tipoCambio = tipoCambioSolesADolar || 1;
   return formatMoney(Number((ganancia * tipoCambio).toFixed(2)), "S/");
+};
+const moveItem = (sourceIndex: number, targetIndex: number) => {
+  if (!canReorder || sourceIndex === targetIndex) return;
+  if (!Number.isInteger(sourceIndex) || !Number.isInteger(targetIndex)) return;
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex >= items.length || targetIndex >= items.length) return;
+
+  const nextItems = [...items];
+  const [movedItem] = nextItems.splice(sourceIndex, 1);
+  nextItems.splice(targetIndex, 0, movedItem);
+  onReorderItems?.(nextItems.map((item, index) => ({ ...item, orden: index + 1 })));
 };
 
 // CotizacionItemsTable.tsx — reemplaza el return completo
@@ -79,7 +93,7 @@ return (
           Sin items - agrega el primero
         </div>
       ) : (
-        items.map((item) => {
+        items.map((item, index) => {
           const precioVenta = parseFloat(item.precio_venta as any) || 0;
           const costoUnitario = parseFloat(item.costo_unitario as any) || 0;
           const costoTotal = parseFloat(item.costo_total as any) || 0;
@@ -89,8 +103,36 @@ return (
           const itemImage = resolveItemImageUrl(item.imagen_url, item.imagen);
 
           return (
-            <div key={item.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div
+              key={item.id}
+              className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+              draggable={canReorder}
+              onDragStart={(event) => {
+                if (!canReorder) return;
+                event.dataTransfer.setData("text/plain", String(index));
+                event.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(event) => {
+                if (canReorder) event.preventDefault();
+              }}
+              onDrop={(event) => {
+                if (!canReorder) return;
+                event.preventDefault();
+                const sourceIndex = Number(event.dataTransfer.getData("text/plain"));
+                moveItem(sourceIndex, index);
+              }}
+            >
               <div className="flex items-start gap-3">
+                {canReorder && (
+                  <button
+                    type="button"
+                    className="mt-1 inline-flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-400 active:cursor-grabbing"
+                    title="Arrastrar para ordenar"
+                    aria-label="Arrastrar item para ordenar"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </button>
+                )}
                 {itemImage && (
                   <img
                     src={itemImage}
@@ -205,6 +247,7 @@ return (
     <div className="hidden overflow-x-auto rounded-lg border border-gray-100 xl:block">
       <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
         <colgroup>
+          {canReorder && <col style={{ width: '34px' }} />}
           <col style={{ width: '140px' }} />
           <col style={{ width: '44px' }} />
           <col style={{ width: '52px' }} />
@@ -218,10 +261,11 @@ return (
           <col style={{ width: '76px' }} />
           {isOwnCotizacion && <col style={{ width: monedaId === 2 ? '98px' : '76px' }} />}
           <col style={{ width: '84px' }} />
-          <col style={{ width: '56px' }} />
+          <col style={{ width: '64px' }} />
         </colgroup>
         <thead>
           <tr className="bg-gray-50 border-b border-gray-100">
+            {canReorder && <th className="py-2.5 px-1 text-center font-medium text-gray-500"></th>}
             <th className="py-2.5 px-3 text-left font-medium text-gray-500">Descripción</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Cant.</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Tipo</th>
@@ -242,7 +286,7 @@ return (
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">{isAlquiler ? "P. unit. mensual" : "P. venta"}</th>
             {isOwnCotizacion && <th className="py-2.5 px-2 text-center font-medium text-gray-500">Ganancia</th>}
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">{isAlquiler ? "Total x meses" : "Subtotal"}</th>
-            <th className="py-2.5 px-2 text-center font-medium text-gray-500">Acc.</th>
+            <th className="sticky right-0 z-20 bg-gray-50 py-2.5 px-2 text-center font-medium text-gray-500 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">Acc.</th>
           </tr>
         </thead>
         <tbody>
@@ -253,7 +297,7 @@ return (
               </td>
             </tr>
           ) : (
-            items.map((item) => {
+            items.map((item, index) => {
               const precioVenta   = parseFloat(item.precio_venta as any)   || 0;
               const costoUnitario = parseFloat(item.costo_unitario as any) || 0;
               const costoTotal    = parseFloat(item.costo_total as any)    || 0;
@@ -263,7 +307,37 @@ return (
               const itemImage     = resolveItemImageUrl(item.imagen_url, item.imagen);
 
               return (
-                <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                <tr
+                  key={item.id}
+                  className="group border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                  draggable={canReorder}
+                  onDragStart={(event) => {
+                    if (!canReorder) return;
+                    event.dataTransfer.setData("text/plain", String(index));
+                    event.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(event) => {
+                    if (canReorder) event.preventDefault();
+                  }}
+                  onDrop={(event) => {
+                    if (!canReorder) return;
+                    event.preventDefault();
+                    const sourceIndex = Number(event.dataTransfer.getData("text/plain"));
+                    moveItem(sourceIndex, index);
+                  }}
+                >
+                  {canReorder && (
+                    <td className="py-2.5 px-1 text-center">
+                      <button
+                        type="button"
+                        className="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-lg text-gray-300 hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
+                        title="Arrastrar para ordenar"
+                        aria-label="Arrastrar item para ordenar"
+                      >
+                        <GripVertical className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
+                  )}
                   <td
                     className="py-2.5 px-3 font-medium text-gray-800 overflow-hidden"
                     style={{ maxWidth: 140, textOverflow: 'ellipsis' }}
@@ -377,7 +451,7 @@ return (
                   <td className="py-2.5 px-2 text-center tabular-nums font-medium text-gray-800">
                     {formatMoney(subtotal, simboloMoneda)}
                   </td>
-                  <td className="py-2.5 px-2">
+                  <td className="sticky right-0 z-10 bg-white py-2.5 px-2 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)] group-hover:bg-gray-50">
                     {readOnly ? (
                       <div className="flex items-center justify-center">
                         <button

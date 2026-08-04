@@ -20,6 +20,7 @@ import {
 import {
   getProductosInventario,
   getInventarioMovimientos,
+  actualizarMovimientoDocumento,
   registrarEntradaKardex,
   registrarSalidaKardex,
   type InventarioMovimiento,
@@ -276,6 +277,8 @@ const getMovimientoSeries = (movimiento: InventarioMovimiento) => {
 
 export default function InventarioMovimientos() {
   const facturaInputRef = useRef<HTMLInputElement | null>(null);
+  const facturaPosteriorInputRef = useRef<HTMLInputElement | null>(null);
+  const nuevoProductoImagenInputRef = useRef<HTMLInputElement | null>(null);
   const salidaDocumentoInputRef = useRef<HTMLInputElement | null>(null);
   const [movimientos, setMovimientos] = useState<InventarioMovimiento[]>([]);
   const [selectedMovimiento, setSelectedMovimiento] = useState<InventarioMovimiento | null>(null);
@@ -285,6 +288,7 @@ export default function InventarioMovimientos() {
   const [loading, setLoading] = useState(true);
   const [savingEntrada, setSavingEntrada] = useState(false);
   const [savingSalida, setSavingSalida] = useState(false);
+  const [savingDocumentoMovimiento, setSavingDocumentoMovimiento] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [entradaModalOpen, setEntradaModalOpen] = useState(false);
   const [salidaModalOpen, setSalidaModalOpen] = useState(false);
@@ -307,6 +311,12 @@ export default function InventarioMovimientos() {
     series_text: "",
   });
   const [factura, setFactura] = useState<File | null>(null);
+  const [documentoMovimientoModal, setDocumentoMovimientoModal] = useState<InventarioMovimiento | null>(null);
+  const [facturaPosterior, setFacturaPosterior] = useState<File | null>(null);
+  const [documentoMovimientoForm, setDocumentoMovimientoForm] = useState({
+    documento_numero: "",
+    fecha_documento: today,
+  });
   const [salidaForm, setSalidaForm] = useState({
     producto_id: "",
     cantidad: "",
@@ -331,7 +341,7 @@ export default function InventarioMovimientos() {
     nombre: "",
     marca: "",
     modelo: "",
-    serie: "",
+    imagen: "",
     factura_numero: "",
     categoria_id: "1",
     estado: "nuevo",
@@ -630,9 +640,9 @@ export default function InventarioMovimientos() {
         nombre,
         marca: nuevoProducto.marca.trim(),
         modelo: nuevoProducto.modelo.trim(),
-        serie: nuevoProducto.serie.trim() || undefined,
         factura_numero: nuevoProducto.factura_numero.trim() || undefined,
         descripcion: "",
+        imagen: nuevoProducto.imagen || undefined,
         precio_referencial: Number.isFinite(costoEntrada) ? costoEntrada : 0,
         unidad_medida: nuevoProducto.unidad_medida,
         activo: true,
@@ -661,12 +671,15 @@ export default function InventarioMovimientos() {
         nombre: "",
         marca: "",
         modelo: "",
-        serie: "",
+        imagen: "",
         factura_numero: "",
         categoria_id: "1",
         estado: "nuevo",
         unidad_medida: "unidad",
       });
+      if (nuevoProductoImagenInputRef.current) {
+        nuevoProductoImagenInputRef.current.value = "";
+      }
       setShowNuevoProducto(false);
     } catch (requestError) {
       console.error("Error al crear producto desde Kardex:", requestError);
@@ -674,6 +687,22 @@ export default function InventarioMovimientos() {
     } finally {
       setCreatingProducto(false);
     }
+  };
+
+  const handleNuevoProductoImagenChange = (file?: File | null) => {
+    if (!file) {
+      setNuevoProducto((current) => ({ ...current, imagen: "" }));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setNuevoProducto((current) => ({
+        ...current,
+        imagen: typeof reader.result === "string" ? reader.result : "",
+      }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleRegistrarEntrada = async () => {
@@ -804,6 +833,60 @@ export default function InventarioMovimientos() {
       setError("No se pudo registrar la salida. Revisa stock disponible y permisos.");
     } finally {
       setSavingSalida(false);
+    }
+  };
+
+  const canActualizarDocumentoMovimiento = (movimiento: InventarioMovimiento) =>
+    ["entrada", "devolucion"].includes(movimiento.tipo_movimiento);
+
+  const openDocumentoMovimientoModal = (movimiento: InventarioMovimiento) => {
+    setDocumentoMovimientoModal(movimiento);
+    setDocumentoMovimientoForm({
+      documento_numero: movimiento.documento_numero || "",
+      fecha_documento: movimiento.fecha_documento || today,
+    });
+    setFacturaPosterior(null);
+    if (facturaPosteriorInputRef.current) {
+      facturaPosteriorInputRef.current.value = "";
+    }
+  };
+
+  const handleActualizarDocumentoMovimiento = async () => {
+    if (!documentoMovimientoModal) return;
+
+    if (!documentoMovimientoForm.documento_numero.trim() && !facturaPosterior) {
+      setError("Ingresa el numero de factura o selecciona un archivo para actualizar.");
+      return;
+    }
+
+    try {
+      setSavingDocumentoMovimiento(true);
+      setError(null);
+      const response = await actualizarMovimientoDocumento(documentoMovimientoModal.id, {
+        documento_numero: documentoMovimientoForm.documento_numero.trim(),
+        fecha_documento: documentoMovimientoForm.fecha_documento,
+        factura: facturaPosterior,
+      });
+
+      setMovimientos((current) =>
+        current.map((movimiento) =>
+          movimiento.id === response.movimiento.id ? response.movimiento : movimiento
+        )
+      );
+      setSelectedMovimiento((current) =>
+        current?.id === response.movimiento.id ? response.movimiento : current
+      );
+      setDocumentoMovimientoModal(null);
+      setFacturaPosterior(null);
+      if (facturaPosteriorInputRef.current) {
+        facturaPosteriorInputRef.current.value = "";
+      }
+      setProductos(await getProductosInventario());
+    } catch (requestError) {
+      console.error("Error al actualizar factura del movimiento:", requestError);
+      setError("No se pudo actualizar la factura del movimiento. Revisa permisos y archivo.");
+    } finally {
+      setSavingDocumentoMovimiento(false);
     }
   };
 
@@ -1186,15 +1269,28 @@ export default function InventarioMovimientos() {
                     {[getProveedorLabel(movimiento), movimiento.observacion].filter(Boolean).join(" - ") || "-"}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedMovimiento(movimiento)}
-                  className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                  title="Ver detalle del movimiento"
-                >
-                  <Eye className="h-4 w-4" />
-                  Ver detalle
-                </button>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMovimiento(movimiento)}
+                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                    title="Ver detalle del movimiento"
+                  >
+                    <Eye className="h-4 w-4" />
+                    Ver detalle
+                  </button>
+                  {canActualizarDocumentoMovimiento(movimiento) && (
+                    <button
+                      type="button"
+                      onClick={() => openDocumentoMovimientoModal(movimiento)}
+                      className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                      title="Adjuntar o actualizar factura"
+                    >
+                      <Upload className="h-4 w-4" />
+                      Factura
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -1213,7 +1309,7 @@ export default function InventarioMovimientos() {
               <col className="w-[150px]" />
               <col className="w-[180px]" />
               <col className="w-[260px]" />
-              <col className="w-[70px]" />
+              <col className="w-[96px]" />
             </colgroup>
             <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
               <tr>
@@ -1227,7 +1323,7 @@ export default function InventarioMovimientos() {
                 <th className="px-3 py-3">Garantia</th>
                 <th className="px-3 py-3">Usuario</th>
                 <th className="px-3 py-3">Observacion</th>
-                <th className="px-3 py-3 text-center">Ver</th>
+                <th className="px-3 py-3 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -1356,14 +1452,26 @@ export default function InventarioMovimientos() {
                       </div>
                     </td>
                     <td className="px-3 py-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedMovimiento(movimiento)}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 shadow-sm transition hover:bg-slate-200 hover:scale-105"
-                        title="Ver detalle del movimiento"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMovimiento(movimiento)}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 shadow-sm transition hover:bg-slate-200 hover:scale-105"
+                          title="Ver detalle del movimiento"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        {canActualizarDocumentoMovimiento(movimiento) && (
+                          <button
+                            type="button"
+                            onClick={() => openDocumentoMovimientoModal(movimiento)}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700 shadow-sm transition hover:bg-blue-100 hover:scale-105"
+                            title="Adjuntar o actualizar factura"
+                          >
+                            <Upload className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -1572,14 +1680,44 @@ export default function InventarioMovimientos() {
                       className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none"
                     />
                     </label>
-                    <label className="text-xs font-semibold text-gray-600 sm:col-span-3">
-                    Serie
-                    <input
-                      value={nuevoProducto.serie}
-                      onChange={(event) => setNuevoProducto((current) => ({ ...current, serie: event.target.value }))}
-                      className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none"
-                    />
-                    </label>
+                    <div className="text-xs font-semibold text-gray-600 sm:col-span-3">
+                      Imagen producto
+                      <div className="mt-1 flex items-center gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-2">
+                        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white">
+                          {nuevoProducto.imagen ? (
+                            <img src={nuevoProducto.imagen} alt="" className="h-full w-full object-contain" />
+                          ) : (
+                            <PackageSearch className="h-6 w-6 text-gray-300" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-xs font-bold text-blue-700 shadow-sm ring-1 ring-blue-100 hover:bg-blue-50">
+                            <Upload className="h-3.5 w-3.5" />
+                            Cargar imagen
+                            <input
+                              ref={nuevoProductoImagenInputRef}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(event) => handleNuevoProductoImagenChange(event.target.files?.[0] || null)}
+                            />
+                          </label>
+                          {nuevoProducto.imagen && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleNuevoProductoImagenChange(null);
+                                if (nuevoProductoImagenInputRef.current) nuevoProductoImagenInputRef.current.value = "";
+                              }}
+                              className="ml-2 rounded-lg px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                            >
+                              Quitar
+                            </button>
+                          )}
+                          <p className="mt-1 text-[11px] font-normal text-gray-500">Las series se registran en la entrada.</p>
+                        </div>
+                      </div>
+                    </div>
                     <label className="text-xs font-semibold text-gray-600 sm:col-span-3">
                     Numero factura
                     <input
@@ -1925,7 +2063,20 @@ export default function InventarioMovimientos() {
                   <p className="text-xs font-semibold uppercase text-gray-400">Documento</p>
                   <p className="mt-1 font-semibold text-gray-800">{selectedMovimiento.documento_numero || "-"}</p>
                   <p className="text-xs text-gray-500">{[selectedMovimiento.documento_tipo, selectedMovimiento.fecha_documento].filter(Boolean).join(" / ") || "-"}</p>
-                  <div className="mt-2">{getDocumentoLink(selectedMovimiento)}</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {getDocumentoLink(selectedMovimiento)}
+                    {canActualizarDocumentoMovimiento(selectedMovimiento) && (
+                      <button
+                        type="button"
+                        onClick={() => openDocumentoMovimientoModal(selectedMovimiento)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                        title="Adjuntar o actualizar factura"
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                        Actualizar factura
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="rounded-xl border border-gray-100 p-3">
                   <p className="text-xs font-semibold uppercase text-gray-400">Usuario / Auditoria</p>
@@ -1958,6 +2109,108 @@ export default function InventarioMovimientos() {
                 <p className="text-xs font-semibold uppercase text-gray-400">Proveedor / Observacion</p>
                 <p className="mt-1 text-sm text-gray-700">{[getProveedorLabel(selectedMovimiento), selectedMovimiento.observacion].filter(Boolean).join(" - ") || "-"}</p>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {documentoMovimientoModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-gray-200 px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Adjuntar factura</h2>
+                <p className="text-xs text-gray-500">
+                  {getProductLabel(documentoMovimientoModal)} - {getTipoLabel(documentoMovimientoModal.tipo_movimiento)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDocumentoMovimientoModal(null)}
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-4">
+              <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                Esta accion solo actualiza la factura/documento del movimiento. No modifica stock, costos ni cantidades.
+              </div>
+
+              <label className="block text-sm font-semibold text-gray-600">
+                Numero de factura
+                <input
+                  value={documentoMovimientoForm.documento_numero}
+                  onChange={(event) => setDocumentoMovimientoForm((current) => ({ ...current, documento_numero: event.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                  placeholder="Ej. F001-000123"
+                />
+              </label>
+
+              <label className="block text-sm font-semibold text-gray-600">
+                Fecha factura
+                <input
+                  type="date"
+                  value={documentoMovimientoForm.fecha_documento}
+                  onChange={(event) => setDocumentoMovimientoForm((current) => ({ ...current, fecha_documento: event.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+
+              <div className="rounded-xl border border-dashed border-gray-300 p-4">
+                <label className="flex cursor-pointer flex-col items-center justify-center gap-2 text-center text-sm font-semibold text-blue-700">
+                  <Upload className="h-6 w-6" />
+                  Seleccionar archivo
+                  <span className="text-xs font-normal text-gray-500">PDF, imagen, XML o Word. Solo un archivo.</span>
+                  <input
+                    ref={facturaPosteriorInputRef}
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.xml,.doc,.docx"
+                    className="hidden"
+                    onChange={(event) => setFacturaPosterior(event.target.files?.[0] || null)}
+                  />
+                </label>
+              </div>
+
+              {facturaPosterior ? (
+                <div className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  <span className="truncate font-semibold">{facturaPosterior.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFacturaPosterior(null);
+                      if (facturaPosteriorInputRef.current) facturaPosteriorInputRef.current.value = "";
+                    }}
+                    className="rounded-lg px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                  >
+                    Quitar
+                  </button>
+                </div>
+              ) : documentoMovimientoModal.documento_path ? (
+                <div className="rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                  Ya existe un archivo asociado. Si seleccionas otro, sera reemplazado.
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setDocumentoMovimientoModal(null)}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleActualizarDocumentoMovimiento}
+                disabled={savingDocumentoMovimiento}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {savingDocumentoMovimiento ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                Guardar factura
+              </button>
             </div>
           </div>
         </div>
