@@ -72,7 +72,7 @@ const moveItem = (sourceIndex: number, targetIndex: number) => {
 
 // CotizacionItemsTable.tsx — reemplaza el return completo
 return (
-  <div className="bg-white rounded-xl shadow-sm border p-4 sm:p-6">
+  <div className="bg-white rounded-xl shadow-sm border p-4 sm:p-6 text-gray-900">
     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h2 className="text-base font-medium text-gray-800">
         Items <span className="text-gray-400 font-normal">({items.length})</span>
@@ -105,7 +105,7 @@ return (
           return (
             <div
               key={item.id}
-              className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+              className="rounded-2xl border border-gray-200 bg-white p-4 text-gray-900 shadow-sm"
               draggable={canReorder}
               onDragStart={(event) => {
                 if (!canReorder) return;
@@ -451,7 +451,7 @@ return (
                   <td className="py-2.5 px-2 text-center tabular-nums font-medium text-gray-800">
                     {formatMoney(subtotal, simboloMoneda)}
                   </td>
-                  <td className="sticky right-0 z-10 bg-white py-2.5 px-2 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)] group-hover:bg-gray-50">
+                  <td className="sticky right-0 z-10 bg-white py-2.5 px-2 text-gray-900 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)] group-hover:bg-gray-50">
                     {readOnly ? (
                       <div className="flex items-center justify-center">
                         <button

@@ -133,18 +133,23 @@ export const fileToOpportunityFile = (file: File, userName: string) =>
 
 export const canPreviewFile = (file?: OportunidadArchivo) => {
   if (!file) return false;
+  const type = file.tipo || "";
+  const name = file.nombre || "";
+
   return (
-    file.tipo.includes("pdf") ||
-    file.tipo.includes("image") ||
-    file.tipo.includes("text") ||
-    file.tipo.includes("word") ||
-    file.tipo.includes("spreadsheet") ||
-    file.nombre.endsWith(".docx") ||
-    file.nombre.endsWith(".xlsx")
+    type.includes("pdf") ||
+    type.includes("image") ||
+    type.includes("text") ||
+    type.includes("word") ||
+    type.includes("spreadsheet") ||
+    name.endsWith(".docx") ||
+    name.endsWith(".xlsx")
   );
 };
 
 export const downloadFile = (file: OportunidadArchivo) => {
+  if (!file.dataUrl) return;
+
   const link = document.createElement("a");
   link.href = file.dataUrl;
   link.download = file.nombre;
@@ -153,6 +158,10 @@ export const downloadFile = (file: OportunidadArchivo) => {
 
 export const applyExpiredState = (opportunity: Oportunidad): Oportunidad => {
   if (opportunity.estado === "vencida" || isClosedOpportunity(opportunity.estado)) {
+    return opportunity;
+  }
+
+  if (opportunity.estado === "cotizacion_generada" || opportunity.estado === "atendido") {
     return opportunity;
   }
 

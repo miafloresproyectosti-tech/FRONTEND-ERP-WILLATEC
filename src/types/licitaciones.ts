@@ -50,9 +50,10 @@ export interface OportunidadPerdida {
 
 export interface CotizacionRelacionada {
   id: string;
+  cotizacionId?: number | string | null;
   numero: string;
   fecha: string;
-  estado: "borrador" | "generada";
+  estado: string;
 }
 
 export interface EjecutivoAsignado {
@@ -76,6 +77,7 @@ export interface Oportunidad {
   estado: OportunidadEstado;
   observacion: string;
   creadoEn: string;
+  creadoPorId?: number | null;
   creadoPor: string;
   modificadoEn?: string;
   modificadoPor?: string;

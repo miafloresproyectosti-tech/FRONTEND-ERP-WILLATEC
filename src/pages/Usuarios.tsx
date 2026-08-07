@@ -711,11 +711,11 @@ export default function Usuarios() {
                   >
                     <option value="SUPERADMIN">Superadministrador</option>
                     <option value="ADMIN">Administrador</option>
-                    <option value="LICITACIONES">Licitaciones</option>
                     <option value="VENTAS">Ventas</option>
                     <option value="SOPORTE">Soporte</option>
                     <option value="LOGISTICA">Logistica</option>
                     <option value="CONTABILIDAD">Contabilidad</option>
+                    <option value="LICITACION">Licitaciones</option>
                   </select>
                 </div>
 

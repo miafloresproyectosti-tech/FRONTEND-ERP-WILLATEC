@@ -22,6 +22,12 @@ interface Props {
   onMarkQuoteDone?: () => void;
   onReleaseOpportunity?: () => void;
   onFinalizeOpportunity?: (estado: OportunidadEstado) => void;
+  canDownloadQuotePdf?: boolean;
+  downloadingQuoteId?: string | number | null;
+  onDownloadQuotePdf?: (cotizacionId: string | number) => void;
+  canMarkProposalPresented?: boolean;
+  presentingProposal?: boolean;
+  onMarkProposalPresented?: () => void;
 }
 
 export function OportunidadDetailDrawer({
@@ -33,6 +39,12 @@ export function OportunidadDetailDrawer({
   onMarkQuoteDone,
   onReleaseOpportunity,
   onFinalizeOpportunity,
+  canDownloadQuotePdf = false,
+  downloadingQuoteId = null,
+  onDownloadQuotePdf,
+  canMarkProposalPresented = false,
+  presentingProposal = false,
+  onMarkProposalPresented,
 }: Props) {
   const [comment, setComment] = useState("");
   const [previewFile, setPreviewFile] = useState<OportunidadArchivo | null>(null);
@@ -153,7 +165,7 @@ export function OportunidadDetailDrawer({
                     className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700"
                   >
                     <CheckCircle2 size={18} />
-                    Cotizacion realizada
+                    Vincular Cotizacion
                   </button>
                 )}
                 <button
@@ -190,6 +202,27 @@ export function OportunidadDetailDrawer({
                   </select>
                 )}
               </div>
+            </div>
+          )}
+
+          {canMarkProposalPresented && ["cotizacion_generada", "vencida"].includes(opportunity.estado) && onMarkProposalPresented && (
+            <div className="flex flex-col gap-3 rounded-2xl border border-teal-200 bg-teal-50 p-4 dark:border-teal-900/50 dark:bg-teal-950/20 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="font-semibold text-teal-900 dark:text-teal-100">Propuesta lista para presentar</h3>
+                <p className="mt-1 text-sm text-teal-700 dark:text-teal-200">
+                  Marca esta oportunidad cuando la propuesta ya fue subida o presentada en la plataforma correspondiente.
+                  {opportunity.estado === "vencida" ? " Se registrara como atencion posterior al vencimiento." : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onMarkProposalPresented}
+                disabled={presentingProposal}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-teal-400"
+              >
+                <CheckCircle2 size={18} />
+                {presentingProposal ? "Registrando..." : "Propuesta presentada"}
+              </button>
             </div>
           )}
 
@@ -334,9 +367,22 @@ export function OportunidadDetailDrawer({
               <h3 className="mb-3 font-bold text-slate-900 dark:text-white">Cotizaciones creadas</h3>
               <div className="space-y-2">
                 {opportunity.cotizaciones.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm dark:bg-slate-900">
-                    <span className="font-semibold text-slate-800 dark:text-slate-100">{item.numero}</span>
-                    <span className="text-slate-500">{formatDateTime(item.fecha)}</span>
+                  <div key={item.id} className="flex flex-col gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <span className="block truncate font-semibold text-slate-800 dark:text-slate-100">{item.numero}</span>
+                      <span className="text-slate-500">{formatDateTime(item.fecha)}</span>
+                    </div>
+                    {canDownloadQuotePdf && item.cotizacionId && onDownloadQuotePdf && (
+                      <button
+                        type="button"
+                        onClick={() => onDownloadQuotePdf(item.cotizacionId!)}
+                        disabled={String(downloadingQuoteId) === String(item.cotizacionId)}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <FileDown size={15} />
+                        {String(downloadingQuoteId) === String(item.cotizacionId) ? "Descargando..." : "PDF"}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

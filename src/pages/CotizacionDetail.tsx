@@ -48,6 +48,7 @@ import {
   type CotizacionVersion,
   type CotizacionVersionesResponse,
 } from '../services/cotizacion.service';
+import { addCotizacionRelacionada } from '../services/licitaciones.service';
 import {
   ArrowLeft,
   Save,
@@ -244,6 +245,16 @@ export function CotizacionDetail() {
 
   //LOCALIZACIÓN
   const location = useLocation();
+  const opportunityContext = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+
+    return {
+      id: params.get('oportunidad_id') || '',
+      empresa: params.get('oportunidad_empresa') || '',
+      requerimiento: params.get('oportunidad_requerimiento') || '',
+    };
+  }, [location.search]);
+  const hasOpportunityContext = Boolean(opportunityContext.id);
 
   const isViewMode = location.pathname.includes('/view');
   const draftScope = isModificationMode
@@ -285,6 +296,12 @@ export function CotizacionDetail() {
   const currentMonedaId = plantillaMonedaId ?? monedaId;
   const currentIncludeIgv = plantillaIncluyeIgv(plantillaId, selectedPlantilla);
   const simboloMoneda = currentMonedaId === 2 ? '$' : 'S/';
+
+  useEffect(() => {
+    if (!hasOpportunityContext || isEditing || isModificationMode || titulo.trim()) return;
+
+    setTitulo(opportunityContext.requerimiento || `Cotizacion ${opportunityContext.empresa}`.trim());
+  }, [hasOpportunityContext, isEditing, isModificationMode, opportunityContext.empresa, opportunityContext.requerimiento, titulo]);
 
   // Listas
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -1713,6 +1730,17 @@ export function CotizacionDetail() {
       } else {
         // Crear
         const newCotizacion = await createCotizacion(payload);
+        if (hasOpportunityContext) {
+          const newCotizacionData = newCotizacion as any;
+          await addCotizacionRelacionada(opportunityContext.id, user?.name || user?.email || 'Usuario', {
+            cotizacion_id: Number(newCotizacion.id),
+            numero: newCotizacion.numero,
+            estado: newCotizacionData.estadoCotizacion?.nombre || newCotizacionData.estado_cotizacion?.nombre || 'borrador',
+            monto: Number(newCotizacion.total || 0),
+            moneda: newCotizacionData.moneda?.codigo || newCotizacionData.codigo_moneda,
+          });
+          postSavePath = '/seguimiento-licitaciones';
+        }
         showToast({
           title: 'Cotización creada',
           description: 'La cotización fue guardada correctamente como borrador.',
@@ -2647,7 +2675,7 @@ export function CotizacionDetail() {
   // const selectedCliente = clientes.find(c => c.id === clienteId);
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-8 space-y-6 text-gray-900">
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -2841,7 +2869,7 @@ export function CotizacionDetail() {
           />
 
           {!isModificationMode && (
-          <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="bg-white rounded-xl shadow-sm border p-6 text-gray-900">
             <h2 className="text-base font-semibold text-gray-800 mb-3">
               Delegado de aprobación
             </h2>
@@ -2881,7 +2909,7 @@ export function CotizacionDetail() {
           )}
 
           {(isEditing || isModificationMode) && (
-            <div className="bg-white rounded-xl shadow-sm border p-6">
+            <div className="bg-white rounded-xl shadow-sm border p-6 text-gray-900">
               <h2 className="text-base font-semibold text-gray-800 mb-3">
                 Delegado de edición
               </h2>
@@ -2908,7 +2936,7 @@ export function CotizacionDetail() {
           )}
 
           {versionesInfo && (
-            <div className="bg-white rounded-xl shadow-sm border p-6">
+            <div className="bg-white rounded-xl shadow-sm border p-6 text-gray-900">
               <h2 className="text-base font-semibold text-gray-800 mb-3">
                 Versiones
               </h2>
@@ -3016,7 +3044,7 @@ export function CotizacionDetail() {
           )}
 
           {isModificationMode && canReviewModificacion && (
-            <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
+            <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3 text-gray-900">
               <h2 className="text-base font-semibold text-gray-800">Revision de modificacion</h2>
               <textarea
                 value={comentarioRevisionModificacion}
@@ -3059,7 +3087,7 @@ export function CotizacionDetail() {
 
           {/* BOTONES */}
           {isViewMode && (
-            <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
+            <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3 text-gray-900">
               {canSendCotizacionToReview && (
                 <button
                   onClick={handleEnviarRevision}
@@ -3146,7 +3174,7 @@ export function CotizacionDetail() {
             </div>
           )}
           {!isCotizacionReadOnly && (
-            <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
+            <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3 text-gray-900">
               {((!isModificationMode && currentEstadoCotizacionId === 5 && canEditCotizacion) || isModificacionRechazadaEditable) && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">

@@ -10,9 +10,11 @@ import {
   Plus,
   Search,
   Trash2,
+  XCircle,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../AuthContext";
 import { useNotifications } from "../NotificationContext";
@@ -39,6 +41,12 @@ import {
   saveOportunidad,
 } from "../services/licitaciones.service";
 import { getUsers } from "../services/usuario.service";
+import {
+  descargarPdfCotizacion,
+  exportarCotizacionPdf,
+  getCotizacionesPaginated,
+  type Cotizacion,
+} from "../services/cotizacion.service";
 import type {
   EjecutivoAsignado,
   Oportunidad,
@@ -115,6 +123,7 @@ const SUPERADMIN_BANDEJAS = [
 export default function SeguimientoLicitaciones() {
   const { user } = useAuth();
   const { addNotification, showToast } = useNotifications();
+  const navigate = useNavigate();
 
   const [opportunities, setOpportunities] = useState<Oportunidad[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,6 +147,13 @@ export default function SeguimientoLicitaciones() {
   const [lossObservations, setLossObservations] = useState("");
   const [lossFile, setLossFile] = useState<File | null>(null);
   const [lossError, setLossError] = useState("");
+  const [quoteLinkModalOpen, setQuoteLinkModalOpen] = useState(false);
+  const [quoteLinkSearch, setQuoteLinkSearch] = useState("");
+  const [quoteLinkLoading, setQuoteLinkLoading] = useState(false);
+  const [quoteLinkOptions, setQuoteLinkOptions] = useState<Cotizacion[]>([]);
+  const [quoteLinkSelectedId, setQuoteLinkSelectedId] = useState<number | null>(null);
+  const [downloadingQuoteId, setDownloadingQuoteId] = useState<string | number | null>(null);
+  const [presentingProposalId, setPresentingProposalId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const userName = user?.name || "Usuario";
@@ -154,9 +170,7 @@ export default function SeguimientoLicitaciones() {
             : currentRole;
   const isManager = currentRole === "SUPERADMIN" || currentRole === "ADMIN" || currentRole === "LICITACIONES";
   const isSalesRole = currentRole === "VENTAS";
-  const canCreateOpportunity = currentRole === "LICITACIONES";
-  const canEditOpportunity = currentRole === "LICITACIONES" || currentRole === "SUPERADMIN" || currentRole === "ADMIN";
-  const canDeleteOpportunity = currentRole === "SUPERADMIN" || currentRole === "ADMIN" || currentRole === "LICITACIONES";
+  const canCreateOpportunity = currentRole === "LICITACIONES" || currentRole === "VENTAS";
   const [activeBandeja, setActiveBandeja] = useState<string>(
     currentRole === "VENTAS" ? "disponibles" : currentRole === "SUPERADMIN" ? "disponibles" : "todas"
   );
@@ -243,6 +257,8 @@ export default function SeguimientoLicitaciones() {
 
   const filteredOpportunities = useMemo(() => {
     const search = normalizeText(debouncedSearch);
+    const vigenciaDesdeTime = filters.vigenciaDesde ? new Date(filters.vigenciaDesde).getTime() : null;
+    const vigenciaHastaTime = filters.vigenciaHasta ? new Date(filters.vigenciaHasta).getTime() : null;
 
     return scopedOpportunities
       .filter((item) => filters.tipo === "todos" || item.tipo === filters.tipo)
@@ -251,8 +267,8 @@ export default function SeguimientoLicitaciones() {
       .filter((item) => filters.categoria === "todos" || item.categoria === filters.categoria)
       .filter((item) => !filters.empresa || normalizeText(item.empresa).includes(normalizeText(filters.empresa)))
       .filter((item) => !filters.requerimiento || normalizeText(item.requerimiento).includes(normalizeText(filters.requerimiento)))
-      .filter((item) => !filters.vigenciaDesde || item.vigencia >= filters.vigenciaDesde)
-      .filter((item) => !filters.vigenciaHasta || item.vigencia <= filters.vigenciaHasta)
+      .filter((item) => !vigenciaDesdeTime || new Date(item.vigencia).getTime() >= vigenciaDesdeTime)
+      .filter((item) => !vigenciaHastaTime || new Date(item.vigencia).getTime() <= vigenciaHastaTime)
       .filter((item) => {
         if (!search) return true;
         return normalizeText(`${item.empresa} ${item.requerimiento}`).includes(search);
@@ -365,12 +381,13 @@ export default function SeguimientoLicitaciones() {
     const previous = editing;
     const hasEstadoChange = previous && previous.estado !== data.estado;
     const estado = previous ? data.estado : "sin_atender";
+    const clean = (value?: string | null) => (value || "").trim();
 
     const next: Oportunidad = {
       id: previous?.id || createId("op"),
       tipo: data.tipo,
-      empresa: data.empresa.trim(),
-      requerimiento: data.requerimiento.trim(),
+      empresa: clean(data.empresa),
+      requerimiento: clean(data.requerimiento),
       vigencia: new Date(data.vigencia).toISOString(),
       ejecutivo: previous?.ejecutivo || { id: 0, nombre: "Sin ejecutivo" },
       asignadoA: previous?.asignadoA ?? null,
@@ -379,20 +396,21 @@ export default function SeguimientoLicitaciones() {
       esNueva: previous?.esNueva ?? true,
       categoria: data.categoria,
       estado,
-      observacion: data.observacion.trim(),
+      observacion: clean(data.observacion),
       creadoEn: previous?.creadoEn || now,
+      creadoPorId: previous?.creadoPorId ?? user?.id ?? null,
       creadoPor: previous?.creadoPor || userName,
       modificadoEn: previous ? now : undefined,
       modificadoPor: previous ? userName : undefined,
-      garantia: data.tipo === "licitacion" ? data.garantia.trim() : undefined,
-      plazo: data.tipo === "licitacion" ? data.plazo.trim() : undefined,
-      carpetaServidor: data.tipo === "licitacion" ? data.carpetaServidor.trim() : undefined,
+      garantia: data.tipo === "licitacion" ? clean(data.garantia) : undefined,
+      plazo: data.tipo === "licitacion" ? clean(data.plazo) : undefined,
+      carpetaServidor: data.tipo === "licitacion" ? clean(data.carpetaServidor) : undefined,
       tdr: data.tipo === "licitacion" ? data.tdr : undefined,
       formaPago: data.tipo !== "licitacion" && data.formaPago ? data.formaPago : undefined,
-      destinoEntrega: data.tipo === "privado" ? data.destinoEntrega.trim() : undefined,
-      wherexId: data.tipo === "wherex" ? data.wherexId.trim() : undefined,
-      wherexUrl: data.tipo === "wherex" ? data.wherexUrl.trim() : undefined,
-      comentariosGenerales: data.tipo === "wherex" ? data.comentariosGenerales.trim() : undefined,
+      destinoEntrega: data.tipo === "privado" ? clean(data.destinoEntrega) : undefined,
+      wherexId: data.tipo === "wherex" ? clean(data.wherexId) : undefined,
+      wherexUrl: data.tipo === "wherex" ? clean(data.wherexUrl) : undefined,
+      comentariosGenerales: data.tipo === "wherex" ? clean(data.comentariosGenerales) : undefined,
       cotizacionId: data.cotizacionId || previous?.cotizacionId,
       cotizacionNumero: data.cotizacionNumero || previous?.cotizacionNumero,
       comentarios: previous?.comentarios || [],
@@ -419,30 +437,21 @@ export default function SeguimientoLicitaciones() {
       ],
     };
 
-    await saveOportunidad(next);
-    if (!previous) {
-      const description = `Se ha registrado una nueva oportunidad de tipo ${OPORTUNIDAD_TIPOS[next.tipo]}. Revisala y asignatela si deseas gestionarla.`;
-      addNotification({
-        title: "Nueva oportunidad disponible",
-        description,
-        type: "info",
-        icon: "MessageCircle",
-        route: "/seguimiento-licitaciones",
-        targetRole: "VENTAS",
+    try {
+      await saveOportunidad(next);
+      setModalOpen(false);
+      setEditing(null);
+      await loadData();
+      showToast({ title: "Oportunidad guardada", description: "El seguimiento fue actualizado.", type: "success" });
+    } catch (error) {
+      const response = error as { response?: { data?: { message?: string } }; message?: string };
+      showToast({
+        title: "No se pudo guardar oportunidad",
+        description: response.response?.data?.message || response.message || "Revisa los datos e intenta nuevamente.",
+        type: "error",
       });
-      addNotification({
-        title: "Nueva oportunidad disponible",
-        description: `${description} Empresa: ${next.empresa}.`,
-        type: "info",
-        icon: "MessageCircle",
-        route: "/seguimiento-licitaciones",
-        targetRole: "SUPERADMIN",
-      });
+      throw error;
     }
-    setModalOpen(false);
-    setEditing(null);
-    await loadData();
-    showToast({ title: "Oportunidad guardada", description: "El seguimiento fue actualizado.", type: "success" });
   };
 
   const requestCloseReason = (estado: OportunidadEstado) => {
@@ -563,42 +572,167 @@ export default function SeguimientoLicitaciones() {
 
   const handleGenerateQuote = async () => {
     if (!selected) return;
-    const cotizacion = await addCotizacionRelacionada(selected.id, userName);
+    if (!canManageOpportunityQuote(selected)) {
+      showToast({
+        title: "No autorizado",
+        description: "Solo el ejecutivo asignado puede generar o vincular cotizaciones para esta oportunidad.",
+        type: "warning",
+      });
+      return;
+    }
+
+    const params = new URLSearchParams({
+      oportunidad_id: selected.id,
+      oportunidad_empresa: selected.empresa,
+      oportunidad_requerimiento: selected.requerimiento,
+    });
+
+    navigate(`/cotizaciones/new?${params.toString()}`);
+  };
+
+  const handleMarkQuoteDone = async () => {
+    if (!selected || !canManageOpportunityQuote(selected) || isClosedOpportunity(selected.estado)) return;
+    setQuoteLinkSearch(selected.empresa);
+    setQuoteLinkSelectedId(null);
+    setQuoteLinkModalOpen(true);
+  };
+
+  useEffect(() => {
+    if (!quoteLinkModalOpen) return;
+
+    let cancelled = false;
+    setQuoteLinkLoading(true);
+
+    void getCotizacionesPaginated({
+      page: 1,
+      perPage: 10,
+      search: quoteLinkSearch,
+    })
+      .then((response) => {
+        if (!cancelled) setQuoteLinkOptions(response.data || []);
+      })
+      .catch(() => {
+        if (!cancelled) setQuoteLinkOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setQuoteLinkLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [quoteLinkModalOpen, quoteLinkSearch]);
+
+  const handleLinkExistingQuote = async () => {
+    if (!selected || !quoteLinkSelectedId) return;
+
+    const cotizacion = quoteLinkOptions.find((item) => Number(item.id) === Number(quoteLinkSelectedId));
+    if (!cotizacion) {
+      showToast({ title: "Selecciona una cotizacion", description: "Elige una cotizacion para vincularla.", type: "warning" });
+      return;
+    }
+
+    const cotizacionData = cotizacion as any;
+
+    await addCotizacionRelacionada(selected.id, userName, {
+      cotizacion_id: Number(cotizacion.id),
+      numero: cotizacion.numero,
+      estado: cotizacionData.estadoCotizacion?.nombre || cotizacionData.estado_cotizacion?.nombre || "registrada",
+      monto: Number(cotizacion.total || 0),
+      moneda: cotizacionData.moneda?.codigo || cotizacionData.codigo_moneda,
+    });
+
+    setQuoteLinkModalOpen(false);
+    setQuoteLinkSelectedId(null);
     await loadData();
     showToast({
-      title: "Cotizacion generada",
-      description: `${cotizacion.numero} fue vinculada a la oportunidad.`,
+      title: "Cotizacion vinculada",
+      description: `${cotizacion.numero || `#${cotizacion.id}`} quedo asociada a la oportunidad.`,
       type: "success",
     });
   };
 
-  const handleMarkQuoteDone = async () => {
-    if (!selected || !canReleaseOpportunity(selected) || isClosedOpportunity(selected.estado)) return;
+  const handleDownloadQuotePdf = async (cotizacionId: string | number) => {
+    const parsedId = Number(cotizacionId);
+    if (!parsedId || downloadingQuoteId) return;
+
+    setDownloadingQuoteId(cotizacionId);
+    try {
+      const { blob, filename } = await exportarCotizacionPdf(parsedId);
+      await descargarPdfCotizacion(filename || `cotizacion-${parsedId}.pdf`, blob);
+    } catch (error) {
+      console.error("Error al descargar PDF de cotizacion vinculada:", error);
+      showToast({
+        title: "No se pudo descargar el PDF",
+        description: "Verifica que la cotizacion exista y que tengas permisos para exportarla.",
+        type: "error",
+      });
+    } finally {
+      setDownloadingQuoteId(null);
+    }
+  };
+
+  const handleMarkProposalPresented = async () => {
+    if (!selected || !["cotizacion_generada", "vencida"].includes(selected.estado) || presentingProposalId) return;
+
     const now = new Date().toISOString();
-    await saveOportunidad({
-      ...selected,
-      estado: "atendido",
-      modificadoEn: now,
-      modificadoPor: userName,
-      historial: [
-        {
-          id: createId("hist"),
-          fecha: now,
-          usuario: userName,
-          tipo: "estado",
-          descripcion: "Cotizacion marcada como realizada.",
-        },
-        ...selected.historial,
-      ],
-    });
-    await loadData();
-    showToast({ title: "Cotizacion realizada", description: "La oportunidad quedo marcada como atendida.", type: "success" });
+    const wasExpired = selected.estado === "vencida" || new Date(selected.vigencia).getTime() <= Date.now();
+    setPresentingProposalId(selected.id);
+    try {
+      await saveOportunidad({
+        ...selected,
+        estado: "atendido",
+        modificadoEn: now,
+        modificadoPor: userName,
+        historial: [
+          {
+            id: createId("hist"),
+            fecha: now,
+            usuario: userName,
+            tipo: "estado",
+            descripcion: wasExpired
+              ? "Propuesta presentada fuera de registro, posterior al vencimiento."
+              : "Propuesta presentada/subida en la plataforma correspondiente.",
+          },
+          ...selected.historial,
+        ],
+      });
+
+      await loadData();
+      showToast({
+        title: "Propuesta presentada",
+        description: wasExpired
+          ? "La oportunidad quedo marcada como atendida con registro posterior al vencimiento."
+          : "La oportunidad quedo marcada como atendida.",
+        type: "success",
+      });
+    } finally {
+      setPresentingProposalId(null);
+    }
   };
 
   const canReleaseOpportunity = (item: Oportunidad) => {
     if (!user?.id) return false;
     if (currentRole === "SUPERADMIN") return true;
     return Number(item.asignadoA ?? item.ejecutivo?.id ?? 0) === user.id;
+  };
+
+  const isOpportunityCreator = (item: Oportunidad) => {
+    if (!user?.id) return false;
+    if (item.creadoPorId && Number(item.creadoPorId) === Number(user.id)) return true;
+
+    const creator = normalizeText(item.creadoPor || "");
+    return Boolean(creator) && (
+      creator === normalizeText(userName) ||
+      creator === normalizeText(user?.email || "")
+    );
+  };
+
+  const canManageOpportunityQuote = (item: Oportunidad) => {
+    if (!user?.id) return false;
+    if (item.estado !== "en_atencion" && item.estado !== "cotizacion_generada") return false;
+
+    return Number(item.asignadoA ?? item.ejecutivo?.id ?? 0) === Number(user.id);
   };
 
   const openReleaseModal = (item: Oportunidad) => {
@@ -856,12 +990,12 @@ export default function SeguimientoLicitaciones() {
         </div>
       )}
 
-      <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-blue-600 via-indigo-600 to-slate-900 p-5 text-white shadow-xl">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-600 via-indigo-600 to-slate-900 p-4 text-white shadow-lg">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-blue-100">Canal comercial</p>
-            <h2 className="mt-2 text-2xl font-semibold">Seguimiento comercial</h2>
-            <p className="mt-2 text-sm text-blue-50">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-100">Canal comercial</p>
+            <h2 className="mt-1 text-xl font-semibold">Seguimiento comercial</h2>
+            <p className="mt-1 text-xs text-blue-50">
               Filtra por licitaciones, privados o WHEREX y prioriza la cartera desde una vista más visual.
             </p>
           </div>
@@ -873,31 +1007,31 @@ export default function SeguimientoLicitaciones() {
                   key={tab.key}
                   type="button"
                   onClick={() => updateFilter("tipo", tab.key as OportunidadFilters["tipo"])}
-                  className={`min-w-[140px] rounded-2xl border px-3 py-2.5 text-left transition ${
+                  className={`min-w-[120px] rounded-xl border px-3 py-2 text-left transition ${
                     active
                       ? "border-white/80 bg-white text-slate-900 shadow-lg"
                       : "border-white/20 bg-white/10 text-white hover:bg-white/20"
                   }`}
                 >
                   <div className="text-sm font-semibold">{tab.label}</div>
-                  <div className={`text-xs ${active ? "text-slate-600" : "text-blue-100"}`}>{tab.description}</div>
+                  <div className={`text-[11px] ${active ? "text-slate-600" : "text-blue-100"}`}>{tab.description}</div>
                 </button>
               );
             })}
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {TYPE_TABS.map((tab) => (
-            <div key={tab.key} className="rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur">
-              <p className="text-sm font-semibold text-blue-50">{tab.label}</p>
-              <p className="mt-1 text-2xl font-bold">{typeSummary[tab.key as keyof typeof typeSummary]}</p>
+            <div key={tab.key} className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 backdrop-blur">
+              <p className="text-xs font-semibold text-blue-50">{tab.label}</p>
+              <p className="text-xl font-bold">{typeSummary[tab.key as keyof typeof typeSummary]}</p>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-5 xl:grid-cols-10">
         {SUMMARY_ITEMS.map((item) => (
           <button
             key={item.key}
@@ -907,10 +1041,10 @@ export default function SeguimientoLicitaciones() {
                 updateFilter("estado", item.key as OportunidadEstado);
               }
             }}
-            className={`rounded-2xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-950 ${item.className}`}
+            className={`rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-950 ${item.className}`}
           >
-            <p className="text-sm font-semibold text-slate-500">{item.label}</p>
-            <p className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{summary[item.key] || 0}</p>
+            <p className="min-h-8 text-xs font-semibold leading-4 text-slate-500">{item.label}</p>
+            <p className="text-xl font-bold text-slate-900 dark:text-white">{summary[item.key] || 0}</p>
           </button>
         ))}
       </div>
@@ -994,13 +1128,7 @@ export default function SeguimientoLicitaciones() {
                       </Td>
                       <Td>{formatDateTime(item.creadoEn)}</Td>
                       <Td>
-                        {locked || isSalesRole ? (
-                          <EstadoBadge estado={item.estado} />
-                        ) : (
-                          <select value={item.estado} onChange={(event) => void changeEstado(item, event.target.value as OportunidadEstado)} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold dark:border-slate-700 dark:bg-slate-950">
-                            {Object.entries(OPORTUNIDAD_ESTADOS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                          </select>
-                        )}
+                        <EstadoBadge estado={item.estado} />
                       </Td>
                       <Td>{formatDateTime(item.vigencia)}</Td>
                       <Td>
@@ -1031,7 +1159,7 @@ export default function SeguimientoLicitaciones() {
                               Liberar cotización
                             </button>
                           )}
-                          {canEditOpportunity && (
+                          {isOpportunityCreator(item) && (
                             <IconButton
                               title={locked ? "Registro bloqueado" : "Editar"}
                               disabled={locked}
@@ -1040,7 +1168,7 @@ export default function SeguimientoLicitaciones() {
                               <Pencil size={17} />
                             </IconButton>
                           )}
-                          {canDeleteOpportunity && (
+                          {isOpportunityCreator(item) && (
                             <IconButton
                               title={locked ? "Registro bloqueado" : "Eliminar"}
                               disabled={locked}
@@ -1048,6 +1176,15 @@ export default function SeguimientoLicitaciones() {
                               onClick={() => void handleDelete(item)}
                             >
                               <Trash2 size={17} />
+                            </IconButton>
+                          )}
+                          {currentRole === "LICITACIONES" && item.estado === "atendido" && (
+                            <IconButton
+                              title="Marcar como perdida"
+                              danger
+                              onClick={() => void changeEstado(item, "perdida")}
+                            >
+                              <XCircle size={17} />
                             </IconButton>
                           )}
                           {item.estado === "vencida" && <AlertTriangle className="h-4 w-4 text-red-600" />}
@@ -1093,7 +1230,7 @@ export default function SeguimientoLicitaciones() {
         opportunity={editing}
         userName={userName}
         onClose={() => { setModalOpen(false); setEditing(null); }}
-        onSubmit={(data) => void handleSave(data)}
+        onSubmit={handleSave}
       />
 
       <OportunidadDetailDrawer
@@ -1101,7 +1238,7 @@ export default function SeguimientoLicitaciones() {
         onClose={() => setSelectedId(null)}
         onAddComment={(comment) => void handleAddComment(comment)}
         onGenerateQuote={() => void handleGenerateQuote()}
-        canManageOpportunity={Boolean(selected && canReleaseOpportunity(selected) && selected.estado !== "sin_atender")}
+        canManageOpportunity={Boolean(selected && canManageOpportunityQuote(selected))}
         onMarkQuoteDone={() => void handleMarkQuoteDone()}
         onReleaseOpportunity={() => {
           if (selected) openReleaseModal(selected);
@@ -1109,7 +1246,112 @@ export default function SeguimientoLicitaciones() {
         onFinalizeOpportunity={(estado) => {
           if (selected) void changeEstado(selected, estado);
         }}
+        canMarkProposalPresented={currentRole === "LICITACIONES"}
+        presentingProposal={Boolean(selected && presentingProposalId === selected.id)}
+        onMarkProposalPresented={() => void handleMarkProposalPresented()}
+        canDownloadQuotePdf={currentRole === "LICITACIONES"}
+        downloadingQuoteId={downloadingQuoteId}
+        onDownloadQuotePdf={(cotizacionId) => void handleDownloadQuotePdf(cotizacionId)}
       />
+
+      {quoteLinkModalOpen && selected && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+            <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Vincular cotizacion existente</h3>
+                  <p className="mt-1 text-sm text-slate-500">Selecciona la cotizacion que corresponde a {selected.empresa}.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setQuoteLinkModalOpen(false)}
+                  className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900"
+                  title="Cerrar"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="relative mt-4">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={quoteLinkSearch}
+                  onChange={(event) => setQuoteLinkSearch(event.target.value)}
+                  className="w-full rounded-2xl border border-slate-300 bg-white py-3 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                  placeholder="Buscar por numero, cliente o titulo"
+                />
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              {quoteLinkLoading ? (
+                <div className="rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500 dark:border-slate-800">
+                  Buscando cotizaciones...
+                </div>
+              ) : quoteLinkOptions.length > 0 ? (
+                <div className="space-y-2">
+                  {quoteLinkOptions.map((cotizacion) => {
+                    const cotizacionData = cotizacion as any;
+                    const clienteNombre = cotizacion.cliente?.nombre || cotizacionData.cliente_nombre || "Sin cliente";
+                    const estadoNombre = cotizacionData.estadoCotizacion?.nombre || cotizacionData.estado_cotizacion?.nombre || "Sin estado";
+                    const total = Number(cotizacion.total || 0);
+                    const moneda = cotizacionData.moneda?.simbolo || cotizacionData.simbolo_moneda || "";
+
+                    return (
+                      <label
+                        key={cotizacion.id}
+                        className={`flex cursor-pointer gap-3 rounded-2xl border p-4 transition ${
+                          Number(quoteLinkSelectedId) === Number(cotizacion.id)
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+                            : "border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="cotizacion-link"
+                          checked={Number(quoteLinkSelectedId) === Number(cotizacion.id)}
+                          onChange={() => setQuoteLinkSelectedId(Number(cotizacion.id))}
+                          className="mt-1"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-slate-900 dark:text-white">
+                            {cotizacion.numero || `#${cotizacion.id}`} - {cotizacion.titulo || "Sin titulo"}
+                          </span>
+                          <span className="mt-1 block text-sm text-slate-500">
+                            {clienteNombre} · {estadoNombre} · {moneda} {total.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500 dark:border-slate-800">
+                  No se encontraron cotizaciones con ese criterio.
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setQuoteLinkModalOpen(false)}
+                className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleLinkExistingQuote()}
+                disabled={!quoteLinkSelectedId}
+                className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Vincular cotizacion
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {lossModalOpen && lossTarget && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">

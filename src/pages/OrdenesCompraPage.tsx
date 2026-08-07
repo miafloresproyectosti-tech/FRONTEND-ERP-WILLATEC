@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import type { ChangeEvent } from "react";
 import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import {
@@ -53,12 +54,29 @@ import {
 } from "../services/ordenCompra.service";
 import { useAuth } from "../AuthContext";
 import { getCotizacion } from "../services/cotizacion.service";
+import {
+  createProveedor,
+  getProveedores,
+  type Proveedor,
+  type ProveedorPayload,
+} from "../services/proveedor.service";
 import { formatMoney } from "../utils/formatNumber";
 import { getPaginationItems } from "../utils/pagination";
 import PageSizeSelect from "../components/ui/PageSizeSelect";
 
 type ActiveTab = "emitidas" | "recibidas";
 type ModalMode = "emitir" | "recibir" | null;
+
+const initialNuevoProveedor: ProveedorPayload = {
+  nombre: "",
+  ruc: "",
+  contacto: "",
+  telefono: "",
+  correo: "",
+  direccion: "",
+  observaciones: "",
+  activo: true,
+};
 
 interface PaginationState {
   page: number;
@@ -83,28 +101,53 @@ interface EmitidaDraftItem {
 }
 
 const getQuotedQuantity = (item: OcPreviewItem) =>
-  toNumber(item.cantidad ?? (item as any).cantidad_cotizada ?? item.cantidad_disponible ?? item.cantidad_pendiente);
+  toNumber(
+    item.cantidad ??
+      (item as any).cantidad_cotizada ??
+      item.cantidad_disponible ??
+      item.cantidad_pendiente,
+  );
+
+const normalizeProveedorKey = (value?: string) =>
+  String(value ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
 
 const getProveedorPrecio = (item: OcPreviewItem, proveedor?: string) => {
-  const selectedProveedor = proveedor?.trim().toLowerCase();
-  const proveedorRow = selectedProveedor
-    ? item.proveedores?.find((row) => row.nombre.trim().toLowerCase() === selectedProveedor)
+  const selectedProveedorKey = normalizeProveedorKey(proveedor);
+  const proveedorRow = selectedProveedorKey
+    ? item.proveedores?.find(
+        (row) => normalizeProveedorKey(row.nombre) === selectedProveedorKey,
+      )
     : item.proveedores?.[0];
 
-  return toNumber(proveedorRow?.precio ?? item.precio_unitario ?? item.costo_base);
-};
-
-const itemBelongsToProveedor = (item: OcPreviewItem, proveedor: string) => {
-  const selectedProveedor = proveedor.trim().toLowerCase();
-  if (!selectedProveedor) return true;
-
-  return (
-    item.proveedor?.trim().toLowerCase() === selectedProveedor ||
-    Boolean(item.proveedores?.some((row) => row.nombre.trim().toLowerCase() === selectedProveedor))
+  return toNumber(
+    proveedorRow?.precio ?? item.precio_unitario ?? item.costo_base,
   );
 };
 
-const buildEmitidaDraftItems = (items: OcPreviewItem[], proveedor?: string): EmitidaDraftItem[] =>
+const itemBelongsToProveedor = (item: OcPreviewItem, proveedor: string) => {
+  const selectedProveedorKey = normalizeProveedorKey(proveedor);
+  if (!selectedProveedorKey) return true;
+
+  const itemProveedorKey = normalizeProveedorKey(item.proveedor ?? undefined);
+  return (
+    itemProveedorKey === selectedProveedorKey ||
+    Boolean(
+      item.proveedores?.some(
+        (row) => normalizeProveedorKey(row.nombre) === selectedProveedorKey,
+      ),
+    )
+  );
+};
+
+const buildEmitidaDraftItems = (
+  items: OcPreviewItem[],
+  proveedor?: string,
+): EmitidaDraftItem[] =>
   items
     .filter((item) => itemBelongsToProveedor(item, proveedor || ""))
     .map((item) => ({
@@ -141,7 +184,8 @@ const estadoEmitidaLabels: Record<string, string> = {
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (typeof error === "object" && error !== null && "response" in error) {
-    const response = (error as { response?: { data?: { message?: string } } }).response;
+    const response = (error as { response?: { data?: { message?: string } } })
+      .response;
     if (response?.data?.message) return response.data.message;
   }
 
@@ -162,12 +206,14 @@ const toDisplayText = (value: unknown, fallback = ""): string => {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (value && typeof value === "object") {
     const row = value as Record<string, unknown>;
-    return toDisplayText(row.nombre, "") ||
+    return (
+      toDisplayText(row.nombre, "") ||
       toDisplayText(row.proveedor, "") ||
       toDisplayText(row.descripcion, "") ||
       toDisplayText(row.producto, "") ||
       toDisplayText(row.name, "") ||
-      fallback;
+      fallback
+    );
   }
 
   return fallback;
@@ -196,14 +242,17 @@ const isSerieAssignedToItem = (
   oc?: OcRecibida,
 ) =>
   Number(serie.oc_recibida_id || 0) === Number(oc?.id || 0) &&
-  Number(serie.cotizacion_item_id || 0) === Number(item.cotizacion_item_id || 0);
+  Number(serie.cotizacion_item_id || 0) ===
+    Number(item.cotizacion_item_id || 0);
 
 const getSelectableItemSeries = (item: OcRecibidaItem, oc?: OcRecibida) =>
-  getItemSeries(item).filter((serie) =>
-    serie.estado === "disponible" || isSerieAssignedToItem(serie, item, oc),
+  getItemSeries(item).filter(
+    (serie) =>
+      serie.estado === "disponible" || isSerieAssignedToItem(serie, item, oc),
   );
 
-const itemRequiresSeries = (item: OcRecibidaItem) => getItemSeries(item).length > 0;
+const itemRequiresSeries = (item: OcRecibidaItem) =>
+  getItemSeries(item).length > 0;
 
 const getAssignedItemSerieIds = (item: OcRecibidaItem, oc: OcRecibida) =>
   getItemSeries(item)
@@ -212,8 +261,9 @@ const getAssignedItemSerieIds = (item: OcRecibidaItem, oc: OcRecibida) =>
     .filter((id) => Number.isFinite(id) && id > 0);
 
 const hasSoldAssignedSeries = (item: OcRecibidaItem, oc?: OcRecibida) =>
-  getItemSeries(item).some((serie) =>
-    serie.estado === "vendido" && isSerieAssignedToItem(serie, item, oc),
+  getItemSeries(item).some(
+    (serie) =>
+      serie.estado === "vendido" && isSerieAssignedToItem(serie, item, oc),
   );
 
 const getOcSerieSelectionMap = (oc: OcRecibida): Record<number, number[]> =>
@@ -247,9 +297,14 @@ const getCotizacionTitulo = (oc: OcEmitida | OcRecibida) =>
     "Sin titulo",
   );
 
-const getPreviewCotizacionLabel = (preview: OcPreview, fallbackId: number | string) =>
+const getPreviewCotizacionLabel = (
+  preview: OcPreview,
+  fallbackId: number | string,
+) =>
   preview.cotizacion?.numero ||
-  (preview.cotizacion?.id ? `Cotizacion #${preview.cotizacion.id}` : `Cotizacion #${fallbackId}`);
+  (preview.cotizacion?.id
+    ? `Cotizacion #${preview.cotizacion.id}`
+    : `Cotizacion #${fallbackId}`);
 
 const getOcItemsCount = (oc: OcRecibida | OcEmitida) => {
   const raw =
@@ -303,7 +358,9 @@ type DocumentLink = {
   uploadedBy?: number | string | null;
 };
 
-const apiOrigin = String(import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api").replace(/\/api\/?$/, "");
+const apiOrigin = String(
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api",
+).replace(/\/api\/?$/, "");
 
 const toDocumentUrl = (value: unknown) => {
   const raw = toDisplayText(value, "").trim();
@@ -332,16 +389,17 @@ const pickDocumentUploader = (source: any, key: string) =>
   null;
 
 const getDocumentLinks = (oc: OcEmitida | OcRecibida): DocumentLink[] => {
-  const labels = "proveedor" in oc
-    ? [
-      ["factura", "Factura"],
-      ["comprobante_pago", "Comprobante de pago"],
-    ]
-    : [
-      ["orden_compra_cliente", "Orden de compra cliente"],
-      ["guia_emision", "Guia de emision"],
-      ["factura", "Factura"],
-    ];
+  const labels =
+    "proveedor" in oc
+      ? [
+          ["factura", "Factura"],
+          ["comprobante_pago", "Comprobante de pago"],
+        ]
+      : [
+          ["orden_compra_cliente", "Orden de compra cliente"],
+          ["guia_emision", "Guia de emision"],
+          ["factura", "Factura"],
+        ];
 
   const directLinks = labels
     .map(([key, label]) => ({
@@ -353,12 +411,20 @@ const getDocumentLinks = (oc: OcEmitida | OcRecibida): DocumentLink[] => {
 
   const arrayLinks = Array.isArray((oc as any).documentos)
     ? (oc as any).documentos
-      .map((documento: any, index: number) => ({
-        key: String(documento?.tipo ?? documento?.key ?? index),
-        label: toDisplayText(documento?.label ?? documento?.nombre ?? documento?.tipo, `Documento ${index + 1}`),
-        url: toDocumentUrl(documento?.url ?? documento?.path ?? documento?.archivo ?? documento?.file),
-      }))
-      .filter((document: DocumentLink) => document.url)
+        .map((documento: any, index: number) => ({
+          key: String(documento?.tipo ?? documento?.key ?? index),
+          label: toDisplayText(
+            documento?.label ?? documento?.nombre ?? documento?.tipo,
+            `Documento ${index + 1}`,
+          ),
+          url: toDocumentUrl(
+            documento?.url ??
+              documento?.path ??
+              documento?.archivo ??
+              documento?.file,
+          ),
+        }))
+        .filter((document: DocumentLink) => document.url)
     : [];
   const additionalLinks = ((oc as any).documentos_adicionales || [])
     .map((documento: OcDocumentoAdicional, index: number) => ({
@@ -371,21 +437,26 @@ const getDocumentLinks = (oc: OcEmitida | OcRecibida): DocumentLink[] => {
     .filter((document: DocumentLink) => document.url);
 
   const byUrl = new Map<string, DocumentLink>();
-  [...directLinks, ...arrayLinks, ...additionalLinks].forEach((document) => byUrl.set(document.url, document));
+  [...directLinks, ...arrayLinks, ...additionalLinks].forEach((document) =>
+    byUrl.set(document.url, document),
+  );
   return Array.from(byUrl.values());
 };
 
-const getManagedDocumentLinks = (oc: OcEmitida | OcRecibida): DocumentLink[] => {
-  const labels = "proveedor" in oc
-    ? [
-      ["factura", "Factura"],
-      ["comprobante_pago", "Comprobante de pago"],
-    ]
-    : [
-      ["orden_compra_cliente", "Orden de compra cliente"],
-      ["guia_emision", "Guia de emision"],
-      ["factura", "Factura"],
-    ];
+const getManagedDocumentLinks = (
+  oc: OcEmitida | OcRecibida,
+): DocumentLink[] => {
+  const labels =
+    "proveedor" in oc
+      ? [
+          ["factura", "Factura"],
+          ["comprobante_pago", "Comprobante de pago"],
+        ]
+      : [
+          ["orden_compra_cliente", "Orden de compra cliente"],
+          ["guia_emision", "Guia de emision"],
+          ["factura", "Factura"],
+        ];
 
   const fixedLinks = labels
     .map(([key, label]) => ({
@@ -427,13 +498,16 @@ export default function OrdenesCompraPage() {
   const [proveedorFilter, setProveedorFilter] = useState("");
   const [emitidas, setEmitidas] = useState<OcEmitida[]>([]);
   const [recibidas, setRecibidas] = useState<OcRecibida[]>([]);
-  const [emitidasPagination, setEmitidasPagination] = useState<PaginationState>(emptyPagination);
-  const [recibidasPagination, setRecibidasPagination] = useState<PaginationState>(emptyPagination);
+  const [emitidasPagination, setEmitidasPagination] =
+    useState<PaginationState>(emptyPagination);
+  const [recibidasPagination, setRecibidasPagination] =
+    useState<PaginationState>(emptyPagination);
   const [perPage, setPerPage] = useState(10);
   const [loading, setLoading] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [preview, setPreview] = useState<OcPreview | null>(null);
-  const [emitidaBasePreview, setEmitidaBasePreview] = useState<OcPreview | null>(null);
+  const [emitidaBasePreview, setEmitidaBasePreview] =
+    useState<OcPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [cotizacionId, setCotizacionId] = useState("");
@@ -442,20 +516,42 @@ export default function OrdenesCompraPage() {
   const [observaciones, setObservaciones] = useState("");
   const [recibidaItems, setRecibidaItems] = useState<RecibidaDraftItem[]>([]);
   const [emitidaItems, setEmitidaItems] = useState<EmitidaDraftItem[]>([]);
-  const [ordenCompraCliente, setOrdenCompraCliente] = useState<File | null>(null);
+  const [ordenCompraCliente, setOrdenCompraCliente] = useState<File | null>(
+    null,
+  );
   const [guiaEmision, setGuiaEmision] = useState<File | null>(null);
-  const [selectedOc, setSelectedOc] = useState<OcEmitida | OcRecibida | null>(null);
+  const [selectedOc, setSelectedOc] = useState<OcEmitida | OcRecibida | null>(
+    null,
+  );
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const [documentTarget, setDocumentTarget] = useState<OcEmitida | OcRecibida | null>(null);
+  const [documentTarget, setDocumentTarget] = useState<
+    OcEmitida | OcRecibida | null
+  >(null);
   const [factura, setFactura] = useState<File | null>(null);
   const [facturaNumero, setFacturaNumero] = useState("");
   const [comprobantePago, setComprobantePago] = useState<File | null>(null);
-  const [documentosAdicionales, setDocumentosAdicionales] = useState<File[]>([]);
+  const [documentosAdicionales, setDocumentosAdicionales] = useState<File[]>(
+    [],
+  );
+  const [proveedoresCatalog, setProveedoresCatalog] = useState<Proveedor[]>([]);
+  const [showNuevoProveedorForm, setShowNuevoProveedorForm] = useState(false);
+  const [nuevoProveedor, setNuevoProveedor] = useState<ProveedorPayload>(
+    initialNuevoProveedor,
+  );
+  const [creatingProveedor, setCreatingProveedor] = useState(false);
   const [updatingItemOc, setUpdatingItemOc] = useState<number | null>(null);
-  const [ocItemSeries, setOcItemSeries] = useState<Record<number, number[]>>({});
+  const [ocItemSeries, setOcItemSeries] = useState<Record<number, number[]>>(
+    {},
+  );
 
-  const currentPagination = activeTab === "emitidas" ? emitidasPagination : recibidasPagination;
-  const paginationItems = getPaginationItems(currentPagination.page, currentPagination.totalPages);
+  const debouncedCotizacionId = useDebouncedValue(cotizacionId, 600);
+
+  const currentPagination =
+    activeTab === "emitidas" ? emitidasPagination : recibidasPagination;
+  const paginationItems = getPaginationItems(
+    currentPagination.page,
+    currentPagination.totalPages,
+  );
   const canEditOc = useCallback(
     (oc: OcEmitida | OcRecibida) => {
       if (!user) return false;
@@ -468,22 +564,29 @@ export default function OrdenesCompraPage() {
   const canUploadOcDocuments = useCallback(
     (oc: OcEmitida | OcRecibida) => {
       if (!user) return false;
-      if (["SUPERADMIN", "ADMIN", "CONTABILIDAD"].includes(user.role)) return true;
+      if (["SUPERADMIN", "ADMIN", "CONTABILIDAD"].includes(user.role))
+        return true;
 
       return Number(oc.user_id) === Number(user.id);
     },
     [user],
   );
   const canCancelRecibida = useCallback(
-    (oc: OcRecibida) => canEditOc(oc) && !["atendido", "cancelado"].includes(String(oc.estado)),
+    (oc: OcRecibida) =>
+      canEditOc(oc) && !["atendido", "cancelado"].includes(String(oc.estado)),
     [canEditOc],
   );
-  const canCreateOc = user ? ["SUPERADMIN", "VENTAS"].includes(user.role) : false;
+  const canCreateOc = user
+    ? ["SUPERADMIN", "VENTAS"].includes(user.role)
+    : false;
   const canDeleteOcDocument = useCallback(
     (oc: OcEmitida | OcRecibida, document: DocumentLink) => {
       if (!user) return false;
       if (["ADMIN", "CONTABILIDAD"].includes(user.role)) {
-        return Boolean(document.uploadedBy) && Number(document.uploadedBy) === Number(user.id);
+        return (
+          Boolean(document.uploadedBy) &&
+          Number(document.uploadedBy) === Number(user.id)
+        );
       }
       if (canEditOc(oc)) return true;
 
@@ -492,70 +595,266 @@ export default function OrdenesCompraPage() {
     [canEditOc, user],
   );
 
+  const normalizeProveedorKey = (value?: string) =>
+    String(value ?? "")
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/gi, "")
+      .toLowerCase();
+
+  const findProveedorCatalog = (nombre?: string) => {
+    const key = normalizeProveedorKey(nombre);
+    if (!key) return undefined;
+    return proveedoresCatalog.find(
+      (proveedor) => normalizeProveedorKey(proveedor.nombre) === key,
+    );
+  };
+
+  const findSimilarProveedor = (nombre?: string) => {
+    const normalized = normalizeProveedorKey(nombre);
+    if (!normalized) return undefined;
+
+    return proveedoresCatalog.find((item) => {
+      const itemKey = normalizeProveedorKey(item.nombre);
+      const searchValue = normalized;
+      const itemValue = normalizeProveedorKey(item.nombre);
+
+      return (
+        itemKey === normalized ||
+        itemKey.includes(normalized) ||
+        normalized.includes(itemKey) ||
+        itemValue.includes(searchValue) ||
+        searchValue.includes(itemValue)
+      );
+    });
+  };
+
   const proveedorOptions = useMemo(() => {
     const fromPreview = preview?.proveedores || [];
     const fromItems = (preview?.items || [])
       .map((item) => item.proveedor)
-      .filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
-    return Array.from(new Set([...fromPreview, ...fromItems]));
-  }, [preview]);
+      .filter(
+        (value): value is string =>
+          typeof value === "string" && Boolean(value.trim()),
+      );
+    const fromCatalog = proveedoresCatalog.map((item) => item.nombre || "");
 
-  const loadEmitidas = useCallback(async (page = emitidasPagination.page) => {
-    try {
-      setLoading(true);
-      const response = await getOcEmitidas({
-        page,
-        search: searchTerm,
-        estado: estadoFilter,
-        proveedor: proveedorFilter,
-        perPage,
-      });
-      setEmitidas(response.data);
-      setEmitidasPagination({
-        page: response.current_page || page,
-        totalPages: response.last_page || 1,
-        total: response.total || 0,
-        from: response.from || 0,
-        to: response.to || 0,
-      });
-    } catch (error) {
+    const dedup = new Map<string, { value: string; label: string }>();
+    [...fromPreview, ...fromItems, ...fromCatalog].forEach((value) => {
+      const trimmed = value.trim();
+      const key = normalizeProveedorKey(trimmed);
+      if (!key) return;
+      const catalog = findProveedorCatalog(trimmed);
+      const label = catalog?.ruc ? `${trimmed} (RUC ${catalog.ruc})` : trimmed;
+
+      const existing = dedup.get(key);
+      if (!existing || (!existing.label.includes("RUC") && catalog?.ruc)) {
+        dedup.set(key, { value: trimmed, label });
+      }
+    });
+
+    return Array.from(dedup.values()).sort((a, b) =>
+      a.value.localeCompare(b.value),
+    );
+  }, [preview, proveedoresCatalog]);
+
+  const selectedModalProviderRuc = findProveedorCatalog(proveedor)?.ruc || "";
+  const selectedProveedorCatalog = findProveedorCatalog(proveedor);
+  const selectedOcProviderRuc =
+    selectedOc && "proveedor" in selectedOc
+      ? findProveedorCatalog(selectedOc.proveedor)?.ruc || ""
+      : "";
+
+  const similarProveedor = useMemo(() => {
+    if (!proveedor.trim() || selectedProveedorCatalog) return null;
+
+    const result = findSimilarProveedor(proveedor);
+    if (!result) return null;
+
+    const exactMatch =
+      normalizeProveedorKey(result.nombre) === normalizeProveedorKey(proveedor);
+    return exactMatch ? null : result;
+  }, [proveedor, proveedoresCatalog, selectedProveedorCatalog]);
+
+  const resetNuevoProveedorForm = () => {
+    setNuevoProveedor(initialNuevoProveedor);
+    setShowNuevoProveedorForm(false);
+  };
+
+  const handleNuevoProveedorChange = (
+    field: keyof ProveedorPayload,
+    value: string,
+  ) => {
+    setNuevoProveedor((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const handleCreateProveedor = async () => {
+    const nombre = nuevoProveedor.nombre.trim();
+    if (!nombre) {
       showToast({
-        title: "Error al cargar OC emitidas",
-        description: getErrorMessage(error, "No se pudo obtener la lista de OC emitidas."),
+        title: "Nombre requerido",
+        description: "Ingresa el nombre del proveedor.",
         type: "warning",
       });
-    } finally {
-      setLoading(false);
+      return;
     }
-  }, [emitidasPagination.page, estadoFilter, perPage, proveedorFilter, searchTerm, showToast]);
 
-  const loadRecibidas = useCallback(async (page = recibidasPagination.page) => {
-    try {
-      setLoading(true);
-      const response = await getOcRecibidas({
-        page,
-        search: searchTerm,
-        estado: estadoFilter,
-        perPage,
-      });
-      setRecibidas(response.data);
-      setRecibidasPagination({
-        page: response.current_page || page,
-        totalPages: response.last_page || 1,
-        total: response.total || 0,
-        from: response.from || 0,
-        to: response.to || 0,
-      });
-    } catch (error) {
+    if (!nuevoProveedor.ruc?.trim()) {
       showToast({
-        title: "Error al cargar OC recibidas",
-        description: getErrorMessage(error, "No se pudo obtener la lista de OC recibidas."),
+        title: "RUC requerido",
+        description: "Ingresa el RUC del proveedor para poder emitir la OC.",
         type: "warning",
       });
-    } finally {
-      setLoading(false);
+      return;
     }
-  }, [estadoFilter, perPage, recibidasPagination.page, searchTerm, showToast]);
+
+    const existingProveedor = proveedoresCatalog.find(
+      (item) =>
+        normalizeProveedorKey(item.nombre) === normalizeProveedorKey(nombre),
+    );
+    if (existingProveedor) {
+      setProveedor(existingProveedor.nombre);
+      setShowNuevoProveedorForm(false);
+      showToast({
+        title: "Proveedor existente",
+        description: `Proveedor ${existingProveedor.nombre} ya existe y fue seleccionado.`,
+        type: "info",
+      });
+      return;
+    }
+
+    try {
+      setCreatingProveedor(true);
+      const proveedorCreado = await createProveedor({
+        ...nuevoProveedor,
+        nombre,
+        ruc: nuevoProveedor.ruc?.trim() || undefined,
+      });
+      setProveedoresCatalog((current) =>
+        [...current, proveedorCreado].sort((a, b) =>
+          a.nombre.localeCompare(b.nombre),
+        ),
+      );
+      setProveedor(proveedorCreado.nombre);
+      setShowNuevoProveedorForm(false);
+      setNuevoProveedor(initialNuevoProveedor);
+      showToast({
+        title: "Proveedor creado",
+        description: `Proveedor ${proveedorCreado.nombre} agregado y seleccionado.`,
+        type: "success",
+      });
+      if (preview) {
+        void handleProveedorChange(proveedorCreado.nombre);
+      }
+    } catch (error) {
+      showToast({
+        title: "Error al crear proveedor",
+        description: getErrorMessage(error, "No se pudo crear el proveedor."),
+        type: "error",
+      });
+    } finally {
+      setCreatingProveedor(false);
+    }
+  };
+
+  const loadEmitidas = useCallback(
+    async (page = emitidasPagination.page) => {
+      try {
+        setLoading(true);
+        const response = await getOcEmitidas({
+          page,
+          search: searchTerm,
+          estado: estadoFilter,
+          proveedor: proveedorFilter,
+          perPage,
+        });
+        setEmitidas(response.data);
+        setEmitidasPagination({
+          page: response.current_page || page,
+          totalPages: response.last_page || 1,
+          total: response.total || 0,
+          from: response.from || 0,
+          to: response.to || 0,
+        });
+      } catch (error) {
+        showToast({
+          title: "Error al cargar OC emitidas",
+          description: getErrorMessage(
+            error,
+            "No se pudo obtener la lista de OC emitidas.",
+          ),
+          type: "warning",
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      emitidasPagination.page,
+      estadoFilter,
+      perPage,
+      proveedorFilter,
+      searchTerm,
+      showToast,
+    ],
+  );
+
+  const loadRecibidas = useCallback(
+    async (page = recibidasPagination.page) => {
+      try {
+        setLoading(true);
+        const response = await getOcRecibidas({
+          page,
+          search: searchTerm,
+          estado: estadoFilter,
+          perPage,
+        });
+        setRecibidas(response.data);
+        setRecibidasPagination({
+          page: response.current_page || page,
+          totalPages: response.last_page || 1,
+          total: response.total || 0,
+          from: response.from || 0,
+          to: response.to || 0,
+        });
+      } catch (error) {
+        showToast({
+          title: "Error al cargar OC recibidas",
+          description: getErrorMessage(
+            error,
+            "No se pudo obtener la lista de OC recibidas.",
+          ),
+          type: "warning",
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [estadoFilter, perPage, recibidasPagination.page, searchTerm, showToast],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProveedores = async () => {
+      try {
+        const proveedores = await getProveedores({ per_page: 200 });
+        if (!cancelled) setProveedoresCatalog(proveedores);
+      } catch (error) {
+        console.error("Error al cargar proveedores:", error);
+      }
+    };
+
+    void loadProveedores();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const refreshActiveTab = useCallback(() => {
     if (activeTab === "emitidas") {
@@ -563,7 +862,13 @@ export default function OrdenesCompraPage() {
     } else {
       void loadRecibidas(recibidasPagination.page);
     }
-  }, [activeTab, emitidasPagination.page, loadEmitidas, loadRecibidas, recibidasPagination.page]);
+  }, [
+    activeTab,
+    emitidasPagination.page,
+    loadEmitidas,
+    loadRecibidas,
+    recibidasPagination.page,
+  ]);
 
   useEffect(() => {
     if (activeTab === "emitidas") {
@@ -586,10 +891,22 @@ export default function OrdenesCompraPage() {
   }, [searchParams, setSearchParams]);
 
   useEffect(() => {
+    if (!modalMode || !debouncedCotizacionId) return;
+    const id = Number(debouncedCotizacionId);
+    if (!id || id <= 0) return;
+
+    void handleLoadPreview();
+  }, [modalMode, debouncedCotizacionId]);
+
+  useEffect(() => {
     if (!ocId) return;
 
-    const isRecibidaRoute = location.pathname.includes("/ordenes-compra/recibidas/");
-    const isEmitidaRoute = location.pathname.includes("/ordenes-compra/emitidas/");
+    const isRecibidaRoute = location.pathname.includes(
+      "/ordenes-compra/recibidas/",
+    );
+    const isEmitidaRoute = location.pathname.includes(
+      "/ordenes-compra/emitidas/",
+    );
     if (!isRecibidaRoute && !isEmitidaRoute) return;
 
     let cancelled = false;
@@ -616,7 +933,10 @@ export default function OrdenesCompraPage() {
         if (!cancelled) {
           showToast({
             title: "Error al abrir notificacion",
-            description: getErrorMessage(error, "No se pudo cargar la orden de compra asociada."),
+            description: getErrorMessage(
+              error,
+              "No se pudo cargar la orden de compra asociada.",
+            ),
             type: "warning",
           });
         }
@@ -661,15 +981,20 @@ export default function OrdenesCompraPage() {
   const handleLoadPreview = async () => {
     const id = Number(cotizacionId);
     if (!id) {
-      showToast({ title: "Cotizacion requerida", description: "Ingresa el ID de cotizacion.", type: "warning" });
+      showToast({
+        title: "Cotizacion requerida",
+        description: "Ingresa el ID de cotizacion.",
+        type: "warning",
+      });
       return;
     }
 
     try {
       setPreviewLoading(true);
-      const data = modalMode === "recibir"
-        ? await getOcRecibidaPreview(id)
-        : await getOcEmitidaPreview(id);
+      const data =
+        modalMode === "recibir"
+          ? await getOcRecibidaPreview(id)
+          : await getOcEmitidaPreview(id);
       const cotizacionData = await getCotizacion(id);
       const dataWithCotizacion: OcPreview = {
         ...data,
@@ -678,9 +1003,12 @@ export default function OrdenesCompraPage() {
           ...cotizacionData,
           id: cotizacionData.id ?? data.cotizacion?.id ?? id,
           numero: cotizacionData.numero ?? data.cotizacion?.numero,
-          cliente_nombre: cotizacionData.cliente_nombre ?? data.cotizacion?.cliente_nombre,
+          cliente_nombre:
+            cotizacionData.cliente_nombre ?? data.cotizacion?.cliente_nombre,
           titulo: cotizacionData.titulo ?? data.cotizacion?.titulo,
-          estado_cotizacion_id: cotizacionData.estado_cotizacion_id ?? data.cotizacion?.estado_cotizacion_id,
+          estado_cotizacion_id:
+            cotizacionData.estado_cotizacion_id ??
+            data.cotizacion?.estado_cotizacion_id,
         },
       };
 
@@ -688,7 +1016,8 @@ export default function OrdenesCompraPage() {
         setPreview(dataWithCotizacion);
         setRecibidaItems([]);
         setEmitidaItems([]);
-        const estadoRecibido = previewEstadoId(dataWithCotizacion) || "sin estado_cotizacion_id";
+        const estadoRecibido =
+          previewEstadoId(dataWithCotizacion) || "sin estado_cotizacion_id";
         showToast({
           title: "Cotizacion no aprobada",
           description: `Solo se puede registrar o emitir OC cuando estado_cotizacion_id es 4. Recibido: ${estadoRecibido}.`,
@@ -706,21 +1035,37 @@ export default function OrdenesCompraPage() {
           cotizacion_item_id: item.cotizacion_item_id ?? item.id,
           descripcion: itemDescription(item),
           seleccionado: true,
-          cantidad_recibida: toNumber(item.cantidad_recibida ?? item.cantidad_pendiente ?? item.cantidad),
-        }))
+          cantidad_recibida: toNumber(
+            item.cantidad_recibida ?? item.cantidad_pendiente ?? item.cantidad,
+          ),
+        })),
       );
-      setEmitidaItems(buildEmitidaDraftItems(dataWithCotizacion.items, modalMode === "emitir" ? proveedor : undefined));
+      setEmitidaItems(
+        buildEmitidaDraftItems(
+          dataWithCotizacion.items,
+          modalMode === "emitir" ? proveedor : undefined,
+        ),
+      );
 
-      if (modalMode === "emitir" && !proveedor && dataWithCotizacion.proveedores?.[0]) {
+      if (
+        modalMode === "emitir" &&
+        !proveedor &&
+        dataWithCotizacion.proveedores?.[0]
+      ) {
         const firstProveedor = dataWithCotizacion.proveedores[0];
         setProveedor(firstProveedor);
-        setEmitidaItems(buildEmitidaDraftItems(dataWithCotizacion.items, firstProveedor));
+        setEmitidaItems(
+          buildEmitidaDraftItems(dataWithCotizacion.items, firstProveedor),
+        );
         void handleProveedorChange(firstProveedor);
       }
     } catch (error) {
       showToast({
         title: "No se pudo cargar el preview",
-        description: getErrorMessage(error, "Verifica que la cotizacion exista y este disponible para OC."),
+        description: getErrorMessage(
+          error,
+          "Verifica que la cotizacion exista y este disponible para OC.",
+        ),
         type: "warning",
       });
     } finally {
@@ -729,34 +1074,48 @@ export default function OrdenesCompraPage() {
   };
 
   const handleProveedorChange = async (value: string) => {
-    setProveedor(value);
+    const cleaned = String(value ?? "").trim();
+    const matchedProveedor = findProveedorCatalog(cleaned);
+    const nextProveedor = matchedProveedor ? matchedProveedor.nombre : cleaned;
+    setProveedor(nextProveedor);
+
     const id = Number(cotizacionId);
-    if (!id || !value) return;
+    if (!id || !nextProveedor) return;
 
     const fallbackPreview = emitidaBasePreview ?? preview;
     if (fallbackPreview) {
-      setEmitidaItems(buildEmitidaDraftItems(fallbackPreview.items, value));
+      setEmitidaItems(
+        buildEmitidaDraftItems(fallbackPreview.items, nextProveedor),
+      );
     }
 
     try {
       setPreviewLoading(true);
-      const data = await getOcEmitidaItems(id, value);
-      const nextItems = data.items.length > 0 ? data.items : fallbackPreview?.items || [];
-      const filteredItems = data.items.length > 0
-        ? buildEmitidaDraftItems(nextItems)
-        : buildEmitidaDraftItems(nextItems, value);
+      const data = await getOcEmitidaItems(id, nextProveedor);
+      const nextItems =
+        data.items.length > 0 ? data.items : fallbackPreview?.items || [];
+      const filteredItems =
+        data.items.length > 0
+          ? buildEmitidaDraftItems(nextItems)
+          : buildEmitidaDraftItems(nextItems, nextProveedor);
       setPreview((current) => ({
         ...data,
         cotizacion: current?.cotizacion ?? fallbackPreview?.cotizacion,
         items: nextItems,
-        proveedores: current?.proveedores ?? fallbackPreview?.proveedores ?? data.proveedores,
+        proveedores:
+          current?.proveedores ??
+          fallbackPreview?.proveedores ??
+          data.proveedores,
       }));
       setEmitidaItems(filteredItems);
     } catch (error) {
       if (!fallbackPreview) {
         showToast({
           title: "Error al filtrar proveedor",
-          description: getErrorMessage(error, "No se pudieron obtener los items del proveedor."),
+          description: getErrorMessage(
+            error,
+            "No se pudieron obtener los items del proveedor.",
+          ),
           type: "warning",
         });
       }
@@ -767,12 +1126,15 @@ export default function OrdenesCompraPage() {
 
   const handleSaveRecibida = async () => {
     const id = Number(cotizacionId);
-    const items = recibidaItems.filter((item) => item.seleccionado && item.cantidad_recibida > 0);
+    const items = recibidaItems.filter(
+      (item) => item.seleccionado && item.cantidad_recibida > 0,
+    );
 
     if (!preview || !isApprovedCotizacion(preview)) {
       showToast({
         title: "Cotizacion no aprobada",
-        description: "Carga una cotizacion aprobada antes de registrar la OC recibida.",
+        description:
+          "Carga una cotizacion aprobada antes de registrar la OC recibida.",
         type: "warning",
       });
       return;
@@ -816,7 +1178,10 @@ export default function OrdenesCompraPage() {
     } catch (error) {
       showToast({
         title: "Error al guardar OC recibida",
-        description: getErrorMessage(error, "No se pudo registrar la OC recibida."),
+        description: getErrorMessage(
+          error,
+          "No se pudo registrar la OC recibida.",
+        ),
         type: "error",
       });
     } finally {
@@ -846,6 +1211,26 @@ export default function OrdenesCompraPage() {
       return;
     }
 
+    if (!selectedProveedorCatalog) {
+      showToast({
+        title: "Proveedor no registrado",
+        description:
+          "Debes seleccionar un proveedor registrado en la base de datos o crearlo antes de emitir la OC.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (!selectedProveedorCatalog.ruc?.trim()) {
+      showToast({
+        title: "RUC faltante",
+        description:
+          "El proveedor seleccionado debe tener un RUC registrado para emitir la OC.",
+        type: "warning",
+      });
+      return;
+    }
+
     try {
       setSaving(true);
       const response = await createOcEmitida({
@@ -858,18 +1243,29 @@ export default function OrdenesCompraPage() {
 
       showToast({
         title: response?.message || "OC emitida",
-        description: response?.pdf_url ? "PDF generado por el backend. Iniciando descarga..." : "La orden fue emitida correctamente.",
+        description: response?.pdf_url
+          ? "PDF generado por el backend. Iniciando descarga..."
+          : "La orden fue emitida correctamente.",
         type: "success",
       });
-      const ocEmitidaId = response?.oc_emitida?.id ?? response?.data?.oc_emitida?.id ?? response?.id;
+      const ocEmitidaId =
+        response?.oc_emitida?.id ??
+        response?.data?.oc_emitida?.id ??
+        response?.id;
 
       if (ocEmitidaId) {
         try {
-          await downloadOcEmitidaPdf(ocEmitidaId, `oc-emitida-${ocEmitidaId}.pdf`);
+          await downloadOcEmitidaPdf(
+            ocEmitidaId,
+            `oc-emitida-${ocEmitidaId}.pdf`,
+          );
         } catch (downloadError) {
           showToast({
             title: "OC emitida, PDF no descargado",
-            description: getErrorMessage(downloadError, "Usa el boton de descarga en la tabla de OC emitidas."),
+            description: getErrorMessage(
+              downloadError,
+              "Usa el boton de descarga en la tabla de OC emitidas.",
+            ),
             type: "warning",
           });
         }
@@ -880,7 +1276,10 @@ export default function OrdenesCompraPage() {
     } catch (error) {
       showToast({
         title: "Error al emitir OC",
-        description: getErrorMessage(error, "No se pudo emitir la orden de compra."),
+        description: getErrorMessage(
+          error,
+          "No se pudo emitir la orden de compra.",
+        ),
         type: "error",
       });
     } finally {
@@ -914,13 +1313,20 @@ export default function OrdenesCompraPage() {
         setSelectedOc(detail);
       }
 
-      showToast({ title: "Documentos actualizados", description: "Los archivos fueron enviados al backend.", type: "success" });
+      showToast({
+        title: "Documentos actualizados",
+        description: "Los archivos fueron enviados al backend.",
+        type: "success",
+      });
       closeDocumentModal(true);
       refreshActiveTab();
     } catch (error) {
       showToast({
         title: "Error al subir documentos",
-        description: getErrorMessage(error, "No se pudieron guardar los documentos."),
+        description: getErrorMessage(
+          error,
+          "No se pudieron guardar los documentos.",
+        ),
         type: "error",
       });
     } finally {
@@ -928,10 +1334,15 @@ export default function OrdenesCompraPage() {
     }
   };
 
-  const handleDeleteDocument = async (tipo: string, additionalId?: number | string) => {
+  const handleDeleteDocument = async (
+    tipo: string,
+    additionalId?: number | string,
+  ) => {
     if (!documentTarget) return;
 
-    const confirmed = window.confirm("Se eliminara el documento seleccionado. Deseas continuar?");
+    const confirmed = window.confirm(
+      "Se eliminara el documento seleccionado. Deseas continuar?",
+    );
     if (!confirmed) return;
 
     const isEmitida = "proveedor" in documentTarget;
@@ -940,7 +1351,10 @@ export default function OrdenesCompraPage() {
       setSaving(true);
       if (isEmitida) {
         if (additionalId) {
-          await deleteOcEmitidaDocumentoAdicional(documentTarget.id, additionalId);
+          await deleteOcEmitidaDocumentoAdicional(
+            documentTarget.id,
+            additionalId,
+          );
         } else {
           await deleteOcEmitidaDocumento(documentTarget.id, tipo);
         }
@@ -949,7 +1363,10 @@ export default function OrdenesCompraPage() {
         setSelectedOc(detail);
       } else {
         if (additionalId) {
-          await deleteOcRecibidaDocumentoAdicional(documentTarget.id, additionalId);
+          await deleteOcRecibidaDocumentoAdicional(
+            documentTarget.id,
+            additionalId,
+          );
         } else {
           await deleteOcRecibidaDocumento(documentTarget.id, tipo);
         }
@@ -959,7 +1376,11 @@ export default function OrdenesCompraPage() {
         setSelectedOc(detail);
       }
 
-      showToast({ title: "Documento eliminado", description: "El archivo fue retirado de la orden de compra.", type: "success" });
+      showToast({
+        title: "Documento eliminado",
+        description: "El archivo fue retirado de la orden de compra.",
+        type: "success",
+      });
       refreshActiveTab();
     } catch (error) {
       showToast({
@@ -983,7 +1404,10 @@ export default function OrdenesCompraPage() {
     } catch (error) {
       showToast({
         title: "Error al cargar detalle",
-        description: getErrorMessage(error, "No se pudo obtener el detalle de la OC recibida."),
+        description: getErrorMessage(
+          error,
+          "No se pudo obtener el detalle de la OC recibida.",
+        ),
         type: "warning",
       });
     } finally {
@@ -999,7 +1423,10 @@ export default function OrdenesCompraPage() {
     } catch (error) {
       showToast({
         title: "Error al cargar detalle",
-        description: getErrorMessage(error, "No se pudo obtener el detalle de la OC emitida."),
+        description: getErrorMessage(
+          error,
+          "No se pudo obtener el detalle de la OC emitida.",
+        ),
         type: "warning",
       });
     } finally {
@@ -1034,7 +1461,10 @@ export default function OrdenesCompraPage() {
     } catch (error) {
       showToast({
         title: "No se pudo descargar el PDF",
-        description: getErrorMessage(error, "Verifica que el PDF exista y que tu sesion siga activa."),
+        description: getErrorMessage(
+          error,
+          "Verifica que el PDF exista y que tu sesion siga activa.",
+        ),
         type: "error",
       });
     }
@@ -1050,7 +1480,8 @@ export default function OrdenesCompraPage() {
     if (field === "comprado") {
       showToast({
         title: "Comprado automatico",
-        description: "Este estado se marca segun conversion o stock interno reservado.",
+        description:
+          "Este estado se marca segun conversion o stock interno reservado.",
         type: "warning",
       });
       return;
@@ -1058,13 +1489,15 @@ export default function OrdenesCompraPage() {
     if (field === "entregado" && checked && !item.comprado) {
       showToast({
         title: "Item no comprado",
-        description: "Primero debe estar comprado con stock interno reservado para poder marcarlo como entregado.",
+        description:
+          "Primero debe estar comprado con stock interno reservado para poder marcarlo como entregado.",
         type: "warning",
       });
       return;
     }
     const availableSeries = getAvailableItemSeries(item, oc);
-    const selectedSeries = ocItemSeries[item.id] || getAssignedItemSerieIds(item, oc);
+    const selectedSeries =
+      ocItemSeries[item.id] || getAssignedItemSerieIds(item, oc);
 
     if (field === "entregado" && checked && itemRequiresSeries(item)) {
       const cantidad = Number(item.cantidad_recibida || 0);
@@ -1072,7 +1505,8 @@ export default function OrdenesCompraPage() {
       if (!Number.isInteger(cantidad)) {
         showToast({
           title: "Cantidad no valida",
-          description: "Para productos con series, la cantidad entregada debe ser entera.",
+          description:
+            "Para productos con series, la cantidad entregada debe ser entera.",
           type: "warning",
         });
         return;
@@ -1091,8 +1525,12 @@ export default function OrdenesCompraPage() {
     const nextItems = oc.items.map((row) => ({
       id: row.id,
       comprado: Boolean(row.comprado),
-      entregado: row.id === item.id && field === "entregado" ? checked : Boolean(row.entregado),
-      producto_serie_ids: row.id === item.id ? selectedSeries : ocItemSeries[row.id] || [],
+      entregado:
+        row.id === item.id && field === "entregado"
+          ? checked
+          : Boolean(row.entregado),
+      producto_serie_ids:
+        row.id === item.id ? selectedSeries : ocItemSeries[row.id] || [],
     }));
     try {
       setUpdatingItemOc(oc.id);
@@ -1100,12 +1538,20 @@ export default function OrdenesCompraPage() {
       const detail = await getOcRecibida(oc.id);
       setOcItemSeries(getOcSerieSelectionMap(detail));
       setSelectedOc(detail);
-      showToast({ title: "Items actualizados", description: "Entregado fue sincronizado y comprado se recalculo con inventario.", type: "success" });
+      showToast({
+        title: "Items actualizados",
+        description:
+          "Entregado fue sincronizado y comprado se recalculo con inventario.",
+        type: "success",
+      });
       void loadRecibidas(recibidasPagination.page);
     } catch (error) {
       showToast({
         title: "Error al actualizar items",
-        description: getErrorMessage(error, "No se pudo actualizar el estado de los items."),
+        description: getErrorMessage(
+          error,
+          "No se pudo actualizar el estado de los items.",
+        ),
         type: "error",
       });
     } finally {
@@ -1140,7 +1586,11 @@ export default function OrdenesCompraPage() {
         type: "success",
       });
 
-      if (selectedOc && "fecha_recepcion" in selectedOc && Number(selectedOc.id) === Number(oc.id)) {
+      if (
+        selectedOc &&
+        "fecha_recepcion" in selectedOc &&
+        Number(selectedOc.id) === Number(oc.id)
+      ) {
         const detail = await getOcRecibida(oc.id);
         setOcItemSeries(getOcSerieSelectionMap(detail));
         setSelectedOc(detail);
@@ -1150,7 +1600,10 @@ export default function OrdenesCompraPage() {
     } catch (error) {
       showToast({
         title: "No se pudo cancelar la OC",
-        description: getErrorMessage(error, "Revisa si la OC ya fue atendida o si tiene salidas de inventario."),
+        description: getErrorMessage(
+          error,
+          "Revisa si la OC ya fue atendida o si tiene salidas de inventario.",
+        ),
         type: "error",
       });
     } finally {
@@ -1202,18 +1655,35 @@ export default function OrdenesCompraPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <SummaryCard icon={<Send size={22} />} label="OC emitidas" value={emitidasPagination.total} tone="blue" />
-        <SummaryCard icon={<ClipboardCheck size={22} />} label="OC recibidas" value={recibidasPagination.total} tone="emerald" />
+        <SummaryCard
+          icon={<Send size={22} />}
+          label="OC emitidas"
+          value={emitidasPagination.total}
+          tone="blue"
+        />
+        <SummaryCard
+          icon={<ClipboardCheck size={22} />}
+          label="OC recibidas"
+          value={recibidasPagination.total}
+          tone="emerald"
+        />
         <SummaryCard
           icon={<AlertTriangle size={22} />}
           label="Doc. pendientes"
-          value={[...emitidas, ...recibidas].filter((oc) => oc.documentos_completos === false).length}
+          value={
+            [...emitidas, ...recibidas].filter(
+              (oc) => oc.documentos_completos === false,
+            ).length
+          }
           tone="amber"
         />
         <SummaryCard
           icon={<CheckCircle size={22} />}
           label="Atendidas"
-          value={[...emitidas, ...recibidas].filter((oc) => oc.estado === "atendido").length}
+          value={
+            [...emitidas, ...recibidas].filter((oc) => oc.estado === "atendido")
+              .length
+          }
           tone="slate"
         />
       </div>
@@ -1221,8 +1691,18 @@ export default function OrdenesCompraPage() {
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="border-b border-gray-200 p-2 dark:border-slate-800">
           <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-950 sm:w-[420px]">
-            <TabButton active={activeTab === "recibidas"} onClick={() => setActiveTab("recibidas")} icon={<ClipboardCheck size={16} />} label="OC recibidas" />
-            <TabButton active={activeTab === "emitidas"} onClick={() => setActiveTab("emitidas")} icon={<Send size={16} />} label="OC emitidas" />
+            <TabButton
+              active={activeTab === "recibidas"}
+              onClick={() => setActiveTab("recibidas")}
+              icon={<ClipboardCheck size={16} />}
+              label="OC recibidas"
+            />
+            <TabButton
+              active={activeTab === "emitidas"}
+              onClick={() => setActiveTab("emitidas")}
+              icon={<Send size={16} />}
+              label="OC emitidas"
+            />
           </div>
         </div>
 
@@ -1252,9 +1732,16 @@ export default function OrdenesCompraPage() {
               className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white sm:w-56"
             >
               <option value="todos">Todos los estados</option>
-              {(activeTab === "emitidas" ? Object.keys(estadoEmitidaLabels) : Object.keys(estadoRecibidaLabels)).map((estado) => (
+              {(activeTab === "emitidas"
+                ? Object.keys(estadoEmitidaLabels)
+                : Object.keys(estadoRecibidaLabels)
+              ).map((estado) => (
                 <option key={estado} value={estado}>
-                  {(activeTab === "emitidas" ? estadoEmitidaLabels : estadoRecibidaLabels)[estado]}
+                  {
+                    (activeTab === "emitidas"
+                      ? estadoEmitidaLabels
+                      : estadoRecibidaLabels)[estado]
+                  }
                 </option>
               ))}
             </select>
@@ -1301,7 +1788,10 @@ export default function OrdenesCompraPage() {
         {currentPagination.total > 0 && (
           <div className="flex flex-col gap-3 border-t border-gray-200 px-5 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-2 text-sm text-slate-500 sm:flex-row sm:items-center sm:gap-4">
-              <span>Mostrando {currentPagination.from} a {currentPagination.to} de {currentPagination.total}</span>
+              <span>
+                Mostrando {currentPagination.from} a {currentPagination.to} de{" "}
+                {currentPagination.total}
+              </span>
               <PageSizeSelect
                 value={perPage}
                 onChange={(value) => {
@@ -1311,69 +1801,106 @@ export default function OrdenesCompraPage() {
                 }}
               />
             </div>
-            {currentPagination.totalPages > 1 && <div className="flex flex-wrap items-center gap-2">
-              <PageButton
-                disabled={currentPagination.page <= 1}
-                onClick={() => activeTab === "emitidas" ? loadEmitidas(currentPagination.page - 1) : loadRecibidas(currentPagination.page - 1)}
-              >
-                <ChevronLeft size={17} />
-              </PageButton>
-              {paginationItems.map((item) =>
-                typeof item === "number" ? (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => activeTab === "emitidas" ? loadEmitidas(item) : loadRecibidas(item)}
-                    className={`rounded-lg px-3 py-2 text-sm font-semibold ${
-                      currentPagination.page === item
-                        ? "bg-blue-600 text-white"
-                        : "border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300"
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ) : (
-                  <span key={item} className="px-1 text-slate-400">...</span>
-                )
-              )}
-              <PageButton
-                disabled={currentPagination.page >= currentPagination.totalPages}
-                onClick={() => activeTab === "emitidas" ? loadEmitidas(currentPagination.page + 1) : loadRecibidas(currentPagination.page + 1)}
-              >
-                <ChevronRight size={17} />
-              </PageButton>
-            </div>}
+            {currentPagination.totalPages > 1 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <PageButton
+                  disabled={currentPagination.page <= 1}
+                  onClick={() =>
+                    activeTab === "emitidas"
+                      ? loadEmitidas(currentPagination.page - 1)
+                      : loadRecibidas(currentPagination.page - 1)
+                  }
+                >
+                  <ChevronLeft size={17} />
+                </PageButton>
+                {paginationItems.map((item) =>
+                  typeof item === "number" ? (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() =>
+                        activeTab === "emitidas"
+                          ? loadEmitidas(item)
+                          : loadRecibidas(item)
+                      }
+                      className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+                        currentPagination.page === item
+                          ? "bg-blue-600 text-white"
+                          : "border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300"
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  ) : (
+                    <span key={item} className="px-1 text-slate-400">
+                      ...
+                    </span>
+                  ),
+                )}
+                <PageButton
+                  disabled={
+                    currentPagination.page >= currentPagination.totalPages
+                  }
+                  onClick={() =>
+                    activeTab === "emitidas"
+                      ? loadEmitidas(currentPagination.page + 1)
+                      : loadRecibidas(currentPagination.page + 1)
+                  }
+                >
+                  <ChevronRight size={17} />
+                </PageButton>
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {modalMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl dark:bg-slate-950">
+          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-[30px] bg-white shadow-2xl dark:bg-slate-950">
             <ModalHeader
-              title={modalMode === "emitir" ? "Emitir OC a proveedor" : "Registrar OC recibida"}
+              title={
+                modalMode === "emitir"
+                  ? "Emitir OC a proveedor"
+                  : "Registrar OC recibida"
+              }
               onClose={closeCreateModal}
             />
             <div className="space-y-5 p-6">
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+              <div className="rounded-[26px] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Preview automático
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Ingresa el ID de cotizaci&oacute;n y el preview se
+                  actualizar&aacute; autom&aacute;ticamente. Si necesitas forzar
+                  una recarga, usa el bot&oacute;n de actualizar.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-[1.3fr_0.9fr_0.8fr]">
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-slate-600 dark:text-slate-300">ID cotizacion</span>
+                  <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                    ID cotizacion
+                  </span>
                   <input
                     type="number"
                     value={cotizacionId}
                     onChange={(event) => setCotizacionId(event.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                   />
                 </label>
                 <label className="space-y-2">
                   <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                    {modalMode === "emitir" ? "Fecha emision" : "Fecha recepcion"}
+                    {modalMode === "emitir"
+                      ? "Fecha emision"
+                      : "Fecha recepcion"}
                   </span>
                   <input
                     type="date"
                     value={fecha}
                     onChange={(event) => setFecha(event.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                   />
                 </label>
                 <div className="flex items-end">
@@ -1381,52 +1908,189 @@ export default function OrdenesCompraPage() {
                     type="button"
                     onClick={handleLoadPreview}
                     disabled={previewLoading}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
                   >
-                    {previewLoading ? <Loader2 size={17} className="animate-spin" /> : <Eye size={17} />}
-                    Cargar preview
+                    {previewLoading ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Eye size={16} />
+                    )}
+                    Actualizar
                   </button>
                 </div>
-                {modalMode === "emitir" && (
-                  <label className="space-y-2">
-                    <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Proveedor</span>
-                    {proveedorOptions.length > 0 ? (
-                      <select
-                        value={proveedor}
-                        onChange={(event) => void handleProveedorChange(event.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                      >
-                        <option value="">Seleccionar</option>
-                        {proveedorOptions.map((option) => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        value={proveedor}
-                        onChange={(event) => setProveedor(event.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                      />
-                    )}
-                  </label>
-                )}
               </div>
+
+              {modalMode === "emitir" && (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                      Proveedor
+                    </span>
+                    <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+                      <input
+                        list="proveedor-list"
+                        value={proveedor}
+                        onChange={(event) =>
+                          void handleProveedorChange(event.target.value)
+                        }
+                        placeholder="Escribe o selecciona proveedor"
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowNuevoProveedorForm((current) => !current)
+                        }
+                        className="inline-flex h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                      >
+                        {showNuevoProveedorForm
+                          ? "Cancelar"
+                          : "Nuevo proveedor"}
+                      </button>
+                    </div>
+                    <datalist id="proveedor-list">
+                      {proveedorOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.value}
+                        </option>
+                      ))}
+                    </datalist>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                    {selectedModalProviderRuc ? (
+                      <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-200">
+                        <span>Proveedor registrado</span>
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800 dark:bg-emerald-700/30 dark:text-emerald-100">
+                          RUC: {selectedModalProviderRuc}
+                        </span>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="font-semibold">
+                          Proveedor no seleccionado o no registrado
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                          Escribe un proveedor válido y el sistema te mostrará
+                          coincidencias con los proveedores registrados.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {similarProveedor &&
+                    !selectedProveedorCatalog &&
+                    proveedor.trim() && (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/20 dark:text-amber-200">
+                        <p className="font-semibold">
+                          ¿Tu proveedor es{" "}
+                          <span className="text-slate-900 dark:text-white">
+                            {similarProveedor.nombre}
+                          </span>
+                          ?
+                        </p>
+                        {similarProveedor.ruc && (
+                          <p className="text-xs">RUC: {similarProveedor.ruc}</p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleProveedorChange(similarProveedor.nombre)
+                          }
+                          className="mt-2 inline-flex items-center justify-center rounded-2xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+                        >
+                          Sí, usar proveedor registrado
+                        </button>
+                      </div>
+                    )}
+
+                  {showNuevoProveedorForm && (
+                    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="space-y-2">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Nombre del proveedor
+                          </span>
+                          <input
+                            value={nuevoProveedor.nombre}
+                            onChange={(event) =>
+                              handleNuevoProveedorChange(
+                                "nombre",
+                                event.target.value,
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                          />
+                        </label>
+                        <label className="space-y-2">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            RUC
+                          </span>
+                          <input
+                            value={nuevoProveedor.ruc || ""}
+                            onChange={(event) =>
+                              handleNuevoProveedorChange(
+                                "ruc",
+                                event.target.value,
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                          />
+                        </label>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={resetNuevoProveedorForm}
+                          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCreateProveedor}
+                          disabled={
+                            creatingProveedor || !nuevoProveedor.nombre.trim()
+                          }
+                          className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                        >
+                          {creatingProveedor
+                            ? "Guardando..."
+                            : "Crear proveedor"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {preview?.cotizacion && (
                 <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
-                  <span className="font-semibold">{getPreviewCotizacionLabel(preview, cotizacionId)}</span>
-                  {preview.cotizacion.cliente_nombre ? ` - ${preview.cotizacion.cliente_nombre}` : ""}
+                  <span className="font-semibold">
+                    {getPreviewCotizacionLabel(preview, cotizacionId)}
+                  </span>
+                  {preview.cotizacion.cliente_nombre
+                    ? ` - ${preview.cotizacion.cliente_nombre}`
+                    : ""}
                 </div>
               )}
 
               {modalMode === "recibir" ? (
-                <RecibidaDraftTable rows={recibidaItems} setRows={setRecibidaItems} />
+                <RecibidaDraftTable
+                  rows={recibidaItems}
+                  setRows={setRecibidaItems}
+                />
               ) : (
-                <EmitidaDraftTable rows={emitidaItems} setRows={setEmitidaItems} />
+                <EmitidaDraftTable
+                  rows={emitidaItems}
+                  setRows={setEmitidaItems}
+                />
               )}
 
               <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Observaciones</span>
+                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                  Observaciones
+                </span>
                 <textarea
                   value={observaciones}
                   onChange={(event) => setObservaciones(event.target.value)}
@@ -1437,8 +2101,16 @@ export default function OrdenesCompraPage() {
 
               {modalMode === "recibir" && (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <FileInput label="Orden de compra cliente" file={ordenCompraCliente} onFileChange={setOrdenCompraCliente} />
-                  <FileInput label="Guia de emision" file={guiaEmision} onFileChange={setGuiaEmision} />
+                  <FileInput
+                    label="Orden de compra cliente"
+                    file={ordenCompraCliente}
+                    onFileChange={setOrdenCompraCliente}
+                  />
+                  <FileInput
+                    label="Guia de emision"
+                    file={guiaEmision}
+                    onFileChange={setGuiaEmision}
+                  />
                 </div>
               )}
             </div>
@@ -1453,11 +2125,19 @@ export default function OrdenesCompraPage() {
               </button>
               <button
                 type="button"
-                onClick={modalMode === "emitir" ? handleSaveEmitida : handleSaveRecibida}
+                onClick={
+                  modalMode === "emitir"
+                    ? handleSaveEmitida
+                    : handleSaveRecibida
+                }
                 disabled={saving}
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
               >
-                {saving ? <Loader2 size={17} className="animate-spin" /> : <FilePlus2 size={17} />}
+                {saving ? (
+                  <Loader2 size={17} className="animate-spin" />
+                ) : (
+                  <FilePlus2 size={17} />
+                )}
                 {modalMode === "emitir" ? "Emitir OC" : "Guardar OC recibida"}
               </button>
             </div>
@@ -1474,6 +2154,7 @@ export default function OrdenesCompraPage() {
           onClose={() => setSelectedOc(null)}
           onToggleItem={handleToggleRecibidaItem}
           selectedSeries={ocItemSeries}
+          selectedOcProviderRuc={selectedOcProviderRuc}
           onSelectSerie={handleSelectOcItemSeries}
         />
       )}
@@ -1481,11 +2162,16 @@ export default function OrdenesCompraPage() {
       {documentTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl dark:bg-slate-950">
-            <ModalHeader title={`Subir documentos - ${getOcLabel(documentTarget)}`} onClose={closeDocumentModal} />
+            <ModalHeader
+              title={`Subir documentos - ${getOcLabel(documentTarget)}`}
+              onClose={closeDocumentModal}
+            />
             <div className="space-y-4 p-6">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Documentos subidos</h3>
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                    Documentos subidos
+                  </h3>
                   <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-500 dark:bg-slate-950">
                     {getManagedDocumentLinks(documentTarget).length}
                   </span>
@@ -1498,9 +2184,13 @@ export default function OrdenesCompraPage() {
                         className="flex items-center justify-between gap-3 rounded-lg border border-white bg-white px-3 py-2 text-sm shadow-sm dark:border-slate-800 dark:bg-slate-950"
                       >
                         <div className="min-w-0">
-                          <p className="truncate font-semibold text-slate-800 dark:text-slate-100">{document.label}</p>
+                          <p className="truncate font-semibold text-slate-800 dark:text-slate-100">
+                            {document.label}
+                          </p>
                           <p className="text-xs text-slate-500">
-                            {document.additional ? "Documento adicional" : "Documento unico"}
+                            {document.additional
+                              ? "Documento adicional"
+                              : "Documento unico"}
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-1">
@@ -1516,7 +2206,12 @@ export default function OrdenesCompraPage() {
                           {canDeleteOcDocument(documentTarget, document) && (
                             <button
                               type="button"
-                              onClick={() => handleDeleteDocument(document.tipo || "", document.id)}
+                              onClick={() =>
+                                handleDeleteDocument(
+                                  document.tipo || "",
+                                  document.id,
+                                )
+                              }
                               disabled={saving}
                               className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
                               title="Eliminar documento"
@@ -1529,38 +2224,63 @@ export default function OrdenesCompraPage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-500">Aun no hay documentos subidos para esta orden.</p>
+                  <p className="text-sm text-slate-500">
+                    Aun no hay documentos subidos para esta orden.
+                  </p>
                 )}
               </div>
               {"proveedor" in documentTarget ? (
                 <>
                   {!hasOcDocument(documentTarget, "factura") && (
-                    <FileInput label="Factura" file={factura} onFileChange={setFactura} />
+                    <FileInput
+                      label="Factura"
+                      file={factura}
+                      onFileChange={setFactura}
+                    />
                   )}
                   {!hasOcDocument(documentTarget, "comprobante_pago") && (
-                    <FileInput label="Comprobante de pago" file={comprobantePago} onFileChange={setComprobantePago} />
+                    <FileInput
+                      label="Comprobante de pago"
+                      file={comprobantePago}
+                      onFileChange={setComprobantePago}
+                    />
                   )}
                 </>
               ) : (
                 <>
                   {!hasOcDocument(documentTarget, "orden_compra_cliente") && (
-                    <FileInput label="Orden de compra cliente" file={ordenCompraCliente} onFileChange={setOrdenCompraCliente} />
+                    <FileInput
+                      label="Orden de compra cliente"
+                      file={ordenCompraCliente}
+                      onFileChange={setOrdenCompraCliente}
+                    />
                   )}
                   {!hasOcDocument(documentTarget, "guia_emision") && (
-                    <FileInput label="Guia de emision" file={guiaEmision} onFileChange={setGuiaEmision} />
+                    <FileInput
+                      label="Guia de emision"
+                      file={guiaEmision}
+                      onFileChange={setGuiaEmision}
+                    />
                   )}
-                  {(!hasOcDocument(documentTarget, "factura") || !(documentTarget as OcRecibida).factura_numero) && (
+                  {(!hasOcDocument(documentTarget, "factura") ||
+                    !(documentTarget as OcRecibida).factura_numero) && (
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
                       Numero de factura
                       <input
                         value={facturaNumero}
-                        onChange={(event) => setFacturaNumero(event.target.value)}
+                        onChange={(event) =>
+                          setFacturaNumero(event.target.value)
+                        }
                         className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                       />
                     </label>
                   )}
                   {!hasOcDocument(documentTarget, "factura") && (
-                    <FileInput label="Factura" file={factura} onFileChange={setFactura} />
+                    <FileInput
+                      label="Factura"
+                      file={factura}
+                      onFileChange={setFactura}
+                    />
                   )}
                 </>
               )}
@@ -1585,7 +2305,11 @@ export default function OrdenesCompraPage() {
                 disabled={saving}
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
               >
-                {saving ? <Loader2 size={17} className="animate-spin" /> : <Upload size={17} />}
+                {saving ? (
+                  <Loader2 size={17} className="animate-spin" />
+                ) : (
+                  <Upload size={17} />
+                )}
                 Subir
               </button>
             </div>
@@ -1596,7 +2320,17 @@ export default function OrdenesCompraPage() {
   );
 }
 
-function SummaryCard({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: number; tone: "blue" | "emerald" | "amber" | "slate" }) {
+function SummaryCard({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  tone: "blue" | "emerald" | "amber" | "slate";
+}) {
   const tones = {
     blue: "bg-blue-100 text-blue-700",
     emerald: "bg-emerald-100 text-emerald-700",
@@ -1610,20 +2344,34 @@ function SummaryCard({ icon, label, value, tone }: { icon: React.ReactNode; labe
         <div className={`rounded-xl p-3 ${tones[tone]}`}>{icon}</div>
         <div>
           <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
-          <p className="text-2xl font-bold text-slate-900 dark:text-white">{value}</p>
+          <p className="text-2xl font-bold text-slate-900 dark:text-white">
+            {value}
+          </p>
         </div>
       </div>
     </div>
   );
 }
 
-function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+function TabButton({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-        active ? "bg-white text-blue-700 shadow-sm dark:bg-slate-800 dark:text-blue-200" : "text-slate-600 hover:text-slate-900 dark:text-slate-300"
+        active
+          ? "bg-white text-blue-700 shadow-sm dark:bg-slate-800 dark:text-blue-200"
+          : "text-slate-600 hover:text-slate-900 dark:text-slate-300"
       }`}
     >
       {icon} {label}
@@ -1631,7 +2379,15 @@ function TabButton({ active, onClick, icon, label }: { active: boolean; onClick:
   );
 }
 
-function PageButton({ disabled, onClick, children }: { disabled: boolean; onClick: () => void; children: React.ReactNode }) {
+function PageButton({
+  disabled,
+  onClick,
+  children,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       type="button"
@@ -1644,10 +2400,18 @@ function PageButton({ disabled, onClick, children }: { disabled: boolean; onClic
   );
 }
 
-function ModalHeader({ title, onClose }: { title: string; onClose: () => void }) {
+function ModalHeader({
+  title,
+  onClose,
+}: {
+  title: string;
+  onClose: () => void;
+}) {
   return (
     <div className="flex items-center justify-between border-b border-gray-200 p-6 dark:border-slate-800">
-      <h2 className="text-lg font-bold text-slate-900 dark:text-white">{title}</h2>
+      <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+        {title}
+      </h2>
       <button
         type="button"
         onClick={onClose}
@@ -1790,88 +2554,71 @@ function EmitidasTable({
 }) {
   return (
     <>
-    <div className="grid gap-3 p-4 lg:hidden">
-      {rows.length ? rows.map((oc) => (
-        <div key={oc.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate font-bold text-blue-600">{getOcLabel(oc)}</p>
-              <p className="mt-1 truncate text-sm text-slate-500">{getCotizacionLabel(oc)}</p>
-            </div>
-            <EstadoBadge estado={oc.estado} labels={estadoEmitidaLabels} />
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <p className="text-xs font-semibold uppercase text-slate-400">Proveedor</p>
-              <p className="mt-1 truncate font-medium text-slate-700 dark:text-slate-200">{oc.proveedor || "N/A"}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase text-slate-400">Fecha</p>
-              <p className="mt-1 flex items-center gap-1 text-slate-600 dark:text-slate-300"><Calendar size={14} />{formatDate(oc.fecha_emision)}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase text-slate-400">Total</p>
-              <p className="mt-1 font-bold text-slate-900 dark:text-slate-100">{formatMoney(oc.total, "S/")}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase text-slate-400">Documentos</p>
-              <div className="mt-1"><DocumentStatus oc={oc} /></div>
-            </div>
-          </div>
-          <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
-            <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
-            <IconButton
-              title={canUploadDocuments(oc) ? "Subir documentos" : "No tienes permisos para subir documentos"}
-              onClick={() => onDocuments(oc)}
-              icon={<Upload size={17} />}
-              disabled={!canUploadDocuments(oc)}
-            />
-            <button
-              type="button"
-              onClick={() => onDownloadPdf(oc)}
-              className="inline-flex h-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100"
-              title="Descargar PDF"
+      <div className="grid gap-3 p-4 lg:hidden">
+        {rows.length ? (
+          rows.map((oc) => (
+            <div
+              key={oc.id}
+              className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950"
             >
-              <Download size={17} />
-            </button>
-          </div>
-        </div>
-      )) : (
-        <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800">
-          No hay registros
-        </div>
-      )}
-    </div>
-
-    <div className="hidden overflow-x-auto lg:block">
-    <table className="w-full min-w-[980px]">
-      <thead className="bg-gray-50 text-left text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
-        <tr>
-          <th className="px-5 py-4">OC</th>
-          <th className="px-5 py-4">Cotizacion</th>
-          <th className="px-5 py-4">Proveedor</th>
-          <th className="px-5 py-4">Fecha</th>
-          <th className="px-5 py-4">Total</th>
-          <th className="px-5 py-4">Documentos</th>
-          <th className="px-5 py-4">Estado</th>
-          <th className="sticky right-0 z-10 bg-gray-50 px-5 py-4 text-center shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">Acciones</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.length ? rows.map((oc) => (
-          <tr key={oc.id} className="border-t border-gray-100 text-sm dark:border-slate-800">
-            <td className="px-5 py-4 font-semibold text-blue-600">{getOcLabel(oc)}</td>
-            <td className="px-5 py-4">{getCotizacionLabel(oc)}</td>
-            <td className="px-5 py-4">{oc.proveedor || "N/A"}</td>
-            <td className="px-5 py-4"><span className="inline-flex items-center gap-2"><Calendar size={15} />{formatDate(oc.fecha_emision)}</span></td>
-            <td className="px-5 py-4 font-semibold">{formatMoney(oc.total, "S/")}</td>
-            <td className="px-5 py-4"><DocumentStatus oc={oc} /></td>
-            <td className="px-5 py-4"><EstadoBadge estado={oc.estado} labels={estadoEmitidaLabels} /></td>
-            <td className="sticky right-0 bg-white px-5 py-4 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">
-              <div className="flex justify-center gap-2">
-                <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-bold text-blue-600">
+                    {getOcLabel(oc)}
+                  </p>
+                  <p className="mt-1 truncate text-sm text-slate-500">
+                    {getCotizacionLabel(oc)}
+                  </p>
+                </div>
+                <EstadoBadge estado={oc.estado} labels={estadoEmitidaLabels} />
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">
+                    Proveedor
+                  </p>
+                  <p className="mt-1 truncate font-medium text-slate-700 dark:text-slate-200">
+                    {oc.proveedor || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">
+                    Fecha
+                  </p>
+                  <p className="mt-1 flex items-center gap-1 text-slate-600 dark:text-slate-300">
+                    <Calendar size={14} />
+                    {formatDate(oc.fecha_emision)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">
+                    Total
+                  </p>
+                  <p className="mt-1 font-bold text-slate-900 dark:text-slate-100">
+                    {formatMoney(oc.total, "S/")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">
+                    Documentos
+                  </p>
+                  <div className="mt-1">
+                    <DocumentStatus oc={oc} />
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
                 <IconButton
-                  title={canUploadDocuments(oc) ? "Subir documentos" : "No tienes permisos para subir documentos"}
+                  title="Ver detalle"
+                  onClick={() => onView(oc)}
+                  icon={<Eye size={17} />}
+                />
+                <IconButton
+                  title={
+                    canUploadDocuments(oc)
+                      ? "Subir documentos"
+                      : "No tienes permisos para subir documentos"
+                  }
                   onClick={() => onDocuments(oc)}
                   icon={<Upload size={17} />}
                   disabled={!canUploadDocuments(oc)}
@@ -1879,20 +2626,102 @@ function EmitidasTable({
                 <button
                   type="button"
                   onClick={() => onDownloadPdf(oc)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100"
+                  className="inline-flex h-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100"
                   title="Descargar PDF"
                 >
                   <Download size={17} />
                 </button>
               </div>
-            </td>
-          </tr>
-        )) : (
-          <EmptyRow colSpan={8} />
+            </div>
+          ))
+        ) : (
+          <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800">
+            No hay registros
+          </div>
         )}
-      </tbody>
-    </table>
-    </div>
+      </div>
+
+      <div className="hidden overflow-x-auto lg:block">
+        <table className="w-full min-w-[980px]">
+          <thead className="bg-gray-50 text-left text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
+            <tr>
+              <th className="px-5 py-4">OC</th>
+              <th className="px-5 py-4">Cotizacion</th>
+              <th className="px-5 py-4">Proveedor</th>
+              <th className="px-5 py-4">Fecha</th>
+              <th className="px-5 py-4">Total</th>
+              <th className="px-5 py-4">Documentos</th>
+              <th className="px-5 py-4">Estado</th>
+              <th className="sticky right-0 z-10 bg-gray-50 px-5 py-4 text-center shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">
+                Acciones
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length ? (
+              rows.map((oc) => (
+                <tr
+                  key={oc.id}
+                  className="border-t border-gray-100 text-sm dark:border-slate-800"
+                >
+                  <td className="px-5 py-4 font-semibold text-blue-600">
+                    {getOcLabel(oc)}
+                  </td>
+                  <td className="px-5 py-4">{getCotizacionLabel(oc)}</td>
+                  <td className="px-5 py-4">{oc.proveedor || "N/A"}</td>
+                  <td className="px-5 py-4">
+                    <span className="inline-flex items-center gap-2">
+                      <Calendar size={15} />
+                      {formatDate(oc.fecha_emision)}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4 font-semibold">
+                    {formatMoney(oc.total, "S/")}
+                  </td>
+                  <td className="px-5 py-4">
+                    <DocumentStatus oc={oc} />
+                  </td>
+                  <td className="px-5 py-4">
+                    <EstadoBadge
+                      estado={oc.estado}
+                      labels={estadoEmitidaLabels}
+                    />
+                  </td>
+                  <td className="sticky right-0 bg-white px-5 py-4 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">
+                    <div className="flex justify-center gap-2">
+                      <IconButton
+                        title="Ver detalle"
+                        onClick={() => onView(oc)}
+                        icon={<Eye size={17} />}
+                      />
+                      <IconButton
+                        title={
+                          canUploadDocuments(oc)
+                            ? "Subir documentos"
+                            : "No tienes permisos para subir documentos"
+                        }
+                        onClick={() => onDocuments(oc)}
+                        icon={<Upload size={17} />}
+                        disabled={!canUploadDocuments(oc)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => onDownloadPdf(oc)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100"
+                        title="Descargar PDF"
+                      >
+                        <Download size={17} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <EmptyRow colSpan={8} />
+            )}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }
@@ -1912,7 +2741,12 @@ function RecibidasTable({
   onView: (oc: OcRecibida) => void;
   onDocuments: (oc: OcRecibida) => void;
   onCancel: (oc: OcRecibida) => void;
-  onToggleItem: (oc: OcRecibida, item: OcRecibidaItem, field: "comprado" | "entregado", checked: boolean) => void;
+  onToggleItem: (
+    oc: OcRecibida,
+    item: OcRecibidaItem,
+    field: "comprado" | "entregado",
+    checked: boolean,
+  ) => void;
   updatingItemOc: number | null;
   canEditOc: (oc: OcRecibida) => boolean;
   canUploadDocuments: (oc: OcRecibida) => boolean;
@@ -1920,161 +2754,304 @@ function RecibidasTable({
 }) {
   return (
     <>
-    <div className="grid gap-3 p-4 lg:hidden">
-      {rows.length ? rows.map((oc) => (
-        <div key={oc.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate font-bold text-emerald-600">{getOcLabel(oc)}</p>
-              <p className="mt-1 truncate text-sm text-slate-500">{getCotizacionLabel(oc)}</p>
-            </div>
-            <EstadoBadge estado={oc.estado} labels={estadoRecibidaLabels} />
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <p className="text-xs font-semibold uppercase text-slate-400">Fecha</p>
-              <p className="mt-1 flex items-center gap-1 text-slate-600 dark:text-slate-300"><Calendar size={14} />{formatDate(oc.fecha_recepcion)}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase text-slate-400">Documentos</p>
-              <div className="mt-1"><DocumentStatus oc={oc} /></div>
-            </div>
-          </div>
-          <div className="mt-3 space-y-2">
-            {(oc.items || []).length > 0 ? (oc.items || []).slice(0, 2).map((item) => (
-              <div key={item.id} className="rounded-xl bg-slate-50 px-3 py-2 text-xs dark:bg-slate-900">
-                <p className="font-semibold text-slate-700 dark:text-slate-200">{itemDescription(item)}</p>
-                <div className="mt-2 flex flex-wrap gap-3 text-slate-500">
-                  <label className="inline-flex items-center gap-1">
-                    <input type="checkbox" checked={Boolean(item.comprado)} disabled onChange={(event) => onToggleItem(oc, item, "comprado", event.target.checked)} />
-                    Comprado
-                  </label>
-                  <label className="inline-flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(item.entregado)}
-                      disabled={updatingItemOc === oc.id || !canEditOc(oc) || !item.comprado}
-                      onChange={(event) => onToggleItem(oc, item, "entregado", event.target.checked)}
-                    />
-                    Entregado
-                  </label>
+      <div className="grid gap-3 p-4 lg:hidden">
+        {rows.length ? (
+          rows.map((oc) => (
+            <div
+              key={oc.id}
+              className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-bold text-emerald-600">
+                    {getOcLabel(oc)}
+                  </p>
+                  <p className="mt-1 truncate text-sm text-slate-500">
+                    {getCotizacionLabel(oc)}
+                  </p>
+                </div>
+                <EstadoBadge estado={oc.estado} labels={estadoRecibidaLabels} />
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">
+                    Fecha
+                  </p>
+                  <p className="mt-1 flex items-center gap-1 text-slate-600 dark:text-slate-300">
+                    <Calendar size={14} />
+                    {formatDate(oc.fecha_recepcion)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">
+                    Documentos
+                  </p>
+                  <div className="mt-1">
+                    <DocumentStatus oc={oc} />
+                  </div>
                 </div>
               </div>
-            )) : (
-              <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                {getOcItemsCount(oc)} items
-              </span>
-            )}
-            {(oc.items || []).length > 2 && <p className="text-xs text-slate-400">+{(oc.items || []).length - 2} items mas</p>}
-          </div>
-          <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
-            <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
-            <IconButton
-              title={canUploadDocuments(oc) ? "Subir documentos" : "No tienes permisos para subir documentos"}
-              onClick={() => onDocuments(oc)}
-              icon={<Upload size={17} />}
-              disabled={!canUploadDocuments(oc)}
-            />
-            <IconButton
-              title={canCancelOc(oc) ? "Cancelar OC y liberar reservas" : "Solo se puede cancelar antes de atender"}
-              onClick={() => onCancel(oc)}
-              icon={<X size={17} />}
-              disabled={!canCancelOc(oc) || updatingItemOc === oc.id}
-            />
-          </div>
-        </div>
-      )) : (
-        <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800">
-          No hay registros
-        </div>
-      )}
-    </div>
-
-    <div className="hidden overflow-x-auto lg:block">
-    <table className="w-full min-w-[1080px]">
-      <thead className="bg-gray-50 text-left text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
-        <tr>
-          <th className="px-5 py-4">OC</th>
-          <th className="px-5 py-4">Cotizacion</th>
-          <th className="px-5 py-4">Fecha</th>
-          <th className="px-5 py-4">Items</th>
-          <th className="px-5 py-4">Documentos</th>
-          <th className="px-5 py-4">Estado</th>
-          <th className="sticky right-0 z-10 bg-gray-50 px-5 py-4 text-center shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">Acciones</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.length ? rows.map((oc) => (
-          <tr key={oc.id} className="border-t border-gray-100 align-top text-sm dark:border-slate-800">
-            <td className="px-5 py-4 font-semibold text-emerald-600">{getOcLabel(oc)}</td>
-            <td className="px-5 py-4">{getCotizacionLabel(oc)}</td>
-            <td className="px-5 py-4"><span className="inline-flex items-center gap-2"><Calendar size={15} />{formatDate(oc.fecha_recepcion)}</span></td>
-            <td className="sticky right-0 bg-white px-5 py-4 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">
-              <div className="space-y-2">
-                {(oc.items || []).length > 0 ? (oc.items || []).slice(0, 3).map((item) => (
-                    <div key={item.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-950">
-                      <span className="min-w-[180px] text-slate-700 dark:text-slate-200">{itemDescription(item)}</span>
-                      <label className="inline-flex items-center gap-1 text-xs text-slate-500">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(item.comprado)}
-                          disabled
-                          onChange={(event) => onToggleItem(oc, item, "comprado", event.target.checked)}
-                          title="Se marca automaticamente cuando el item tiene producto interno reservado con stock suficiente"
-                        />
-                        Comprado
-                      </label>
-                      <label className="inline-flex items-center gap-1 text-xs text-slate-500">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(item.entregado)}
-                          disabled={updatingItemOc === oc.id || !canEditOc(oc) || !item.comprado}
-                          onChange={(event) => onToggleItem(oc, item, "entregado", event.target.checked)}
-                          title={!item.comprado ? "Primero debe estar comprado" : canEditOc(oc) ? "Marcar entregado" : "Solo el usuario que registro esta OC puede editarla"}
-                        />
-                        Entregado
-                      </label>
+              <div className="mt-3 space-y-2">
+                {(oc.items || []).length > 0 ? (
+                  (oc.items || []).slice(0, 2).map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-xl bg-slate-50 px-3 py-2 text-xs dark:bg-slate-900"
+                    >
+                      <p className="font-semibold text-slate-700 dark:text-slate-200">
+                        {itemDescription(item)}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-3 text-slate-500">
+                        <label className="inline-flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(item.comprado)}
+                            disabled
+                            onChange={(event) =>
+                              onToggleItem(
+                                oc,
+                                item,
+                                "comprado",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          Comprado
+                        </label>
+                        <label className="inline-flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(item.entregado)}
+                            disabled={
+                              updatingItemOc === oc.id ||
+                              !canEditOc(oc) ||
+                              !item.comprado
+                            }
+                            onChange={(event) =>
+                              onToggleItem(
+                                oc,
+                                item,
+                                "entregado",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          Entregado
+                        </label>
+                      </div>
                     </div>
-                  )) : (
-                    <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                      {getOcItemsCount(oc)} items
-                    </span>
-                  )}
-                {(oc.items || []).length > 3 && <p className="text-xs text-slate-400">+{(oc.items || []).length - 3} items mas</p>}
-                {updatingItemOc === oc.id && <p className="inline-flex items-center gap-2 text-xs text-blue-600"><Loader2 size={13} className="animate-spin" /> Sincronizando</p>}
+                  ))
+                ) : (
+                  <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    {getOcItemsCount(oc)} items
+                  </span>
+                )}
+                {(oc.items || []).length > 2 && (
+                  <p className="text-xs text-slate-400">
+                    +{(oc.items || []).length - 2} items mas
+                  </p>
+                )}
               </div>
-            </td>
-            <td className="px-5 py-4"><DocumentStatus oc={oc} /></td>
-            <td className="px-5 py-4"><EstadoBadge estado={oc.estado} labels={estadoRecibidaLabels} /></td>
-            <td className="px-5 py-4">
-              <div className="flex justify-center gap-2">
-                <IconButton title="Ver detalle" onClick={() => onView(oc)} icon={<Eye size={17} />} />
+              <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
                 <IconButton
-                  title={canUploadDocuments(oc) ? "Subir documentos" : "No tienes permisos para subir documentos"}
+                  title="Ver detalle"
+                  onClick={() => onView(oc)}
+                  icon={<Eye size={17} />}
+                />
+                <IconButton
+                  title={
+                    canUploadDocuments(oc)
+                      ? "Subir documentos"
+                      : "No tienes permisos para subir documentos"
+                  }
                   onClick={() => onDocuments(oc)}
                   icon={<Upload size={17} />}
                   disabled={!canUploadDocuments(oc)}
                 />
                 <IconButton
-                  title={canCancelOc(oc) ? "Cancelar OC y liberar reservas" : "Solo se puede cancelar antes de atender"}
+                  title={
+                    canCancelOc(oc)
+                      ? "Cancelar OC y liberar reservas"
+                      : "Solo se puede cancelar antes de atender"
+                  }
                   onClick={() => onCancel(oc)}
                   icon={<X size={17} />}
                   disabled={!canCancelOc(oc) || updatingItemOc === oc.id}
                 />
               </div>
-            </td>
-          </tr>
-        )) : (
-          <EmptyRow colSpan={7} />
+            </div>
+          ))
+        ) : (
+          <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800">
+            No hay registros
+          </div>
         )}
-      </tbody>
-    </table>
-    </div>
+      </div>
+
+      <div className="hidden overflow-x-auto lg:block">
+        <table className="w-full min-w-[1080px]">
+          <thead className="bg-gray-50 text-left text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
+            <tr>
+              <th className="px-5 py-4">OC</th>
+              <th className="px-5 py-4">Cotizacion</th>
+              <th className="px-5 py-4">Fecha</th>
+              <th className="px-5 py-4">Items</th>
+              <th className="px-5 py-4">Documentos</th>
+              <th className="px-5 py-4">Estado</th>
+              <th className="sticky right-0 z-10 bg-gray-50 px-5 py-4 text-center shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">
+                Acciones
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length ? (
+              rows.map((oc) => (
+                <tr
+                  key={oc.id}
+                  className="border-t border-gray-100 align-top text-sm dark:border-slate-800"
+                >
+                  <td className="px-5 py-4 font-semibold text-emerald-600">
+                    {getOcLabel(oc)}
+                  </td>
+                  <td className="px-5 py-4">{getCotizacionLabel(oc)}</td>
+                  <td className="px-5 py-4">
+                    <span className="inline-flex items-center gap-2">
+                      <Calendar size={15} />
+                      {formatDate(oc.fecha_recepcion)}
+                    </span>
+                  </td>
+                  <td className="sticky right-0 bg-white px-5 py-4 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">
+                    <div className="space-y-2">
+                      {(oc.items || []).length > 0 ? (
+                        (oc.items || []).slice(0, 3).map((item) => (
+                          <div
+                            key={item.id}
+                            className="flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-950"
+                          >
+                            <span className="min-w-[180px] text-slate-700 dark:text-slate-200">
+                              {itemDescription(item)}
+                            </span>
+                            <label className="inline-flex items-center gap-1 text-xs text-slate-500">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(item.comprado)}
+                                disabled
+                                onChange={(event) =>
+                                  onToggleItem(
+                                    oc,
+                                    item,
+                                    "comprado",
+                                    event.target.checked,
+                                  )
+                                }
+                                title="Se marca automaticamente cuando el item tiene producto interno reservado con stock suficiente"
+                              />
+                              Comprado
+                            </label>
+                            <label className="inline-flex items-center gap-1 text-xs text-slate-500">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(item.entregado)}
+                                disabled={
+                                  updatingItemOc === oc.id ||
+                                  !canEditOc(oc) ||
+                                  !item.comprado
+                                }
+                                onChange={(event) =>
+                                  onToggleItem(
+                                    oc,
+                                    item,
+                                    "entregado",
+                                    event.target.checked,
+                                  )
+                                }
+                                title={
+                                  !item.comprado
+                                    ? "Primero debe estar comprado"
+                                    : canEditOc(oc)
+                                      ? "Marcar entregado"
+                                      : "Solo el usuario que registro esta OC puede editarla"
+                                }
+                              />
+                              Entregado
+                            </label>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                          {getOcItemsCount(oc)} items
+                        </span>
+                      )}
+                      {(oc.items || []).length > 3 && (
+                        <p className="text-xs text-slate-400">
+                          +{(oc.items || []).length - 3} items mas
+                        </p>
+                      )}
+                      {updatingItemOc === oc.id && (
+                        <p className="inline-flex items-center gap-2 text-xs text-blue-600">
+                          <Loader2 size={13} className="animate-spin" />{" "}
+                          Sincronizando
+                        </p>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    <DocumentStatus oc={oc} />
+                  </td>
+                  <td className="px-5 py-4">
+                    <EstadoBadge
+                      estado={oc.estado}
+                      labels={estadoRecibidaLabels}
+                    />
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex justify-center gap-2">
+                      <IconButton
+                        title="Ver detalle"
+                        onClick={() => onView(oc)}
+                        icon={<Eye size={17} />}
+                      />
+                      <IconButton
+                        title={
+                          canUploadDocuments(oc)
+                            ? "Subir documentos"
+                            : "No tienes permisos para subir documentos"
+                        }
+                        onClick={() => onDocuments(oc)}
+                        icon={<Upload size={17} />}
+                        disabled={!canUploadDocuments(oc)}
+                      />
+                      <IconButton
+                        title={
+                          canCancelOc(oc)
+                            ? "Cancelar OC y liberar reservas"
+                            : "Solo se puede cancelar antes de atender"
+                        }
+                        onClick={() => onCancel(oc)}
+                        icon={<X size={17} />}
+                        disabled={!canCancelOc(oc) || updatingItemOc === oc.id}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <EmptyRow colSpan={7} />
+            )}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }
 
-function RecibidaDraftTable({ rows, setRows }: { rows: RecibidaDraftItem[]; setRows: React.Dispatch<React.SetStateAction<RecibidaDraftItem[]>> }) {
+function RecibidaDraftTable({
+  rows,
+  setRows,
+}: {
+  rows: RecibidaDraftItem[];
+  setRows: React.Dispatch<React.SetStateAction<RecibidaDraftItem[]>>;
+}) {
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-slate-800">
       <table className="w-full min-w-[720px] text-sm">
@@ -2087,12 +3064,23 @@ function RecibidaDraftTable({ rows, setRows }: { rows: RecibidaDraftItem[]; setR
         </thead>
         <tbody>
           {rows.map((item, index) => (
-            <tr key={item.cotizacion_item_id} className="border-t border-gray-100 dark:border-slate-800">
+            <tr
+              key={item.cotizacion_item_id}
+              className="border-t border-gray-100 dark:border-slate-800"
+            >
               <td className="px-4 py-3">
                 <input
                   type="checkbox"
                   checked={item.seleccionado}
-                  onChange={(event) => setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, seleccionado: event.target.checked } : row))}
+                  onChange={(event) =>
+                    setRows((current) =>
+                      current.map((row, rowIndex) =>
+                        rowIndex === index
+                          ? { ...row, seleccionado: event.target.checked }
+                          : row,
+                      ),
+                    )
+                  }
                 />
               </td>
               <td className="px-4 py-3">{item.descripcion}</td>
@@ -2101,20 +3089,39 @@ function RecibidaDraftTable({ rows, setRows }: { rows: RecibidaDraftItem[]; setR
                   type="number"
                   min={0}
                   value={item.cantidad_recibida}
-                  onChange={(event) => setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, cantidad_recibida: Number(event.target.value) } : row))}
+                  onChange={(event) =>
+                    setRows((current) =>
+                      current.map((row, rowIndex) =>
+                        rowIndex === index
+                          ? {
+                              ...row,
+                              cantidad_recibida: Number(event.target.value),
+                            }
+                          : row,
+                      ),
+                    )
+                  }
                   className="w-32 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
                 />
               </td>
             </tr>
           ))}
-          {!rows.length && <EmptyRow colSpan={3} message="No hay items para mostrar." />}
+          {!rows.length && (
+            <EmptyRow colSpan={3} message="No hay items para mostrar." />
+          )}
         </tbody>
       </table>
     </div>
   );
 }
 
-function EmitidaDraftTable({ rows, setRows }: { rows: EmitidaDraftItem[]; setRows: React.Dispatch<React.SetStateAction<EmitidaDraftItem[]>> }) {
+function EmitidaDraftTable({
+  rows,
+  setRows,
+}: {
+  rows: EmitidaDraftItem[];
+  setRows: React.Dispatch<React.SetStateAction<EmitidaDraftItem[]>>;
+}) {
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-slate-800">
       <table className="w-full min-w-[760px] text-sm">
@@ -2128,14 +3135,25 @@ function EmitidaDraftTable({ rows, setRows }: { rows: EmitidaDraftItem[]; setRow
         </thead>
         <tbody>
           {rows.map((item, index) => (
-            <tr key={item.cotizacion_item_id} className="border-t border-gray-100 dark:border-slate-800">
+            <tr
+              key={item.cotizacion_item_id}
+              className="border-t border-gray-100 dark:border-slate-800"
+            >
               <td className="px-4 py-3">{item.descripcion}</td>
               <td className="px-4 py-3">
                 <input
                   type="number"
                   min={0}
                   value={item.cantidad}
-                  onChange={(event) => setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, cantidad: Number(event.target.value) } : row))}
+                  onChange={(event) =>
+                    setRows((current) =>
+                      current.map((row, rowIndex) =>
+                        rowIndex === index
+                          ? { ...row, cantidad: Number(event.target.value) }
+                          : row,
+                      ),
+                    )
+                  }
                   className="w-28 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
                 />
               </td>
@@ -2145,14 +3163,32 @@ function EmitidaDraftTable({ rows, setRows }: { rows: EmitidaDraftItem[]; setRow
                   min={0}
                   step="0.01"
                   value={item.precio_unitario}
-                  onChange={(event) => setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, precio_unitario: Number(event.target.value) } : row))}
+                  onChange={(event) =>
+                    setRows((current) =>
+                      current.map((row, rowIndex) =>
+                        rowIndex === index
+                          ? {
+                              ...row,
+                              precio_unitario: Number(event.target.value),
+                            }
+                          : row,
+                      ),
+                    )
+                  }
                   className="w-32 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
                 />
               </td>
-              <td className="px-4 py-3 font-semibold">{formatMoney(item.cantidad * item.precio_unitario, "S/")}</td>
+              <td className="px-4 py-3 font-semibold">
+                {formatMoney(item.cantidad * item.precio_unitario, "S/")}
+              </td>
             </tr>
           ))}
-          {!rows.length && <EmptyRow colSpan={4} message="Selecciona un proveedor para ver los items de la cotizacion." />}
+          {!rows.length && (
+            <EmptyRow
+              colSpan={4}
+              message="Selecciona un proveedor para ver los items de la cotizacion."
+            />
+          )}
         </tbody>
       </table>
     </div>
@@ -2165,10 +3201,15 @@ function DocumentStatus({ oc }: { oc: OcEmitida | OcRecibida }) {
   if (documents.length > 0) {
     return (
       <div className="space-y-1">
-        <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
-          oc.documentos_completos ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
-        }`}>
-          <CheckCircle size={13} /> {oc.documentos_completos ? "Completos" : "Con archivos"}
+        <span
+          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
+            oc.documentos_completos
+              ? "bg-emerald-100 text-emerald-700"
+              : "bg-blue-100 text-blue-700"
+          }`}
+        >
+          <CheckCircle size={13} />{" "}
+          {oc.documentos_completos ? "Completos" : "Con archivos"}
         </span>
         <div className="flex flex-col gap-1">
           {documents.map((document) => (
@@ -2184,14 +3225,20 @@ function DocumentStatus({ oc }: { oc: OcEmitida | OcRecibida }) {
           ))}
         </div>
         {!!oc.documentos_faltantes?.length && (
-          <p className="max-w-[220px] text-xs text-slate-500">Faltan: {oc.documentos_faltantes.join(", ")}</p>
+          <p className="max-w-[220px] text-xs text-slate-500">
+            Faltan: {oc.documentos_faltantes.join(", ")}
+          </p>
         )}
       </div>
     );
   }
 
   if (oc.documentos_completos) {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700"><CheckCircle size={13} /> Completos</span>;
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+        <CheckCircle size={13} /> Completos
+      </span>
+    );
   }
 
   return (
@@ -2200,15 +3247,25 @@ function DocumentStatus({ oc }: { oc: OcEmitida | OcRecibida }) {
         <AlertTriangle size={13} /> Pendientes
       </span>
       {!!oc.documentos_faltantes?.length && (
-        <p className="max-w-[220px] text-xs text-slate-500">{oc.documentos_faltantes.join(", ")}</p>
+        <p className="max-w-[220px] text-xs text-slate-500">
+          {oc.documentos_faltantes.join(", ")}
+        </p>
       )}
     </div>
   );
 }
 
-function EstadoBadge({ estado, labels }: { estado?: string; labels: Record<string, string> }) {
+function EstadoBadge({
+  estado,
+  labels,
+}: {
+  estado?: string;
+  labels: Record<string, string>;
+}) {
   return (
-    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getBadgeClass(estado)}`}>
+    <span
+      className={`rounded-full px-3 py-1 text-xs font-semibold ${getBadgeClass(estado)}`}
+    >
       {labels[estado || ""] || estado || "N/A"}
     </span>
   );
@@ -2238,7 +3295,13 @@ function IconButton({
   );
 }
 
-function EmptyRow({ colSpan, message = "No hay ordenes de compra para mostrar." }: { colSpan: number; message?: string }) {
+function EmptyRow({
+  colSpan,
+  message = "No hay ordenes de compra para mostrar.",
+}: {
+  colSpan: number;
+  message?: string;
+}) {
   return (
     <tr>
       <td colSpan={colSpan} className="px-5 py-12 text-center text-slate-500">
@@ -2256,6 +3319,7 @@ function DetailModal({
   onClose,
   onToggleItem,
   selectedSeries,
+  selectedOcProviderRuc,
   onSelectSerie,
 }: {
   oc: OcEmitida | OcRecibida;
@@ -2263,8 +3327,14 @@ function DetailModal({
   updatingItemOc: number | null;
   canEditOc: boolean;
   onClose: () => void;
-  onToggleItem: (oc: OcRecibida, item: OcRecibidaItem, field: "comprado" | "entregado", checked: boolean) => void;
+  onToggleItem: (
+    oc: OcRecibida,
+    item: OcRecibidaItem,
+    field: "comprado" | "entregado",
+    checked: boolean,
+  ) => void;
   selectedSeries: Record<number, number[]>;
+  selectedOcProviderRuc: string;
   onSelectSerie: (itemId: number, serieId: number) => void;
 }) {
   const isEmitida = "proveedor" in oc;
@@ -2283,18 +3353,69 @@ function DetailModal({
             </div>
           )}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-            <InfoTile icon={<FileText size={18} />} label="Cotizacion" value={getCotizacionLabel(oc)} />
-            <InfoTile icon={<FileText size={18} />} label="Cliente" value={getCotizacionCliente(oc)} />
-            <InfoTile icon={<FileText size={18} />} label="Titulo" value={getCotizacionTitulo(oc)} />
-            <InfoTile icon={<Calendar size={18} />} label={isEmitida ? "Fecha emision" : "Fecha recepcion"} value={formatDate(isEmitida ? (oc as OcEmitida).fecha_emision : (oc as OcRecibida).fecha_recepcion)} />
-            <InfoTile icon={isEmitida ? <Truck size={18} /> : <PackageCheck size={18} />} label="Estado" value={isEmitida ? estadoEmitidaLabels[oc.estado] || oc.estado : estadoRecibidaLabels[oc.estado] || oc.estado} />
+            <InfoTile
+              icon={<FileText size={18} />}
+              label="Cotizacion"
+              value={getCotizacionLabel(oc)}
+            />
+            <InfoTile
+              icon={<FileText size={18} />}
+              label="Cliente"
+              value={getCotizacionCliente(oc)}
+            />
+            <InfoTile
+              icon={<FileText size={18} />}
+              label="Titulo"
+              value={getCotizacionTitulo(oc)}
+            />
+            <InfoTile
+              icon={<Calendar size={18} />}
+              label={isEmitida ? "Fecha emision" : "Fecha recepcion"}
+              value={formatDate(
+                isEmitida
+                  ? (oc as OcEmitida).fecha_emision
+                  : (oc as OcRecibida).fecha_recepcion,
+              )}
+            />
+            <InfoTile
+              icon={
+                isEmitida ? <Truck size={18} /> : <PackageCheck size={18} />
+              }
+              label="Estado"
+              value={
+                isEmitida
+                  ? estadoEmitidaLabels[oc.estado] || oc.estado
+                  : estadoRecibidaLabels[oc.estado] || oc.estado
+              }
+            />
           </div>
           {isEmitida && (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-              <InfoTile icon={<Truck size={18} />} label="Proveedor" value={(oc as OcEmitida).proveedor || "N/A"} />
-              <InfoTile icon={<FileText size={18} />} label="Subtotal" value={formatMoney((oc as OcEmitida).subtotal, "S/")} />
-              <InfoTile icon={<FileText size={18} />} label="IGV" value={formatMoney((oc as OcEmitida).igv, "S/")} />
-              <InfoTile icon={<FileText size={18} />} label="Total" value={formatMoney((oc as OcEmitida).total, "S/")} />
+              <InfoTile
+                icon={<Truck size={18} />}
+                label="Proveedor"
+                value={(oc as OcEmitida).proveedor || "N/A"}
+              />
+              <InfoTile
+                icon={<FileText size={18} />}
+                label="RUC proveedor"
+                value={selectedOcProviderRuc || "N/A"}
+              />
+              <InfoTile
+                icon={<FileText size={18} />}
+                label="Subtotal"
+                value={formatMoney((oc as OcEmitida).subtotal, "S/")}
+              />
+              <InfoTile
+                icon={<FileText size={18} />}
+                label="IGV"
+                value={formatMoney((oc as OcEmitida).igv, "S/")}
+              />
+              <InfoTile
+                icon={<FileText size={18} />}
+                label="Total"
+                value={formatMoney((oc as OcEmitida).total, "S/")}
+              />
             </div>
           )}
           <div className="rounded-xl border border-gray-200 dark:border-slate-800">
@@ -2332,7 +3453,9 @@ function DetailModal({
             </div>
           </div>
           <div className="rounded-xl border border-gray-200 dark:border-slate-800">
-            <div className="border-b border-gray-200 p-4 font-semibold text-slate-800 dark:border-slate-800 dark:text-white">Items</div>
+            <div className="border-b border-gray-200 p-4 font-semibold text-slate-800 dark:border-slate-800 dark:text-white">
+              Items
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[620px] text-sm">
                 <thead className="bg-slate-50 text-left text-slate-600 dark:bg-slate-900 dark:text-slate-300">
@@ -2351,100 +3474,158 @@ function DetailModal({
                 </thead>
                 <tbody>
                   {items.map((item: any) => {
-                    const availableSeries = getSelectableItemSeries(item as OcRecibidaItem, oc as OcRecibida);
-                    const currentSeries = selectedSeries[item.id] || getAssignedItemSerieIds(item as OcRecibidaItem, oc as OcRecibida);
-                    const cantidadRecibida = Number(item.cantidad_recibida || 0);
-                    const itemHasSoldSeries = hasSoldAssignedSeries(item as OcRecibidaItem, oc as OcRecibida);
+                    const availableSeries = getSelectableItemSeries(
+                      item as OcRecibidaItem,
+                      oc as OcRecibida,
+                    );
+                    const currentSeries =
+                      selectedSeries[item.id] ||
+                      getAssignedItemSerieIds(
+                        item as OcRecibidaItem,
+                        oc as OcRecibida,
+                      );
+                    const cantidadRecibida = Number(
+                      item.cantidad_recibida || 0,
+                    );
+                    const itemHasSoldSeries = hasSoldAssignedSeries(
+                      item as OcRecibidaItem,
+                      oc as OcRecibida,
+                    );
 
                     return (
-                    <tr key={item.id} className="border-t border-gray-100 dark:border-slate-800">
-                      <td className="px-4 py-3">
-                        <div>{itemDescription(item)}</div>
-                        {!isEmitida && availableSeries.length > 0 && (
-                          <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
-                            <div className="mb-2 flex items-center justify-between gap-2">
-                              <span className="text-xs font-bold text-blue-900">Series a entregar</span>
-                              <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-blue-700">
-                                {currentSeries.length}/{cantidadRecibida}
-                              </span>
-                            </div>
-                            <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
-                              {availableSeries.map((serie: any) => (
-                                <label
-                                  key={serie.id}
-                                  className="flex cursor-pointer items-start gap-2 rounded-md border border-blue-100 bg-white px-2 py-1.5 text-xs text-slate-700 hover:bg-blue-50"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={currentSeries.includes(Number(serie.id))}
-                                    onChange={() => onSelectSerie(Number(item.id), Number(serie.id))}
-                                    disabled={!canEditOc || itemHasSoldSeries}
-                                    className="mt-0.5"
-                                  />
-                                  <span className="min-w-0">
-                                    <span className="block font-semibold">{serie.serie || `Serie #${serie.id}`}</span>
-                                    <span className="block text-[11px] text-slate-500">
-                                      {[serie.factura_numero ? `Factura ${serie.factura_numero}` : null, serie.fecha_ingreso ? `Ingreso ${formatDate(serie.fecha_ingreso)}` : null]
-                                        .filter(Boolean)
-                                        .join(" / ") || "Sin datos"}
-                                      {serie.estado && ` / ${serie.estado}`}
+                      <tr
+                        key={item.id}
+                        className="border-t border-gray-100 dark:border-slate-800"
+                      >
+                        <td className="px-4 py-3">
+                          <div>{itemDescription(item)}</div>
+                          {!isEmitida && availableSeries.length > 0 && (
+                            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
+                              <div className="mb-2 flex items-center justify-between gap-2">
+                                <span className="text-xs font-bold text-blue-900">
+                                  Series a entregar
+                                </span>
+                                <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-blue-700">
+                                  {currentSeries.length}/{cantidadRecibida}
+                                </span>
+                              </div>
+                              <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                                {availableSeries.map((serie: any) => (
+                                  <label
+                                    key={serie.id}
+                                    className="flex cursor-pointer items-start gap-2 rounded-md border border-blue-100 bg-white px-2 py-1.5 text-xs text-slate-700 hover:bg-blue-50"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={currentSeries.includes(
+                                        Number(serie.id),
+                                      )}
+                                      onChange={() =>
+                                        onSelectSerie(
+                                          Number(item.id),
+                                          Number(serie.id),
+                                        )
+                                      }
+                                      disabled={!canEditOc || itemHasSoldSeries}
+                                      className="mt-0.5"
+                                    />
+                                    <span className="min-w-0">
+                                      <span className="block font-semibold">
+                                        {serie.serie || `Serie #${serie.id}`}
+                                      </span>
+                                      <span className="block text-[11px] text-slate-500">
+                                        {[
+                                          serie.factura_numero
+                                            ? `Factura ${serie.factura_numero}`
+                                            : null,
+                                          serie.fecha_ingreso
+                                            ? `Ingreso ${formatDate(serie.fecha_ingreso)}`
+                                            : null,
+                                        ]
+                                          .filter(Boolean)
+                                          .join(" / ") || "Sin datos"}
+                                        {serie.estado && ` / ${serie.estado}`}
+                                      </span>
                                     </span>
-                                  </span>
-                                </label>
-                              ))}
+                                  </label>
+                                ))}
+                              </div>
                             </div>
-                          </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {item.cantidad ?? item.cantidad_recibida ?? "N/A"}
+                        </td>
+                        {isEmitida ? (
+                          <td className="px-4 py-3">
+                            {formatMoney(item.precio_unitario, "S/")}
+                          </td>
+                        ) : (
+                          <>
+                            <td className="px-4 py-3">
+                              <label className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(item.comprado)}
+                                  disabled
+                                  onChange={(event) =>
+                                    onToggleItem(
+                                      oc as OcRecibida,
+                                      item as OcRecibidaItem,
+                                      "comprado",
+                                      event.target.checked,
+                                    )
+                                  }
+                                  title="Se marca automaticamente cuando el item tiene producto interno reservado con stock suficiente"
+                                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                {item.comprado ? "Si" : "No"}
+                              </label>
+                            </td>
+                            <td className="px-4 py-3">
+                              <label className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(item.entregado)}
+                                  disabled={
+                                    updatingItemOc === oc.id ||
+                                    !canEditOc ||
+                                    !item.comprado ||
+                                    itemHasSoldSeries
+                                  }
+                                  onChange={(event) =>
+                                    onToggleItem(
+                                      oc as OcRecibida,
+                                      item as OcRecibidaItem,
+                                      "entregado",
+                                      event.target.checked,
+                                    )
+                                  }
+                                  title={
+                                    itemHasSoldSeries
+                                      ? "Este item ya registro salida de series vendidas"
+                                      : !item.comprado
+                                        ? "Primero debe estar comprado"
+                                        : canEditOc
+                                          ? "Marcar entregado"
+                                          : "Solo el usuario que registro esta OC puede editarla"
+                                  }
+                                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                {item.entregado ? "Si" : "No"}
+                              </label>
+                            </td>
+                          </>
                         )}
-                      </td>
-                      <td className="px-4 py-3">{item.cantidad ?? item.cantidad_recibida ?? "N/A"}</td>
-                      {isEmitida ? (
-                        <td className="px-4 py-3">{formatMoney(item.precio_unitario, "S/")}</td>
-                      ) : (
-                        <>
-                          <td className="px-4 py-3">
-                            <label className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(item.comprado)}
-                                disabled
-                                onChange={(event) =>
-                                  onToggleItem(oc as OcRecibida, item as OcRecibidaItem, "comprado", event.target.checked)
-                                }
-                                title="Se marca automaticamente cuando el item tiene producto interno reservado con stock suficiente"
-                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              {item.comprado ? "Si" : "No"}
-                            </label>
-                          </td>
-                          <td className="px-4 py-3">
-                            <label className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(item.entregado)}
-                                disabled={updatingItemOc === oc.id || !canEditOc || !item.comprado || itemHasSoldSeries}
-                                onChange={(event) =>
-                                  onToggleItem(oc as OcRecibida, item as OcRecibidaItem, "entregado", event.target.checked)
-                                }
-                                title={
-                                  itemHasSoldSeries
-                                    ? "Este item ya registro salida de series vendidas"
-                                    : !item.comprado
-                                      ? "Primero debe estar comprado"
-                                      : canEditOc
-                                        ? "Marcar entregado"
-                                        : "Solo el usuario que registro esta OC puede editarla"
-                                }
-                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              {item.entregado ? "Si" : "No"}
-                            </label>
-                          </td>
-                        </>
-                      )}
-                    </tr>
+                      </tr>
                     );
                   })}
-                  {!items.length && <EmptyRow colSpan={isEmitida ? 3 : 4} message="No hay items registrados en esta orden." />}
+                  {!items.length && (
+                    <EmptyRow
+                      colSpan={isEmitida ? 3 : 4}
+                      message="No hay items registrados en esta orden."
+                    />
+                  )}
                 </tbody>
               </table>
             </div>
@@ -2460,11 +3641,24 @@ function DetailModal({
   );
 }
 
-function InfoTile({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function InfoTile({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
   return (
     <div className="rounded-xl border border-gray-200 p-4 dark:border-slate-800">
-      <p className="flex items-center gap-2 text-sm text-slate-500">{icon}{label}</p>
-      <p className="mt-2 font-semibold text-slate-900 dark:text-white">{value}</p>
+      <p className="flex items-center gap-2 text-sm text-slate-500">
+        {icon}
+        {label}
+      </p>
+      <p className="mt-2 font-semibold text-slate-900 dark:text-white">
+        {value}
+      </p>
     </div>
   );
 }

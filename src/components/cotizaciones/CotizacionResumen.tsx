@@ -62,7 +62,7 @@ export function CotizacionResumen({
       : null;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border p-6">
+    <div className="bg-white rounded-xl shadow-sm border p-6 text-gray-900">
       {/* RESUMEN */}
             <h2 className="text-xl mb-4 pt-3 flex justify-between text-lg font-bold">Resumen de Adicionales</h2>
             <div className="space-y-3 text-sm">

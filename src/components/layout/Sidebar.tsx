@@ -165,7 +165,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 className={itemClass("/seguimiento-licitaciones")}
               >
                 <ClipboardList size={20} />
-                <span className="font-medium">Licitaciones</span>
+                <span className="font-medium">Oportunidades</span>
               </Link>
             )}
 

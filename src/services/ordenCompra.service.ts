@@ -259,6 +259,15 @@ const normalizeProveedorName = (value: unknown) => {
   return "";
 };
 
+const normalizeProveedorKey = (value: unknown) => {
+  const raw = normalizeProveedorName(value);
+  return raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
+};
+
 const normalizeItemProveedores = (item: any) => {
   const rawProveedores = Array.isArray(item?.proveedores) ? item.proveedores : [];
 
@@ -268,7 +277,14 @@ const normalizeItemProveedores = (item: any) => {
       nombre: normalizeProveedorName(proveedor),
       precio: proveedor?.precio ?? proveedor?.precio_unitario ?? proveedor?.costo_base ?? null,
     }))
-    .filter((proveedor: { nombre: string }) => proveedor.nombre);
+    .filter((proveedor: { nombre: string }) => proveedor.nombre)
+    .reduce((acc: Array<{ nombre: string; precio: number | null }>, proveedor: any) => {
+      const key = normalizeProveedorKey(proveedor.nombre);
+      if (!acc.some((existing) => normalizeProveedorKey(existing.nombre) === key)) {
+        acc.push(proveedor);
+      }
+      return acc;
+    }, [] as Array<{ nombre: string; precio: number | null }>);
 };
 
 const normalizePreviewItem = (item: any): OcPreviewItem => {
@@ -342,22 +358,28 @@ const normalizePreview = (payload: any): OcPreview => {
     rawItems
       .map(normalizePreviewItem)
       .reduce((acc: Map<string, OcPreviewItem>, item: OcPreviewItem) => {
-        const key = `${item.cotizacion_item_id ?? item.id}-${item.proveedor ?? ""}`;
+        const key = `${item.cotizacion_item_id ?? item.id}-${normalizeProveedorKey(item.proveedor)}`;
         if (!acc.has(key)) acc.set(key, item);
         return acc;
       }, new Map<string, OcPreviewItem>())
       .values()
   );
-  const proveedores = [
+  const proveedoresRaw = [
     ...(Array.isArray(source?.proveedores) ? source.proveedores.map(normalizeProveedorName) : []),
     ...itemRows.map((item) => item.proveedor || ""),
     ...itemRows.flatMap((item) => item.proveedores?.map((proveedor) => proveedor.nombre) || []),
   ].filter(Boolean);
 
+  const proveedorMap = new Map<string, string>();
+  proveedoresRaw.forEach((nombre) => {
+    const key = normalizeProveedorKey(nombre);
+    if (key && !proveedorMap.has(key)) proveedorMap.set(key, nombre.trim());
+  });
+
   return {
     cotizacion,
     items: itemRows,
-    proveedores: Array.from(new Set(proveedores)),
+    proveedores: Array.from(proveedorMap.values()),
   };
 };
 

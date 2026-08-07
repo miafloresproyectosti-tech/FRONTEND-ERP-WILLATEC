@@ -2,7 +2,10 @@ import type { OportunidadFormData } from "../types/licitaciones";
 
 export type OportunidadValidationErrors = Partial<Record<keyof OportunidadFormData, string>>;
 
-export const validateOportunidad = (data: OportunidadFormData) => {
+export const validateOportunidad = (
+  data: OportunidadFormData,
+  options: { requireTdr?: boolean } = {}
+) => {
   const errors: OportunidadValidationErrors = {};
 
   if (!data.empresa.trim()) errors.empresa = "Empresa obligatoria";
@@ -14,7 +17,7 @@ export const validateOportunidad = (data: OportunidadFormData) => {
   if (data.tipo === "licitacion") {
     if (!data.garantia.trim()) errors.garantia = "Garantia obligatoria";
     if (!data.plazo.trim()) errors.plazo = "Plazo obligatorio";
-    if (!data.tdr) errors.tdr = "TDR obligatorio";
+    if (options.requireTdr !== false && !data.tdr) errors.tdr = "TDR obligatorio";
   }
 
   if (data.tipo === "privado" && !data.formaPago) {

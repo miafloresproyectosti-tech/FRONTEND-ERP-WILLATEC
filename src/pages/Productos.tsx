@@ -82,6 +82,7 @@ interface ProductoForm {
   serie: string;
   series_text: string;
   factura_numero: string;
+  ubicacion_almacen: string;
   categoria_id: number;
   stock: string;
   precio_referencial: string;
@@ -127,6 +128,7 @@ const mapProducto = (producto: Producto): ProductoUI => ({
     .filter(Boolean)
     .join("\n") || producto.serie || "",
   factura_numero: producto.factura_numero ?? "",
+  ubicacion_almacen: producto.ubicacion_almacen ?? "",
   categoria_id: Number(producto.categoria_id || 0),
   categoria_label: getProductoCategoriaLabel(producto),
   stock: String(producto.stock),
@@ -326,6 +328,7 @@ export default function Productos() {
       serie: "",
       series_text: "",
       factura_numero: "",
+      ubicacion_almacen: "",
       unidad_medida: "unidad",
       moneda_id: "2",
     });
@@ -509,6 +512,7 @@ export default function Productos() {
       serie: "",
       series_text: "",
       factura_numero: "",
+      ubicacion_almacen: "",
       unidad_medida: "unidad",
       moneda_id: "2",
     });
@@ -534,10 +538,11 @@ export default function Productos() {
         "Moneda",
         "Precio",
         "Stock actual",
-        "Stock reservado",
-        "Stock disponible",
-        "Series",
-        "Factura numero",
+      "Stock reservado",
+      "Stock disponible",
+      "Ubicacion",
+      "Series",
+      "Factura numero",
         "Descripcion",
         "Activo",
       ];
@@ -577,6 +582,7 @@ export default function Productos() {
           productoUI.stock_actual ?? productoUI.stock,
           productoUI.stock_reservado ?? 0,
           productoUI.stock_disponible ?? productoUI.stock,
+          productoUI.ubicacion_almacen || "",
           series || productoUI.serie,
           productoUI.factura_numero,
           productoUI.descripcion,
@@ -600,7 +606,7 @@ export default function Productos() {
         views: [{ state: "frozen", ySplit: 6 }],
       });
 
-      worksheet.mergeCells("A1:P3");
+      worksheet.mergeCells("A1:Q3");
 
       const logoBuffer = await getLogoBuffer();
       if (logoBuffer) {
@@ -614,7 +620,7 @@ export default function Productos() {
         });
       }
 
-      worksheet.mergeCells("A4:P4");
+      worksheet.mergeCells("A4:Q4");
       worksheet.getCell("A4").value = "PRODUCTOS STOCK";
       worksheet.getCell("A4").font = {
         bold: true,
@@ -623,7 +629,7 @@ export default function Productos() {
       };
       worksheet.getCell("A4").alignment = { horizontal: "center" };
 
-      worksheet.mergeCells("A5:P5");
+      worksheet.mergeCells("A5:Q5");
       worksheet.getCell("A5").value = `Inventario interno de productos | Exportado: ${today} | Total: ${exportRows.length}`;
       worksheet.getCell("A5").font = { size: 10, color: { argb: "FF64748B" } };
       worksheet.getCell("A5").alignment = { horizontal: "center" };
@@ -677,12 +683,13 @@ export default function Productos() {
         { width: 14 },
         { width: 16 },
         { width: 16 },
+        { width: 24 },
         { width: 35 },
         { width: 18 },
         { width: 42 },
         { width: 12 },
       ];
-      worksheet.autoFilter = "A7:P7";
+      worksheet.autoFilter = "A7:Q7";
 
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], {
@@ -731,6 +738,7 @@ export default function Productos() {
         .filter(Boolean)
         .join("\n") || producto.serie || "",
       factura_numero: producto.factura_numero || "",
+      ubicacion_almacen: producto.ubicacion_almacen || "",
       unidad_medida: producto.unidad_medida || "unidad",
       moneda_id: String(producto.moneda_id || 2),
     });
@@ -844,6 +852,7 @@ export default function Productos() {
       serie: productoSeleccionado.serie || series[0] || "",
       series,
       factura_numero: productoSeleccionado.factura_numero,
+      ubicacion_almacen: productoSeleccionado.ubicacion_almacen,
       codigo: productoSeleccionado.codigo,
       descripcion: productoSeleccionado.descripcion || "",
       imagen: productoSeleccionado.imagen || undefined,
@@ -1490,6 +1499,10 @@ export default function Productos() {
                           <p className="text-xs font-semibold uppercase text-gray-400">Precio</p>
                           <p className="mt-1 font-bold text-gray-900">{formatProductoMoney(item, item.precio_referencial || "0")}</p>
                         </div>
+                        <div className="col-span-2">
+                          <p className="text-xs font-semibold uppercase text-gray-400">Ubicacion</p>
+                          <p className="mt-1 truncate font-medium text-gray-700">{item.ubicacion_almacen || "Sin ubicacion"}</p>
+                        </div>
                         <div className="col-span-2 min-w-0 rounded-xl bg-gray-50 p-3">
                           <p className="mb-2 text-xs font-semibold uppercase text-gray-400">Stock real</p>
                           <div className="grid grid-cols-3 gap-2 text-center text-xs">
@@ -1638,13 +1651,14 @@ export default function Productos() {
           <colgroup>
             {isStockTab ? (
               <>
-                <col className="w-[24%]" />
-                <col className="w-[11%]" />
-                <col className="w-[16%]" />
+                <col className="w-[20%]" />
                 <col className="w-[10%]" />
-                <col className="w-[19%]" />
-                <col className="w-[9%]" />
-                <col className="w-[11%]" />
+                <col className="w-[14%]" />
+                <col className="w-[8%]" />
+                <col className="w-[12%]" />
+                <col className="w-[16%]" />
+                <col className="w-[8%]" />
+                <col className="w-[12%]" />
               </>
             ) : (
               <>
@@ -1673,6 +1687,9 @@ export default function Productos() {
                   </th>
                   <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                     Precio
+                  </th>
+                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                    Ubicacion
                   </th>
                   <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                     Descripción
@@ -1715,7 +1732,7 @@ export default function Productos() {
           <tbody>
             {(isStockTab ? loading : externalLoading) ? (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={isStockTab ? 8 : 7} className="px-6 py-12 text-center text-gray-500">
                   <div className="flex items-center justify-center gap-3">
                     <Loader2 className="animate-spin" size={18} />
                     Cargando productos...
@@ -1789,6 +1806,11 @@ export default function Productos() {
                       </td>
                       <td className="px-6 py-5 font-semibold text-gray-800">
                         {formatProductoMoney(item, item.precio_referencial || "0")}
+                      </td>
+                      <td className="px-6 py-5 text-gray-600">
+                        <span className="line-clamp-2" title={item.ubicacion_almacen || ""}>
+                          {item.ubicacion_almacen || "-"}
+                        </span>
                       </td>
                       <td className="px-6 py-5 text-gray-600">
                         {item.descripcion || "Sin descripción"}
@@ -2173,6 +2195,10 @@ export default function Productos() {
                     <div className="rounded-xl border border-gray-100 p-3">
                       <p className="text-xs font-semibold uppercase text-gray-400">Factura</p>
                       <p className="mt-1 font-semibold text-gray-800">{productoDetalleModal.factura_numero || "-"}</p>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 p-3 sm:col-span-2">
+                      <p className="text-xs font-semibold uppercase text-gray-400">Ubicacion en almacen</p>
+                      <p className="mt-1 font-semibold text-gray-800">{productoDetalleModal.ubicacion_almacen || "-"}</p>
                     </div>
                   </div>
 
@@ -2745,6 +2771,21 @@ export default function Productos() {
                       })
                     }
                     placeholder="Factura opcional"
+                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-gray-500 uppercase">Ubicacion en almacen</label>
+                  <input
+                    value={productoSeleccionado.ubicacion_almacen}
+                    onChange={(e) =>
+                      setProductoSeleccionado({
+                        ...productoSeleccionado,
+                        ubicacion_almacen: e.target.value,
+                      })
+                    }
+                    placeholder="Ej: Estante A, nivel 2"
                     className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                   />
                 </div>

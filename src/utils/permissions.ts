@@ -71,6 +71,13 @@ export const rolePermissions: Record<UserRole, string[]> = {
     "productos"
   ],
 
+  LICITACION: [
+    "licitaciones",
+    "cotizaciones",
+    "clientes",
+    "productos"
+  ],
+
   SOPORTE: [
     "productos",
     "mensajes",
