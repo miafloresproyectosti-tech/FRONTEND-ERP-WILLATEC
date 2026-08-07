@@ -40,6 +40,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const [servicesOpen, setServicesOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [administrationOpen, setAdministrationOpen] = useState(false);
+  const [seguimientoOpen, setSeguimientoOpen] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const dropdownTimeoutRef = useRef<number | null>(null);
@@ -49,6 +50,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const showCommercialGroup =
     canSeeCommercialGroup &&
     (hasPermission("cotizaciones") ||
+      hasPermission("licitaciones") ||
       hasPermission("ordenes_compra") ||
       hasPermission("productos") ||
       hasPermission("clientes"));
@@ -156,6 +158,17 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </Link>
             )}
 
+            {hasPermission("licitaciones") && (
+              <Link
+                to="/seguimiento-licitaciones"
+                onClick={closeMobile}
+                className={itemClass("/seguimiento-licitaciones")}
+              >
+                <ClipboardList size={20} />
+                <span className="font-medium">Licitaciones</span>
+              </Link>
+            )}
+
             {showCommercialGroup && (
               <div className="mt-2">
                 <button
@@ -186,6 +199,17 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       >
                         <FileText size={18} />
                         Cotizaciones
+                      </Link>
+                    )}
+
+                    {hasPermission("servicios") && (
+                      <Link
+                        to="/servicios/licencias"
+                        onClick={closeMobile}
+                        className={subItemClass("/servicios/licencias")}
+                      >
+                        <ShieldCheck size={16} />
+                        Licencias
                       </Link>
                     )}
 

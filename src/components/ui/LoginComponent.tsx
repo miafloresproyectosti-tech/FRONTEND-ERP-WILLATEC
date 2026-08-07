@@ -3,6 +3,7 @@ import { Mail, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { loginRequest } from '../../services/auth.service';
+import { normalizeRole } from '../../utils/permissions';
 import ResetPasswordModal from './ResetPasswordModal';
 
 export default function LoginComponent() {
@@ -69,20 +70,23 @@ export default function LoginComponent() {
         return;
       }
 
-      login(id, email, role, last_login_at, two_factor_enabled);
+      const normalizedRole = normalizeRole(role);
+      login(id, email, normalizedRole, last_login_at, two_factor_enabled);
 
       const targetRoute =
-        role === 'SUPERADMIN'
+        normalizedRole === 'SUPERADMIN'
           ? '/'
-          : role === 'ADMIN'
+          : normalizedRole === 'ADMIN'
             ? '/clientes'
-            : role === 'VENTAS'
-              ? '/cotizaciones'
-                : role === 'SOPORTE'
+            : normalizedRole === 'VENTAS'
+              ? '/seguimiento-licitaciones'
+              : normalizedRole === 'LICITACIONES'
+                ? '/seguimiento-licitaciones'
+                : normalizedRole === 'SOPORTE'
                   ? '/productos'
-                : role === 'LOGISTICA'
+                : normalizedRole === 'LOGISTICA'
                   ? '/productos'
-                : role === 'CONTABILIDAD'
+                : normalizedRole === 'CONTABILIDAD'
                   ? '/ordenes-compra'
                 : '/login';
       navigate(targetRoute);

@@ -14,6 +14,7 @@ const Dashboard = lazy(() => import("../pages/Dashboard"));
 const Clientes = lazy(() => import("../pages/Clientes"));
 const Productos = lazy(() => import("../pages/Productos"));
 const Cotizaciones = lazy(() => import("../pages/Cotizaciones"));
+const SeguimientoLicitaciones = lazy(() => import("../pages/SeguimientoLicitaciones"));
 const CotizacionDetail = lazy(() =>
   import("../pages/CotizacionDetail").then((module) => ({
     default: module.CotizacionDetail,
@@ -98,6 +99,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute requiredPermission="cotizaciones">
                 <Cotizaciones />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/seguimiento-licitaciones"
+            element={
+              <ProtectedRoute requiredPermission="licitaciones">
+                <SeguimientoLicitaciones />
               </ProtectedRoute>
             }
           />

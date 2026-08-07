@@ -8,7 +8,7 @@ import {
 
 import { logoutRequest, meRequest } from "./services/auth.service";
 import type { UserRole } from "./types/roles";
-import { rolePermissions } from "./utils/permissions";
+import { normalizeRole, rolePermissions } from "./utils/permissions";
 
 interface User {
   id: number;
@@ -47,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     lastLoginAt?: string | null,
     twoFactorEnabled = false
   ) => {
-    const role = roleStr as UserRole;
+    const role = normalizeRole(roleStr) as UserRole;
     const name =
       email.split("@")[0]?.replace(/\b\w/g, (letter) => letter.toUpperCase()) ||
       "Usuario";
@@ -120,12 +120,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error("Invalid saved user");
         }
 
+        if (token === "demo-token") {
+          if (!cancelled) {
+            setUser(parsed);
+          }
+          return;
+        }
+
         const response = await meRequest();
         const backendUser = response.data?.user;
-        const backendRole =
+        const backendRole = normalizeRole(
           backendUser?.roles && backendUser.roles.length > 0
-            ? backendUser.roles[0].name.toUpperCase()
-            : parsed.role;
+            ? backendUser.roles[0].name
+            : parsed.role
+        );
 
         const userData: User = {
           id: backendUser?.id ?? parsed.id,

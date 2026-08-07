@@ -32,7 +32,10 @@ api.interceptors.response.use(
             currentPath === "/two-factor" ||
             currentPath === "/change-password";
 
-        if (error?.response?.status === 401 && !isAuthFlow) {
+        const token = localStorage.getItem("token");
+        const isDemoSession = token === "demo-token";
+
+        if (error?.response?.status === 401 && !isAuthFlow && !isDemoSession) {
             localStorage.removeItem("user");
             localStorage.removeItem("token");
             window.location.assign("/login");

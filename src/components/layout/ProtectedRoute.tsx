@@ -2,6 +2,7 @@ import { type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../../AuthContext";
 import type { UserRole } from "../../types/roles";
+import { normalizeRole } from "../../utils/permissions";
 
 interface Props {
   children: ReactNode;
@@ -21,11 +22,13 @@ export function ProtectedRoute({ children, requiredPermission, requiredRole, req
     return <Navigate to="/login" replace />;
   }
 
-  if (requiredRole && user.role !== requiredRole) {
+  const currentRole = normalizeRole(user.role);
+
+  if (requiredRole && currentRole !== requiredRole) {
     return <Navigate to="/not-authorized" replace />;
   }
 
-  if (requiredRoles && !requiredRoles.includes(user.role)) {
+  if (requiredRoles && !requiredRoles.includes(currentRole)) {
     return <Navigate to="/not-authorized" replace />;
   }
 

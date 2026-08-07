@@ -1,5 +1,11 @@
 import api from "./api";
 
+const DEMO_USERS: Record<string, { id: number; role: string }> = {
+  "ventas@willatec.com": { id: 1001, role: "VENTAS" },
+  "licitaciones@willatec.com": { id: 1002, role: "LICITACIONES" },
+  "superadmin@willatec.com": { id: 1, role: "SUPERADMIN" },
+};
+
 // export const loginRequest = async (
 //     email: string, 
 //     password: string
@@ -28,6 +34,22 @@ import api from "./api";
 // };
 
 export const loginRequest = async (email: string, password: string) => {
+  const normalizedEmail = email.trim().toLowerCase();
+  const demoUser = DEMO_USERS[normalizedEmail];
+
+  if (demoUser && password === "123456") {
+    localStorage.setItem("token", "demo-token");
+    return {
+      token: "demo-token",
+      role: demoUser.role,
+      id: demoUser.id,
+      requires_password_change: false,
+      last_login_at: new Date().toISOString(),
+      two_factor_enabled: false,
+      requires_2fa: false,
+    };
+  }
+
   try {
     const response = await api.post("/login", { email, password });
 
