@@ -30,6 +30,7 @@ import { getPaginationItems } from "../utils/pagination";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import PageSizeSelect from "../components/ui/PageSizeSelect";
 import { formatMoney } from "../utils/formatNumber";
+import { normalizeRole } from "../utils/permissions";
 // import { Plus as PlusIcon } from "lucide-react";
 
 /*
@@ -176,6 +177,15 @@ const formatProductoMoney = (
   item: ProductoUI | Producto,
   value: number | string | null | undefined
 ) => formatMoney(value, getProductoCurrencySymbol(item));
+
+const getApiErrorMessage = (error: unknown, fallback: string) => {
+  if (error && typeof error === "object" && "response" in error) {
+    const response = (error as { response?: { data?: { message?: string } } }).response;
+    if (response?.data?.message) return response.data.message;
+  }
+
+  return fallback;
+};
 
 const getSerieEstadoBadge = (estado?: string | null) => {
   const normalized = String(estado || "sin_estado").toLowerCase();
@@ -366,8 +376,8 @@ export default function Productos() {
   const [savingExternal, setSavingExternal] = useState(false);
   const [exportingProductos, setExportingProductos] = useState(false);
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
-  const userRole = String(user?.role || "").toUpperCase();
-  const canUseExternalProducts = user?.role !== "SOPORTE" && user?.role !== "LOGISTICA";
+  const userRole = normalizeRole(user?.role);
+  const canUseExternalProducts = userRole !== "SOPORTE" && userRole !== "LOGISTICA";
   const canManageInternalProducts = userRole !== "VENTAS";
 
   const isStockTab = activeTab === "stock";
@@ -760,11 +770,11 @@ export default function Productos() {
 
     try {
       setSaving(true);
-      await deleteProducto(productoAEliminar.id);
+      const response = await deleteProducto(productoAEliminar.id);
       await fetchProductos(currentPage, debouncedSearchTerm);
       addNotification({
-        title: "Producto eliminado",
-        description: `El producto ${productoAEliminar.nombre} se eliminó correctamente.`,
+        title: response?.producto ? "Producto retirado" : "Producto eliminado",
+        description: response?.message || `El producto ${productoAEliminar.nombre} se eliminó correctamente.`,
         type: "success",
         icon: "CheckCircle",
         route: "/productos",
@@ -773,7 +783,7 @@ export default function Productos() {
       console.error(error);
       addNotification({
         title: "Error al eliminar producto",
-        description: "No se pudo eliminar el producto.",
+        description: getApiErrorMessage(error, "No se pudo eliminar el producto."),
         type: "warning",
         icon: "MessageCircle",
         route: "/productos",
@@ -1573,10 +1583,11 @@ export default function Productos() {
                   <div className="mt-4 border-t border-gray-100 pt-3">
                     {isStockTab ? (
                       canManageInternalProducts ? (
-                        <div className="grid grid-cols-[minmax(0,1fr)_3rem] gap-2 sm:grid-cols-2">
+                        <div className="grid grid-cols-2 gap-2">
                           <button
                             onClick={() => handleEditar(item)}
                             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-100 text-sm font-semibold text-blue-700 hover:bg-blue-200"
+                            title="Editar producto"
                           >
                             <Pencil size={16} />
                             Editar
@@ -1584,10 +1595,10 @@ export default function Productos() {
                           <button
                             onClick={() => handleEliminar(item)}
                             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-100 text-sm font-semibold text-red-700 hover:bg-red-200"
-                            title="Eliminar"
+                            title="Eliminar o retirar producto"
                           >
                             <Trash2 size={16} />
-                            <span className="hidden sm:inline">Eliminar</span>
+                            Retirar
                           </button>
                         </div>
                       ) : (
@@ -1834,6 +1845,7 @@ export default function Productos() {
                                 handleEditar(item)
                               }
                               className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                              title="Editar producto"
                             >
                               <Pencil size={18} />
                             </button>
@@ -1842,6 +1854,7 @@ export default function Productos() {
                                 handleEliminar(item)
                               }
                               className="w-9 h-9 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                              title="Eliminar o retirar producto"
                             >
                               <Trash2 size={18} />
                             </button>
@@ -2084,7 +2097,7 @@ export default function Productos() {
               </div>
 
               <h3 className="text-xl font-bold text-gray-800 mb-2">
-                ¿Eliminar producto?
+                ¿Eliminar o retirar producto?
               </h3>
 
               <p className="text-gray-600">
@@ -2093,6 +2106,9 @@ export default function Productos() {
                   "{productoAEliminar.nombre}"
                 </strong>
                 ?
+              </p>
+              <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                Si tiene Kardex, series o cotizaciones, se retirará del listado activo para conservar el historial.
               </p>
             </div>
 
@@ -2249,6 +2265,22 @@ export default function Productos() {
                     )}
                   </div>
                 </div>
+
+                {canManageInternalProducts && (
+                  <div className="mt-5 flex justify-end border-t border-gray-100 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductoAEliminar(productoDetalleModal);
+                        setProductoDetalleModal(null);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-xl bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-200"
+                    >
+                      <Trash2 size={16} />
+                      Eliminar o retirar
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -9,15 +9,23 @@ import {
   AlertCircle,
   CheckCircle2,
   Download,
-  Mail,
+  FileText,
+  Upload,
 } from "lucide-react";
 
 import {
+  confirmHostingsImport,
   createHosting,
+  deleteHostingDocumento,
   deleteHosting,
   getHostings,
+  previewHostingsImport,
   updateHosting,
+  uploadHostingDocumentos,
   type HostingApi,
+  type HostingDocumentoApi,
+  type HostingImportPreview,
+  type HostingImportRow,
   type HostingPayload,
 } from "../../services/hosting.service";
 import {
@@ -34,22 +42,35 @@ interface Hosting {
   ruc: string;
   dominio: string;
   plan: string;
+  precioSinIgv: number | null;
+  monedaId: number | null;
+  monedaCodigo: string;
+  monedaSimbolo: string;
   suscripcion: "ANUAL" | "MENSUAL";
   fechaInicio: string;
   fechaRenovacion: string;
   contacto: string;
   cliente: string;
   correoHosting: string;
+  documentos: HostingDocumentoApi[];
   estado: "VIGENTE" | "POR VENCER" | "VENCIDO";
 }
 
 export default function Hosting() {
   const [hostings, setHostings] = useState<Hosting[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [outlookRedirecting, setOutlookRedirecting] = useState<number | null>(null);
   const [loadingHostings, setLoadingHostings] = useState(false);
   const [savingHosting, setSavingHosting] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
+  const [documentModal, setDocumentModal] = useState<Hosting | null>(null);
+  const [uploadingDocuments, setUploadingDocuments] = useState(false);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<number | null>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importingExcel, setImportingExcel] = useState(false);
+  const [confirmingImport, setConfirmingImport] = useState(false);
+  const [importFileName, setImportFileName] = useState("");
+  const [importRows, setImportRows] = useState<HostingImportRow[]>([]);
+  const [importPreview, setImportPreview] = useState<HostingImportPreview | null>(null);
 
   const [search, setSearch] = useState("");
   const [filterSus, setFilterSus] = useState("TODOS");
@@ -69,6 +90,8 @@ export default function Hosting() {
     ruc: "",
     dominio: "",
     plan: "",
+    precioSinIgv: "",
+    monedaId: "1",
     suscripcion: "ANUAL",
     fechaInicio: "",
     fechaRenovacion: "",
@@ -84,12 +107,19 @@ export default function Hosting() {
     ruc: hosting.ruc || "",
     dominio: hosting.dominio,
     plan: hosting.plan,
+    precioSinIgv: hosting.precio_sin_igv === null || hosting.precio_sin_igv === undefined
+      ? null
+      : Number(hosting.precio_sin_igv),
+    monedaId: hosting.moneda_id ?? null,
+    monedaCodigo: hosting.moneda?.codigo || "",
+    monedaSimbolo: hosting.moneda?.simbolo || (Number(hosting.moneda_id) === 2 ? "$" : "S/"),
     suscripcion: hosting.suscripcion,
     fechaInicio: hosting.fecha_inicio,
     fechaRenovacion: hosting.fecha_renovacion,
     contacto: hosting.contacto || "",
     cliente: hosting.cliente || hosting.cliente_relacionado?.nombre || "",
     correoHosting: hosting.correo_hosting || hosting.cliente_relacionado?.correo || "",
+    documentos: hosting.documentos || [],
     estado: getEstado(hosting.fecha_renovacion),
   });
 
@@ -186,6 +216,27 @@ export default function Hosting() {
     return "VIGENTE";
   };
 
+  const formatPrecioHosting = (hosting: Hosting) => {
+    if (hosting.precioSinIgv === null || Number.isNaN(hosting.precioSinIgv)) {
+      return "-";
+    }
+
+    return `${hosting.monedaSimbolo || ""} ${Number(hosting.precioSinIgv).toLocaleString("es-PE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
+  const updateHostingEnLista = (hosting: HostingApi) => {
+    const mapped = mapHosting(hosting);
+
+    setHostings((current) =>
+      current.map((item) => (item.id === mapped.id ? mapped : item))
+    );
+    setDocumentModal((current) => (current?.id === mapped.id ? mapped : current));
+    setViewModal((current) => (current?.id === mapped.id ? mapped : current));
+  };
+
   const loadHostings = async () => {
     try {
       setLoadingHostings(true);
@@ -211,6 +262,8 @@ export default function Hosting() {
       ruc: form.ruc.trim() || null,
       dominio: form.dominio,
       plan: form.plan,
+      precio_sin_igv: form.precioSinIgv ? Number(form.precioSinIgv) : null,
+      moneda_id: form.precioSinIgv ? Number(form.monedaId || 1) : null,
       suscripcion: form.suscripcion as "ANUAL" | "MENSUAL",
       fecha_inicio: form.fechaInicio,
       contacto: form.contacto.trim() || null,
@@ -253,6 +306,8 @@ export default function Hosting() {
       ruc: hosting.ruc,
       dominio: hosting.dominio,
       plan: hosting.plan,
+      precioSinIgv: hosting.precioSinIgv === null ? "" : String(hosting.precioSinIgv),
+      monedaId: hosting.monedaId ? String(hosting.monedaId) : "1",
       suscripcion: hosting.suscripcion,
       fechaInicio: hosting.fechaInicio,
       fechaRenovacion: hosting.fechaRenovacion,
@@ -275,12 +330,41 @@ export default function Hosting() {
     }
   };
 
-  const handleOutlook = (hosting: Hosting) => {
-    setOutlookRedirecting(hosting.id);
-    setTimeout(() => {
-      window.open('https://outlook.office.com/', '_blank');
-      setOutlookRedirecting(null);
-    }, 1000);
+  const handleUploadDocumentos = async (files: FileList | null) => {
+    if (!documentModal || !files || files.length === 0) return;
+
+    const pdfs = Array.from(files).filter((file) => file.type === "application/pdf");
+    if (pdfs.length !== files.length) {
+      alert("Solo se permiten archivos PDF.");
+      return;
+    }
+
+    try {
+      setUploadingDocuments(true);
+      const updated = await uploadHostingDocumentos(documentModal.id, pdfs);
+      updateHostingEnLista(updated);
+    } catch (error) {
+      console.error("Error al subir documentos:", error);
+      alert("No se pudieron subir los documentos.");
+    } finally {
+      setUploadingDocuments(false);
+    }
+  };
+
+  const handleDeleteDocumento = async (documentoId: number) => {
+    if (!documentModal) return;
+    if (!confirm("¿Eliminar este documento?")) return;
+
+    try {
+      setDeletingDocumentId(documentoId);
+      const updated = await deleteHostingDocumento(documentModal.id, documentoId);
+      updateHostingEnLista(updated);
+    } catch (error) {
+      console.error("Error al eliminar documento:", error);
+      alert("No se pudo eliminar el documento.");
+    } finally {
+      setDeletingDocumentId(null);
+    }
   };
 
   const resetForm = () => {
@@ -290,6 +374,8 @@ export default function Hosting() {
       ruc: "",
       dominio: "",
       plan: "",
+      precioSinIgv: "",
+      monedaId: "1",
       suscripcion: "ANUAL",
       fechaInicio: "",
       fechaRenovacion: "",
@@ -299,6 +385,197 @@ export default function Hosting() {
     });
     setClienteSearch("");
     setShowClienteDropdown(false);
+  };
+
+  const normalizeHeader = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+  const headerMap: Record<string, keyof HostingImportRow> = {
+    cliente_id: "cliente_id",
+    id_cliente: "cliente_id",
+    empresa: "empresa",
+    nombre_empresa: "empresa",
+    nombre_de_empresa: "empresa",
+    ruc: "ruc",
+    dominio: "dominio",
+    domain: "dominio",
+    plan: "plan",
+    suscripcion: "suscripcion",
+    tipo_suscripcion: "suscripcion",
+    fecha_inicio: "fecha_inicio",
+    inicio: "fecha_inicio",
+    contacto: "contacto",
+    cliente: "cliente",
+    correo_hosting: "correo_hosting",
+    correo_para_hosting: "correo_hosting",
+    correo: "correo_hosting",
+  };
+
+  const formatExcelDate = (value: unknown): string => {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value.toISOString().slice(0, 10);
+    }
+
+    if (typeof value === "number") {
+      const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+      excelEpoch.setUTCDate(excelEpoch.getUTCDate() + Math.floor(value));
+      return excelEpoch.toISOString().slice(0, 10);
+    }
+
+    return String(value ?? "").trim();
+  };
+
+  const cellToText = (value: unknown): string => {
+    if (value === null || value === undefined) return "";
+    if (value instanceof Date) return formatExcelDate(value);
+    if (typeof value === "object") {
+      const maybeRichText = value as { text?: string; result?: unknown; hyperlink?: string; richText?: { text: string }[] };
+      if (maybeRichText.text) return maybeRichText.text;
+      if (maybeRichText.result !== undefined) return String(maybeRichText.result);
+      if (maybeRichText.richText) return maybeRichText.richText.map((part) => part.text).join("");
+      if (maybeRichText.hyperlink) return maybeRichText.hyperlink;
+    }
+
+    return String(value).trim();
+  };
+
+  const parseHostingsExcel = async (file: File): Promise<HostingImportRow[]> => {
+    const ExcelJS = await import("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    const buffer = await file.arrayBuffer();
+    await workbook.xlsx.load(buffer);
+
+    const worksheet = workbook.worksheets[0];
+    if (!worksheet) {
+      throw new Error("El archivo no tiene hojas para importar.");
+    }
+
+    let headerRowNumber = 0;
+    const columns: Array<keyof HostingImportRow | null> = [];
+    const requiredColumns: Array<keyof HostingImportRow> = [
+      "empresa",
+      "dominio",
+      "plan",
+      "suscripcion",
+      "fecha_inicio",
+    ];
+
+    const maxHeaderSearchRows = Math.min(10, worksheet.rowCount);
+
+    for (let rowNumber = 1; rowNumber <= maxHeaderSearchRows; rowNumber += 1) {
+      const candidateColumns: Array<keyof HostingImportRow | null> = [];
+      const row = worksheet.getRow(rowNumber);
+
+      row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
+        const normalized = normalizeHeader(cellToText(cell.value));
+        candidateColumns[columnNumber] = headerMap[normalized] ?? null;
+      });
+
+      const matchedRequired = requiredColumns.filter((column) => candidateColumns.includes(column));
+
+      if (matchedRequired.length >= 4) {
+        headerRowNumber = rowNumber;
+        candidateColumns.forEach((column, index) => {
+          columns[index] = column;
+        });
+        break;
+      }
+    }
+
+    if (headerRowNumber === 0) {
+      throw new Error(
+        `No se encontró una fila de encabezados válida. Usa columnas: ${requiredColumns.join(", ")}.`
+      );
+    }
+
+    const missing = requiredColumns.filter((column) => !columns.includes(column));
+
+    if (missing.length > 0) {
+      throw new Error(`Faltan columnas obligatorias: ${missing.join(", ")}.`);
+    }
+
+    const rows: HostingImportRow[] = [];
+
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber <= headerRowNumber) return;
+
+      const item: HostingImportRow = {};
+      let hasValue = false;
+
+      columns.forEach((key, columnNumber) => {
+        if (!key) return;
+        const rawValue = row.getCell(columnNumber).value;
+        const value = key === "fecha_inicio" ? formatExcelDate(rawValue) : cellToText(rawValue);
+
+        if (String(value).trim() !== "") {
+          hasValue = true;
+        }
+
+        (item as Record<string, string>)[key] = value;
+      });
+
+      if (hasValue) rows.push(item);
+    });
+
+    if (rows.length === 0) {
+      throw new Error("No se encontraron filas con datos para importar.");
+    }
+
+    return rows;
+  };
+
+  const handleImportFile = async (file: File | null) => {
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      alert("Sube un archivo Excel en formato .xlsx.");
+      return;
+    }
+
+    try {
+      setImportingExcel(true);
+      setImportFileName(file.name);
+      const rows = await parseHostingsExcel(file);
+      const preview = await previewHostingsImport(rows);
+      setImportRows(rows);
+      setImportPreview(preview);
+    } catch (error) {
+      console.error("Error al previsualizar importacion de hosting:", error);
+      alert(error instanceof Error ? error.message : "No se pudo leer o validar el archivo Excel.");
+      setImportRows([]);
+      setImportPreview(null);
+    } finally {
+      setImportingExcel(false);
+    }
+  };
+
+  const resetImport = () => {
+    setImportFileName("");
+    setImportRows([]);
+    setImportPreview(null);
+  };
+
+  const handleConfirmImport = async () => {
+    if (!importPreview || importPreview.summary.invalid > 0) return;
+
+    try {
+      setConfirmingImport(true);
+      await confirmHostingsImport(importPreview.rows.filter((row) => row.valid).map((row) => row.data));
+      await loadHostings();
+      setImportModalOpen(false);
+      resetImport();
+      alert("Hostings importados correctamente.");
+    } catch (error) {
+      console.error("Error al importar hostings:", error);
+      alert("No se pudo confirmar la importación. Revisa la previsualización.");
+    } finally {
+      setConfirmingImport(false);
+    }
   };
 
   const exportToExcel = async () => {
@@ -314,6 +591,8 @@ export default function Hosting() {
           { header: "RUC", key: "ruc", width: 16 },
           { header: "Dominio", key: "dominio", width: 28 },
           { header: "Plan", key: "plan", width: 28 },
+          { header: "Precio sin IGV", key: "precioSinIgv", width: 18 },
+          { header: "Moneda", key: "moneda", width: 12 },
           { header: "Suscripcion", key: "suscripcion", width: 16 },
           { header: "Fecha inicio", key: "fechaInicio", width: 16 },
           { header: "Fecha renovacion", key: "fechaRenovacion", width: 18 },
@@ -327,6 +606,8 @@ export default function Hosting() {
           ruc: hosting.ruc,
           dominio: hosting.dominio,
           plan: hosting.plan,
+          precioSinIgv: hosting.precioSinIgv ?? "",
+          moneda: hosting.monedaCodigo || hosting.monedaSimbolo || "",
           suscripcion: hosting.suscripcion,
           fechaInicio: hosting.fechaInicio,
           fechaRenovacion: hosting.fechaRenovacion,
@@ -373,6 +654,12 @@ export default function Hosting() {
 
         <div className="flex flex-wrap gap-2">
           <button
+            onClick={() => setImportModalOpen(true)}
+            className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
+          >
+            <Upload size={16} /> Importar Excel
+          </button>
+          <button
             onClick={() => void exportToExcel()}
             disabled={exportingExcel}
             className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
@@ -391,6 +678,159 @@ export default function Hosting() {
           </button>
         </div>
       </div>
+
+      {importModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Importar hosting desde Excel</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  Usa columnas: empresa, ruc, dominio, plan, suscripcion, correo_hosting, fecha_inicio, contacto y cliente.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setImportModalOpen(false);
+                  resetImport();
+                }}
+                className="rounded-xl p-2 text-gray-500 transition hover:bg-gray-100"
+                type="button"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-5 overflow-y-auto p-6">
+              <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/60 px-6 py-8 text-center transition hover:bg-blue-50">
+                <Upload className="mb-3 text-blue-600" size={28} />
+                <span className="font-semibold text-blue-800">
+                  {importFileName || "Seleccionar archivo .xlsx"}
+                </span>
+                <span className="mt-1 text-sm text-blue-600">
+                  El sistema validará el archivo antes de guardar.
+                </span>
+                <input
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={(event) => void handleImportFile(event.target.files?.[0] ?? null)}
+                  disabled={importingExcel || confirmingImport}
+                />
+              </label>
+
+              {importingExcel && (
+                <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">
+                  Leyendo y validando archivo...
+                </div>
+              )}
+
+              {importPreview && (
+                <>
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                      <p className="text-xs font-semibold uppercase text-gray-500">Filas</p>
+                      <p className="mt-1 text-2xl font-bold text-gray-900">{importPreview.summary.total}</p>
+                    </div>
+                    <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+                      <p className="text-xs font-semibold uppercase text-emerald-700">Válidas</p>
+                      <p className="mt-1 text-2xl font-bold text-emerald-800">{importPreview.summary.valid}</p>
+                    </div>
+                    <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+                      <p className="text-xs font-semibold uppercase text-red-700">Errores</p>
+                      <p className="mt-1 text-2xl font-bold text-red-800">{importPreview.summary.invalid}</p>
+                    </div>
+                    <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
+                      <p className="text-xs font-semibold uppercase text-amber-700">Advertencias</p>
+                      <p className="mt-1 text-2xl font-bold text-amber-800">{importPreview.summary.warnings}</p>
+                    </div>
+                  </div>
+
+                  <div className="overflow-hidden rounded-2xl border border-gray-200">
+                    <div className="max-h-[360px] overflow-auto">
+                      <table className="min-w-[1080px] w-full text-sm">
+                        <thead className="sticky top-0 bg-gray-100">
+                          <tr>
+                            <th className="p-3 text-left font-semibold">Fila</th>
+                            <th className="p-3 text-left font-semibold">Empresa</th>
+                            <th className="p-3 text-left font-semibold">RUC</th>
+                            <th className="p-3 text-left font-semibold">Dominio</th>
+                            <th className="p-3 text-left font-semibold">Plan</th>
+                            <th className="p-3 text-left font-semibold">Suscripción</th>
+                            <th className="p-3 text-left font-semibold">Inicio</th>
+                            <th className="p-3 text-left font-semibold">Renovación</th>
+                            <th className="p-3 text-left font-semibold">Estado</th>
+                            <th className="p-3 text-left font-semibold">Observaciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importPreview.rows.map((row) => (
+                            <tr key={row.row} className="border-t align-top">
+                              <td className="p-3 font-semibold">{row.row}</td>
+                              <td className="p-3">{row.data.empresa || "-"}</td>
+                              <td className="p-3">{row.data.ruc || "-"}</td>
+                              <td className="p-3">{row.data.dominio || "-"}</td>
+                              <td className="p-3">{row.data.plan || "-"}</td>
+                              <td className="p-3">{row.data.suscripcion || "-"}</td>
+                              <td className="p-3">{row.data.fecha_inicio || "-"}</td>
+                              <td className="p-3">{row.data.fecha_renovacion || "-"}</td>
+                              <td className="p-3">
+                                <span className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                                  row.valid ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                                }`}>
+                                  {row.valid ? "Válida" : "Error"}
+                                </span>
+                              </td>
+                              <td className="max-w-[280px] p-3">
+                                {row.errors.length > 0 && (
+                                  <div className="space-y-1 text-xs text-red-700">
+                                    {row.errors.map((error) => (
+                                      <p key={error}>• {error}</p>
+                                    ))}
+                                  </div>
+                                )}
+                                {row.warnings.length > 0 && (
+                                  <div className="mt-1 space-y-1 text-xs text-amber-700">
+                                    {row.warnings.map((warning) => (
+                                      <p key={warning}>• {warning}</p>
+                                    ))}
+                                  </div>
+                                )}
+                                {row.errors.length === 0 && row.warnings.length === 0 && (
+                                  <span className="text-xs text-gray-400">Sin observaciones</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-gray-100 px-6 py-4 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={resetImport}
+                disabled={importingExcel || confirmingImport || !importPreview}
+                className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50"
+              >
+                Limpiar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmImport}
+                disabled={!importPreview || importPreview.summary.invalid > 0 || confirmingImport || importingExcel || importRows.length === 0}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {confirmingImport ? "Importando..." : "Confirmar importación"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* DASHBOARD */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -466,7 +906,7 @@ export default function Hosting() {
       {/* TABLE */}
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-        <table className="min-w-[1180px] w-full text-sm">
+        <table className="min-w-[1300px] w-full text-sm">
 
           <thead className="bg-gray-100">
             <tr>
@@ -474,25 +914,26 @@ export default function Hosting() {
               <th className="p-3 text-left font-semibold">RUC</th>
               <th className="p-3 text-left font-semibold">Dominio</th>
               <th className="p-3 text-left font-semibold">Plan</th>
+              <th className="p-3 text-left font-semibold">Precio</th>
               <th className="p-3 text-left font-semibold">Suscripción</th>
               <th className="p-3 text-left font-semibold">Correo hosting</th>
               <th className="p-3 text-left font-semibold">F. Inicio</th>
               <th className="p-3 text-left font-semibold">F. Renovación</th>
               <th className="p-3 text-left font-semibold">Estado</th>
-              <th className="p-3 text-left font-semibold">Acciones</th>
+              <th className="sticky right-0 z-10 bg-gray-100 p-3 text-left font-semibold shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">Acciones</th>
             </tr>
           </thead>
 
           <tbody>
             {loadingHostings ? (
               <tr>
-                <td colSpan={10} className="p-8 text-center text-gray-500">
+                <td colSpan={11} className="p-8 text-center text-gray-500">
                   Cargando hostings...
                 </td>
               </tr>
             ) : filtrados.length === 0 ? (
               <tr>
-                <td colSpan={10} className="p-8 text-center text-gray-500">
+                <td colSpan={11} className="p-8 text-center text-gray-500">
                   No hay hostings que mostrar
                 </td>
               </tr>
@@ -503,6 +944,7 @@ export default function Hosting() {
                   <td className="p-3">{h.ruc}</td>
                   <td className="p-3 font-medium text-blue-600">{h.dominio}</td>
                   <td className="p-3">{h.plan}</td>
+                  <td className="p-3 font-semibold text-gray-700">{formatPrecioHosting(h)}</td>
                   <td className="p-3">
                     <span className={`px-2 py-1 text-xs rounded-full font-medium ${
                       h.suscripcion === 'ANUAL' 
@@ -538,7 +980,7 @@ export default function Hosting() {
                     </div>
                   </td>
 
-                  <td className="p-3">
+                  <td className="sticky right-0 z-10 bg-white p-3 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">
                     <div className="flex gap-1 whitespace-nowrap">
                     <button
                       onClick={() => setViewModal(h)}
@@ -564,23 +1006,16 @@ export default function Hosting() {
                       <Trash2 size={14} />
                     </button>
 
-                    <button 
-                      onClick={() => handleOutlook(h)}
-                      className={`p-2 rounded flex items-center justify-center transition-all ${
-                        outlookRedirecting === h.id 
-                          ? 'bg-blue-500 text-white animate-pulse' 
-                          : 'bg-violet-50 text-violet-700 hover:bg-violet-100'
-                      }`}
-                      title="Outlook"
-                      disabled={outlookRedirecting === h.id}
+                    <button
+                      onClick={() => setDocumentModal(h)}
+                      className="relative rounded-lg bg-violet-50 p-2 text-violet-700 transition-colors hover:bg-violet-100"
+                      title="Subir o ver PDFs referenciales"
                     >
-                      {outlookRedirecting === h.id ? (
-                        <>
-                          <div className="w-2 h-2 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
-                          <span className="text-xs">...</span>
-                        </>
-                      ) : (
-                        <Mail size={14} />
+                      <Upload size={14} />
+                      {h.documentos.length > 0 && (
+                        <span className="absolute -right-1 -top-1 rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          {h.documentos.length}
+                        </span>
                       )}
                     </button>
                     </div>
@@ -720,6 +1155,36 @@ export default function Hosting() {
                   />
                 </div>
 
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">
+                    Precio (sin IGV)
+                  </label>
+                  <div className="grid grid-cols-[110px_1fr] gap-2">
+                    <select
+                      name="monedaId"
+                      className="rounded-lg border border-gray-300 bg-white p-3 outline-none focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      value={form.monedaId}
+                      onChange={handleChange}
+                    >
+                      <option value="1">S/</option>
+                      <option value="2">$</option>
+                    </select>
+                    <input
+                      name="precioSinIgv"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      className="w-full rounded-lg border border-gray-300 p-3 outline-none focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      value={form.precioSinIgv}
+                      onChange={handleChange}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Dato referencial. No altera renovaciones ni alertas.
+                  </p>
+                </div>
+
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-gray-700">
                     Contacto
@@ -823,7 +1288,7 @@ export default function Hosting() {
       {/* VIEW MODAL */}
       {viewModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-[550px] shadow-2xl overflow-hidden">
+          <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden">
 
             <div className="border-b border-gray-100 px-6 py-4">
               <h2 className="text-lg font-semibold">Detalle de Hosting</h2>
@@ -850,6 +1315,11 @@ export default function Hosting() {
                   <tr className="border-b">
                     <td className="p-3 font-semibold bg-gray-50">Plan</td>
                     <td className="p-3">{viewModal.plan}</td>
+                  </tr>
+
+                  <tr className="border-b">
+                    <td className="p-3 font-semibold bg-gray-50">Precio (sin IGV)</td>
+                    <td className="p-3 font-semibold text-gray-800">{formatPrecioHosting(viewModal)}</td>
                   </tr>
 
                   <tr className="border-b">
@@ -914,6 +1384,32 @@ export default function Hosting() {
                       </div>
                     </td>
                   </tr>
+
+                  <tr>
+                    <td className="p-3 font-semibold bg-gray-50">Documentos</td>
+                    <td className="p-3">
+                      {viewModal.documentos.length > 0 ? (
+                        <div className="space-y-2">
+                          {viewModal.documentos.map((documento) => (
+                            <a
+                              key={documento.id}
+                              href={documento.url || "#"}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50"
+                            >
+                              <FileText size={15} />
+                              <span className="truncate">
+                                {documento.nombre_original || "Documento PDF"}
+                              </span>
+                            </a>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-500">Sin documentos</span>
+                      )}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -927,6 +1423,91 @@ export default function Hosting() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {documentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-gray-100 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Cotizaciones referenciales
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  {documentModal.empresa} - {documentModal.dominio}
+                </p>
+              </div>
+              <button
+                onClick={() => setDocumentModal(null)}
+                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-5 overflow-y-auto p-6">
+              <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/40 px-4 py-8 text-center transition hover:bg-blue-50">
+                <Upload className="mb-3 text-blue-600" size={28} />
+                <span className="font-semibold text-blue-800">
+                  {uploadingDocuments ? "Subiendo documentos..." : "Subir PDFs de cotización referencial"}
+                </span>
+                <span className="mt-1 text-xs text-gray-500">
+                  Puedes seleccionar uno o varios archivos PDF.
+                </span>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  multiple
+                  className="hidden"
+                  disabled={uploadingDocuments}
+                  onChange={(event) => void handleUploadDocumentos(event.target.files)}
+                />
+              </label>
+
+              <div>
+                <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-500">
+                  Documentos subidos ({documentModal.documentos.length})
+                </h3>
+
+                {documentModal.documentos.length > 0 ? (
+                  <div className="space-y-2">
+                    {documentModal.documentos.map((documento) => (
+                      <div
+                        key={documento.id}
+                        className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <a
+                          href={documento.url || "#"}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex min-w-0 items-center gap-3 text-sm font-semibold text-blue-700 hover:text-blue-800"
+                        >
+                          <FileText size={18} className="shrink-0" />
+                          <span className="truncate">
+                            {documento.nombre_original || "Documento PDF"}
+                          </span>
+                        </a>
+
+                        <button
+                          onClick={() => void handleDeleteDocumento(documento.id)}
+                          disabled={deletingDocumentId === documento.id}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+                        >
+                          <Trash2 size={14} />
+                          {deletingDocumentId === documento.id ? "Eliminando..." : "Eliminar"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-gray-200 p-5 text-center text-sm text-gray-500">
+                    Aún no hay documentos referenciales para este hosting.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

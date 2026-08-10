@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import type { ChangeEvent } from "react";
-import { useLocation, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   Calendar,
@@ -29,6 +29,7 @@ import { useNotifications } from "../NotificationContext";
 import {
   createOcEmitida,
   createOcRecibida,
+  asociarProductoInternoOcRecibida,
   deleteOcEmitidaDocumento,
   deleteOcEmitidaDocumentoAdicional,
   deleteOcRecibidaDocumento,
@@ -52,6 +53,7 @@ import {
   type OcRecibidaItem,
   cancelarOcRecibida,
 } from "../services/ordenCompra.service";
+import { getProductosPaginated, type Producto } from "../services/producto.service";
 import { useAuth } from "../AuthContext";
 import { getCotizacion } from "../services/cotizacion.service";
 import {
@@ -91,11 +93,15 @@ interface RecibidaDraftItem {
   descripcion: string;
   seleccionado: boolean;
   cantidad_recibida: number;
+  cantidad_cotizada: number;
+  cantidad_registrada_oc: number;
+  cantidad_pendiente: number;
 }
 
 interface EmitidaDraftItem {
   cotizacion_item_id: number;
   descripcion: string;
+  seleccionado: boolean;
   cantidad: number;
   precio_unitario: number;
 }
@@ -153,6 +159,7 @@ const buildEmitidaDraftItems = (
     .map((item) => ({
       cotizacion_item_id: item.cotizacion_item_id ?? item.id,
       descripcion: itemDescription(item),
+      seleccionado: true,
       cantidad: getQuotedQuantity(item),
       precio_unitario: getProveedorPrecio(item, proveedor),
     }));
@@ -276,9 +283,59 @@ const getOcSerieSelectionMap = (oc: OcRecibida): Record<number, number[]> =>
     return acc;
   }, {});
 
+const mergePendingSerieSelections = (
+  oc: OcRecibida,
+  pendingSelections: Record<number, number[]>,
+) => {
+  const persistedSelections = getOcSerieSelectionMap(oc);
+
+  return (oc.items || []).reduce<Record<number, number[]>>(
+    (acc, item) => {
+      const pendingIds = pendingSelections[item.id] || [];
+
+      if (!item.entregado && pendingIds.length > 0) {
+        acc[item.id] = pendingIds;
+      }
+
+      return acc;
+    },
+    { ...persistedSelections },
+  );
+};
+
 const getCotizacionLabel = (oc: OcEmitida | OcRecibida) =>
   toDisplayText(oc.cotizacion?.numero ?? (oc as any).cotizacion_numero, "") ||
   (oc.cotizacion_id ? `COT-${oc.cotizacion_id}` : "N/A");
+
+const getCotizacionId = (oc: OcEmitida | OcRecibida) => {
+  const id = Number(oc.cotizacion?.id ?? oc.cotizacion_id ?? (oc as any).cotizacionId ?? 0);
+  return Number.isFinite(id) && id > 0 ? id : null;
+};
+
+function CotizacionLink({
+  oc,
+  className = "",
+}: {
+  oc: OcEmitida | OcRecibida;
+  className?: string;
+}) {
+  const cotizacionId = getCotizacionId(oc);
+  const label = getCotizacionLabel(oc);
+
+  if (!cotizacionId) {
+    return <span className={className}>{label}</span>;
+  }
+
+  return (
+    <Link
+      to={`/cotizaciones/${cotizacionId}/view`}
+      className={`font-semibold text-blue-600 transition hover:text-blue-800 hover:underline dark:text-blue-300 dark:hover:text-blue-200 ${className}`}
+      title={`Ver cotizacion ${label}`}
+    >
+      {label}
+    </Link>
+  );
+}
 
 const getCotizacionCliente = (oc: OcEmitida | OcRecibida) =>
   toDisplayText(
@@ -320,8 +377,18 @@ const getOcItemsCount = (oc: OcRecibida | OcEmitida) => {
 
 const isApprovedCotizacion = (preview: OcPreview) => {
   const estadoId = Number(preview.cotizacion?.estado_cotizacion_id ?? 0);
+  const estadoNombre = String(
+    preview.cotizacion?.estado_nombre || preview.cotizacion?.estado || "",
+  )
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const estadoPermiteOc = estadoNombre.includes("aprobada") || estadoNombre.includes("oc_registrada");
+  const hasOcPendingItems = preview.items.some(
+    (item) => toNumber(item.cantidad_pendiente ?? item.cantidad_recibida ?? item.cantidad) > 0,
+  );
 
-  return estadoId === 4;
+  return estadoId === 4 || (estadoPermiteOc && hasOcPendingItems);
 };
 
 const previewEstadoId = (preview: OcPreview) =>
@@ -543,8 +610,17 @@ export default function OrdenesCompraPage() {
   const [ocItemSeries, setOcItemSeries] = useState<Record<number, number[]>>(
     {},
   );
+  const [associationTarget, setAssociationTarget] = useState<{
+    oc: OcRecibida;
+    item: OcRecibidaItem;
+  } | null>(null);
+  const [productSearch, setProductSearch] = useState("");
+  const [productResults, setProductResults] = useState<Producto[]>([]);
+  const [productSearchLoading, setProductSearchLoading] = useState(false);
+  const [associatingProduct, setAssociatingProduct] = useState<number | null>(null);
 
   const debouncedCotizacionId = useDebouncedValue(cotizacionId, 600);
+  const debouncedProductSearch = useDebouncedValue(productSearch, 400);
 
   const currentPagination =
     activeTab === "emitidas" ? emitidasPagination : recibidasPagination;
@@ -899,6 +975,42 @@ export default function OrdenesCompraPage() {
   }, [modalMode, debouncedCotizacionId]);
 
   useEffect(() => {
+    if (!associationTarget) return;
+
+    let cancelled = false;
+
+    const loadProducts = async () => {
+      try {
+        setProductSearchLoading(true);
+        const response = await getProductosPaginated({
+          page: 1,
+          search: debouncedProductSearch,
+          perPage: 10,
+        });
+
+        if (!cancelled) setProductResults(response.data);
+      } catch (error) {
+        if (!cancelled) {
+          setProductResults([]);
+          showToast({
+            title: "No se pudieron cargar productos",
+            description: getErrorMessage(error, "Intenta buscar nuevamente."),
+            type: "warning",
+          });
+        }
+      } finally {
+        if (!cancelled) setProductSearchLoading(false);
+      }
+    };
+
+    void loadProducts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [associationTarget, debouncedProductSearch, showToast]);
+
+  useEffect(() => {
     if (!ocId) return;
 
     const isRecibidaRoute = location.pathname.includes(
@@ -1035,6 +1147,11 @@ export default function OrdenesCompraPage() {
           cotizacion_item_id: item.cotizacion_item_id ?? item.id,
           descripcion: itemDescription(item),
           seleccionado: true,
+          cantidad_cotizada: toNumber(item.cantidad_cotizada ?? item.cantidad),
+          cantidad_registrada_oc: toNumber(item.cantidad_registrada_oc),
+          cantidad_pendiente: toNumber(
+            item.cantidad_pendiente ?? item.cantidad_recibida ?? item.cantidad,
+          ),
           cantidad_recibida: toNumber(
             item.cantidad_recibida ?? item.cantidad_pendiente ?? item.cantidad,
           ),
@@ -1091,7 +1208,7 @@ export default function OrdenesCompraPage() {
 
     try {
       setPreviewLoading(true);
-      const data = await getOcEmitidaItems(id, nextProveedor);
+      const data = await getOcEmitidaItems(id, nextProveedor, matchedProveedor?.id);
       const nextItems =
         data.items.length > 0 ? data.items : fallbackPreview?.items || [];
       const filteredItems =
@@ -1143,7 +1260,17 @@ export default function OrdenesCompraPage() {
     if (!id || !fecha || items.length === 0) {
       showToast({
         title: "Datos incompletos",
-        description: "Selecciona al menos un item con cantidad recibida.",
+        description: "Selecciona al menos un item con cantidad recibida pendiente.",
+        type: "warning",
+      });
+      return;
+    }
+
+    const itemSobrepasado = items.find((item) => item.cantidad_recibida > item.cantidad_pendiente);
+    if (itemSobrepasado) {
+      showToast({
+        title: "Cantidad mayor a la pendiente",
+        description: `${itemSobrepasado.descripcion} solo tiene ${itemSobrepasado.cantidad_pendiente} unidad(es) pendiente(s) por registrar.`,
         type: "warning",
       });
       return;
@@ -1191,7 +1318,9 @@ export default function OrdenesCompraPage() {
 
   const handleSaveEmitida = async () => {
     const id = Number(cotizacionId);
-    const items = emitidaItems.filter((item) => item.cantidad > 0);
+    const items = emitidaItems.filter(
+      (item) => item.seleccionado && item.cantidad > 0,
+    );
 
     if (!preview || !isApprovedCotizacion(preview)) {
       showToast({
@@ -1205,7 +1334,7 @@ export default function OrdenesCompraPage() {
     if (!id || !proveedor.trim() || !fecha || items.length === 0) {
       showToast({
         title: "Datos incompletos",
-        description: "Selecciona proveedor y al menos un item con cantidad.",
+        description: "Selecciona proveedor y al menos un item incluido con cantidad.",
         type: "warning",
       });
       return;
@@ -1236,6 +1365,7 @@ export default function OrdenesCompraPage() {
       const response = await createOcEmitida({
         cotizacion_id: id,
         proveedor,
+        proveedor_id: selectedProveedorCatalog.id,
         fecha_emision: fecha,
         observaciones,
         items,
@@ -1450,6 +1580,72 @@ export default function OrdenesCompraPage() {
     });
   };
 
+  const handleSelectAllOcItemSeries = (
+    itemId: number,
+    serieIds: number[],
+  ) => {
+    setOcItemSeries((current) => {
+      const selected = current[itemId] || [];
+      const shouldClear =
+        serieIds.length > 0 &&
+        serieIds.every((serieId) => selected.includes(serieId));
+
+      return {
+        ...current,
+        [itemId]: shouldClear ? [] : serieIds,
+      };
+    });
+  };
+
+  const openAssociateProductModal = (oc: OcRecibida, item: OcRecibidaItem) => {
+    setAssociationTarget({ oc, item });
+    setProductSearch(itemDescription(item));
+    setProductResults([]);
+  };
+
+  const closeAssociateProductModal = () => {
+    if (associatingProduct) return;
+    setAssociationTarget(null);
+    setProductSearch("");
+    setProductResults([]);
+  };
+
+  const handleAssociateProduct = async (producto: Producto) => {
+    if (!associationTarget) return;
+
+    try {
+      setAssociatingProduct(producto.id);
+      const response = await asociarProductoInternoOcRecibida(
+        associationTarget.oc.id,
+        associationTarget.item.id,
+        producto.id,
+      );
+      const detail = (response?.oc_recibida ?? await getOcRecibida(associationTarget.oc.id)) as OcRecibida;
+      setOcItemSeries(getOcSerieSelectionMap(detail));
+      setSelectedOc(detail);
+      showToast({
+        title: "Producto asociado",
+        description: response?.message || "Se recalculo la reserva de la OC.",
+        type: "success",
+      });
+      setAssociationTarget(null);
+      setProductSearch("");
+      setProductResults([]);
+      void loadRecibidas(recibidasPagination.page);
+    } catch (error) {
+      showToast({
+        title: "No se pudo asociar el producto",
+        description: getErrorMessage(
+          error,
+          "Verifica que el producto interno exista y tenga stock disponible.",
+        ),
+        type: "error",
+      });
+    } finally {
+      setAssociatingProduct(null);
+    }
+  };
+
   const handleDownloadEmitidaPdf = async (oc: OcEmitida) => {
     try {
       await downloadOcEmitidaPdf(oc.id, `${getOcLabel(oc)}.pdf`);
@@ -1522,21 +1718,31 @@ export default function OrdenesCompraPage() {
       }
     }
 
-    const nextItems = oc.items.map((row) => ({
-      id: row.id,
-      comprado: Boolean(row.comprado),
-      entregado:
-        row.id === item.id && field === "entregado"
-          ? checked
-          : Boolean(row.entregado),
-      producto_serie_ids:
-        row.id === item.id ? selectedSeries : ocItemSeries[row.id] || [],
-    }));
+    const nextItems = oc.items.map((row) => {
+      const rowAssignedSeries = getAssignedItemSerieIds(row, oc);
+      const isTargetItem = row.id === item.id;
+
+      return {
+        id: row.id,
+        comprado: Boolean(row.comprado),
+        entregado:
+          isTargetItem && field === "entregado"
+            ? checked
+            : Boolean(row.entregado),
+        ...(isTargetItem || Boolean(row.entregado) || rowAssignedSeries.length > 0
+          ? {
+              producto_serie_ids: isTargetItem
+                ? selectedSeries
+                : rowAssignedSeries,
+            }
+          : {}),
+      };
+    });
     try {
       setUpdatingItemOc(oc.id);
       await updateOcRecibidaItems(oc.id, { items: nextItems });
       const detail = await getOcRecibida(oc.id);
-      setOcItemSeries(getOcSerieSelectionMap(detail));
+      setOcItemSeries(mergePendingSerieSelections(detail, ocItemSeries));
       setSelectedOc(detail);
       showToast({
         title: "Items actualizados",
@@ -2152,12 +2358,14 @@ export default function OrdenesCompraPage() {
           updatingItemOc={updatingItemOc}
           canEditOc={canEditOc(selectedOc)}
           onClose={() => setSelectedOc(null)}
-          onToggleItem={handleToggleRecibidaItem}
-          selectedSeries={ocItemSeries}
-          selectedOcProviderRuc={selectedOcProviderRuc}
-          onSelectSerie={handleSelectOcItemSeries}
-        />
-      )}
+              onToggleItem={handleToggleRecibidaItem}
+              selectedSeries={ocItemSeries}
+              selectedOcProviderRuc={selectedOcProviderRuc}
+              onSelectSerie={handleSelectOcItemSeries}
+              onSelectAllSeries={handleSelectAllOcItemSeries}
+              onAssociateProduct={openAssociateProductModal}
+            />
+          )}
 
       {documentTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -2312,6 +2520,94 @@ export default function OrdenesCompraPage() {
                 )}
                 Subir
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {associationTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-950">
+            <ModalHeader
+              title="Asociar producto interno"
+              onClose={closeAssociateProductModal}
+            />
+            <div className="space-y-4 p-6">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/20 dark:text-amber-100">
+                <p className="font-semibold">{itemDescription(associationTarget.item)}</p>
+                <p className="mt-1 text-xs">
+                  Selecciona el producto interno que logistica ya registro. Al asociarlo, el sistema intentara reservar stock para esta OC.
+                </p>
+              </div>
+
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Buscar producto interno
+                <div className="relative mt-2">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={productSearch}
+                    onChange={(event) => setProductSearch(event.target.value)}
+                    placeholder="Nombre, codigo, SKU, marca, modelo o ubicacion"
+                    className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
+              </label>
+
+              <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                {productSearchLoading ? (
+                  <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-8 text-sm text-slate-500 dark:border-slate-800">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Buscando productos...
+                  </div>
+                ) : productResults.length > 0 ? (
+                  productResults.map((producto) => (
+                    <button
+                      key={producto.id}
+                      type="button"
+                      onClick={() => handleAssociateProduct(producto)}
+                      disabled={associatingProduct !== null}
+                      className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-slate-900 dark:text-white">
+                            {producto.nombre}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            {[producto.codigo || producto.sku, producto.marca, producto.modelo]
+                              .filter(Boolean)
+                              .join(" / ") || "Sin codigo"}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-center text-xs sm:min-w-[230px]">
+                          <span className="rounded-lg bg-slate-50 px-2 py-1 text-slate-600 dark:bg-slate-950 dark:text-slate-300">
+                            Actual<br />
+                            <strong>{Number(producto.stock_actual ?? producto.stock ?? 0).toLocaleString()}</strong>
+                          </span>
+                          <span className="rounded-lg bg-amber-50 px-2 py-1 text-amber-700">
+                            Reservado<br />
+                            <strong>{Number(producto.stock_reservado ?? 0).toLocaleString()}</strong>
+                          </span>
+                          <span className="rounded-lg bg-emerald-50 px-2 py-1 text-emerald-700">
+                            Disponible<br />
+                            <strong>{Number(producto.stock_disponible ?? producto.stock ?? 0).toLocaleString()}</strong>
+                          </span>
+                        </div>
+                      </div>
+                      {associatingProduct === producto.id && (
+                        <span className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-blue-700">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Asociando...
+                        </span>
+                      )}
+                    </button>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-800">
+                    No se encontraron productos internos.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2566,8 +2862,8 @@ function EmitidasTable({
                   <p className="truncate font-bold text-blue-600">
                     {getOcLabel(oc)}
                   </p>
-                  <p className="mt-1 truncate text-sm text-slate-500">
-                    {getCotizacionLabel(oc)}
+                  <p className="mt-1 truncate text-sm">
+                    <CotizacionLink oc={oc} />
                   </p>
                 </div>
                 <EstadoBadge estado={oc.estado} labels={estadoEmitidaLabels} />
@@ -2667,7 +2963,9 @@ function EmitidasTable({
                   <td className="px-5 py-4 font-semibold text-blue-600">
                     {getOcLabel(oc)}
                   </td>
-                  <td className="px-5 py-4">{getCotizacionLabel(oc)}</td>
+                  <td className="px-5 py-4">
+                    <CotizacionLink oc={oc} />
+                  </td>
                   <td className="px-5 py-4">{oc.proveedor || "N/A"}</td>
                   <td className="px-5 py-4">
                     <span className="inline-flex items-center gap-2">
@@ -2766,8 +3064,8 @@ function RecibidasTable({
                   <p className="truncate font-bold text-emerald-600">
                     {getOcLabel(oc)}
                   </p>
-                  <p className="mt-1 truncate text-sm text-slate-500">
-                    {getCotizacionLabel(oc)}
+                  <p className="mt-1 truncate text-sm">
+                    <CotizacionLink oc={oc} />
                   </p>
                 </div>
                 <EstadoBadge estado={oc.estado} labels={estadoRecibidaLabels} />
@@ -2913,7 +3211,9 @@ function RecibidasTable({
                   <td className="px-5 py-4 font-semibold text-emerald-600">
                     {getOcLabel(oc)}
                   </td>
-                  <td className="px-5 py-4">{getCotizacionLabel(oc)}</td>
+                  <td className="px-5 py-4">
+                    <CotizacionLink oc={oc} />
+                  </td>
                   <td className="px-5 py-4">
                     <span className="inline-flex items-center gap-2">
                       <Calendar size={15} />
@@ -3059,6 +3359,9 @@ function RecibidaDraftTable({
           <tr>
             <th className="px-4 py-3">Incluir</th>
             <th className="px-4 py-3">Item</th>
+            <th className="px-4 py-3">Cotizado</th>
+            <th className="px-4 py-3">Ya registrado</th>
+            <th className="px-4 py-3">Pendiente</th>
             <th className="px-4 py-3">Cantidad recibida</th>
           </tr>
         </thead>
@@ -3084,10 +3387,20 @@ function RecibidaDraftTable({
                 />
               </td>
               <td className="px-4 py-3">{item.descripcion}</td>
+              <td className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-200">
+                {item.cantidad_cotizada}
+              </td>
+              <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
+                {item.cantidad_registrada_oc}
+              </td>
+              <td className="px-4 py-3 font-semibold text-amber-700 dark:text-amber-300">
+                {item.cantidad_pendiente}
+              </td>
               <td className="px-4 py-3">
                 <input
                   type="number"
                   min={0}
+                  max={item.cantidad_pendiente}
                   value={item.cantidad_recibida}
                   onChange={(event) =>
                     setRows((current) =>
@@ -3095,7 +3408,10 @@ function RecibidaDraftTable({
                         rowIndex === index
                           ? {
                               ...row,
-                              cantidad_recibida: Number(event.target.value),
+                              cantidad_recibida: Math.min(
+                                Math.max(0, Number(event.target.value)),
+                                row.cantidad_pendiente,
+                              ),
                             }
                           : row,
                       ),
@@ -3107,7 +3423,7 @@ function RecibidaDraftTable({
             </tr>
           ))}
           {!rows.length && (
-            <EmptyRow colSpan={3} message="No hay items para mostrar." />
+            <EmptyRow colSpan={6} message="No hay items pendientes para registrar en OC." />
           )}
         </tbody>
       </table>
@@ -3124,9 +3440,10 @@ function EmitidaDraftTable({
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-slate-800">
-      <table className="w-full min-w-[760px] text-sm">
+      <table className="w-full min-w-[840px] text-sm">
         <thead className="bg-slate-50 text-left text-slate-600 dark:bg-slate-900 dark:text-slate-300">
           <tr>
+            <th className="px-4 py-3">Incluir</th>
             <th className="px-4 py-3">Item</th>
             <th className="px-4 py-3">Cantidad</th>
             <th className="px-4 py-3">Precio unitario</th>
@@ -3139,12 +3456,30 @@ function EmitidaDraftTable({
               key={item.cotizacion_item_id}
               className="border-t border-gray-100 dark:border-slate-800"
             >
+              <td className="px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={item.seleccionado}
+                  onChange={(event) =>
+                    setRows((current) =>
+                      current.map((row, rowIndex) =>
+                        rowIndex === index
+                          ? { ...row, seleccionado: event.target.checked }
+                          : row,
+                      ),
+                    )
+                  }
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  title="Incluir item en la OC emitida"
+                />
+              </td>
               <td className="px-4 py-3">{item.descripcion}</td>
               <td className="px-4 py-3">
                 <input
                   type="number"
                   min={0}
                   value={item.cantidad}
+                  disabled={!item.seleccionado}
                   onChange={(event) =>
                     setRows((current) =>
                       current.map((row, rowIndex) =>
@@ -3154,7 +3489,7 @@ function EmitidaDraftTable({
                       ),
                     )
                   }
-                  className="w-28 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                  className="w-28 rounded-lg border border-slate-200 px-3 py-2 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800"
                 />
               </td>
               <td className="px-4 py-3">
@@ -3163,6 +3498,7 @@ function EmitidaDraftTable({
                   min={0}
                   step="0.01"
                   value={item.precio_unitario}
+                  disabled={!item.seleccionado}
                   onChange={(event) =>
                     setRows((current) =>
                       current.map((row, rowIndex) =>
@@ -3175,17 +3511,20 @@ function EmitidaDraftTable({
                       ),
                     )
                   }
-                  className="w-32 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                  className="w-32 rounded-lg border border-slate-200 px-3 py-2 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800"
                 />
               </td>
               <td className="px-4 py-3 font-semibold">
-                {formatMoney(item.cantidad * item.precio_unitario, "S/")}
+                {formatMoney(
+                  item.seleccionado ? item.cantidad * item.precio_unitario : 0,
+                  "S/",
+                )}
               </td>
             </tr>
           ))}
           {!rows.length && (
             <EmptyRow
-              colSpan={4}
+              colSpan={5}
               message="Selecciona un proveedor para ver los items de la cotizacion."
             />
           )}
@@ -3321,6 +3660,8 @@ function DetailModal({
   selectedSeries,
   selectedOcProviderRuc,
   onSelectSerie,
+  onSelectAllSeries,
+  onAssociateProduct,
 }: {
   oc: OcEmitida | OcRecibida;
   loading: boolean;
@@ -3336,6 +3677,8 @@ function DetailModal({
   selectedSeries: Record<number, number[]>;
   selectedOcProviderRuc: string;
   onSelectSerie: (itemId: number, serieId: number) => void;
+  onSelectAllSeries: (itemId: number, serieIds: number[]) => void;
+  onAssociateProduct: (oc: OcRecibida, item: OcRecibidaItem) => void;
 }) {
   const isEmitida = "proveedor" in oc;
   const items = oc.items || [];
@@ -3487,9 +3830,25 @@ function DetailModal({
                     const cantidadRecibida = Number(
                       item.cantidad_recibida || 0,
                     );
+                    const cantidadSeriesRequerida =
+                      Number.isInteger(cantidadRecibida) && cantidadRecibida > 0
+                        ? Math.min(cantidadRecibida, availableSeries.length)
+                        : availableSeries.length;
+                    const selectableSerieIds = availableSeries
+                      .slice(0, cantidadSeriesRequerida)
+                      .map((serie: any) => Number(serie.id))
+                      .filter((id) => Number.isFinite(id) && id > 0);
+                    const allRequiredSeriesSelected =
+                      selectableSerieIds.length > 0 &&
+                      selectableSerieIds.every((serieId) =>
+                        currentSeries.includes(serieId),
+                      );
                     const itemHasSoldSeries = hasSoldAssignedSeries(
                       item as OcRecibidaItem,
                       oc as OcRecibida,
+                    );
+                    const hasProductoInterno = Boolean(
+                      (item as OcRecibidaItem).cotizacion_item?.producto_id,
                     );
 
                     return (
@@ -3499,15 +3858,60 @@ function DetailModal({
                       >
                         <td className="px-4 py-3">
                           <div>{itemDescription(item)}</div>
+                          {!isEmitida && !hasProductoInterno && (
+                            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                              <p className="font-semibold">Sin producto interno asociado</p>
+                              {canEditOc && !(item as OcRecibidaItem).entregado && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onAssociateProduct(
+                                      oc as OcRecibida,
+                                      item as OcRecibidaItem,
+                                    )
+                                  }
+                                  className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                                >
+                                  <PackageCheck size={13} />
+                                  Asociar producto interno
+                                </button>
+                              )}
+                            </div>
+                          )}
                           {!isEmitida && availableSeries.length > 0 && (
                             <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
-                              <div className="mb-2 flex items-center justify-between gap-2">
+                              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                                 <span className="text-xs font-bold text-blue-900">
                                   Series a entregar
                                 </span>
-                                <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-blue-700">
-                                  {currentSeries.length}/{cantidadRecibida}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  {canEditOc && !itemHasSoldSeries && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        onSelectAllSeries(
+                                          Number(item.id),
+                                          selectableSerieIds,
+                                        )
+                                      }
+                                      disabled={selectableSerieIds.length === 0}
+                                      className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                      title={
+                                        allRequiredSeriesSelected
+                                          ? "Limpiar series seleccionadas"
+                                          : "Seleccionar todas las series requeridas"
+                                      }
+                                    >
+                                      <CheckCircle size={12} />
+                                      {allRequiredSeriesSelected
+                                        ? "Limpiar"
+                                        : "Seleccionar todas"}
+                                    </button>
+                                  )}
+                                  <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-blue-700">
+                                    {currentSeries.length}/{cantidadRecibida}
+                                  </span>
+                                </div>
                               </div>
                               <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
                                 {availableSeries.map((serie: any) => (

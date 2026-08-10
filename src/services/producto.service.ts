@@ -603,8 +603,9 @@ export const updateProducto = async (
     return normalizeProducto(res.data.producto);
 };
 
-export const deleteProducto = async (id: number): Promise<void> => {
-    await api.delete(`/productos/${id}`);
+export const deleteProducto = async (id: number): Promise<{ message?: string; producto?: Producto }> => {
+    const res = await api.delete(`/productos/${id}`);
+    return res.data;
 };
 
 export const updateCotizacionItem = async (

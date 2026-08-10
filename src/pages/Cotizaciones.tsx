@@ -736,7 +736,10 @@ export default function Cotizaciones() {
                     ESTADO_FILTER_MAP.oc_registrada,
                   ].includes(estadoActualId);
                   const puedeEditarDirecto = puedeEditar && !bloqueaEdicion;
-                  const puedeGenerarOc = puedeEditar && estadoActualId === ESTADO_FILTER_MAP.aprobada;
+                  const puedeGenerarOc = puedeEditar && [
+                    ESTADO_FILTER_MAP.aprobada,
+                    ESTADO_FILTER_MAP.parcialmente_aprobada,
+                  ].includes(estadoActualId);
                   const modificacionesPendientes = Number(cotizacion.modificaciones_pendientes_count || 0);
 
                   return (
@@ -912,7 +915,10 @@ export default function Cotizaciones() {
                       ESTADO_FILTER_MAP.oc_registrada,
                     ].includes(estadoActualId);
                     const puedeEditarDirecto = puedeEditar && !bloqueaEdicion;
-                    const puedeGenerarOc = puedeEditar && estadoActualId === ESTADO_FILTER_MAP.aprobada;
+                    const puedeGenerarOc = puedeEditar && [
+                      ESTADO_FILTER_MAP.aprobada,
+                      ESTADO_FILTER_MAP.parcialmente_aprobada,
+                    ].includes(estadoActualId);
                     const modificacionesPendientes = Number(cotizacion.modificaciones_pendientes_count || 0);
 
                     return (

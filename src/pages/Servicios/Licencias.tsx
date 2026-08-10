@@ -9,7 +9,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Download,
-  Mail,
+  FileText,
   Upload,
 } from "lucide-react";
 
@@ -21,10 +21,13 @@ import {
   createLicencia,
   confirmLicenciasImport,
   deleteLicencia,
+  deleteLicenciaDocumento,
   getLicencias,
   previewLicenciasImport,
   updateLicencia,
+  uploadLicenciaDocumentos,
   type LicenciaApi,
+  type LicenciaDocumentoApi,
   type LicenciaImportPreview,
   type LicenciaImportRow,
   type LicenciaPayload,
@@ -38,6 +41,10 @@ interface Licencia {
   empresa: string;
   producto: string;
   cantidad: number;
+  precioSinIgv: number | null;
+  monedaId: number | null;
+  monedaCodigo: string;
+  monedaSimbolo: string;
   suscripcionMeses: number;
   correoLicencia: string;
   fechaInicio: string;
@@ -45,6 +52,7 @@ interface Licencia {
   estado: "VIGENTE" | "POR VENCER" | "VENCIDO";
   alertasCount: number;
   ultimaAlerta: string | null;
+  documentos: LicenciaDocumentoApi[];
   alertas: {
     id: number;
     diasAntes: number;
@@ -57,9 +65,11 @@ interface Licencia {
 export default function Licencias() {
   const [licencias, setLicencias] = useState<Licencia[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [outlookRedirecting, setOutlookRedirecting] = useState<number | null>(null);
   const [loadingLicencias, setLoadingLicencias] = useState(false);
   const [savingLicencia, setSavingLicencia] = useState(false);
+  const [documentModal, setDocumentModal] = useState<Licencia | null>(null);
+  const [uploadingDocuments, setUploadingDocuments] = useState(false);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<number | null>(null);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importingExcel, setImportingExcel] = useState(false);
@@ -85,6 +95,8 @@ export default function Licencias() {
     empresa: "",
     producto: "",
     cantidad: "",
+    precioSinIgv: "",
+    monedaId: "1",
     suscripcionMeses: "12",
     correoLicencia: "",
     fechaInicio: "",
@@ -97,6 +109,12 @@ export default function Licencias() {
     empresa: licencia.empresa,
     producto: licencia.producto,
     cantidad: Number(licencia.cantidad || 0),
+    precioSinIgv: licencia.precio_sin_igv === null || licencia.precio_sin_igv === undefined
+      ? null
+      : Number(licencia.precio_sin_igv),
+    monedaId: licencia.moneda_id ?? null,
+    monedaCodigo: licencia.moneda?.codigo || "",
+    monedaSimbolo: licencia.moneda?.simbolo || (Number(licencia.moneda_id) === 2 ? "$" : "S/"),
     suscripcionMeses: Number(licencia.suscripcion_meses || 0),
     correoLicencia: licencia.correo_licencia || "",
     fechaInicio: licencia.fecha_inicio,
@@ -104,6 +122,7 @@ export default function Licencias() {
     estado: getEstado(licencia.fecha_renovacion),
     alertasCount: Number(licencia.alertas_enviadas_count || 0),
     ultimaAlerta: licencia.alertas_enviadas_max_sent_at || null,
+    documentos: licencia.documentos || [],
     alertas: (licencia.alertas_enviadas || []).map((alerta) => ({
       id: alerta.id,
       diasAntes: Number(alerta.dias_antes),
@@ -229,6 +248,17 @@ export default function Licencias() {
     });
   };
 
+  const formatPrecioLicencia = (licencia: Licencia) => {
+    if (licencia.precioSinIgv === null || Number.isNaN(licencia.precioSinIgv)) {
+      return "-";
+    }
+
+    return `${licencia.monedaSimbolo || ""} ${Number(licencia.precioSinIgv).toLocaleString("es-PE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
   const alertDaysFor = (suscripcionMeses: number) =>
     suscripcionMeses >= 12 ? [90, 60, 30, 15, 3, 2, 1, 0] : [7, 4, 3, 2, 1, 0];
 
@@ -287,6 +317,8 @@ export default function Licencias() {
       empresa: form.empresa,
       producto: form.producto,
       cantidad: Number(form.cantidad),
+      precio_sin_igv: form.precioSinIgv ? Number(form.precioSinIgv) : null,
+      moneda_id: form.precioSinIgv ? Number(form.monedaId || 1) : null,
       suscripcion_meses: Number(form.suscripcionMeses),
       correo_licencia: form.correoLicencia.trim() || null,
       fecha_inicio: form.fechaInicio,
@@ -326,6 +358,8 @@ export default function Licencias() {
       empresa: licencia.empresa,
       producto: licencia.producto,
       cantidad: licencia.cantidad.toString(),
+      precioSinIgv: licencia.precioSinIgv === null ? "" : String(licencia.precioSinIgv),
+      monedaId: String(licencia.monedaId || 1),
       suscripcionMeses: String(licencia.suscripcionMeses),
       correoLicencia: licencia.correoLicencia,
       fechaInicio: licencia.fechaInicio,
@@ -346,20 +380,14 @@ export default function Licencias() {
     }
   };
 
-  const handleOutlook = (licencia: Licencia) => {
-    setOutlookRedirecting(licencia.id);
-    setTimeout(() => {
-      window.open('https://outlook.office.com/', '_blank');
-      setOutlookRedirecting(null);
-    }, 1000);
-  };
-
   const resetForm = () => {
     setForm({
       cliente_id: "",
       empresa: "",
       producto: "",
       cantidad: "",
+      precioSinIgv: "",
+      monedaId: "1",
       suscripcionMeses: "12",
       correoLicencia: "",
       fechaInicio: "",
@@ -367,6 +395,51 @@ export default function Licencias() {
     });
     setClienteSearch("");
     setShowClienteDropdown(false);
+  };
+
+  const updateLicenciaEnLista = (licencia: LicenciaApi) => {
+    const mapped = mapLicencia(licencia);
+    setLicencias((current) =>
+      current.map((item) => (item.id === mapped.id ? mapped : item))
+    );
+    setDocumentModal((current) => (current?.id === mapped.id ? mapped : current));
+    setViewModal((current) => (current?.id === mapped.id ? mapped : current));
+  };
+
+  const handleUploadDocumentos = async (files: FileList | null) => {
+    if (!documentModal || !files || files.length === 0) return;
+
+    const pdfs = Array.from(files).filter((file) => file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"));
+    if (pdfs.length !== files.length) {
+      alert("Solo se permiten archivos PDF.");
+      return;
+    }
+
+    try {
+      setUploadingDocuments(true);
+      const updated = await uploadLicenciaDocumentos(documentModal.id, pdfs);
+      updateLicenciaEnLista(updated);
+    } catch (error) {
+      console.error("Error al subir documentos:", error);
+      alert("No se pudieron subir los PDFs referenciales.");
+    } finally {
+      setUploadingDocuments(false);
+    }
+  };
+
+  const handleDeleteDocumento = async (documentoId: number) => {
+    if (!documentModal) return;
+
+    try {
+      setDeletingDocumentId(documentoId);
+      const updated = await deleteLicenciaDocumento(documentModal.id, documentoId);
+      updateLicenciaEnLista(updated);
+    } catch (error) {
+      console.error("Error al eliminar documento:", error);
+      alert("No se pudo eliminar el PDF.");
+    } finally {
+      setDeletingDocumentId(null);
+    }
   };
 
   const normalizeHeader = (value: string) =>
@@ -576,6 +649,8 @@ export default function Licencias() {
           { header: "Empresa", key: "empresa", width: 34 },
           { header: "Producto", key: "producto", width: 28 },
           { header: "Cantidad", key: "cantidad", width: 12 },
+          { header: "Precio sin IGV", key: "precioSinIgv", width: 18 },
+          { header: "Moneda", key: "moneda", width: 12 },
           { header: "Suscripcion meses", key: "suscripcionMeses", width: 20 },
           { header: "Correo licencia", key: "correoLicencia", width: 32 },
           { header: "Fecha inicio", key: "fechaInicio", width: 16 },
@@ -586,6 +661,8 @@ export default function Licencias() {
           empresa: licencia.empresa,
           producto: licencia.producto,
           cantidad: licencia.cantidad,
+          precioSinIgv: licencia.precioSinIgv ?? "",
+          moneda: licencia.monedaCodigo || licencia.monedaSimbolo || "",
           suscripcionMeses: licencia.suscripcionMeses,
           correoLicencia: licencia.correoLicencia,
           fechaInicio: licencia.fechaInicio,
@@ -884,32 +961,34 @@ export default function Licencias() {
       {/* TABLE */}
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-        <table className="min-w-[1160px] w-full text-sm">
+        <table className="min-w-[1340px] w-full text-sm">
 
           <thead className="bg-gray-100">
             <tr>
               <th className="p-3 text-left font-semibold">Empresa</th>
               <th className="p-3 text-left font-semibold">Producto</th>
+              <th className="p-3 text-left font-semibold">Cantidad</th>
+              <th className="p-3 text-left font-semibold">Precio (sin IGV)</th>
               <th className="p-3 text-left font-semibold">Suscripción</th>
               <th className="p-3 text-left font-semibold">Correo licencia</th>
               <th className="p-3 text-left font-semibold">Fecha inicio</th>
               <th className="p-3 text-left font-semibold">Fecha renovación</th>
               <th className="p-3 text-left font-semibold">Estado</th>
               <th className="p-3 text-left font-semibold">Alertas</th>
-              <th className="p-3 text-left font-semibold">Acciones</th>
+              <th className="sticky right-0 z-10 bg-gray-100 p-3 text-left font-semibold shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">Acciones</th>
             </tr>
           </thead>
 
           <tbody>
             {loadingLicencias ? (
               <tr>
-                <td colSpan={9} className="p-8 text-center text-gray-500">
+                <td colSpan={11} className="p-8 text-center text-gray-500">
                   Cargando licencias...
                 </td>
               </tr>
             ) : filtradas.length === 0 ? (
               <tr>
-                <td colSpan={9} className="p-8 text-center text-gray-500">
+                <td colSpan={11} className="p-8 text-center text-gray-500">
                   No hay licencias que mostrar
                 </td>
               </tr>
@@ -921,6 +1000,12 @@ export default function Licencias() {
               <tr key={l.id} className="border-t hover:bg-gray-50 transition-colors">
                   <td className="p-3 font-medium">{l.empresa}</td>
                   <td className="p-3">{l.producto}</td>
+                  <td className="sticky right-0 z-10 bg-white p-3 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">
+                    <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                      {Number(l.cantidad || 0).toLocaleString()} licencia{Number(l.cantidad || 0) === 1 ? "" : "s"}
+                    </span>
+                  </td>
+                  <td className="p-3 font-semibold text-gray-700">{formatPrecioLicencia(l)}</td>
                   <td className="p-3">
                     <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
                       {l.suscripcionMeses} meses
@@ -996,23 +1081,16 @@ export default function Licencias() {
                       <Trash2 size={14} />
                     </button>
 
-                    <button 
-                      onClick={() => handleOutlook(l)}
-                      className={`p-2 rounded flex items-center justify-center transition-all ${
-                        outlookRedirecting === l.id 
-                          ? 'bg-blue-500 text-white animate-pulse' 
-                          : 'bg-violet-50 text-violet-700 hover:bg-violet-100'
-                      }`}
-                      title="Outlook"
-                      disabled={outlookRedirecting === l.id}
+                    <button
+                      onClick={() => setDocumentModal(l)}
+                      className="relative rounded-lg bg-violet-50 p-2 text-violet-700 transition-colors hover:bg-violet-100"
+                      title="Subir/ver PDFs referenciales"
                     >
-                      {outlookRedirecting === l.id ? (
-                        <>
-                          <div className="w-2 h-2 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
-                          <span className="text-xs">...</span>
-                        </>
-                      ) : (
-                        <Mail size={14} />
+                      <Upload size={14} />
+                      {l.documentos.length > 0 && (
+                        <span className="absolute -right-1 -top-1 rounded-full bg-violet-600 px-1.5 text-[10px] font-bold text-white">
+                          {l.documentos.length}
+                        </span>
                       )}
                     </button>
                     </div>
@@ -1129,6 +1207,36 @@ export default function Licencias() {
                     value={form.cantidad}
                     onChange={handleChange}
                   />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">
+                    Precio (sin IGV)
+                  </label>
+                  <div className="grid grid-cols-[0.8fr_1.2fr] gap-2">
+                    <select
+                      name="monedaId"
+                      className="rounded-lg border border-gray-300 p-3 outline-none focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      value={form.monedaId}
+                      onChange={handleChange}
+                    >
+                      <option value="1">S/</option>
+                      <option value="2">$</option>
+                    </select>
+                    <input
+                      name="precioSinIgv"
+                      placeholder="0.00"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full rounded-lg border border-gray-300 p-3 outline-none focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      value={form.precioSinIgv}
+                      onChange={handleChange}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Dato referencial. No altera cálculos ni alertas.
+                  </p>
                 </div>
 
                 <div>
@@ -1251,11 +1359,40 @@ export default function Licencias() {
                   </tr>
 
                   <tr className="border-b">
+                    <td className="p-3 font-semibold bg-gray-50">Precio (sin IGV)</td>
+                    <td className="p-3 font-bold">{formatPrecioLicencia(viewModal)}</td>
+                  </tr>
+
+                  <tr className="border-b">
                     <td className="p-3 font-semibold bg-gray-50">Suscripción</td>
                     <td className="p-3">
                       <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
                         {viewModal.suscripcionMeses} meses
                       </span>
+                    </td>
+                  </tr>
+
+                  <tr className="border-b">
+                    <td className="p-3 font-semibold bg-gray-50">Cotizaciones referenciales</td>
+                    <td className="p-3">
+                      {viewModal.documentos.length > 0 ? (
+                        <div className="space-y-2">
+                          {viewModal.documentos.map((documento) => (
+                            <a
+                              key={documento.id}
+                              href={documento.url || "#"}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                            >
+                              <FileText size={15} />
+                              {documento.nombre_original || `PDF #${documento.id}`}
+                            </a>
+                          ))}
+                        </div>
+                      ) : (
+                        "-"
+                      )}
                     </td>
                   </tr>
 
@@ -1390,6 +1527,101 @@ export default function Licencias() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {documentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Cotizaciones referenciales</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  {documentModal.empresa} - {documentModal.producto}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDocumentModal(null)}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                title="Cerrar"
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-5 overflow-y-auto p-6">
+              <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50/50 px-4 py-8 text-center transition hover:bg-violet-50">
+                <Upload className="mb-2 text-violet-700" size={28} />
+                <span className="text-sm font-semibold text-violet-800">
+                  {uploadingDocuments ? "Subiendo PDFs..." : "Subir PDFs de cotización referencial"}
+                </span>
+                <span className="mt-1 text-xs text-violet-600">
+                  Puedes seleccionar uno o varios archivos PDF.
+                </span>
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  multiple
+                  disabled={uploadingDocuments}
+                  onChange={(event) => {
+                    void handleUploadDocumentos(event.target.files);
+                    event.target.value = "";
+                  }}
+                  className="hidden"
+                />
+              </label>
+
+              <div className="rounded-2xl border border-gray-200">
+                <div className="border-b border-gray-100 px-4 py-3">
+                  <h3 className="text-sm font-bold text-gray-800">
+                    Documentos subidos ({documentModal.documentos.length})
+                  </h3>
+                </div>
+
+                {documentModal.documentos.length > 0 ? (
+                  <div className="divide-y divide-gray-100">
+                    {documentModal.documentos.map((documento) => (
+                      <div key={documento.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-gray-900">
+                            {documento.nombre_original || `PDF #${documento.id}`}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {documento.created_at ? formatDateTime(documento.created_at) : "Sin fecha"}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <a
+                            href={documento.url || "#"}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                          >
+                            <Eye size={14} />
+                            Ver
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteDocumento(documento.id)}
+                            disabled={deletingDocumentId === documento.id}
+                            className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                          >
+                            <Trash2 size={14} />
+                            {deletingDocumentId === documento.id ? "Eliminando..." : "Eliminar"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-4 py-8 text-center text-sm text-gray-500">
+                    Todavía no hay PDFs referenciales subidos.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

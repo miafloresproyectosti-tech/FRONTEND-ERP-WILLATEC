@@ -30,12 +30,15 @@ interface TopbarProps {
 
 const NOTIFICATION_POLL_INTERVAL_MS = 60_000;
 const NOTIFICATION_MIN_RELOAD_GAP_MS = 15_000;
+const CUSTOM_NOTIFICATION_SOUND_URL =
+  String(import.meta.env.VITE_NOTIFICATION_SOUND_URL || "").trim() ||
+  "/sounds/notificacion.mp3";
 
 type WebkitAudioWindow = Window & {
   webkitAudioContext?: typeof AudioContext;
 };
 
-async function playNotificationSound() {
+async function playGeneratedNotificationSound() {
   const AudioContextConstructor =
     window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
 
@@ -87,6 +90,22 @@ async function playNotificationSound() {
   } catch {
     void audioContext.close();
   }
+}
+
+async function playNotificationSound() {
+  if (CUSTOM_NOTIFICATION_SOUND_URL) {
+    try {
+      const audio = new Audio(CUSTOM_NOTIFICATION_SOUND_URL);
+      audio.preload = "auto";
+      audio.volume = 0.85;
+      await audio.play();
+      return;
+    } catch (error) {
+      console.warn("No se pudo reproducir el MP3 de notificacion. Se usara el tono por defecto.", error);
+    }
+  }
+
+  await playGeneratedNotificationSound();
 }
 
 async function requestNativeNotificationPermission() {

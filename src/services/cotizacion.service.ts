@@ -50,6 +50,7 @@ export interface CotizacionItem {
 export interface CotizacionItemProveedor {
   id?: number;
   cotizacion_item_id?: number;
+  proveedor_id?: number | null;
   nombre: string;
   link?: string | null;
   precio?: number | null;

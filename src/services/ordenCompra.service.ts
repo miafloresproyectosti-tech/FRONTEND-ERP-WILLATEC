@@ -25,6 +25,8 @@ export interface OcPreviewItem {
   descripcion?: string;
   producto?: string;
   cantidad?: number | string;
+  cantidad_cotizada?: number | string;
+  cantidad_registrada_oc?: number | string;
   cantidad_disponible?: number | string;
   cantidad_pendiente?: number | string;
   cantidad_recibida?: number | string;
@@ -32,6 +34,8 @@ export interface OcPreviewItem {
   costo_base?: number | string;
   proveedor?: string | null;
   proveedores?: Array<{
+    id?: number | string | null;
+    proveedor_id?: number | string | null;
     nombre: string;
     precio?: number | string | null;
   }>;
@@ -194,6 +198,7 @@ export interface CreateOcRecibidaPayload {
 export interface CreateOcEmitidaPayload {
   cotizacion_id: number;
   proveedor: string;
+  proveedor_id?: number | null;
   fecha_emision: string;
   observaciones?: string;
   items: Array<{
@@ -274,6 +279,8 @@ const normalizeItemProveedores = (item: any) => {
   return rawProveedores
     .map((proveedor: any) => ({
       ...proveedor,
+      id: proveedor?.id ?? proveedor?.proveedor_id ?? null,
+      proveedor_id: proveedor?.proveedor_id ?? proveedor?.id ?? null,
       nombre: normalizeProveedorName(proveedor),
       precio: proveedor?.precio ?? proveedor?.precio_unitario ?? proveedor?.costo_base ?? null,
     }))
@@ -301,6 +308,8 @@ const normalizePreviewItem = (item: any): OcPreviewItem => {
     descripcion: firstString(item?.descripcion, source?.descripcion, item?.producto, source?.producto, item?.nombre, source?.nombre, item?.detalle, source?.detalle),
     producto: firstString(item?.producto, source?.producto, item?.descripcion, source?.descripcion, item?.nombre, source?.nombre),
     cantidad: item?.cantidad ?? item?.cantidad_cotizada ?? source?.cantidad,
+    cantidad_cotizada: item?.cantidad_cotizada ?? source?.cantidad_cotizada ?? item?.cantidad ?? source?.cantidad,
+    cantidad_registrada_oc: item?.cantidad_registrada_oc ?? source?.cantidad_registrada_oc,
     cantidad_pendiente: item?.cantidad_pendiente ?? source?.cantidad_pendiente,
     cantidad_disponible: item?.cantidad_disponible ?? source?.cantidad_disponible,
     proveedor: proveedor || primaryProveedor?.nombre || null,
@@ -465,6 +474,18 @@ export async function updateOcRecibidaItems(
   return response.data;
 }
 
+export async function asociarProductoInternoOcRecibida(
+  ocId: number | string,
+  itemId: number | string,
+  productoId: number | string,
+) {
+  const response = await api.patch(`/oc-recibidas/${ocId}/items/${itemId}/asociar-producto`, {
+    producto_id: productoId,
+  });
+
+  return response.data;
+}
+
 export async function cancelarOcRecibida(id: number | string) {
   const response = await api.patch(`/oc-recibidas/${id}/cancelar`);
   return response.data;
@@ -531,9 +552,9 @@ export async function getOcEmitidaPreview(cotizacionId: number) {
   return normalizePreview(response.data);
 }
 
-export async function getOcEmitidaItems(cotizacionId: number, proveedor: string) {
+export async function getOcEmitidaItems(cotizacionId: number, proveedor: string, proveedorId?: number | string | null) {
   const response = await api.get(`/cotizaciones/${cotizacionId}/oc-emitida/items`, {
-    params: { proveedor },
+    params: { proveedor, proveedor_id: proveedorId || undefined },
   });
   return normalizePreview(response.data);
 }

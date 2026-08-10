@@ -510,6 +510,7 @@ export function CotizacionDetail() {
 
     return proveedores.map((proveedor, index) => ({
       ...proveedor,
+      proveedor_id: proveedor.proveedor_id ?? null,
       nombre: proveedor.nombre || '',
       link: proveedor.link || '',
       precio: proveedor.precio ?? null,

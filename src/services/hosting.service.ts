@@ -7,12 +7,20 @@ export interface HostingApi {
   ruc?: string | null;
   dominio: string;
   plan: string;
+  precio_sin_igv?: number | string | null;
+  moneda_id?: number | null;
+  moneda?: {
+    id: number;
+    codigo?: string | null;
+    simbolo?: string | null;
+  } | null;
   suscripcion: "ANUAL" | "MENSUAL";
   fecha_inicio: string;
   fecha_renovacion: string;
   contacto?: string | null;
   cliente?: string | null;
   correo_hosting?: string | null;
+  documentos?: HostingDocumentoApi[];
   cliente_relacionado?: {
     id: number;
     nombre: string;
@@ -21,17 +29,73 @@ export interface HostingApi {
   } | null;
 }
 
+export interface HostingDocumentoApi {
+  id: number;
+  hosting_id: number;
+  nombre_original?: string | null;
+  path?: string | null;
+  url?: string | null;
+  mime_type?: string | null;
+  size?: number | string | null;
+  created_at?: string | null;
+}
+
 export interface HostingPayload {
   cliente_id?: number | null;
   empresa: string;
   ruc?: string | null;
   dominio: string;
   plan: string;
+  precio_sin_igv?: number | null;
+  moneda_id?: number | null;
   suscripcion: "ANUAL" | "MENSUAL";
   fecha_inicio: string;
   contacto?: string | null;
   cliente?: string | null;
   correo_hosting?: string | null;
+}
+
+export interface HostingImportRow {
+  cliente_id?: number | null;
+  empresa?: string | null;
+  ruc?: string | null;
+  dominio?: string | null;
+  plan?: string | null;
+  suscripcion?: string | null;
+  fecha_inicio?: string | null;
+  contacto?: string | null;
+  cliente?: string | null;
+  correo_hosting?: string | null;
+}
+
+export interface HostingImportPreviewRow {
+  row: number;
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  data: {
+    cliente_id?: number | null;
+    empresa?: string | null;
+    ruc?: string | null;
+    dominio?: string | null;
+    plan?: string | null;
+    suscripcion?: "ANUAL" | "MENSUAL" | string | null;
+    fecha_inicio?: string | null;
+    fecha_renovacion?: string | null;
+    contacto?: string | null;
+    cliente?: string | null;
+    correo_hosting?: string | null;
+  };
+}
+
+export interface HostingImportPreview {
+  summary: {
+    total: number;
+    valid: number;
+    invalid: number;
+    warnings: number;
+  };
+  rows: HostingImportPreviewRow[];
 }
 
 export interface GetHostingsParams {
@@ -73,4 +137,43 @@ export const updateHosting = async (
 
 export const deleteHosting = async (id: number): Promise<void> => {
   await api.delete(`/hostings/${id}`);
+};
+
+export const uploadHostingDocumentos = async (
+  id: number,
+  files: File[]
+): Promise<HostingApi> => {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("documentos[]", file));
+
+  const response = await api.post(`/hostings/${id}/documentos`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
+  return response.data.hosting;
+};
+
+export const deleteHostingDocumento = async (
+  hostingId: number,
+  documentoId: number
+): Promise<HostingApi> => {
+  const response = await api.delete(
+    `/hostings/${hostingId}/documentos/${documentoId}`
+  );
+
+  return response.data.hosting;
+};
+
+export const previewHostingsImport = async (
+  rows: HostingImportRow[]
+): Promise<HostingImportPreview> => {
+  const response = await api.post("/hostings/import/preview", { rows });
+  return response.data;
+};
+
+export const confirmHostingsImport = async (
+  rows: HostingImportRow[]
+): Promise<{ message: string; created: number; hostings: HostingApi[] }> => {
+  const response = await api.post("/hostings/import/confirm", { rows });
+  return response.data;
 };

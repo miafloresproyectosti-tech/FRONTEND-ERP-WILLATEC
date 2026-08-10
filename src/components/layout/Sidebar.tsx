@@ -202,7 +202,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       </Link>
                     )}
 
-                    {hasPermission("servicios") && (
+                    {/* {hasPermission("servicios") && (
                       <Link
                         to="/servicios/licencias"
                         onClick={closeMobile}
@@ -211,7 +211,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                         <ShieldCheck size={16} />
                         Licencias
                       </Link>
-                    )}
+                    )} */}
 
                     {hasPermission("ordenes_compra") && (
                       <Link

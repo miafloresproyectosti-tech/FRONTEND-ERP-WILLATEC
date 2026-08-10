@@ -8,7 +8,6 @@ import { NotificationProvider } from "./NotificationContext";
 import { RefreshProvider } from "./RefreshContext";
 import { ThemeProvider } from "./ThemeContext";
 import AlertaVencimientos from "./components/AlertaVencimiento";
-import ReleaseAnnouncement from "./components/announcements/ReleaseAnnouncement";
 import InactivityTimeout from "./components/security/InactivityTimeout";
 import type { Hosting, Licencia } from "./types/Licencias";
 
@@ -31,7 +30,6 @@ function App() {
           <CotizacionesProvider>
             <NotificationProvider>
                 <InactivityTimeout />
-                <ReleaseAnnouncement />
                 {debeMostrarAlerta && (
                   <AlertaVencimientos
                     licencias={licencias}
