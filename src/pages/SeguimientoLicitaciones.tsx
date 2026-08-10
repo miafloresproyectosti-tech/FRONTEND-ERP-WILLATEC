@@ -67,6 +67,7 @@ import {
   getVigenciaAlert,
   isClosedOpportunity,
   normalizeText,
+  toDatetimeLocalValue,
 } from "../utils/licitaciones";
 
 const DEFAULT_FILTERS: OportunidadFilters = {
@@ -388,7 +389,7 @@ export default function SeguimientoLicitaciones() {
       tipo: data.tipo,
       empresa: clean(data.empresa),
       requerimiento: clean(data.requerimiento),
-      vigencia: new Date(data.vigencia).toISOString(),
+      vigencia: data.vigencia,
       ejecutivo: previous?.ejecutivo || { id: 0, nombre: "Sin ejecutivo" },
       asignadoA: previous?.asignadoA ?? null,
       asignadoEn: previous?.asignadoEn ?? null,
@@ -858,7 +859,7 @@ export default function SeguimientoLicitaciones() {
         tipo: "privado",
         empresa,
         requerimiento,
-        vigencia: new Date(row.getCell(3).value?.toString() || Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+        vigencia: toDatetimeLocalValue(new Date(row.getCell(3).value?.toString() || Date.now() + 2 * 24 * 60 * 60 * 1000)),
         ejecutivo: { id: 0, nombre: "Sin ejecutivo" },
         asignadoA: null,
         asignadoEn: null,
