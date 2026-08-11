@@ -6,6 +6,7 @@ import {
   FileSpreadsheet,
   FileUp,
   LockOpen,
+  Loader2,
   Pencil,
   Plus,
   Search,
@@ -950,6 +951,9 @@ export default function SeguimientoLicitaciones() {
     return opportunities.length;
   };
 
+  const isInitialLoading = loading && opportunities.length === 0;
+  const isRefreshing = loading && opportunities.length > 0;
+
   const sortButton = (key: OportunidadSortKey) => (
     <button
       type="button"
@@ -1005,6 +1009,18 @@ export default function SeguimientoLicitaciones() {
           )}
         </div>
       </div>
+
+      {loading && (
+        <div className="flex items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700 shadow-sm dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <div>
+            <p>{isInitialLoading ? "Cargando oportunidades..." : "Actualizando oportunidades..."}</p>
+            <p className="text-xs font-medium text-blue-600/80 dark:text-blue-200/80">
+              Estamos sincronizando oportunidades, responsables, estados y vigencias.
+            </p>
+          </div>
+        </div>
+      )}
 
       {bandejas.length > 0 && (
         <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950">
@@ -1132,6 +1148,17 @@ export default function SeguimientoLicitaciones() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3 text-sm dark:border-slate-800">
+          <div className="font-semibold text-slate-700 dark:text-slate-200">
+            {isInitialLoading ? "Preparando listado" : `${filteredOpportunities.length} oportunidades encontradas`}
+          </div>
+          {isRefreshing && (
+            <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100 dark:bg-blue-950/40 dark:text-blue-200 dark:ring-blue-900/60">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Actualizando
+            </span>
+          )}
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-[1180px] w-full">
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
