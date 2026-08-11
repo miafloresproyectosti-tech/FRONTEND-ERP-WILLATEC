@@ -89,14 +89,23 @@ export interface OcRecibida {
       nombre?: string;
     };
   };
+  usuario?: {
+    id?: number | string;
+    nombres?: string | null;
+    apellidos?: string | null;
+    email?: string | null;
+  } | null;
   fecha_recepcion?: string;
   observaciones?: string | null;
   orden_compra_cliente_path?: string | null;
+  orden_compra_cliente_nombre_original?: string | null;
   orden_compra_cliente_uploaded_by?: number | string | null;
   guia_emision_path?: string | null;
+  guia_emision_nombre_original?: string | null;
   guia_emision_uploaded_by?: number | string | null;
   factura_numero?: string | null;
   factura_path?: string | null;
+  factura_nombre_original?: string | null;
   factura_uploaded_by?: number | string | null;
   estado: OcRecibidaEstado | string;
   documentos_completos?: boolean;
@@ -442,9 +451,6 @@ export async function createOcRecibida(payload: CreateOcRecibidaPayload) {
     if (payload.guia_emision) {
       formData.append("guia_emision", payload.guia_emision);
     }
-    if (payload.factura_numero) {
-      formData.append("factura_numero", payload.factura_numero);
-    }
     if (payload.factura) {
       formData.append("factura", payload.factura);
     }
@@ -459,7 +465,6 @@ export async function createOcRecibida(payload: CreateOcRecibidaPayload) {
     cotizacion_id: payload.cotizacion_id,
     fecha_recepcion: payload.fecha_recepcion,
     observaciones: payload.observaciones,
-    factura_numero: payload.factura_numero,
     items: payload.items,
   });
 
@@ -493,7 +498,7 @@ export async function cancelarOcRecibida(id: number | string) {
 
 export async function uploadOcRecibidaDocumentos(
   id: number | string,
-  files: { orden_compra_cliente?: File | null; guia_emision?: File | null; factura_numero?: string; factura?: File | null; documentos_adicionales?: File[] },
+  files: { orden_compra_cliente?: File | null; guia_emision?: File | null; factura?: File | null; documentos_adicionales?: File[] },
 ) {
   const formData = new FormData();
   if (files.orden_compra_cliente) {
@@ -501,9 +506,6 @@ export async function uploadOcRecibidaDocumentos(
   }
   if (files.guia_emision) {
     formData.append("guia_emision", files.guia_emision);
-  }
-  if (files.factura_numero) {
-    formData.append("factura_numero", files.factura_numero);
   }
   if (files.factura) {
     formData.append("factura", files.factura);

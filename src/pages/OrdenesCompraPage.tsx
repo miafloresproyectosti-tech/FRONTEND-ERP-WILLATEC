@@ -354,6 +354,13 @@ const getCotizacionTitulo = (oc: OcEmitida | OcRecibida) =>
     "Sin titulo",
   );
 
+const getOcUploaderName = (oc: OcEmitida | OcRecibida) => {
+  const usuario = (oc as any).usuario || (oc as any).user;
+  const fullName = [usuario?.nombres, usuario?.apellidos].filter(Boolean).join(" ").trim();
+
+  return fullName || usuario?.email || (oc.user_id ? `Usuario #${oc.user_id}` : "Sin usuario");
+};
+
 const getPreviewCotizacionLabel = (
   preview: OcPreview,
   fallbackId: number | string,
@@ -455,6 +462,27 @@ const pickDocumentUploader = (source: any, key: string) =>
   source?.documentos?.[key]?.created_by ??
   null;
 
+const getDocumentOriginalName = (source: any, key: string) => {
+  const original =
+    source?.[`${key}_nombre_original`] ??
+    source?.documentos?.[`${key}_nombre_original`] ??
+    source?.documentos?.[key]?.nombre_original ??
+    source?.documentos?.[key]?.name ??
+    "";
+
+  if (original) return toDisplayText(original);
+
+  const rawPath = toDisplayText(pickDocumentValue(source, key), "");
+  const cleanPath = rawPath.split("?")[0].split("#")[0];
+  const basename = cleanPath.split(/[\\/]/).filter(Boolean).pop();
+  return basename ? decodeURIComponent(basename) : "";
+};
+
+const formatFixedDocumentLabel = (source: any, key: string, label: string) => {
+  const originalName = getDocumentOriginalName(source, key);
+  return originalName ? `${label} - ${originalName}` : label;
+};
+
 const getDocumentLinks = (oc: OcEmitida | OcRecibida): DocumentLink[] => {
   const labels =
     "proveedor" in oc
@@ -463,15 +491,15 @@ const getDocumentLinks = (oc: OcEmitida | OcRecibida): DocumentLink[] => {
           ["comprobante_pago", "Comprobante de pago"],
         ]
       : [
-          ["orden_compra_cliente", "Orden de compra cliente"],
-          ["guia_emision", "Guia de emision"],
+          ["orden_compra_cliente", "OC Cliente"],
+          ["guia_emision", "GR"],
           ["factura", "Factura"],
         ];
 
   const directLinks = labels
     .map(([key, label]) => ({
       key,
-      label,
+      label: formatFixedDocumentLabel(oc as any, key, label),
       url: toDocumentUrl(pickDocumentValue(oc as any, key)),
     }))
     .filter((document) => document.url);
@@ -520,8 +548,8 @@ const getManagedDocumentLinks = (
           ["comprobante_pago", "Comprobante de pago"],
         ]
       : [
-          ["orden_compra_cliente", "Orden de compra cliente"],
-          ["guia_emision", "Guia de emision"],
+          ["orden_compra_cliente", "OC Cliente"],
+          ["guia_emision", "GR"],
           ["factura", "Factura"],
         ];
 
@@ -529,7 +557,7 @@ const getManagedDocumentLinks = (
     .map(([key, label]) => ({
       key,
       tipo: key,
-      label,
+      label: formatFixedDocumentLabel(oc as any, key, label),
       url: toDocumentUrl(pickDocumentValue(oc as any, key)),
       uploadedBy: pickDocumentUploader(oc as any, key),
     }))
@@ -595,7 +623,6 @@ export default function OrdenesCompraPage() {
     OcEmitida | OcRecibida | null
   >(null);
   const [factura, setFactura] = useState<File | null>(null);
-  const [facturaNumero, setFacturaNumero] = useState("");
   const [comprobantePago, setComprobantePago] = useState<File | null>(null);
   const [documentosAdicionales, setDocumentosAdicionales] = useState<File[]>(
     [],
@@ -1076,7 +1103,6 @@ export default function OrdenesCompraPage() {
     setOrdenCompraCliente(null);
     setGuiaEmision(null);
     setFactura(null);
-    setFacturaNumero("");
   };
 
   const openCreateModal = (mode: Exclude<ModalMode, null>) => {
@@ -1434,7 +1460,6 @@ export default function OrdenesCompraPage() {
         await uploadOcRecibidaDocumentos(documentTarget.id, {
           orden_compra_cliente: ordenCompraCliente,
           guia_emision: guiaEmision,
-          factura_numero: facturaNumero,
           factura,
           documentos_adicionales: documentosAdicionales,
         });
@@ -1767,7 +1792,6 @@ export default function OrdenesCompraPage() {
 
   const resetDocumentFiles = () => {
     setFactura(null);
-    setFacturaNumero("");
     setComprobantePago(null);
     setOrdenCompraCliente(null);
     setGuiaEmision(null);
@@ -2308,12 +2332,12 @@ export default function OrdenesCompraPage() {
               {modalMode === "recibir" && (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <FileInput
-                    label="Orden de compra cliente"
+                    label="OC Cliente"
                     file={ordenCompraCliente}
                     onFileChange={setOrdenCompraCliente}
                   />
                   <FileInput
-                    label="Guia de emision"
+                    label="GR"
                     file={guiaEmision}
                     onFileChange={setGuiaEmision}
                   />
@@ -2369,12 +2393,20 @@ export default function OrdenesCompraPage() {
 
       {documentTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl dark:bg-slate-950">
+          <div className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-950">
             <ModalHeader
               title={`Subir documentos - ${getOcLabel(documentTarget)}`}
               onClose={closeDocumentModal}
             />
-            <div className="space-y-4 p-6">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-100">
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-300">
+                  Cotizacion asociada
+                </p>
+                <p className="mt-1 font-bold">
+                  {getCotizacionCliente(documentTarget)} - {getCotizacionLabel(documentTarget)}
+                </p>
+              </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
@@ -2458,30 +2490,17 @@ export default function OrdenesCompraPage() {
                 <>
                   {!hasOcDocument(documentTarget, "orden_compra_cliente") && (
                     <FileInput
-                      label="Orden de compra cliente"
+                      label="OC Cliente"
                       file={ordenCompraCliente}
                       onFileChange={setOrdenCompraCliente}
                     />
                   )}
                   {!hasOcDocument(documentTarget, "guia_emision") && (
                     <FileInput
-                      label="Guia de emision"
+                      label="GR"
                       file={guiaEmision}
                       onFileChange={setGuiaEmision}
                     />
-                  )}
-                  {(!hasOcDocument(documentTarget, "factura") ||
-                    !(documentTarget as OcRecibida).factura_numero) && (
-                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      Numero de factura
-                      <input
-                        value={facturaNumero}
-                        onChange={(event) =>
-                          setFacturaNumero(event.target.value)
-                        }
-                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                      />
-                    </label>
                   )}
                   {!hasOcDocument(documentTarget, "factura") && (
                     <FileInput
@@ -3082,6 +3101,14 @@ function RecibidasTable({
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase text-slate-400">
+                    Registrado por
+                  </p>
+                  <p className="mt-1 truncate font-medium text-slate-700 dark:text-slate-200" title={getOcUploaderName(oc)}>
+                    {getOcUploaderName(oc)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">
                     Documentos
                   </p>
                   <div className="mt-1">
@@ -3187,14 +3214,15 @@ function RecibidasTable({
       </div>
 
       <div className="hidden overflow-x-auto lg:block">
-        <table className="w-full min-w-[1080px]">
+        <table className="w-full min-w-[1180px]">
           <thead className="bg-gray-50 text-left text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
             <tr>
               <th className="px-5 py-4">OC</th>
               <th className="px-5 py-4">Cotizacion</th>
               <th className="px-5 py-4">Fecha</th>
+              <th className="w-[170px] px-5 py-4">Registrado por</th>
               <th className="px-5 py-4">Items</th>
-              <th className="px-5 py-4">Documentos</th>
+              <th className="w-[240px] px-5 py-4">Documentos</th>
               <th className="px-5 py-4">Estado</th>
               <th className="sticky right-0 z-10 bg-gray-50 px-5 py-4 text-center shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">
                 Acciones
@@ -3220,7 +3248,12 @@ function RecibidasTable({
                       {formatDate(oc.fecha_recepcion)}
                     </span>
                   </td>
-                  <td className="sticky right-0 bg-white px-5 py-4 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">
+                  <td className="w-[170px] max-w-[170px] px-5 py-4">
+                    <span className="block truncate font-medium text-slate-700 dark:text-slate-200" title={getOcUploaderName(oc)}>
+                      {getOcUploaderName(oc)}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4">
                     <div className="space-y-2">
                       {(oc.items || []).length > 0 ? (
                         (oc.items || []).slice(0, 3).map((item) => (
@@ -3295,7 +3328,7 @@ function RecibidasTable({
                       )}
                     </div>
                   </td>
-                  <td className="px-5 py-4">
+                  <td className="w-[240px] max-w-[240px] px-5 py-4">
                     <DocumentStatus oc={oc} />
                   </td>
                   <td className="px-5 py-4">
@@ -3304,7 +3337,7 @@ function RecibidasTable({
                       labels={estadoRecibidaLabels}
                     />
                   </td>
-                  <td className="px-5 py-4">
+                  <td className="sticky right-0 bg-white px-5 py-4 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)] dark:bg-slate-950">
                     <div className="flex justify-center gap-2">
                       <IconButton
                         title="Ver detalle"
@@ -3336,7 +3369,7 @@ function RecibidasTable({
                 </tr>
               ))
             ) : (
-              <EmptyRow colSpan={7} />
+              <EmptyRow colSpan={8} />
             )}
           </tbody>
         </table>
@@ -3550,16 +3583,18 @@ function DocumentStatus({ oc }: { oc: OcEmitida | OcRecibida }) {
           <CheckCircle size={13} />{" "}
           {oc.documentos_completos ? "Completos" : "Con archivos"}
         </span>
-        <div className="flex flex-col gap-1">
+        <div className="flex max-w-full flex-col gap-1">
           {documents.map((document) => (
             <a
               key={`${document.key}-${document.url}`}
               href={document.url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800"
+              title={document.label}
+              className="inline-flex max-w-full items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800"
             >
-              <Download size={12} /> {document.label}
+              <Download size={12} className="shrink-0" />
+              <span className="min-w-0 truncate">{document.label}</span>
             </a>
           ))}
         </div>

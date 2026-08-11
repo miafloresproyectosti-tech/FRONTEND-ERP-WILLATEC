@@ -54,6 +54,13 @@ export interface CotizacionRelacionada {
   numero: string;
   fecha: string;
   estado: string;
+  tieneModificacionPendiente?: boolean;
+  modificacionPendiente?: {
+    id: number | string;
+    estado: string;
+    submittedAt?: string | null;
+    motivo?: string | null;
+  } | null;
 }
 
 export interface EjecutivoAsignado {

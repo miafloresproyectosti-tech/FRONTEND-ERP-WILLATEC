@@ -47,6 +47,8 @@ const normalizeOpportunity = (item: any): Oportunidad => ({
     ? item.cotizaciones.map((cotizacion: any) => ({
         ...cotizacion,
         cotizacionId: cotizacion.cotizacionId ?? cotizacion.cotizacion_id ?? null,
+        tieneModificacionPendiente: Boolean(cotizacion.tieneModificacionPendiente ?? cotizacion.tiene_modificacion_pendiente ?? false),
+        modificacionPendiente: cotizacion.modificacionPendiente ?? cotizacion.modificacion_pendiente ?? null,
       }))
     : [],
 });

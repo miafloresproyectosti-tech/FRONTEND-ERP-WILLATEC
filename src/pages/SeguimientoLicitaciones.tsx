@@ -838,7 +838,7 @@ export default function SeguimientoLicitaciones() {
     categoria: item.categoria,
     estado: OPORTUNIDAD_ESTADOS[item.estado],
     vigencia: formatDateTime(item.vigencia),
-    tiempo_restante: formatRemainingTime(item.vigencia),
+    tiempo_restante: formatRemainingTime(item.vigencia, item.estado),
   }));
 
   const handleExportExcel = async () => {
@@ -1034,12 +1034,18 @@ export default function SeguimientoLicitaciones() {
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-600 via-indigo-600 to-slate-900 p-4 text-white shadow-lg">
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-lg">
+        <div className="absolute inset-y-0 left-0 flex w-4 gap-1 pl-1.5">
+          <span className="my-4 w-1 rounded-full bg-[#e52f7f]" />
+          <span className="my-4 w-1 rounded-full bg-[#22a7df]" />
+          <span className="my-4 w-1 rounded-full bg-[#8bc53f]" />
+        </div>
+        <div className="absolute inset-x-0 top-0 h-1 bg-[#0f3f8f]" />
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-100">Canal comercial</p>
-            <h2 className="mt-1 text-xl font-semibold">Seguimiento comercial</h2>
-            <p className="mt-1 text-xs text-blue-50">
+          <div className="max-w-2xl pl-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#0f3f8f]">Canal comercial</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-950">Seguimiento comercial</h2>
+            <p className="mt-1 text-xs text-slate-500">
               Filtra por licitaciones, privados o WHEREX y prioriza la cartera desde una vista más visual.
             </p>
           </div>
@@ -1053,12 +1059,12 @@ export default function SeguimientoLicitaciones() {
                   onClick={() => updateFilter("tipo", tab.key as OportunidadFilters["tipo"])}
                   className={`min-w-[120px] rounded-xl border px-3 py-2 text-left transition ${
                     active
-                      ? "border-white/80 bg-white text-slate-900 shadow-lg"
-                      : "border-white/20 bg-white/10 text-white hover:bg-white/20"
+                      ? "border-[#0f3f8f] bg-[#0f3f8f] text-white shadow-lg shadow-blue-900/10"
+                      : "border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-200 hover:bg-blue-50"
                   }`}
                 >
                   <div className="text-sm font-semibold">{tab.label}</div>
-                  <div className={`text-[11px] ${active ? "text-slate-600" : "text-blue-100"}`}>{tab.description}</div>
+                  <div className={`text-[11px] ${active ? "text-blue-100" : "text-slate-500"}`}>{tab.description}</div>
                 </button>
               );
             })}
@@ -1067,9 +1073,9 @@ export default function SeguimientoLicitaciones() {
 
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {TYPE_TABS.map((tab) => (
-            <div key={tab.key} className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 backdrop-blur">
-              <p className="text-xs font-semibold text-blue-50">{tab.label}</p>
-              <p className="text-xl font-bold">{typeSummary[tab.key as keyof typeof typeSummary]}</p>
+            <div key={tab.key} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-xs font-semibold text-slate-500">{tab.label}</p>
+              <p className="text-xl font-bold text-[#0f3f8f]">{typeSummary[tab.key as keyof typeof typeSummary]}</p>
             </div>
           ))}
         </div>
@@ -1127,7 +1133,7 @@ export default function SeguimientoLicitaciones() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
         <div className="overflow-x-auto">
-          <table className="min-w-[1120px] w-full">
+          <table className="min-w-[1180px] w-full">
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
               <tr>
                 <Th>Tipo</Th>
@@ -1136,16 +1142,17 @@ export default function SeguimientoLicitaciones() {
                 <Th>Categoria</Th>
                 <Th>{sortButton("creadoEn")}</Th>
                 <Th>{sortButton("estado")}</Th>
-                <Th>{sortButton("vigencia")}</Th>
+                <Th>Ejecutivo</Th>
+                <Th className="min-w-[150px]">{sortButton("vigencia")}</Th>
                 <Th>Tiempo restante</Th>
-                <Th>Acciones</Th>
+                <Th className="sticky right-0 z-20 w-[148px] min-w-[148px] bg-slate-50 shadow-[-10px_0_18px_-18px_rgba(15,23,42,0.7)] dark:bg-slate-900">Acciones</Th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 Array.from({ length: 5 }).map((_, index) => (
                   <tr key={index} className="border-b border-slate-100 dark:border-slate-800">
-                    <td colSpan={9} className="px-5 py-4">
+                    <td colSpan={10} className="px-5 py-4">
                       <div className="h-8 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900" />
                     </td>
                   </tr>
@@ -1153,7 +1160,7 @@ export default function SeguimientoLicitaciones() {
               ) : paginated.length > 0 ? (
                 paginated.map((item) => {
                   const locked = isClosedOpportunity(item.estado);
-                  const alert = getVigenciaAlert(item.vigencia);
+                  const alert = getVigenciaAlert(item.vigencia, item.estado);
 
                   return (
                     <tr key={item.id} className={`border-l-4 ${alert.rowClass} border-b border-slate-100 transition hover:bg-slate-50 dark:border-b-slate-800 dark:hover:bg-slate-900`}>
@@ -1174,21 +1181,35 @@ export default function SeguimientoLicitaciones() {
                       <Td>
                         <EstadoBadge estado={item.estado} />
                       </Td>
-                      <Td>{formatDateTime(item.vigencia)}</Td>
                       <Td>
-                        <div className="space-y-1">
-                          <VigenciaBadge vigencia={item.vigencia} />
-                          <p className={`text-xs font-semibold ${alert.textClass}`}>{formatRemainingTime(item.vigencia)}</p>
+                        <div className="max-w-[170px]">
+                          <span className="block truncate font-semibold text-slate-800 dark:text-slate-100" title={item.ejecutivo.nombre}>
+                            {["en_atencion", "cotizacion_generada", "atendido"].includes(item.estado)
+                              ? item.ejecutivo.nombre
+                              : item.ejecutivo.nombre === "Sin ejecutivo" ? "Sin asignar" : item.ejecutivo.nombre}
+                          </span>
+                          {item.estado === "en_atencion" && (
+                            <span className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                              En atencion
+                            </span>
+                          )}
                         </div>
                       </Td>
+                      <Td className="min-w-[150px] font-semibold text-slate-700 dark:text-slate-200">{formatDateTime(item.vigencia)}</Td>
                       <Td>
-                        <div className="flex items-center gap-2">
+                        <div className="space-y-1">
+                          <VigenciaBadge vigencia={item.vigencia} estado={item.estado} />
+                          <p className={`text-xs font-semibold ${alert.textClass}`}>{formatRemainingTime(item.vigencia, item.estado)}</p>
+                        </div>
+                      </Td>
+                      <Td className="sticky right-0 z-10 w-[148px] min-w-[148px] bg-white shadow-[-10px_0_18px_-18px_rgba(15,23,42,0.7)] dark:bg-slate-950">
+                        <div className="flex flex-wrap items-center justify-center gap-1.5">
                           <IconButton title="Ver detalle" onClick={() => setSelectedId(item.id)}><Eye size={17} /></IconButton>
                           {isSalesRole && isAvailableOpportunity(item) && (
                             <button
                               type="button"
                               onClick={() => void handleAssignToMe(item)}
-                              className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                              className="inline-flex h-9 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
                             >
                               Asignarme
                             </button>
@@ -1196,11 +1217,12 @@ export default function SeguimientoLicitaciones() {
                           {canReleaseOpportunity(item) && item.estado === "en_atencion" && (
                             <button
                               type="button"
+                              title="Liberar"
                               onClick={() => openReleaseModal(item)}
-                              className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"
+                              className="inline-flex h-9 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
                             >
                               <LockOpen size={16} />
-                              Liberar cotización
+                              Liberar
                             </button>
                           )}
                           {isOpportunityCreator(item) && (
@@ -1239,7 +1261,7 @@ export default function SeguimientoLicitaciones() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={9} className="px-5 py-12 text-center text-slate-500">
+                  <td colSpan={10} className="px-5 py-12 text-center text-slate-500">
                     No se encontraron oportunidades.
                   </td>
                 </tr>
@@ -1448,7 +1470,7 @@ export default function SeguimientoLicitaciones() {
           <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-950">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Liberar cotización</h3>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Liberar</h3>
                 <p className="mt-1 text-sm text-slate-500">Explica por qué se libera esta oportunidad y vuelve a quedar disponible.</p>
               </div>
               <button type="button" onClick={() => { setReleaseModalOpen(false); setReleaseTarget(null); setReleaseReason(""); setReleaseError(""); }} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900">✕</button>
@@ -1500,12 +1522,12 @@ export default function SeguimientoLicitaciones() {
   );
 }
 
-function Th({ children }: { children: ReactNode }) {
-  return <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">{children}</th>;
+function Th({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <th className={`px-5 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300 ${className}`}>{children}</th>;
 }
 
-function Td({ children }: { children: ReactNode }) {
-  return <td className="px-5 py-4 align-middle text-sm text-slate-600 dark:text-slate-300">{children}</td>;
+function Td({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <td className={`px-5 py-4 align-middle text-sm text-slate-600 dark:text-slate-300 ${className}`}>{children}</td>;
 }
 
 function IconButton({

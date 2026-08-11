@@ -27,8 +27,8 @@ export function TipoBadge({ tipo }: { tipo: OportunidadTipo }) {
   );
 }
 
-export function VigenciaBadge({ vigencia }: { vigencia: string }) {
-  const alert = getVigenciaAlert(vigencia);
+export function VigenciaBadge({ vigencia, estado }: { vigencia: string; estado?: OportunidadEstado }) {
+  const alert = getVigenciaAlert(vigencia, estado);
 
   return (
     <span className={`inline-flex items-center gap-2 text-xs font-semibold ${alert.textClass}`}>

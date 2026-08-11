@@ -17,6 +17,9 @@ export const isExpired = (vigencia: string) => {
   return !Number.isNaN(date.getTime()) && date.getTime() <= Date.now();
 };
 
+export const shouldTrackVigencia = (estado?: OportunidadEstado) =>
+  !estado || ["sin_atender", "en_atencion", "cotizacion_generada"].includes(estado);
+
 export const addBusinessDays = (baseDate: Date, days: number) => {
   const result = new Date(baseDate);
   let addedDays = 0;
@@ -53,7 +56,9 @@ export const getRemainingMs = (vigencia: string) => {
   return date.getTime() - Date.now();
 };
 
-export const formatRemainingTime = (vigencia: string) => {
+export const formatRemainingTime = (vigencia: string, estado?: OportunidadEstado) => {
+  if (!shouldTrackVigencia(estado)) return "Sin alerta";
+
   const remainingMs = getRemainingMs(vigencia);
   if (remainingMs <= 0) return "Vencida";
 
@@ -67,7 +72,16 @@ export const formatRemainingTime = (vigencia: string) => {
   return `${minutes}m`;
 };
 
-export const getVigenciaAlert = (vigencia: string) => {
+export const getVigenciaAlert = (vigencia: string, estado?: OportunidadEstado) => {
+  if (!shouldTrackVigencia(estado)) {
+    return {
+      label: "Sin alerta",
+      dotClass: "bg-slate-300",
+      textClass: "text-slate-500",
+      rowClass: "border-l-slate-200",
+    };
+  }
+
   const remainingMs = getRemainingMs(vigencia);
   const dayMs = 24 * 60 * 60 * 1000;
 

@@ -8,7 +8,7 @@ import {
 
 import { logoutRequest, meRequest } from "./services/auth.service";
 import type { UserRole } from "./types/roles";
-import { rolePermissions } from "./utils/permissions";
+import { normalizeRole, rolePermissions } from "./utils/permissions";
 
 interface User {
   id: number;
@@ -93,9 +93,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasPermission = (permission: string): boolean => {
     if (!user) return false;
-    if (user.role === "SUPERADMIN") return true;
+    const role = normalizeRole(user.role);
+    if (role === "SUPERADMIN") return true;
 
-    const permissions = rolePermissions[user.role] || [];
+    const permissions = rolePermissions[role] || [];
     return permissions.includes(permission);
   };
 

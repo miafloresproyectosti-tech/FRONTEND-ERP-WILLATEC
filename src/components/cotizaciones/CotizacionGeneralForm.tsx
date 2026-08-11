@@ -144,9 +144,9 @@ export function CotizacionGeneralForm({
   };
 
   const getEjecutivoNombre = () => {
-    const ejecutivo = cotizacion?.user || cotizacion?.usuario;
-    const nombres = ejecutivo?.user?.nombres;
-    const apellidos = ejecutivo?.user?.apellidos;
+    const ejecutivo = (cotizacion?.user || cotizacion?.usuario) as any;
+    const nombres = ejecutivo?.profile?.nombres || ejecutivo?.nombres || ejecutivo?.name;
+    const apellidos = ejecutivo?.profile?.apellidos || ejecutivo?.apellidos;
 
     if (nombres) {
       return `${nombres}${apellidos ? ` ${apellidos}` : ''}`;
