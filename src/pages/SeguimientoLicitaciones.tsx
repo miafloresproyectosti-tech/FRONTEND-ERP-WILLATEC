@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../AuthContext";
 import { useNotifications } from "../NotificationContext";
@@ -50,6 +50,7 @@ import {
 import type {
   EjecutivoAsignado,
   Oportunidad,
+  OportunidadArchivo,
   OportunidadEstado,
   OportunidadFilters,
   OportunidadFormData,
@@ -125,6 +126,7 @@ export default function SeguimientoLicitaciones() {
   const { user } = useAuth();
   const { addNotification, showToast } = useNotifications();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [opportunities, setOpportunities] = useState<Oportunidad[]>([]);
   const [loading, setLoading] = useState(true);
@@ -292,6 +294,24 @@ export default function SeguimientoLicitaciones() {
   const paginationItems = getPaginationItems(currentPage, totalPages);
   const paginated = filteredOpportunities.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
   const selected = opportunities.find((item) => item.id === selectedId) || null;
+
+  useEffect(() => {
+    const oportunidadId = searchParams.get("oportunidad_id");
+
+    if (!oportunidadId || opportunities.length === 0) {
+      return;
+    }
+
+    const exists = opportunities.some((item) => String(item.id) === String(oportunidadId));
+    if (!exists) {
+      return;
+    }
+
+    setSelectedId(String(oportunidadId));
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("oportunidad_id");
+    setSearchParams(nextParams, { replace: true });
+  }, [opportunities, searchParams, setSearchParams]);
 
   const summary = useMemo(() => {
     const result: Record<string, number> = { total: scopedOpportunities.length, proximas: 0 };
@@ -673,15 +693,26 @@ export default function SeguimientoLicitaciones() {
     }
   };
 
-  const handleMarkProposalPresented = async () => {
+  const handleMarkProposalPresented = async (file: File) => {
     if (!selected || !["cotizacion_generada", "vencida"].includes(selected.estado) || presentingProposalId) return;
+    if (!canMarkProposalPresented(selected)) {
+      showToast({
+        title: "No autorizado",
+        description: "No tienes permiso para marcar esta oportunidad como presentada.",
+        type: "warning",
+      });
+      return;
+    }
 
     const now = new Date().toISOString();
     const wasExpired = selected.estado === "vencida" || new Date(selected.vigencia).getTime() <= Date.now();
     setPresentingProposalId(selected.id);
     try {
+      const evidence = await fileToOpportunityFile(file, userName);
       await saveOportunidad({
         ...selected,
+        archivos: [evidence, ...selected.archivos],
+        ...( { presentacionEvidencia: evidence } as { presentacionEvidencia: OportunidadArchivo }),
         estado: "atendido",
         modificadoEn: now,
         modificadoPor: userName,
@@ -692,8 +723,8 @@ export default function SeguimientoLicitaciones() {
             usuario: userName,
             tipo: "estado",
             descripcion: wasExpired
-              ? "Propuesta presentada fuera de registro, posterior al vencimiento."
-              : "Propuesta presentada/subida en la plataforma correspondiente.",
+              ? `Propuesta presentada fuera de registro con evidencia ${evidence.nombre}, posterior al vencimiento.`
+              : `Propuesta presentada/subida con evidencia ${evidence.nombre}.`,
           },
           ...selected.historial,
         ],
@@ -731,7 +762,19 @@ export default function SeguimientoLicitaciones() {
 
   const canManageOpportunityQuote = (item: Oportunidad) => {
     if (!user?.id) return false;
-    if (item.estado !== "en_atencion" && item.estado !== "cotizacion_generada") return false;
+    if (item.estado !== "en_atencion") return false;
+    if (item.cotizacionId || item.cotizacionNumero || item.cotizaciones.length > 0) return false;
+
+    return Number(item.asignadoA ?? item.ejecutivo?.id ?? 0) === Number(user.id);
+  };
+
+  const canMarkProposalPresented = (item: Oportunidad) => {
+    if (!user?.id) return false;
+    if (!["cotizacion_generada", "vencida"].includes(item.estado)) return false;
+
+    if (item.tipo === "licitacion") {
+      return currentRole === "LICITACIONES" || isOpportunityCreator(item);
+    }
 
     return Number(item.asignadoA ?? item.ejecutivo?.id ?? 0) === Number(user.id);
   };
@@ -1247,10 +1290,10 @@ export default function SeguimientoLicitaciones() {
         onFinalizeOpportunity={(estado) => {
           if (selected) void changeEstado(selected, estado);
         }}
-        canMarkProposalPresented={currentRole === "LICITACIONES"}
+        canMarkProposalPresented={Boolean(selected && canMarkProposalPresented(selected))}
         presentingProposal={Boolean(selected && presentingProposalId === selected.id)}
-        onMarkProposalPresented={() => void handleMarkProposalPresented()}
-        canDownloadQuotePdf={currentRole === "LICITACIONES"}
+        onMarkProposalPresented={(file) => void handleMarkProposalPresented(file)}
+        canDownloadQuotePdf={currentRole === "LICITACIONES" || currentRole === "SUPERADMIN"}
         downloadingQuoteId={downloadingQuoteId}
         onDownloadQuotePdf={(cotizacionId) => void handleDownloadQuotePdf(cotizacionId)}
       />

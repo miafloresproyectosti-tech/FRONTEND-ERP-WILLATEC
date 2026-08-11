@@ -1,4 +1,4 @@
-import { CheckCircle2, ExternalLink, FileDown, FileText, LockOpen, MessageSquare, Paperclip, Plus, X } from "lucide-react";
+import { CheckCircle2, ExternalLink, FileDown, FileText, LockOpen, MessageSquare, Paperclip, Plus, Upload, X } from "lucide-react";
 import { useState } from "react";
 
 import { FORMAS_PAGO, OPORTUNIDAD_ESTADOS, OPORTUNIDAD_TIPOS } from "../../constants/licitaciones";
@@ -27,7 +27,7 @@ interface Props {
   onDownloadQuotePdf?: (cotizacionId: string | number) => void;
   canMarkProposalPresented?: boolean;
   presentingProposal?: boolean;
-  onMarkProposalPresented?: () => void;
+  onMarkProposalPresented?: (file: File) => void;
 }
 
 export function OportunidadDetailDrawer({
@@ -48,12 +48,34 @@ export function OportunidadDetailDrawer({
 }: Props) {
   const [comment, setComment] = useState("");
   const [previewFile, setPreviewFile] = useState<OportunidadArchivo | null>(null);
+  const [presentationModalOpen, setPresentationModalOpen] = useState(false);
+  const [presentationFile, setPresentationFile] = useState<File | null>(null);
+  const [presentationError, setPresentationError] = useState("");
 
   if (!opportunity) return null;
 
   const locked = isClosedOpportunity(opportunity.estado);
   const alert = getVigenciaAlert(opportunity.vigencia);
   const visiblePreview = previewFile || opportunity.tdr || null;
+  const hasLinkedQuote = Boolean(
+    opportunity.cotizacionId ||
+    opportunity.cotizacionNumero ||
+    opportunity.cotizaciones.length > 0 ||
+    opportunity.estado === "cotizacion_generada"
+  );
+  const canShowQuoteDecision = canManageOpportunity && !locked && !hasLinkedQuote;
+  const presentationLabel =
+    opportunity.tipo === "licitacion"
+      ? "Marcar como subido"
+      : opportunity.tipo === "privado"
+        ? "Marcar como enviado por correo"
+        : "Marcar como subido a WHEREX";
+  const presentationHelp =
+    opportunity.tipo === "licitacion"
+      ? "Adjunta una captura o PDF que evidencie que la propuesta fue subida."
+      : opportunity.tipo === "privado"
+        ? "Adjunta una captura o PDF del correo enviado al cliente."
+        : "Adjunta una captura o PDF de la propuesta subida en WHEREX.";
 
   const submitComment = () => {
     const trimmed = comment.trim();
@@ -151,7 +173,7 @@ export function OportunidadDetailDrawer({
             </div>
           </section>
 
-          {canManageOpportunity && !locked && (
+          {canShowQuoteDecision && (
             <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/40 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h3 className="font-semibold text-slate-900 dark:text-white">Decisión de cotización</h3>
@@ -210,18 +232,22 @@ export function OportunidadDetailDrawer({
               <div>
                 <h3 className="font-semibold text-teal-900 dark:text-teal-100">Propuesta lista para presentar</h3>
                 <p className="mt-1 text-sm text-teal-700 dark:text-teal-200">
-                  Marca esta oportunidad cuando la propuesta ya fue subida o presentada en la plataforma correspondiente.
+                  {presentationHelp}
                   {opportunity.estado === "vencida" ? " Se registrara como atencion posterior al vencimiento." : ""}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={onMarkProposalPresented}
+                onClick={() => {
+                  setPresentationFile(null);
+                  setPresentationError("");
+                  setPresentationModalOpen(true);
+                }}
                 disabled={presentingProposal}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-teal-400"
               >
                 <CheckCircle2 size={18} />
-                {presentingProposal ? "Registrando..." : "Propuesta presentada"}
+                {presentingProposal ? "Registrando..." : presentationLabel}
               </button>
             </div>
           )}
@@ -390,6 +416,80 @@ export function OportunidadDetailDrawer({
           )}
         </div>
       </aside>
+
+      {presentationModalOpen && onMarkProposalPresented && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">{presentationLabel}</h3>
+                <p className="mt-1 text-sm text-slate-500">{presentationHelp}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPresentationModalOpen(false)}
+                className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900"
+                disabled={presentingProposal}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <label className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-teal-200 bg-teal-50/50 px-4 py-8 text-center transition hover:bg-teal-50 dark:border-teal-900/60 dark:bg-teal-950/20">
+              <Upload className="mb-3 text-teal-700" size={26} />
+              <span className="font-semibold text-teal-900 dark:text-teal-100">
+                {presentationFile ? presentationFile.name : "Seleccionar evidencia"}
+              </span>
+              <span className="mt-1 text-xs text-teal-700 dark:text-teal-200">
+                Imagen o PDF. Este archivo quedara en los adjuntos de la oportunidad.
+              </span>
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                disabled={presentingProposal}
+                onChange={(event) => {
+                  setPresentationFile(event.target.files?.[0] || null);
+                  setPresentationError("");
+                }}
+              />
+            </label>
+
+            {presentationError && (
+              <p className="mt-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                {presentationError}
+              </p>
+            )}
+
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setPresentationModalOpen(false)}
+                disabled={presentingProposal}
+                className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!presentationFile) {
+                    setPresentationError("Adjunta una evidencia antes de continuar.");
+                    return;
+                  }
+
+                  onMarkProposalPresented(presentationFile);
+                  setPresentationModalOpen(false);
+                }}
+                disabled={presentingProposal}
+                className="rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-60"
+              >
+                {presentingProposal ? "Registrando..." : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
