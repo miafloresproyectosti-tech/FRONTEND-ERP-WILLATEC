@@ -56,8 +56,15 @@ const normalizeOpportunity = (item: any): Oportunidad => ({
 const normalizeList = (items: any[]): Oportunidad[] => items.map(normalizeOpportunity).map(applyExpiredState);
 
 export const getOportunidades = async (): Promise<Oportunidad[]> => {
-  const { data } = await api.get<any[] | { data?: any[] }>("/licitaciones");
+  const { data } = await api.get<any[] | { data?: any[] }>("/licitaciones", {
+    params: { lite: 1 },
+  });
   return normalizeList(Array.isArray(data) ? data : data.data || []);
+};
+
+export const getOportunidad = async (id: string): Promise<Oportunidad> => {
+  const { data } = await api.get<any>(`/licitaciones/${id}`);
+  return applyExpiredState(normalizeOpportunity(data));
 };
 
 export const saveOportunidad = async (opportunity: Oportunidad) => {

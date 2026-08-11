@@ -28,6 +28,7 @@ interface Props {
   canMarkProposalPresented?: boolean;
   presentingProposal?: boolean;
   onMarkProposalPresented?: (file: File) => void;
+  loadingDetails?: boolean;
 }
 
 export function OportunidadDetailDrawer({
@@ -45,6 +46,7 @@ export function OportunidadDetailDrawer({
   canMarkProposalPresented = false,
   presentingProposal = false,
   onMarkProposalPresented,
+  loadingDetails = false,
 }: Props) {
   const [comment, setComment] = useState("");
   const [previewFile, setPreviewFile] = useState<OportunidadArchivo | null>(null);
@@ -131,6 +133,13 @@ export function OportunidadDetailDrawer({
         </div>
 
         <div className="space-y-6 p-5">
+          {loadingDetails && (
+            <div className="flex items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
+              <FileText className="h-4 w-4 animate-pulse" />
+              Cargando archivos, historial y comentarios...
+            </div>
+          )}
+
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Info label="Vigencia" value={formatDateTime(opportunity.vigencia)} />
             <Info label="Tiempo restante" value={formatRemainingTime(opportunity.vigencia, opportunity.estado)} className={alert.textClass} />

@@ -38,6 +38,7 @@ import {
   addComentarioOportunidad,
   addCotizacionRelacionada,
   deleteOportunidad,
+  getOportunidad,
   getOportunidades,
   saveOportunidad,
 } from "../services/licitaciones.service";
@@ -140,6 +141,8 @@ export default function SeguimientoLicitaciones() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Oportunidad | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<Oportunidad | null>(null);
+  const [selectedLoading, setSelectedLoading] = useState(false);
   const [ejecutivos, setEjecutivos] = useState<EjecutivoAsignado[]>([]);
   const [releaseModalOpen, setReleaseModalOpen] = useState(false);
   const [releaseTarget, setReleaseTarget] = useState<Oportunidad | null>(null);
@@ -159,6 +162,12 @@ export default function SeguimientoLicitaciones() {
   const [downloadingQuoteId, setDownloadingQuoteId] = useState<string | number | null>(null);
   const [presentingProposalId, setPresentingProposalId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const loadRequestRef = useRef(0);
+  const showToastRef = useRef(showToast);
+
+  useEffect(() => {
+    showToastRef.current = showToast;
+  }, [showToast]);
 
   const userName = user?.name || "Usuario";
   const currentRole = normalizeRole(user?.role);
@@ -180,12 +189,16 @@ export default function SeguimientoLicitaciones() {
   );
 
   const loadData = useCallback(async () => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
     setLoading(true);
     try {
       const [items, users] = await Promise.all([
         getOportunidades(),
         getUsers().catch(() => []),
       ]);
+
+      if (requestId !== loadRequestRef.current) return;
 
       const mappedUsers = users
         .filter((item) => item.activo !== false)
@@ -205,8 +218,17 @@ export default function SeguimientoLicitaciones() {
             ]
       );
       setOpportunities(items);
+    } catch (error) {
+      console.error("No se pudieron cargar oportunidades", error);
+      showToastRef.current({
+        title: "No se pudieron cargar oportunidades",
+        description: "Se mantendran los datos visibles y puedes intentar refrescar nuevamente.",
+        type: "warning",
+      });
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) {
+        setLoading(false);
+      }
     }
   }, [user?.email, user?.id, userName]);
 
@@ -216,7 +238,19 @@ export default function SeguimientoLicitaciones() {
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
-      void getOportunidades().then(setOpportunities);
+      void getOportunidades()
+        .then((items) => {
+          setOpportunities((current) => {
+            if (current.length > 0 && items.length === 0) {
+              return current;
+            }
+
+            return items;
+          });
+        })
+        .catch((error) => {
+          console.error("No se pudo refrescar oportunidades", error);
+        });
     }, 60000);
 
     return () => window.clearInterval(intervalId);
@@ -294,7 +328,44 @@ export default function SeguimientoLicitaciones() {
   const totalPages = Math.max(1, Math.ceil(filteredOpportunities.length / itemsPerPage));
   const paginationItems = getPaginationItems(currentPage, totalPages);
   const paginated = filteredOpportunities.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-  const selected = opportunities.find((item) => item.id === selectedId) || null;
+  const selectedSummary = opportunities.find((item) => item.id === selectedId) || null;
+  const selected = selectedDetail?.id === selectedId ? selectedDetail : selectedSummary;
+
+  useEffect(() => {
+    if (!selectedId) {
+      setSelectedDetail(null);
+      setSelectedLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSelectedLoading(true);
+
+    void getOportunidad(selectedId)
+      .then((detail) => {
+        if (cancelled) return;
+        setSelectedDetail(detail);
+        setOpportunities((current) =>
+          current.map((item) => (item.id === detail.id ? { ...item, ...detail } : item)),
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("No se pudo cargar detalle de oportunidad", error);
+        showToastRef.current({
+          title: "No se pudo cargar el detalle",
+          description: "Se mostrara la informacion disponible del listado.",
+          type: "warning",
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setSelectedLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
 
   useEffect(() => {
     const oportunidadId = searchParams.get("oportunidad_id");
@@ -1345,6 +1416,7 @@ export default function SeguimientoLicitaciones() {
         canDownloadQuotePdf={currentRole === "LICITACIONES" || currentRole === "SUPERADMIN"}
         downloadingQuoteId={downloadingQuoteId}
         onDownloadQuotePdf={(cotizacionId) => void handleDownloadQuotePdf(cotizacionId)}
+        loadingDetails={selectedLoading}
       />
 
       {quoteLinkModalOpen && selected && (
