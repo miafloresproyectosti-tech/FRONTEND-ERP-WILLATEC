@@ -275,6 +275,19 @@ const getMovimientoSeries = (movimiento: InventarioMovimiento) => {
   });
 };
 
+const matchesSerieSearch = (
+  serie: { serie?: string | null; factura_numero?: string | null; fecha_ingreso?: string | null; estado?: string | null },
+  search: string,
+) => {
+  const term = search.trim().toLowerCase();
+
+  if (!term) return true;
+
+  return [serie.serie, serie.factura_numero, serie.fecha_ingreso, serie.estado]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(term));
+};
+
 export default function InventarioMovimientos() {
   const facturaInputRef = useRef<HTMLInputElement | null>(null);
   const facturaPosteriorInputRef = useRef<HTMLInputElement | null>(null);
@@ -294,8 +307,10 @@ export default function InventarioMovimientos() {
   const [salidaModalOpen, setSalidaModalOpen] = useState(false);
   const [entradaProductoSearch, setEntradaProductoSearch] = useState("");
   const [entradaProductoResultsOpen, setEntradaProductoResultsOpen] = useState(false);
+  const [entradaSerieSearch, setEntradaSerieSearch] = useState("");
   const [salidaProductoSearch, setSalidaProductoSearch] = useState("");
   const [salidaProductoResultsOpen, setSalidaProductoResultsOpen] = useState(false);
+  const [salidaSerieSearch, setSalidaSerieSearch] = useState("");
   const [proveedoresModalOpen, setProveedoresModalOpen] = useState(false);
   const [entradaForm, setEntradaForm] = useState({
     producto_id: "",
@@ -376,6 +391,10 @@ export default function InventarioMovimientos() {
     [entradaForm.producto_id, productos],
   );
   const entradaEsDevolucion = entradaForm.tipo_movimiento === "devolucion";
+  const filteredEntradaSeries = useMemo(
+    () => (selectedProducto?.series ?? []).filter((serie) => matchesSerieSearch(serie, entradaSerieSearch)),
+    [entradaSerieSearch, selectedProducto],
+  );
 
   const selectedSalidaProducto = useMemo(
     () => productos.find((producto) => producto.id === Number(salidaForm.producto_id)) || null,
@@ -384,6 +403,10 @@ export default function InventarioMovimientos() {
   const salidaSeriesDisponibles = useMemo(
     () => (selectedSalidaProducto?.series ?? []).filter((serie) => serie.estado === "disponible" && serie.id),
     [selectedSalidaProducto],
+  );
+  const filteredSalidaSeriesDisponibles = useMemo(
+    () => salidaSeriesDisponibles.filter((serie) => matchesSerieSearch(serie, salidaSerieSearch)),
+    [salidaSerieSearch, salidaSeriesDisponibles],
   );
   const salidaRequiereSeries = salidaSeriesDisponibles.length > 0;
 
@@ -554,6 +577,7 @@ export default function InventarioMovimientos() {
     setSalidaProductoSearch(producto ? getProductoOptionLabel(producto) : "");
     setSalidaProductoResultsOpen(false);
     setSalidaSerieIds([]);
+    setSalidaSerieSearch("");
   };
 
   const toggleSalidaSerie = (serieId: number) => {
@@ -574,6 +598,7 @@ export default function InventarioMovimientos() {
     }));
     setEntradaProductoSearch(producto ? getProductoOptionLabel(producto) : "");
     setEntradaProductoResultsOpen(false);
+    setEntradaSerieSearch("");
   };
 
   const handleProveedorEntradaChange = (proveedorId: string) => {
@@ -1759,6 +1784,59 @@ export default function InventarioMovimientos() {
                 </div>
               )}
 
+              {selectedProducto && (selectedProducto.series?.length ?? 0) > 0 && (
+                <div className="rounded-lg border border-slate-200 bg-white p-3 md:col-span-2">
+                  <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">Series registradas</p>
+                      <p className="text-xs text-slate-500">Consulta las series existentes antes de registrar nuevas entradas.</p>
+                    </div>
+                    <span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                      {filteredEntradaSeries.length}/{selectedProducto.series?.length ?? 0}
+                    </span>
+                  </div>
+                  <div className="mb-2 flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                    <Search className="h-4 w-4 shrink-0 text-slate-400" />
+                    <input
+                      type="search"
+                      value={entradaSerieSearch}
+                      onChange={(event) => setEntradaSerieSearch(event.target.value)}
+                      placeholder="Buscar serie, factura o estado"
+                      className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                    />
+                    {entradaSerieSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setEntradaSerieSearch("")}
+                        className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                        title="Limpiar busqueda"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-32 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-2">
+                    <div className="flex flex-wrap gap-2">
+                      {filteredEntradaSeries.map((serie) => (
+                        <span
+                          key={serie.id}
+                          className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold ${getSerieEstadoBadge(serie.estado)}`}
+                          title={[serie.serie, serie.factura_numero ? `Factura ${serie.factura_numero}` : null, getSerieEstadoLabel(serie.estado)].filter(Boolean).join(" / ")}
+                        >
+                          <span className="max-w-[180px] truncate">{serie.serie || `Serie #${serie.id}`}</span>
+                          <span className="text-[10px] opacity-80">{getSerieEstadoLabel(serie.estado)}</span>
+                        </span>
+                      ))}
+                    </div>
+                    {filteredEntradaSeries.length === 0 && (
+                      <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-xs font-semibold text-slate-500">
+                        No hay series que coincidan con la busqueda.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <label className="text-sm font-semibold text-gray-600 md:col-span-2">
                 Tipo de entrada
                 <select
@@ -2339,9 +2417,29 @@ export default function InventarioMovimientos() {
                       {salidaSerieIds.length}/{Number(salidaForm.cantidad || 0)}
                     </span>
                   </div>
+                  <div className="mb-3 flex items-center gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2">
+                    <Search className="h-4 w-4 shrink-0 text-blue-400" />
+                    <input
+                      type="search"
+                      value={salidaSerieSearch}
+                      onChange={(event) => setSalidaSerieSearch(event.target.value)}
+                      placeholder="Buscar serie, factura o fecha"
+                      className="w-full bg-transparent text-sm text-gray-700 outline-none placeholder:text-gray-400"
+                    />
+                    {salidaSerieSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setSalidaSerieSearch("")}
+                        className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                        title="Limpiar busqueda"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                   <div className="max-h-64 overflow-y-auto rounded-lg border border-blue-100 bg-white p-2">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {salidaSeriesDisponibles.map((serie) => (
+                    {filteredSalidaSeriesDisponibles.map((serie) => (
                       <label
                         key={serie.id}
                         className="flex min-w-0 cursor-pointer items-start gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm text-gray-700 transition hover:border-blue-200 hover:bg-blue-50"
@@ -2371,6 +2469,11 @@ export default function InventarioMovimientos() {
                     {salidaSeriesDisponibles.length === 0 && (
                       <div className="rounded-lg border border-dashed border-blue-100 bg-blue-50/60 px-3 py-4 text-center text-xs font-semibold text-blue-700">
                         No hay series disponibles para este producto.
+                      </div>
+                    )}
+                    {salidaSeriesDisponibles.length > 0 && filteredSalidaSeriesDisponibles.length === 0 && (
+                      <div className="rounded-lg border border-dashed border-blue-100 bg-blue-50/60 px-3 py-4 text-center text-xs font-semibold text-blue-700">
+                        No hay series que coincidan con la busqueda.
                       </div>
                     )}
                   </div>

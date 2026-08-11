@@ -116,6 +116,20 @@ const getProductoCategoriaLabel = (producto: Producto) => {
   return producto.categoria?.nombre || optionLabel || String(producto.categoria_id || "-");
 };
 
+const isEditableStockSerie = (serie: ProductoSerie) =>
+  ["disponible", "reservado"].includes(String(serie.estado || "disponible").toLowerCase());
+
+const getEditableSeriesText = (producto: Producto | ProductoUI) => {
+  const series = producto.series ?? [];
+  const editableSeries = series
+    .filter(isEditableStockSerie)
+    .map((serie) => serie.serie)
+    .filter(Boolean)
+    .join("\n");
+
+  return editableSeries || (series.length === 0 ? producto.serie || "" : "");
+};
+
 const mapProducto = (producto: Producto): ProductoUI => ({
 
   id: producto.id,
@@ -124,10 +138,7 @@ const mapProducto = (producto: Producto): ProductoUI => ({
   marca: producto.marca ?? "",
   modelo: producto.modelo ?? "",
   serie: producto.serie ?? "",
-  series_text: (producto.series ?? [])
-    .map((serie) => serie.serie)
-    .filter(Boolean)
-    .join("\n") || producto.serie || "",
+  series_text: getEditableSeriesText(producto),
   factura_numero: producto.factura_numero ?? "",
   ubicacion_almacen: producto.ubicacion_almacen ?? "",
   categoria_id: Number(producto.categoria_id || 0),
@@ -734,7 +745,7 @@ export default function Productos() {
       codigo: producto.codigo || "",
       nombre: producto.nombre || "",
       categoria_id: producto.categoria_id || 1,
-      stock: String(producto.stock || ""),
+      stock: String(producto.stock_actual ?? producto.stock ?? ""),
       precio_referencial: String(producto.precio_referencial || ""),
       descripcion: producto.descripcion || "",
       imagen: producto.imagen || "", 
@@ -743,10 +754,7 @@ export default function Productos() {
       marca: producto.marca || "",
       modelo: producto.modelo || "",
       serie: producto.serie || "",
-      series_text: (producto.series || [])
-        .map((serie: ProductoSerie) => serie.serie)
-        .filter(Boolean)
-        .join("\n") || producto.serie || "",
+      series_text: getEditableSeriesText(producto),
       factura_numero: producto.factura_numero || "",
       ubicacion_almacen: producto.ubicacion_almacen || "",
       unidad_medida: producto.unidad_medida || "unidad",

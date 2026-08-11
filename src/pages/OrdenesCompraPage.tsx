@@ -258,6 +258,19 @@ const getSelectableItemSeries = (item: OcRecibidaItem, oc?: OcRecibida) =>
       serie.estado === "disponible" || isSerieAssignedToItem(serie, item, oc),
   );
 
+const matchesOcSerieSearch = (
+  serie: ReturnType<typeof getItemSeries>[number],
+  search: string,
+) => {
+  const term = search.trim().toLowerCase();
+
+  if (!term) return true;
+
+  return [serie.serie, serie.factura_numero, serie.fecha_ingreso, serie.estado]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(term));
+};
+
 const itemRequiresSeries = (item: OcRecibidaItem) =>
   getItemSeries(item).length > 0;
 
@@ -3718,6 +3731,7 @@ function DetailModal({
   const isEmitida = "proveedor" in oc;
   const items = oc.items || [];
   const documents = getDocumentLinks(oc);
+  const [serieSearchByItem, setSerieSearchByItem] = useState<Record<number, string>>({});
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -3856,6 +3870,10 @@ function DetailModal({
                       item as OcRecibidaItem,
                       oc as OcRecibida,
                     );
+                    const serieSearch = serieSearchByItem[Number(item.id)] || "";
+                    const filteredAvailableSeries = availableSeries.filter((serie: any) =>
+                      matchesOcSerieSearch(serie, serieSearch),
+                    );
                     const currentSeries =
                       selectedSeries[item.id] ||
                       getAssignedItemSerieIds(
@@ -3948,8 +3966,38 @@ function DetailModal({
                                   </span>
                                 </div>
                               </div>
+                              <div className="mb-2 flex items-center gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2">
+                                <Search size={14} className="shrink-0 text-blue-400" />
+                                <input
+                                  type="search"
+                                  value={serieSearch}
+                                  onChange={(event) =>
+                                    setSerieSearchByItem((current) => ({
+                                      ...current,
+                                      [Number(item.id)]: event.target.value,
+                                    }))
+                                  }
+                                  placeholder="Buscar serie, factura o fecha"
+                                  className="w-full bg-transparent text-xs text-slate-700 outline-none placeholder:text-slate-400"
+                                />
+                                {serieSearch && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSerieSearchByItem((current) => ({
+                                        ...current,
+                                        [Number(item.id)]: "",
+                                      }))
+                                    }
+                                    className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                    title="Limpiar busqueda"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                )}
+                              </div>
                               <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
-                                {availableSeries.map((serie: any) => (
+                                {filteredAvailableSeries.map((serie: any) => (
                                   <label
                                     key={serie.id}
                                     className="flex cursor-pointer items-start gap-2 rounded-md border border-blue-100 bg-white px-2 py-1.5 text-xs text-slate-700 hover:bg-blue-50"
@@ -3988,6 +4036,11 @@ function DetailModal({
                                     </span>
                                   </label>
                                 ))}
+                                {filteredAvailableSeries.length === 0 && (
+                                  <div className="rounded-md border border-dashed border-blue-100 bg-white px-3 py-4 text-center text-xs font-semibold text-blue-700 sm:col-span-2">
+                                    No hay series que coincidan con la busqueda.
+                                  </div>
+                                )}
                               </div>
                             </div>
                           )}
