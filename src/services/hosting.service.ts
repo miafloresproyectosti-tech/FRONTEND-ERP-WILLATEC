@@ -25,12 +25,25 @@ export interface HostingApi {
   cliente?: string | null;
   correo_hosting?: string | null;
   documentos?: HostingDocumentoApi[];
+  alertas_enviadas_count?: number;
+  alertas_enviadas_max_sent_at?: string | null;
+  alertas_enviadas?: HostingAlertaEnviadaApi[];
   cliente_relacionado?: {
     id: number;
     nombre: string;
     ruc?: string | null;
     correo?: string | null;
   } | null;
+}
+
+export interface HostingAlertaEnviadaApi {
+  id: number;
+  hosting_id: number;
+  dias_antes: number;
+  correo_destino?: string | null;
+  correo_copia?: string | null;
+  sent_at?: string | null;
+  created_at?: string | null;
 }
 
 export interface HostingDocumentoApi {

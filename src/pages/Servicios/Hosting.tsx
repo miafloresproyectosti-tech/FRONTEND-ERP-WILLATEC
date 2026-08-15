@@ -24,6 +24,7 @@ import {
   renovarHosting,
   updateHosting,
   uploadHostingDocumentos,
+  type HostingAlertaEnviadaApi,
   type HostingApi,
   type HostingDocumentoApi,
   type HostingImportPreview,
@@ -60,6 +61,15 @@ interface Hosting {
   correoHosting: string;
   documentos: HostingDocumentoApi[];
   estado: "VIGENTE" | "POR VENCER" | "VENCIDO";
+  alertasCount: number;
+  ultimaAlerta: string | null;
+  alertas: {
+    id: number;
+    diasAntes: number;
+    correoDestino: string;
+    correoCopia: string;
+    sentAt: string | null;
+  }[];
 }
 
 export default function Hosting() {
@@ -135,6 +145,15 @@ export default function Hosting() {
     correoHosting: hosting.correo_hosting || hosting.cliente_relacionado?.correo || "",
     documentos: hosting.documentos || [],
     estado: getEstado(hosting.fecha_renovacion),
+    alertasCount: Number(hosting.alertas_enviadas_count || 0),
+    ultimaAlerta: hosting.alertas_enviadas_max_sent_at || null,
+    alertas: (hosting.alertas_enviadas || []).map((alerta: HostingAlertaEnviadaApi) => ({
+      id: alerta.id,
+      diasAntes: Number(alerta.dias_antes),
+      correoDestino: alerta.correo_destino || "",
+      correoCopia: alerta.correo_copia || "",
+      sentAt: alerta.sent_at || alerta.created_at || null,
+    })),
   });
 
   const daysInMonth = (year: number, monthIndex: number) =>
@@ -239,6 +258,36 @@ export default function Hosting() {
     return "VIGENTE";
   };
 
+  const formatDateTime = (value: string | null) => {
+    if (!value) return "-";
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+
+    return date.toLocaleString("es-PE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const parseDateOnly = (value: string) => {
+    const [year, month, day] = value.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  };
+
+  const formatDateOnly = (date: Date | null) => {
+    if (!date || Number.isNaN(date.getTime())) return "-";
+
+    return date.toLocaleDateString("es-PE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  };
+
   const formatPrecioHosting = (hosting: Hosting) => {
     if (hosting.precioSinIgv === null || Number.isNaN(hosting.precioSinIgv)) {
       return "-";
@@ -248,6 +297,40 @@ export default function Hosting() {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
+  };
+
+  const alertDaysFor = (suscripcion: Hosting["suscripcion"]) =>
+    suscripcion === "ANUAL" ? [90, 60, 30, 15, 3, 2, 1, 0] : [7, 4, 3, 2, 1, 0];
+
+  const alertLegendText = (suscripcion: Hosting["suscripcion"]) =>
+    suscripcion === "ANUAL"
+      ? "Periodo anual: se enviará faltando 90, 60, 30, 15, 3, 2, 1 día y el mismo día del vencimiento."
+      : "Periodo mensual: se enviará faltando 7, 4, 3, 2, 1 día y el mismo día del vencimiento.";
+
+  const getNextAlert = (hosting: Hosting) => {
+    const vencimiento = parseDateOnly(hosting.fechaRenovacion);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (Number.isNaN(vencimiento.getTime()) || vencimiento < today) {
+      return null;
+    }
+
+    const sentDays = new Set(hosting.alertas.map((alerta) => alerta.diasAntes));
+
+    for (const daysBefore of alertDaysFor(hosting.suscripcion)) {
+      const alertDate = new Date(vencimiento);
+      alertDate.setDate(alertDate.getDate() - daysBefore);
+
+      if (alertDate >= today && !sentDays.has(daysBefore)) {
+        return {
+          date: alertDate,
+          daysBefore,
+        };
+      }
+    }
+
+    return null;
   };
 
   const updateHostingEnLista = (hosting: HostingApi) => {
@@ -961,7 +1044,7 @@ export default function Hosting() {
       {/* TABLE */}
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-        <table className="min-w-[1300px] w-full text-sm">
+        <table className="min-w-[1440px] w-full text-sm">
 
           <thead className="bg-gray-100">
             <tr>
@@ -975,6 +1058,7 @@ export default function Hosting() {
               <th className="p-3 text-left font-semibold">F. Inicio</th>
               <th className="p-3 text-left font-semibold">F. Renovación</th>
               <th className="p-3 text-left font-semibold">Estado</th>
+              <th className="p-3 text-left font-semibold">Alertas</th>
               <th className="sticky right-0 z-10 bg-gray-100 p-3 text-left font-semibold shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">Acciones</th>
             </tr>
           </thead>
@@ -982,18 +1066,21 @@ export default function Hosting() {
           <tbody>
             {loadingHostings ? (
               <tr>
-                <td colSpan={11} className="p-8 text-center text-gray-500">
+                <td colSpan={12} className="p-8 text-center text-gray-500">
                   Cargando hostings...
                 </td>
               </tr>
             ) : filtrados.length === 0 ? (
               <tr>
-                <td colSpan={11} className="p-8 text-center text-gray-500">
+                <td colSpan={12} className="p-8 text-center text-gray-500">
                   No hay hostings que mostrar
                 </td>
               </tr>
             ) : (
-              filtrados.map((h) => (
+              filtrados.map((h) => {
+                const nextAlert = getNextAlert(h);
+
+                return (
                 <tr key={h.id} className="border-t hover:bg-gray-50 transition-colors">
                   <td className="p-3 font-medium">{h.empresa}</td>
                   <td className="p-3">{h.ruc}</td>
@@ -1032,6 +1119,24 @@ export default function Hosting() {
                           : 'Vencido'
                         }
                       </span>
+                    </div>
+                  </td>
+
+                  <td className="p-3">
+                    <div className="min-w-[120px] space-y-1">
+                      <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                        h.alertasCount > 0
+                          ? "bg-blue-50 text-blue-700 border border-blue-100"
+                          : "bg-gray-50 text-gray-500 border border-gray-100"
+                      }`}>
+                        {h.alertasCount} enviada{h.alertasCount === 1 ? "" : "s"}
+                      </span>
+                      <p className="text-xs text-gray-500">
+                        Ultima: {formatDateTime(h.ultimaAlerta)}
+                      </p>
+                      <p className="text-xs font-medium text-blue-700">
+                        Proxima: {nextAlert ? formatDateOnly(nextAlert.date) : "Sin pendiente"}
+                      </p>
                     </div>
                   </td>
 
@@ -1076,7 +1181,8 @@ export default function Hosting() {
                     </div>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
 
@@ -1349,7 +1455,7 @@ export default function Hosting() {
               <h2 className="text-lg font-semibold">Detalle de Hosting</h2>
             </div>
 
-            <div className="p-6 max-h-[60vh] overflow-y-auto">
+            <div className="p-6 max-h-[70vh] overflow-y-auto space-y-5">
               <table className="w-full text-sm">
                 <tbody>
                   <tr className="border-b">
@@ -1480,6 +1586,85 @@ export default function Hosting() {
                   </tr>
                 </tbody>
               </table>
+
+              {(() => {
+                const nextAlert = getNextAlert(viewModal);
+
+                return (
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="font-semibold text-amber-950">Leyenda de alertas automáticas</h3>
+                        <p className="mt-1 text-sm leading-relaxed text-amber-800">
+                          {alertLegendText(viewModal.suscripcion)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm shadow-sm sm:min-w-[210px]">
+                        <p className="text-xs font-semibold uppercase text-amber-700">Próxima alerta</p>
+                        {nextAlert ? (
+                          <>
+                            <p className="mt-1 font-bold text-amber-950">{formatDateOnly(nextAlert.date)}</p>
+                            <p className="text-xs text-amber-700">
+                              {nextAlert.daysBefore === 0
+                                ? "El mismo día del vencimiento"
+                                : `Faltando ${nextAlert.daysBefore} días`}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="mt-1 font-semibold text-gray-500">Sin alertas pendientes</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+                <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="font-semibold text-blue-950">Historial de alertas</h3>
+                    <p className="text-xs text-blue-700">
+                      Registro visual de correos automáticos enviados para este hosting.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
+                    {viewModal.alertasCount} envío{viewModal.alertasCount === 1 ? "" : "s"}
+                  </span>
+                </div>
+
+                {viewModal.alertas.length > 0 ? (
+                  <div className="overflow-hidden rounded-xl border border-blue-100 bg-white">
+                    <table className="w-full min-w-[620px] text-sm">
+                      <thead className="bg-blue-50 text-blue-900">
+                        <tr>
+                          <th className="p-3 text-left font-semibold">Fecha envío</th>
+                          <th className="p-3 text-left font-semibold">Días antes</th>
+                          <th className="p-3 text-left font-semibold">Destino</th>
+                          <th className="p-3 text-left font-semibold">Copia</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewModal.alertas.map((alerta) => (
+                          <tr key={alerta.id} className="border-t border-blue-50">
+                            <td className="p-3 text-gray-700">{formatDateTime(alerta.sentAt)}</td>
+                            <td className="p-3">
+                              <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                                {alerta.diasAntes === 0 ? "Vencimiento" : `${alerta.diasAntes} días`}
+                              </span>
+                            </td>
+                            <td className="p-3 text-gray-600">{alerta.correoDestino || "-"}</td>
+                            <td className="p-3 text-gray-600">{alerta.correoCopia || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-blue-200 bg-white px-4 py-5 text-sm text-gray-500">
+                    Todavía no hay alertas automáticas enviadas para este hosting.
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-col gap-3 px-6 py-4 bg-gray-50 sm:flex-row sm:justify-end">
