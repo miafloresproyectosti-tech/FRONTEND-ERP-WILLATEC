@@ -312,6 +312,16 @@ export function OportunidadDetailDrawer({
             </section>
           )}
 
+          {opportunity.estado === "no_se_realizara" && (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+              <h3 className="mb-3 font-bold text-amber-800 dark:text-amber-200">Resultado: No se realizará</h3>
+              <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                <Info label="Motivo" value={opportunity.motivoCierre || "Sin motivo registrado"} />
+                <Info label="Detalle" value={opportunity.comentarioCierre || opportunity.motivoCierre || "Sin detalle registrado"} />
+              </div>
+            </section>
+          )}
+
           {opportunity.estado === "perdida" && opportunity.leccionesAprendidas && opportunity.leccionesAprendidas.length > 0 && (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
               <h3 className="mb-3 font-bold text-amber-800 dark:text-amber-200">Lecciones aprendidas</h3>
@@ -429,17 +439,22 @@ export function OportunidadDetailDrawer({
                       <span className="text-slate-500">{formatDateTime(item.fecha)}</span>
                       {item.tieneModificacionPendiente && (
                         <span className="mt-1 block rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
-                          Cotizacion con modificacion pendiente. El PDF se habilitara cuando sea aprobada nuevamente.
+                          {item.pdfBloqueoMotivo || "Cotizacion con modificacion pendiente. El PDF se habilitara cuando sea aprobada nuevamente."}
+                        </span>
+                      )}
+                      {!item.tieneModificacionPendiente && !item.puedeDescargarPdf && item.pdfBloqueoMotivo && (
+                        <span className="mt-1 block rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                          {item.pdfBloqueoMotivo}
                         </span>
                       )}
                     </div>
-                    {canDownloadQuotePdf && item.cotizacionId && onDownloadQuotePdf && (
+                    {canDownloadQuotePdf && item.cotizacionId && onDownloadQuotePdf && item.puedeDescargarPdf && (
                       <button
                         type="button"
                         onClick={() => onDownloadQuotePdf(item.cotizacionId!)}
-                        disabled={item.tieneModificacionPendiente || String(downloadingQuoteId) === String(item.cotizacionId)}
+                        disabled={String(downloadingQuoteId) === String(item.cotizacionId)}
                         className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-                        title={item.tieneModificacionPendiente ? "La cotizacion tiene una modificacion pendiente de aprobacion" : "Descargar PDF de cotizacion"}
+                        title="Descargar PDF de cotizacion aprobada"
                       >
                         <FileDown size={15} />
                         {String(downloadingQuoteId) === String(item.cotizacionId) ? "Descargando..." : "PDF"}

@@ -48,10 +48,8 @@ export default function AlertaVencimientos({
   const todasAlertas = [...alertasLicencias, ...alertasHosting];
 
   useEffect(() => {
-    console.log("🚨 Total alertas:", todasAlertas.length);
     if (esSuperadmin && todasAlertas.length > 0) {
       const timer = setTimeout(() => {
-        console.log("✅ ALERTA MOSTRADA!");
         setMostrar(true);
       }, 800);
       return () => clearTimeout(timer);
@@ -71,7 +69,7 @@ export default function AlertaVencimientos({
               <AlertCircle size={24} />
             </div>
             <div>
-              <h3 className="text-xl font-bold">¡Alertas de Vencimiento!</h3>
+              <h3 className="text-xl font-bold">¡Alertas de vencimiento!</h3>
               <p className="text-yellow-100 text-sm mt-1">
                 {todasAlertas.length} {todasAlertas.length === 1 ? 'elemento' : 'elementos'} por vencer
               </p>
@@ -124,7 +122,7 @@ export default function AlertaVencimientos({
             Cerrar
           </button>
           <button
-            onClick={() => window.open('/licencias', '_blank')}
+            onClick={() => window.open('/servicios/licencias', '_blank')}
             className="flex-1 px-4 py-2 bg-white text-orange-600 rounded-lg text-sm font-bold hover:bg-white/90 shadow-lg hover:shadow-xl transition-all"
           >
             Ver Todos

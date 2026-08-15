@@ -55,6 +55,8 @@ export interface CotizacionRelacionada {
   fecha: string;
   estado: string;
   tieneModificacionPendiente?: boolean;
+  puedeDescargarPdf?: boolean;
+  pdfBloqueoMotivo?: string | null;
   modificacionPendiente?: {
     id: number | string;
     estado: string;
