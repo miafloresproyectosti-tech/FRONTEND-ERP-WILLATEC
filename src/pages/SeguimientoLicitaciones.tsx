@@ -898,13 +898,13 @@ export default function SeguimientoLicitaciones() {
 
     setDownloadingQuoteId(cotizacionId);
     try {
-      const { blob, filename } = await exportarCotizacionPdf(parsedId);
+      const { blob, filename } = await exportarCotizacionPdf(parsedId, { desdeOportunidad: true });
       await descargarPdfCotizacion(filename || `cotizacion-${parsedId}.pdf`, blob);
     } catch (error) {
       console.error("Error al descargar PDF de cotizacion vinculada:", error);
       showToast({
         title: "No se pudo descargar el PDF",
-        description: "Verifica que la cotizacion exista y que tengas permisos para exportarla.",
+        description: "Solo se puede descargar si la cotizacion esta aprobada y sin modificacion pendiente.",
         type: "error",
       });
     } finally {

@@ -58,6 +58,8 @@ export interface CotizacionRelacionada {
   creadoPorId?: number | string | null;
   creadoPor?: string;
   tieneModificacionPendiente?: boolean;
+  puedeDescargarPdf?: boolean;
+  pdfBloqueoMotivo?: string | null;
   modificacionPendiente?: {
     id: number | string;
     estado: string;

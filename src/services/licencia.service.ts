@@ -17,6 +17,10 @@ export interface LicenciaApi {
   correo_licencia?: string | null;
   fecha_inicio: string;
   fecha_renovacion: string;
+  renovacion_programada?: boolean | number;
+  renovacion_modo?: "ANUAL" | "MENSUAL" | null;
+  renovacion_meses?: number | null;
+  renovacion_programada_para?: string | null;
   documentos?: LicenciaDocumentoApi[];
   alertas_enviadas_count?: number;
   alertas_enviadas_max_sent_at?: string | null;
@@ -60,6 +64,11 @@ export interface LicenciaPayload {
   suscripcion_meses: number;
   correo_licencia?: string | null;
   fecha_inicio: string;
+}
+
+export interface RenovacionPayload {
+  modo: "ANUAL" | "MENSUAL";
+  meses?: number | null;
 }
 
 export interface LicenciaImportRow {
@@ -121,6 +130,22 @@ export const getLicencias = async (params: GetLicenciasParams = {}) => {
   return response.data;
 };
 
+export const getAllLicencias = async (params: Omit<GetLicenciasParams, "page" | "perPage"> = {}) => {
+  const all: LicenciaApi[] = [];
+  let page = 1;
+  let lastPage = 1;
+
+  do {
+    const response = await getLicencias({ ...params, page, perPage: 100 });
+    const data = Array.isArray(response) ? response : response.data || [];
+    all.push(...data);
+    lastPage = Array.isArray(response) ? 1 : Number(response.last_page || page);
+    page += 1;
+  } while (page <= lastPage);
+
+  return all;
+};
+
 export const createLicencia = async (
   payload: LicenciaPayload
 ): Promise<LicenciaApi> => {
@@ -138,6 +163,14 @@ export const updateLicencia = async (
 
 export const deleteLicencia = async (id: number): Promise<void> => {
   await api.delete(`/licencias/${id}`);
+};
+
+export const renovarLicencia = async (
+  id: number,
+  payload: RenovacionPayload
+): Promise<{ message: string; licencia: LicenciaApi }> => {
+  const response = await api.post(`/licencias/${id}/renovar`, payload);
+  return response.data;
 };
 
 export const uploadLicenciaDocumentos = async (
