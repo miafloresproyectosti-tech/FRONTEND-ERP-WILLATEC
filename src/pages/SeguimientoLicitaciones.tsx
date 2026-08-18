@@ -36,7 +36,10 @@ import {
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
   addComentarioOportunidad,
+  addArchivoOportunidad,
   addCotizacionRelacionada,
+  deleteArchivoOportunidad,
+  deleteCotizacionRelacionada,
   deleteOportunidad,
   getOportunidad,
   getOportunidades,
@@ -83,6 +86,17 @@ const DEFAULT_FILTERS: OportunidadFilters = {
   vigenciaHasta: "",
   requerimiento: "",
   search: "",
+};
+
+const MIS_OPORTUNIDADES_ACTIVE_RANK: Record<OportunidadEstado, number> = {
+  en_atencion: 0,
+  cotizacion_generada: 1,
+  sin_atender: 2,
+  atendido: 3,
+  ganada: 4,
+  perdida: 4,
+  no_se_realizara: 4,
+  vencida: 4,
 };
 
 const SORT_LABELS: Record<OportunidadSortKey, string> = {
@@ -140,6 +154,7 @@ export default function SeguimientoLicitaciones() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Oportunidad | null>(null);
+  const [editingLoadingId, setEditingLoadingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<Oportunidad | null>(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
@@ -161,6 +176,9 @@ export default function SeguimientoLicitaciones() {
   const [quoteLinkSelectedId, setQuoteLinkSelectedId] = useState<number | null>(null);
   const [downloadingQuoteId, setDownloadingQuoteId] = useState<string | number | null>(null);
   const [presentingProposalId, setPresentingProposalId] = useState<string | null>(null);
+  const [uploadingOpportunityFile, setUploadingOpportunityFile] = useState(false);
+  const [deletingOpportunityFileId, setDeletingOpportunityFileId] = useState<string | null>(null);
+  const [unlinkingQuoteId, setUnlinkingQuoteId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const loadRequestRef = useRef(0);
   const showToastRef = useRef(showToast);
@@ -312,6 +330,15 @@ export default function SeguimientoLicitaciones() {
         return normalizeText(`${item.empresa} ${item.requerimiento}`).includes(search);
       })
       .sort((a, b) => {
+        if (isSalesRole && activeBandeja === "mis") {
+          const rankDiff = MIS_OPORTUNIDADES_ACTIVE_RANK[a.estado] - MIS_OPORTUNIDADES_ACTIVE_RANK[b.estado];
+          if (rankDiff !== 0) return rankDiff;
+
+          const dateA = new Date(a.modificadoEn || a.creadoEn || a.vigencia).getTime();
+          const dateB = new Date(b.modificadoEn || b.creadoEn || b.vigencia).getTime();
+          return dateB - dateA;
+        }
+
         const direction = sortDirection === "asc" ? 1 : -1;
         const values: Record<OportunidadSortKey, [string | number, string | number]> = {
           empresa: [a.empresa, b.empresa],
@@ -323,7 +350,7 @@ export default function SeguimientoLicitaciones() {
         const [first, second] = values[sortKey];
         return String(first).localeCompare(String(second), "es", { numeric: true }) * direction;
       });
-  }, [debouncedSearch, filters, scopedOpportunities, sortDirection, sortKey]);
+  }, [activeBandeja, debouncedSearch, filters, isSalesRole, scopedOpportunities, sortDirection, sortKey]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOpportunities.length / itemsPerPage));
   const paginationItems = getPaginationItems(currentPage, totalPages);
@@ -498,7 +525,7 @@ export default function SeguimientoLicitaciones() {
       garantia: data.tipo === "licitacion" ? clean(data.garantia) : undefined,
       plazo: data.tipo === "licitacion" ? clean(data.plazo) : undefined,
       carpetaServidor: data.tipo === "licitacion" ? clean(data.carpetaServidor) : undefined,
-      tdr: data.tipo === "licitacion" ? data.tdr : undefined,
+      tdr: data.tipo === "licitacion" || data.tipo === "privado" ? data.tdr : undefined,
       formaPago: data.tipo !== "licitacion" && data.formaPago ? data.formaPago : undefined,
       destinoEntrega: data.tipo === "privado" ? clean(data.destinoEntrega) : undefined,
       wherexId: data.tipo === "wherex" ? clean(data.wherexId) : undefined,
@@ -652,6 +679,29 @@ export default function SeguimientoLicitaciones() {
     showToast({ title: "Oportunidad eliminada", type: "success" });
   };
 
+  const handleEditOpportunity = async (item: Oportunidad) => {
+    if (editingLoadingId) return;
+
+    setEditingLoadingId(item.id);
+    try {
+      const detail = selectedDetail?.id === item.id ? selectedDetail : await getOportunidad(item.id);
+      setOpportunities((current) =>
+        current.map((opportunity) => (opportunity.id === detail.id ? { ...opportunity, ...detail } : opportunity)),
+      );
+      setEditing(detail);
+      setModalOpen(true);
+    } catch (error) {
+      console.error("No se pudo cargar oportunidad para editar", error);
+      showToast({
+        title: "No se pudo abrir la edicion",
+        description: "Intenta nuevamente para cargar archivos y detalle completo.",
+        type: "error",
+      });
+    } finally {
+      setEditingLoadingId(null);
+    }
+  };
+
   const handleAddComment = async (comment: string) => {
     if (!selected) return;
     await addComentarioOportunidad(selected.id, {
@@ -661,6 +711,90 @@ export default function SeguimientoLicitaciones() {
       comentario: comment,
     });
     await loadData();
+  };
+
+  const syncSelectedOpportunity = (detail: Oportunidad) => {
+    setSelectedDetail(detail);
+    setOpportunities((current) =>
+      current.map((item) => (item.id === detail.id ? { ...item, ...detail } : item)),
+    );
+  };
+
+  const isCreatedByCurrentUser = (createdBy?: string | null, createdById?: string | number | null) => {
+    if (!user?.id) return false;
+    if (createdById && Number(createdById) === Number(user.id)) return true;
+
+    const creator = normalizeText(createdBy || "");
+    return Boolean(creator) && (
+      creator === normalizeText(userName) ||
+      creator === normalizeText(user?.email || "")
+    );
+  };
+
+  const handleUploadOpportunityFile = async (file: File) => {
+    if (!selected || uploadingOpportunityFile) return;
+
+    setUploadingOpportunityFile(true);
+    try {
+      const parsed = await fileToOpportunityFile(file, userName);
+      const detail = await addArchivoOportunidad(selected.id, parsed);
+      syncSelectedOpportunity(detail);
+      showToast({ title: "Archivo subido", description: "El documento quedo asociado a la oportunidad.", type: "success" });
+    } catch (error) {
+      const response = error as { response?: { data?: { message?: string } }; message?: string };
+      showToast({
+        title: "No se pudo subir archivo",
+        description: response.response?.data?.message || response.message || "Intenta nuevamente.",
+        type: "error",
+      });
+    } finally {
+      setUploadingOpportunityFile(false);
+    }
+  };
+
+  const handleDeleteOpportunityFile = async (file: OportunidadArchivo) => {
+    if (!selected || deletingOpportunityFileId) return;
+    if (!window.confirm(`Eliminar el archivo "${file.nombre}"?`)) return;
+
+    setDeletingOpportunityFileId(file.id);
+    try {
+      const detail = await deleteArchivoOportunidad(selected.id, file.id);
+      syncSelectedOpportunity(detail);
+      showToast({ title: "Archivo eliminado", type: "success" });
+    } catch (error) {
+      const response = error as { response?: { data?: { message?: string } }; message?: string };
+      showToast({
+        title: "No se pudo eliminar archivo",
+        description: response.response?.data?.message || response.message || "Solo puedes eliminar archivos subidos por ti.",
+        type: "error",
+      });
+    } finally {
+      setDeletingOpportunityFileId(null);
+    }
+  };
+
+  const handleUnlinkQuote = async (relacionId: string) => {
+    if (!selected || unlinkingQuoteId) return;
+    const quote = selected.cotizaciones.find((item) => item.id === relacionId);
+    if (!quote) return;
+    if (!window.confirm(`Desvincular la cotizacion ${quote.numero}?`)) return;
+
+    setUnlinkingQuoteId(relacionId);
+    try {
+      const detail = await deleteCotizacionRelacionada(selected.id, relacionId);
+      syncSelectedOpportunity(detail);
+      showToast({ title: "Cotizacion desvinculada", description: "La oportunidad quedo actualizada.", type: "success" });
+      await loadData();
+    } catch (error) {
+      const response = error as { response?: { data?: { message?: string } }; message?: string };
+      showToast({
+        title: "No se pudo desvincular",
+        description: response.response?.data?.message || response.message || "Solo puedes desvincular cotizaciones que vinculaste manualmente.",
+        type: "error",
+      });
+    } finally {
+      setUnlinkingQuoteId(null);
+    }
   };
 
   const handleGenerateQuote = async () => {
@@ -676,8 +810,20 @@ export default function SeguimientoLicitaciones() {
 
     const params = new URLSearchParams({
       oportunidad_id: selected.id,
+      oportunidad_tipo: selected.tipo,
       oportunidad_empresa: selected.empresa,
       oportunidad_requerimiento: selected.requerimiento,
+      oportunidad_vigencia: selected.vigencia,
+      oportunidad_categoria: selected.categoria || "",
+      oportunidad_garantia: selected.garantia || "",
+      oportunidad_plazo: selected.plazo || "",
+      oportunidad_forma_pago: selected.formaPago || "",
+      oportunidad_destino_entrega: selected.destinoEntrega || "",
+      oportunidad_observacion: selected.observacion || "",
+      oportunidad_comentarios: selected.comentariosGenerales || "",
+      oportunidad_carpeta_servidor: selected.carpetaServidor || "",
+      oportunidad_wherex_id: selected.wherexId || "",
+      oportunidad_wherex_url: selected.wherexUrl || "",
     });
 
     navigate(`/cotizaciones/new?${params.toString()}`);
@@ -733,6 +879,7 @@ export default function SeguimientoLicitaciones() {
       estado: cotizacionData.estadoCotizacion?.nombre || cotizacionData.estado_cotizacion?.nombre || "registrada",
       monto: Number(cotizacion.total || 0),
       moneda: cotizacionData.moneda?.codigo || cotizacionData.codigo_moneda,
+      origen: "vinculada",
     });
 
     setQuoteLinkModalOpen(false);
@@ -1303,7 +1450,7 @@ export default function SeguimientoLicitaciones() {
                       <Td className="sticky right-0 z-10 w-[148px] min-w-[148px] bg-white shadow-[-10px_0_18px_-18px_rgba(15,23,42,0.7)] dark:bg-slate-950">
                         <div className="flex flex-wrap items-center justify-center gap-1.5">
                           <IconButton title="Ver detalle" onClick={() => setSelectedId(item.id)}><Eye size={17} /></IconButton>
-                          {isSalesRole && isAvailableOpportunity(item) && (
+                          {(isSalesRole || currentRole === "SUPERADMIN") && isAvailableOpportunity(item) && (
                             <button
                               type="button"
                               onClick={() => void handleAssignToMe(item)}
@@ -1326,10 +1473,10 @@ export default function SeguimientoLicitaciones() {
                           {isOpportunityCreator(item) && (
                             <IconButton
                               title={locked ? "Registro bloqueado" : "Editar"}
-                              disabled={locked}
-                              onClick={() => { setEditing(item); setModalOpen(true); }}
+                              disabled={locked || editingLoadingId === item.id}
+                              onClick={() => void handleEditOpportunity(item)}
                             >
-                              <Pencil size={17} />
+                              {editingLoadingId === item.id ? <Loader2 size={17} className="animate-spin" /> : <Pencil size={17} />}
                             </IconButton>
                           )}
                           {isOpportunityCreator(item) && (
@@ -1417,6 +1564,22 @@ export default function SeguimientoLicitaciones() {
         downloadingQuoteId={downloadingQuoteId}
         onDownloadQuotePdf={(cotizacionId) => void handleDownloadQuotePdf(cotizacionId)}
         loadingDetails={selectedLoading}
+        canUploadFile={Boolean(selected && !isClosedOpportunity(selected.estado) && (
+          isOpportunityCreator(selected) ||
+          Number(selected.asignadoA ?? selected.ejecutivo?.id ?? 0) === Number(user?.id) ||
+          currentRole === "SUPERADMIN"
+        ))}
+        uploadingFile={uploadingOpportunityFile}
+        onUploadFile={(file) => void handleUploadOpportunityFile(file)}
+        deletingFileId={deletingOpportunityFileId}
+        canDeleteFile={(file) => isCreatedByCurrentUser(file.creadoPor)}
+        onDeleteFile={(file) => void handleDeleteOpportunityFile(file)}
+        unlinkingQuoteId={unlinkingQuoteId}
+        canUnlinkQuote={(relacionId) => {
+          const quote = selected?.cotizaciones.find((item) => item.id === relacionId);
+          return Boolean(quote && quote.origen === "vinculada" && isCreatedByCurrentUser(quote.creadoPor, quote.creadoPorId));
+        }}
+        onUnlinkQuote={(relacionId) => void handleUnlinkQuote(relacionId)}
       />
 
       {quoteLinkModalOpen && selected && (

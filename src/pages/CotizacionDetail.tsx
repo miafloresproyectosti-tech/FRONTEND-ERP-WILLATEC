@@ -62,12 +62,26 @@ import {
   UserCheck,
   History,
   GitBranch,
+  Briefcase,
+  CalendarClock,
+  Building2,
+  ExternalLink,
 } from 'lucide-react';
 
 const ESTADO_COTIZACION_APROBADA_ID = 4;
 const COTIZACION_DRAFT_VERSION = 1;
 const COTIZACION_DRAFT_PREFIX = 'erp_cotizacion_draft';
 const UNSAVED_CHANGES_MESSAGE = 'Tienes cambios sin guardar en esta cotizacion. Si sales ahora, podrias perderlos.';
+const OPORTUNIDAD_TIPO_LABELS: Record<string, string> = {
+  licitacion: 'Licitacion',
+  privado: 'Privado',
+  wherex: 'WHEREX',
+};
+const OPORTUNIDAD_FORMA_PAGO_LABELS: Record<string, string> = {
+  credito_15: 'Credito 15 dias',
+  credito_30: 'Credito 30 dias',
+  al_contado: 'Al contado',
+};
 
 interface CotizacionLocalDraft {
   version: number;
@@ -250,8 +264,20 @@ export function CotizacionDetail() {
 
     return {
       id: params.get('oportunidad_id') || '',
+      tipo: params.get('oportunidad_tipo') || '',
       empresa: params.get('oportunidad_empresa') || '',
       requerimiento: params.get('oportunidad_requerimiento') || '',
+      vigencia: params.get('oportunidad_vigencia') || '',
+      categoria: params.get('oportunidad_categoria') || '',
+      garantia: params.get('oportunidad_garantia') || '',
+      plazo: params.get('oportunidad_plazo') || '',
+      formaPago: params.get('oportunidad_forma_pago') || '',
+      destinoEntrega: params.get('oportunidad_destino_entrega') || '',
+      observacion: params.get('oportunidad_observacion') || '',
+      comentarios: params.get('oportunidad_comentarios') || '',
+      carpetaServidor: params.get('oportunidad_carpeta_servidor') || '',
+      wherexId: params.get('oportunidad_wherex_id') || '',
+      wherexUrl: params.get('oportunidad_wherex_url') || '',
     };
   }, [location.search]);
   const hasOpportunityContext = Boolean(opportunityContext.id);
@@ -1739,6 +1765,7 @@ export function CotizacionDetail() {
             estado: newCotizacionData.estadoCotizacion?.nombre || newCotizacionData.estado_cotizacion?.nombre || 'borrador',
             monto: Number(newCotizacion.total || 0),
             moneda: newCotizacionData.moneda?.codigo || newCotizacionData.codigo_moneda,
+            origen: 'generada',
           });
           postSavePath = '/seguimiento-licitaciones';
         }
@@ -2773,6 +2800,76 @@ export function CotizacionDetail() {
             Ver version vigente
           </button>
         </div>
+      )}
+
+      {hasOpportunityContext && (
+        <section className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-slate-900 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
+                  <Briefcase className="h-3.5 w-3.5" />
+                  Oportunidad {OPORTUNIDAD_TIPO_LABELS[opportunityContext.tipo] || opportunityContext.tipo || ''}
+                </span>
+                {opportunityContext.categoria && (
+                  <span className="rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-700">
+                    {opportunityContext.categoria}
+                  </span>
+                )}
+              </div>
+              <h2 className="text-lg font-bold text-slate-950">{opportunityContext.empresa || 'Empresa no definida'}</h2>
+              <p className="mt-1 text-sm font-semibold text-blue-900">{opportunityContext.requerimiento || 'Requerimiento no definido'}</p>
+            </div>
+            <div className="grid min-w-0 grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:w-[520px]">
+              <div className="rounded-xl bg-white/80 px-3 py-2">
+                <span className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500">
+                  <CalendarClock className="h-3.5 w-3.5" />
+                  Vigencia
+                </span>
+                <p className="mt-1 font-semibold text-slate-800">
+                  {opportunityContext.vigencia ? new Date(opportunityContext.vigencia).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Lima' }) : 'No definida'}
+                </p>
+              </div>
+              <div className="rounded-xl bg-white/80 px-3 py-2">
+                <span className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500">
+                  <Building2 className="h-3.5 w-3.5" />
+                  Entrega / pago
+                </span>
+                <p className="mt-1 font-semibold text-slate-800">
+                  {[OPORTUNIDAD_FORMA_PAGO_LABELS[opportunityContext.formaPago] || '', opportunityContext.destinoEntrega].filter(Boolean).join(' - ') || 'No definido'}
+                </p>
+              </div>
+              {(opportunityContext.garantia || opportunityContext.plazo) && (
+                <div className="rounded-xl bg-white/80 px-3 py-2">
+                  <span className="text-xs font-bold uppercase text-slate-500">Garantia / plazo</span>
+                  <p className="mt-1 font-semibold text-slate-800">
+                    {[opportunityContext.garantia, opportunityContext.plazo].filter(Boolean).join(' - ')}
+                  </p>
+                </div>
+              )}
+              {(opportunityContext.carpetaServidor || opportunityContext.wherexId || opportunityContext.wherexUrl) && (
+                <div className="rounded-xl bg-white/80 px-3 py-2">
+                  <span className="text-xs font-bold uppercase text-slate-500">Referencia</span>
+                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 font-semibold text-slate-800">
+                    {opportunityContext.carpetaServidor && <span>{opportunityContext.carpetaServidor}</span>}
+                    {opportunityContext.wherexId && <span>{opportunityContext.wherexId}</span>}
+                    {opportunityContext.wherexUrl && (
+                      <a href={opportunityContext.wherexUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-blue-700 hover:underline">
+                        WHEREX <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          {(opportunityContext.observacion || opportunityContext.comentarios) && (
+            <div className="mt-3 rounded-xl border border-blue-100 bg-white/80 px-3 py-2 text-sm text-slate-700">
+              <span className="font-bold text-slate-900">Notas de oportunidad: </span>
+              {[opportunityContext.observacion, opportunityContext.comentarios].filter(Boolean).join(' | ')}
+            </div>
+          )}
+        </section>
       )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">

@@ -123,6 +123,18 @@ export function OportunidadFormModal({
   }, [open, opportunity]);
 
   const selectedTipo = form.tipo;
+  const showMainAttachment = selectedTipo === "licitacion" || selectedTipo === "privado";
+  const attachmentLabels = selectedTipo === "privado"
+    ? {
+        field: "Guia / solicitud del cliente",
+        loaded: "Documento cargado. Puedes previsualizarlo, descargarlo o reemplazarlo.",
+        upload: "Subir guia o documento",
+      }
+    : {
+        field: "Archivo TDR",
+        loaded: "Archivo cargado. Puedes previsualizarlo, descargarlo o reemplazarlo.",
+        upload: "Subir archivo TDR",
+      };
 
   const inputClass = (field?: keyof OportunidadFormData) =>
     `w-full rounded-xl border px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 dark:bg-slate-950 dark:text-white ${
@@ -312,7 +324,11 @@ export function OportunidadFormModal({
                 <Field label="Numero de carpeta">
                   <input className={inputClass("carpetaServidor")} value={form.carpetaServidor} onChange={(event) => update("carpetaServidor", event.target.value)} />
                 </Field>
-                <Field label="Archivo TDR" error={errors.tdr} wide>
+              </>
+            )}
+
+            {showMainAttachment && (
+                <Field label={attachmentLabels.field} error={errors.tdr} wide>
                   <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-3 dark:border-slate-700 dark:bg-slate-900/40">
                     {form.tdr ? (
                       <div className="space-y-3">
@@ -323,7 +339,7 @@ export function OportunidadFormModal({
                             </span>
                             <div className="min-w-0">
                               <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{form.tdr.nombre}</p>
-                              <p className="text-xs text-slate-500">Archivo cargado. Puedes previsualizarlo, descargarlo o reemplazarlo.</p>
+                              <p className="text-xs text-slate-500">{attachmentLabels.loaded}</p>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
@@ -352,7 +368,7 @@ export function OportunidadFormModal({
                             <label className={`inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 ${submitting ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
                               {loadingFile ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
                               Reemplazar
-                              <input type="file" className="hidden" disabled={submitting} onChange={(event) => void handleTdrChange(event.target.files?.[0])} />
+                              <input type="file" accept="image/*,application/pdf" className="hidden" disabled={submitting} onChange={(event) => void handleTdrChange(event.target.files?.[0])} />
                             </label>
                             <button
                               type="button"
@@ -379,17 +395,16 @@ export function OportunidadFormModal({
                       </div>
                     ) : (
                       <label className={`flex items-center justify-between gap-3 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900 ${submitting ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
-                        <span className="truncate">Subir archivo TDR</span>
+                        <span className="truncate">{attachmentLabels.upload}</span>
                         <span className="inline-flex items-center gap-2 font-semibold text-blue-600">
                           {loadingFile ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
                           Archivo
                         </span>
-                        <input type="file" className="hidden" disabled={submitting} onChange={(event) => void handleTdrChange(event.target.files?.[0])} />
+                        <input type="file" accept="image/*,application/pdf" className="hidden" disabled={submitting} onChange={(event) => void handleTdrChange(event.target.files?.[0])} />
                       </label>
                     )}
                   </div>
                 </Field>
-              </>
             )}
 
             {(selectedTipo === "privado" || selectedTipo === "wherex") && (

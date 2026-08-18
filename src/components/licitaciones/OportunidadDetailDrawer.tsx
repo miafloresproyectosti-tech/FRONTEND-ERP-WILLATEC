@@ -1,4 +1,4 @@
-import { CheckCircle2, ExternalLink, FileDown, FileText, LockOpen, MessageSquare, Paperclip, Plus, Upload, X } from "lucide-react";
+import { CheckCircle2, ExternalLink, FileDown, FileText, LockOpen, MessageSquare, Paperclip, Plus, Trash2, Unlink, Upload, X } from "lucide-react";
 import { useState, type ClipboardEvent } from "react";
 
 import { FORMAS_PAGO, OPORTUNIDAD_ESTADOS, OPORTUNIDAD_TIPOS } from "../../constants/licitaciones";
@@ -29,6 +29,15 @@ interface Props {
   presentingProposal?: boolean;
   onMarkProposalPresented?: (file: File) => void;
   loadingDetails?: boolean;
+  canUploadFile?: boolean;
+  uploadingFile?: boolean;
+  onUploadFile?: (file: File) => void;
+  deletingFileId?: string | null;
+  canDeleteFile?: (file: OportunidadArchivo) => boolean;
+  onDeleteFile?: (file: OportunidadArchivo) => void;
+  unlinkingQuoteId?: string | null;
+  canUnlinkQuote?: (cotizacionId: string) => boolean;
+  onUnlinkQuote?: (cotizacionId: string) => void;
 }
 
 export function OportunidadDetailDrawer({
@@ -47,6 +56,15 @@ export function OportunidadDetailDrawer({
   presentingProposal = false,
   onMarkProposalPresented,
   loadingDetails = false,
+  canUploadFile = false,
+  uploadingFile = false,
+  onUploadFile,
+  deletingFileId = null,
+  canDeleteFile,
+  onDeleteFile,
+  unlinkingQuoteId = null,
+  canUnlinkQuote,
+  onUnlinkQuote,
 }: Props) {
   const [comment, setComment] = useState("");
   const [previewFile, setPreviewFile] = useState<OportunidadArchivo | null>(null);
@@ -78,6 +96,12 @@ export function OportunidadDetailDrawer({
       : opportunity.tipo === "privado"
         ? "Adjunta una captura o PDF del correo enviado al cliente."
         : "Adjunta una captura o PDF de la propuesta subida en WHEREX.";
+  const mainAttachmentLabel = opportunity.tipo === "privado"
+    ? "Guia / documento de solicitud"
+    : "Vista previa del TDR";
+  const emptyMainAttachmentLabel = opportunity.tipo === "privado"
+    ? "No hay guia o documento adjunto."
+    : "No hay TDR adjunto.";
 
   const submitComment = () => {
     const trimmed = comment.trim();
@@ -104,6 +128,28 @@ export function OportunidadDetailDrawer({
 
     setPresentationFile(namedFile);
     setPresentationError("");
+    event.preventDefault();
+  };
+
+  const handleFilePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    if (!canUploadFile || !onUploadFile || uploadingFile) return;
+
+    const pastedImage = Array.from(event.clipboardData.items)
+      .find((item) => item.type.startsWith("image/"));
+
+    if (!pastedImage) return;
+
+    const file = pastedImage.getAsFile();
+    if (!file) return;
+
+    const extension = file.type.split("/")[1] || "png";
+    const namedFile = new File(
+      [file],
+      `archivo-oportunidad-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`,
+      { type: file.type }
+    );
+
+    onUploadFile(namedFile);
     event.preventDefault();
   };
 
@@ -325,7 +371,7 @@ export function OportunidadDetailDrawer({
 
           <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="font-bold text-slate-900 dark:text-white">Vista previa del TDR</h3>
+              <h3 className="font-bold text-slate-900 dark:text-white">{mainAttachmentLabel}</h3>
               {visiblePreview && !locked && (
                 <button
                   type="button"
@@ -341,26 +387,65 @@ export function OportunidadDetailDrawer({
             {visiblePreview ? (
               <FilePreview file={visiblePreview} />
             ) : (
-              <p className="text-sm text-slate-500">No hay TDR adjunto.</p>
+              <p className="text-sm text-slate-500">{emptyMainAttachmentLabel}</p>
             )}
           </section>
 
-          <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-            <h3 className="mb-3 flex items-center gap-2 font-bold text-slate-900 dark:text-white">
-              <Paperclip size={18} />
-              Archivos
-            </h3>
+          <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800" onPaste={handleFilePaste}>
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
+                <Paperclip size={18} />
+                Archivos
+              </h3>
+              {canUploadFile && onUploadFile && (
+                <label className={`inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 ${uploadingFile ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+                  <Upload size={15} />
+                  {uploadingFile ? "Subiendo..." : "Subir archivo"}
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    disabled={uploadingFile}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) onUploadFile(file);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+            {canUploadFile && (
+              <p className="mb-3 text-xs font-medium text-slate-500">
+                Puedes subir un PDF/imagen o pegar una captura con Ctrl+V.
+              </p>
+            )}
             <div className="space-y-2">
               {[opportunity.tdr, ...opportunity.archivos].filter(Boolean).map((file) => (
-                <button
+                <div
                   key={file!.id}
-                  type="button"
-                  onClick={() => setPreviewFile(file!)}
                   className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
                 >
-                  <span className="truncate font-medium text-slate-700 dark:text-slate-200">{file!.nombre}</span>
-                  <span className="text-xs text-slate-500">Vista previa</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewFile(file!)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <span className="block truncate font-medium text-slate-700 dark:text-slate-200">{file!.nombre}</span>
+                    <span className="text-xs text-slate-500">Vista previa</span>
+                  </button>
+                  {file && canDeleteFile?.(file) && onDeleteFile && (
+                    <button
+                      type="button"
+                      onClick={() => onDeleteFile(file)}
+                      disabled={deletingFileId === file.id}
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Eliminar archivo"
+                    >
+                      {deletingFileId === file.id ? <FileText size={15} className="animate-pulse" /> : <Trash2 size={15} />}
+                    </button>
+                  )}
+                </div>
               ))}
               {!opportunity.tdr && opportunity.archivos.length === 0 && (
                 <p className="text-sm text-slate-500">Sin archivos adjuntos.</p>
@@ -433,18 +518,32 @@ export function OportunidadDetailDrawer({
                         </span>
                       )}
                     </div>
-                    {canDownloadQuotePdf && item.cotizacionId && onDownloadQuotePdf && (
-                      <button
-                        type="button"
-                        onClick={() => onDownloadQuotePdf(item.cotizacionId!)}
-                        disabled={item.tieneModificacionPendiente || String(downloadingQuoteId) === String(item.cotizacionId)}
-                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-                        title={item.tieneModificacionPendiente ? "La cotizacion tiene una modificacion pendiente de aprobacion" : "Descargar PDF de cotizacion"}
-                      >
-                        <FileDown size={15} />
-                        {String(downloadingQuoteId) === String(item.cotizacionId) ? "Descargando..." : "PDF"}
-                      </button>
-                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {canDownloadQuotePdf && item.cotizacionId && onDownloadQuotePdf && (
+                        <button
+                          type="button"
+                          onClick={() => onDownloadQuotePdf(item.cotizacionId!)}
+                          disabled={item.tieneModificacionPendiente || String(downloadingQuoteId) === String(item.cotizacionId)}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          title={item.tieneModificacionPendiente ? "La cotizacion tiene una modificacion pendiente de aprobacion" : "Descargar PDF de cotizacion"}
+                        >
+                          <FileDown size={15} />
+                          {String(downloadingQuoteId) === String(item.cotizacionId) ? "Descargando..." : "PDF"}
+                        </button>
+                      )}
+                      {canUnlinkQuote?.(item.id) && onUnlinkQuote && (
+                        <button
+                          type="button"
+                          onClick={() => onUnlinkQuote(item.id)}
+                          disabled={unlinkingQuoteId === item.id}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          title="Desvincular cotizacion"
+                        >
+                          <Unlink size={15} />
+                          {unlinkingQuoteId === item.id ? "Quitando..." : "Desvincular"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

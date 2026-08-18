@@ -54,6 +54,9 @@ export interface CotizacionRelacionada {
   numero: string;
   fecha: string;
   estado: string;
+  origen?: "vinculada" | "generada";
+  creadoPorId?: number | string | null;
+  creadoPor?: string;
   tieneModificacionPendiente?: boolean;
   modificacionPendiente?: {
     id: number | string;

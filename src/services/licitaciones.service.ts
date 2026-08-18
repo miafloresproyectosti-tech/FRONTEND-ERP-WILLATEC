@@ -47,6 +47,9 @@ const normalizeOpportunity = (item: any): Oportunidad => ({
     ? item.cotizaciones.map((cotizacion: any) => ({
         ...cotizacion,
         cotizacionId: cotizacion.cotizacionId ?? cotizacion.cotizacion_id ?? null,
+        origen: cotizacion.origen ?? "vinculada",
+        creadoPorId: cotizacion.creadoPorId ?? cotizacion.creado_por_id ?? null,
+        creadoPor: cotizacion.creadoPor ?? cotizacion.creado_por,
         tieneModificacionPendiente: Boolean(cotizacion.tieneModificacionPendiente ?? cotizacion.tiene_modificacion_pendiente ?? false),
         modificacionPendiente: cotizacion.modificacionPendiente ?? cotizacion.modificacion_pendiente ?? null,
       }))
@@ -114,6 +117,14 @@ export const addComentarioOportunidad = async (
   return data;
 };
 
+export const addArchivoOportunidad = async (
+  oportunidadId: string,
+  archivo: any
+): Promise<Oportunidad> => {
+  const { data } = await api.post<any>(`/licitaciones/${oportunidadId}/archivos`, { archivo });
+  return applyExpiredState(normalizeOpportunity(data));
+};
+
 export const addCotizacionRelacionada = async (
   id: string,
   userName: string,
@@ -123,6 +134,7 @@ export const addCotizacionRelacionada = async (
     estado?: string;
     monto?: number;
     moneda?: string;
+    origen?: "vinculada" | "generada";
   }
 ): Promise<CotizacionRelacionada> => {
   const { data } = await api.post<any>(`/licitaciones/${id}/cotizaciones`, {
@@ -130,4 +142,20 @@ export const addCotizacionRelacionada = async (
     ...cotizacion,
   });
   return data;
+};
+
+export const deleteArchivoOportunidad = async (
+  oportunidadId: string,
+  archivoId: string
+): Promise<Oportunidad> => {
+  const { data } = await api.delete<any>(`/licitaciones/${oportunidadId}/archivos/${archivoId}`);
+  return applyExpiredState(normalizeOpportunity(data));
+};
+
+export const deleteCotizacionRelacionada = async (
+  oportunidadId: string,
+  relacionId: string
+): Promise<Oportunidad> => {
+  const { data } = await api.delete<any>(`/licitaciones/${oportunidadId}/cotizaciones/${relacionId}`);
+  return applyExpiredState(normalizeOpportunity(data));
 };
