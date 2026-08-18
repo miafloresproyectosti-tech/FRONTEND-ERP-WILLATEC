@@ -882,13 +882,16 @@ export default function Productos() {
       estado: productoSeleccionado.estado,
       tipo_producto: "stock",
       controla_stock: true,
-      stock_actual: isNaN(stockNum) ? 0 : stockNum,
       stock_minimo: 0,
       costo_unitario: isNaN(precioNum) ? 0 : precioNum,
       precio_venta: isNaN(precioNum) ? 0 : precioNum,
-      stock: isNaN(stockNum) ? 0 : stockNum,
       categoria_id: productoSeleccionado.categoria_id,
     };
+
+    if (!modoEdicion) {
+      payload.stock_actual = isNaN(stockNum) ? 0 : stockNum;
+      payload.stock = isNaN(stockNum) ? 0 : stockNum;
+    }
 
     try {
       setSaving(true);

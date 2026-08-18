@@ -1,15 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AlertCircle,
   ArrowRight,
   Bell,
+  Briefcase,
   ChevronDown,
+  ClipboardList,
   Eye,
+  FileText,
   Loader2,
   Menu,
+  Package,
   RefreshCcw,
+  Server,
+  ShoppingCart,
   X,
+  type LucideIcon,
 } from "lucide-react";
 
 import { useRefresh } from "../../RefreshContext";
@@ -37,6 +44,24 @@ const CUSTOM_NOTIFICATION_SOUND_URL =
 type WebkitAudioWindow = Window & {
   webkitAudioContext?: typeof AudioContext;
 };
+
+type NotificationSectionKey =
+  | "cotizaciones"
+  | "oportunidades"
+  | "ordenes"
+  | "inventario"
+  | "servicios"
+  | "usuarios"
+  | "general";
+
+interface NotificationSection {
+  key: NotificationSectionKey;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  accent: string;
+  items: DatabaseNotification[];
+}
 
 async function playGeneratedNotificationSound() {
   const AudioContextConstructor =
@@ -154,6 +179,144 @@ function isCotizacionNotification(notification: DatabaseNotification): boolean {
   );
 }
 
+function getNotificationSearchText(notification: DatabaseNotification) {
+  return [
+    notification.type,
+    notification.data.title,
+    notification.data.description,
+    notification.data.message,
+    notification.data.action_url,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function getNotificationSectionKey(notification: DatabaseNotification): NotificationSectionKey {
+  const text = getNotificationSearchText(notification);
+
+  if (
+    notification.data.cotizacion_id ||
+    text.includes("/cotizaciones") ||
+    text.includes("cotizacion") ||
+    text.includes("cotización") ||
+    text.includes("modificacion") ||
+    text.includes("modificación")
+  ) {
+    return "cotizaciones";
+  }
+
+  if (
+    text.includes("oportunidad") ||
+    text.includes("licitacion") ||
+    text.includes("licitación") ||
+    text.includes("wherex") ||
+    text.includes("/seguimiento-licitaciones")
+  ) {
+    return "oportunidades";
+  }
+
+  if (
+    text.includes("orden") ||
+    text.includes("oc ") ||
+    text.includes("oc-") ||
+    text.includes("/oc-recibidas") ||
+    text.includes("/oc-emitidas")
+  ) {
+    return "ordenes";
+  }
+
+  if (
+    text.includes("inventario") ||
+    text.includes("kardex") ||
+    text.includes("stock") ||
+    text.includes("producto")
+  ) {
+    return "inventario";
+  }
+
+  if (
+    text.includes("licencia") ||
+    text.includes("hosting") ||
+    text.includes("/servicios")
+  ) {
+    return "servicios";
+  }
+
+  if (
+    text.includes("usuario") ||
+    text.includes("cliente") ||
+    text.includes("auditoria") ||
+    text.includes("auditoría")
+  ) {
+    return "usuarios";
+  }
+
+  return "general";
+}
+
+const NOTIFICATION_SECTION_META: Record<NotificationSectionKey, Omit<NotificationSection, "items">> = {
+  cotizaciones: {
+    key: "cotizaciones",
+    label: "Cotizaciones",
+    description: "Aprobaciones, rechazos y modificaciones",
+    icon: FileText,
+    accent: "bg-blue-50 text-blue-700 border-blue-200",
+  },
+  oportunidades: {
+    key: "oportunidades",
+    label: "Oportunidades",
+    description: "Licitaciones, privados y WHEREX",
+    icon: Briefcase,
+    accent: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  },
+  ordenes: {
+    key: "ordenes",
+    label: "Ordenes de compra",
+    description: "OC recibidas, emitidas y documentos",
+    icon: ShoppingCart,
+    accent: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  },
+  inventario: {
+    key: "inventario",
+    label: "Inventario / Kardex",
+    description: "Stock, productos y movimientos",
+    icon: Package,
+    accent: "bg-amber-50 text-amber-700 border-amber-200",
+  },
+  servicios: {
+    key: "servicios",
+    label: "Servicios",
+    description: "Licencias, hosting y renovaciones",
+    icon: Server,
+    accent: "bg-cyan-50 text-cyan-700 border-cyan-200",
+  },
+  usuarios: {
+    key: "usuarios",
+    label: "Administracion",
+    description: "Usuarios, clientes y auditoria",
+    icon: ClipboardList,
+    accent: "bg-slate-50 text-slate-700 border-slate-200",
+  },
+  general: {
+    key: "general",
+    label: "General",
+    description: "Otros avisos del sistema",
+    icon: Bell,
+    accent: "bg-orange-50 text-orange-700 border-orange-200",
+  },
+};
+
+const NOTIFICATION_SECTION_ORDER: NotificationSectionKey[] = [
+  "cotizaciones",
+  "oportunidades",
+  "ordenes",
+  "inventario",
+  "servicios",
+  "usuarios",
+  "general",
+];
+
 export default function Topbar({
   onNotificationClick,
   onMenuClick,
@@ -163,6 +326,9 @@ export default function Topbar({
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState<string | null>(
     null
+  );
+  const [openNotificationSections, setOpenNotificationSections] = useState<Set<NotificationSectionKey>>(
+    () => new Set(["cotizaciones"])
   );
 
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -175,6 +341,26 @@ export default function Topbar({
   const unreadCount = notifications.filter(
     (notification) => !notification.read_at
   ).length;
+  const notificationSections = useMemo<NotificationSection[]>(() => {
+    const grouped = new Map<NotificationSectionKey, DatabaseNotification[]>();
+    const sorted = [...notifications].sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() -
+        new Date(a.created_at).getTime()
+    );
+
+    sorted.forEach((notification) => {
+      const key = getNotificationSectionKey(notification);
+      grouped.set(key, [...(grouped.get(key) || []), notification]);
+    });
+
+    return NOTIFICATION_SECTION_ORDER
+      .map((key) => ({
+        ...NOTIFICATION_SECTION_META[key],
+        items: grouped.get(key) || [],
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [notifications]);
 
   const applyNotifications = (
     data: DatabaseNotification[],
@@ -305,6 +491,39 @@ export default function Topbar({
 
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!notificationsOpen || notificationSections.length === 0) return;
+
+    setOpenNotificationSections((current) => {
+      const existingVisibleOpen = notificationSections.some((section) =>
+        current.has(section.key)
+      );
+
+      if (existingVisibleOpen) return current;
+
+      const firstUnreadSection =
+        notificationSections.find((section) =>
+          section.items.some((notification) => !notification.read_at)
+        ) || notificationSections[0];
+
+      return new Set([firstUnreadSection.key]);
+    });
+  }, [notificationSections, notificationsOpen]);
+
+  const toggleNotificationSection = (key: NotificationSectionKey) => {
+    setOpenNotificationSections((current) => {
+      const next = new Set(current);
+
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+
+      return next;
+    });
+  };
 
   const handleNotificationClick = async (notification: DatabaseNotification) => {
     setNotificationsOpen(false);
@@ -449,120 +668,167 @@ export default function Topbar({
                     No hay notificaciones.
                   </div>
                 ) : (
-                  [...notifications]
-                    .sort(
-                      (a, b) =>
-                        new Date(b.created_at).getTime() -
-                        new Date(a.created_at).getTime()
-                    )
-                    .map((notification, index) => {
-                      const isRead = !!notification.read_at;
-                      const title = getNotificationTitle(notification);
-                      const description =
-                        getNotificationDescription(notification);
-                      const tone = getNotificationTone(notification);
-                      const createdAt = new Date(notification.created_at);
-                      const formattedDate = Number.isNaN(createdAt.getTime())
-                        ? ""
-                        : createdAt.toLocaleString("es-PE", {
-                            day: "2-digit",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            timeZone: "America/Lima",
-                          });
+                  <div className="divide-y divide-slate-100">
+                    {notificationSections.map((section) => {
+                      const SectionIcon = section.icon;
+                      const isOpen = openNotificationSections.has(section.key);
+                      const sectionUnreadCount = section.items.filter(
+                        (notification) => !notification.read_at
+                      ).length;
 
                       return (
-                        <div
-                          key={notification.id}
-                          onClick={() => handleNotificationClick(notification)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              void handleNotificationClick(notification);
-                            }
-                          }}
-                          className={`w-full cursor-pointer p-4 sm:p-5 border-b border-slate-100 last:border-b-0 bg-white hover:bg-gradient-to-r hover:from-emerald-50/80 hover:to-blue-50/80 transition-all duration-300 group text-left ${
-                            isRead ? "opacity-80" : ""
-                          }`}
-                          style={{ animationDelay: `${index * 75}ms` }}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-start gap-3 flex-1 min-w-0">
-                              <div
-                                className={`p-3 rounded-2xl shadow-md flex-shrink-0 transition-all duration-300 ${
-                                  tone === "success"
-                                    ? "bg-emerald-100 text-emerald-600 border border-emerald-200"
-                                    : tone === "warning"
-                                    ? "bg-orange-100 text-orange-600 border border-orange-200"
-                                    : "bg-blue-100 text-blue-600 border border-blue-200"
-                                }`}
-                              >
-                                <Bell size={22} />
-                              </div>
-
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-black text-slate-900 text-sm sm:text-base leading-tight truncate">
-                                  {title}
-                                </h4>
-
-                                {description && (
-                                  <p className="text-sm text-slate-600 mt-1 line-clamp-2">
-                                    {description}
-                                  </p>
-                                )}
-
-                                <div className="flex items-center gap-2 mt-3">
-                                  {formattedDate && (
-                                    <span className="text-xs text-slate-500 font-bold bg-slate-100 px-2 py-1 rounded-lg">
-                                      {formattedDate}
-                                    </span>
-                                  )}
-
-                                  {!isRead && (
-                                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                                  )}
-                                </div>
-                              </div>
+                        <section key={section.key} className="bg-white">
+                          <button
+                            type="button"
+                            onClick={() => toggleNotificationSection(section.key)}
+                            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-slate-50 sm:px-5"
+                          >
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${section.accent}`}>
+                                <SectionIcon size={20} />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-black text-slate-900 sm:text-base">
+                                  {section.label}
+                                </span>
+                                <span className="block truncate text-xs font-semibold text-slate-500">
+                                  {section.description}
+                                </span>
+                              </span>
                             </div>
 
-                            <div className="flex flex-col items-end gap-2">
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void handleMarkNotificationRead(notification);
-                                }}
-                                disabled={isRead}
-                                className={`flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm transition-all ${
-                                  isRead
-                                    ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
-                                    : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
-                                }`}
-                                title={isRead ? "Esta notificacion ya esta leida" : "Marcar esta notificacion como leida"}
-                                aria-label={isRead ? "Esta notificacion ya esta leida" : "Marcar esta notificacion como leida"}
-                              >
-                                <Eye size={17} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void handleNotificationClick(notification);
-                                }}
-                                className="flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm transition-all hover:bg-emerald-100 hover:text-emerald-800"
-                                title="Abrir esta notificacion"
-                                aria-label="Abrir esta notificacion"
-                              >
-                                <ArrowRight size={17} />
-                              </button>
+                            <div className="flex shrink-0 items-center gap-2">
+                              {sectionUnreadCount > 0 && (
+                                <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-black text-white">
+                                  {sectionUnreadCount}
+                                </span>
+                              )}
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
+                                {section.items.length}
+                              </span>
+                              <ChevronDown
+                                size={18}
+                                className={`text-slate-500 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                              />
                             </div>
-                          </div>
-                        </div>
+                          </button>
+
+                          {isOpen && (
+                            <div className="border-t border-slate-100">
+                              {section.items.map((notification, index) => {
+                                const isRead = !!notification.read_at;
+                                const title = getNotificationTitle(notification);
+                                const description =
+                                  getNotificationDescription(notification);
+                                const tone = getNotificationTone(notification);
+                                const createdAt = new Date(notification.created_at);
+                                const formattedDate = Number.isNaN(createdAt.getTime())
+                                  ? ""
+                                  : createdAt.toLocaleString("es-PE", {
+                                      day: "2-digit",
+                                      month: "short",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                      timeZone: "America/Lima",
+                                    });
+
+                                return (
+                                  <div
+                                    key={notification.id}
+                                    onClick={() => handleNotificationClick(notification)}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault();
+                                        void handleNotificationClick(notification);
+                                      }
+                                    }}
+                                    className={`w-full cursor-pointer border-b border-slate-100 bg-white p-4 text-left transition-all duration-300 last:border-b-0 hover:bg-gradient-to-r hover:from-emerald-50/80 hover:to-blue-50/80 sm:p-5 ${
+                                      isRead ? "opacity-80" : ""
+                                    }`}
+                                    style={{ animationDelay: `${index * 60}ms` }}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                                        <div
+                                          className={`shrink-0 rounded-2xl border p-3 shadow-sm transition-all duration-300 ${
+                                            tone === "success"
+                                              ? "border-emerald-200 bg-emerald-100 text-emerald-600"
+                                              : tone === "warning"
+                                              ? "border-orange-200 bg-orange-100 text-orange-600"
+                                              : "border-blue-200 bg-blue-100 text-blue-600"
+                                          }`}
+                                        >
+                                          <Bell size={20} />
+                                        </div>
+
+                                        <div className="min-w-0 flex-1">
+                                          <h4 className="truncate text-sm font-black leading-tight text-slate-900 sm:text-base">
+                                            {title}
+                                          </h4>
+
+                                          {description && (
+                                            <p className="mt-1 line-clamp-2 text-sm text-slate-600">
+                                              {description}
+                                            </p>
+                                          )}
+
+                                          <div className="mt-3 flex items-center gap-2">
+                                            {formattedDate && (
+                                              <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-500">
+                                                {formattedDate}
+                                              </span>
+                                            )}
+
+                                            {!isRead && (
+                                              <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex flex-col items-end gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            void handleMarkNotificationRead(notification);
+                                          }}
+                                          disabled={isRead}
+                                          className={`flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm transition-all ${
+                                            isRead
+                                              ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                                              : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                                          }`}
+                                          title={isRead ? "Esta notificacion ya esta leida" : "Marcar esta notificacion como leida"}
+                                          aria-label={isRead ? "Esta notificacion ya esta leida" : "Marcar esta notificacion como leida"}
+                                        >
+                                          <Eye size={17} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            void handleNotificationClick(notification);
+                                          }}
+                                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm transition-all hover:bg-emerald-100 hover:text-emerald-800"
+                                          title="Abrir esta notificacion"
+                                          aria-label="Abrir esta notificacion"
+                                        >
+                                          <ArrowRight size={17} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </section>
                       );
-                    })
+                    })}
+                  </div>
                 )}
               </div>
 

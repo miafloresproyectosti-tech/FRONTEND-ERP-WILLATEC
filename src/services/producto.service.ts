@@ -226,13 +226,13 @@ export interface ProductoPayload {
     estado: "nuevo" | "usado";
     tipo_producto: "stock" | "servicio" | "externo" | "personalizado";
     controla_stock: boolean;
-    stock_actual: number;
+    stock_actual?: number;
     stock_minimo?: number;
     costo_unitario?: number;
     precio_venta?: number;
     codigo_barras?: string;
     moneda_id?: number | null;
-    stock: number;
+    stock?: number;
     categoria_id: number;
 }
 
