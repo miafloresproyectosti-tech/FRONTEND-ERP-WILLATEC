@@ -692,6 +692,14 @@ export default function OrdenesCompraPage() {
       canEditOc(oc) && !["atendido", "cancelado"].includes(String(oc.estado)),
     [canEditOc],
   );
+  const canManageOcDelivery = useCallback(
+    (_oc: OcRecibida) => {
+      if (!user) return false;
+
+      return ["SUPERADMIN", "ADMIN", "LOGISTICA"].includes(user.role);
+    },
+    [user],
+  );
   const canCreateOc = user
     ? ["SUPERADMIN", "VENTAS"].includes(user.role)
     : false;
@@ -1713,18 +1721,18 @@ export default function OrdenesCompraPage() {
     if (!oc.items) return;
     if (field === "comprado") {
       showToast({
-        title: "Comprado automatico",
+        title: "Stock asegurado automatico",
         description:
-          "Este estado se marca segun conversion o stock interno reservado.",
+          "Este estado se marca segun conversion o stock interno reservado. No representa una compra contable.",
         type: "warning",
       });
       return;
     }
     if (field === "entregado" && checked && !item.comprado) {
       showToast({
-        title: "Item no comprado",
+        title: "Stock no asegurado",
         description:
-          "Primero debe estar comprado con stock interno reservado para poder marcarlo como entregado.",
+          "Primero el item debe tener stock interno cubierto o reservado para poder marcarlo como entregado.",
         type: "warning",
       });
       return;
@@ -1785,7 +1793,7 @@ export default function OrdenesCompraPage() {
       showToast({
         title: "Items actualizados",
         description:
-          "Entregado fue sincronizado y comprado se recalculo con inventario.",
+          "Entregado fue sincronizado y el stock asegurado se recalculo con inventario.",
         type: "success",
       });
       void loadRecibidas(recibidasPagination.page);
@@ -2021,7 +2029,7 @@ export default function OrdenesCompraPage() {
               onCancel={handleCancelRecibida}
               onToggleItem={handleToggleRecibidaItem}
               updatingItemOc={updatingItemOc}
-              canEditOc={canEditOc}
+              canEditOc={canManageOcDelivery}
               canUploadDocuments={canUploadOcDocuments}
               canCancelOc={canCancelRecibida}
             />
@@ -2393,7 +2401,11 @@ export default function OrdenesCompraPage() {
           oc={selectedOc}
           loading={loadingDetail}
           updatingItemOc={updatingItemOc}
-          canEditOc={canEditOc(selectedOc)}
+          canEditOc={
+            "proveedor" in selectedOc
+              ? canEditOc(selectedOc)
+              : canManageOcDelivery(selectedOc as OcRecibida)
+          }
           onClose={() => setSelectedOc(null)}
               onToggleItem={handleToggleRecibidaItem}
               selectedSeries={ocItemSeries}
@@ -3154,7 +3166,7 @@ function RecibidasTable({
                               )
                             }
                           />
-                          Comprado
+                          Cubierto
                         </label>
                         <label className="inline-flex items-center gap-1">
                           <input
@@ -3292,7 +3304,7 @@ function RecibidasTable({
                                 }
                                 title="Se marca automaticamente cuando el item tiene producto interno reservado con stock suficiente"
                               />
-                              Comprado
+                              Cubierto
                             </label>
                             <label className="inline-flex items-center gap-1 text-xs text-slate-500">
                               <input
@@ -3313,7 +3325,7 @@ function RecibidasTable({
                                 }
                                 title={
                                   !item.comprado
-                                    ? "Primero debe estar comprado"
+                                    ? "Primero debe tener stock asegurado"
                                     : canEditOc(oc)
                                       ? "Marcar entregado"
                                       : "Solo el usuario que registro esta OC puede editarla"
@@ -3858,7 +3870,7 @@ function DetailModal({
                       <th className="px-4 py-3">Precio</th>
                     ) : (
                       <>
-                        <th className="px-4 py-3">Comprado</th>
+                        <th className="px-4 py-3">Cubierto</th>
                         <th className="px-4 py-3">Entregado</th>
                       </>
                     )}
@@ -4097,7 +4109,7 @@ function DetailModal({
                                     itemHasSoldSeries
                                       ? "Este item ya registro salida de series vendidas"
                                       : !item.comprado
-                                        ? "Primero debe estar comprado"
+                                        ? "Primero debe tener stock asegurado"
                                         : canEditOc
                                           ? "Marcar entregado"
                                           : "Solo el usuario que registro esta OC puede editarla"

@@ -17,6 +17,7 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  ShoppingBag,
   ShoppingCart,
   UserCheck,
   Users,
@@ -40,6 +41,8 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const [servicesOpen, setServicesOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [administrationOpen, setAdministrationOpen] = useState(false);
+  const [purchasesOpen, setPurchasesOpen] = useState(true);
+  const [accountingOpen, setAccountingOpen] = useState(true);
   const [seguimientoOpen, setSeguimientoOpen] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -332,6 +335,121 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 <ShoppingCart size={20} />
                 <span className="font-medium">Ordenes de Compra</span>
               </Link>
+            )}
+
+            {hasPermission("compras") && (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setPurchasesOpen(!purchasesOpen)}
+                  className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-gray-300 transition hover:bg-gray-900 hover:text-white"
+                >
+                  <div className="flex items-center gap-3">
+                    <ShoppingBag size={20} />
+                    <span className="font-medium uppercase">Compras</span>
+                  </div>
+
+                  <ChevronDown
+                    size={18}
+                    className={`transition-transform ${
+                      purchasesOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {purchasesOpen && (
+                  <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
+                    <Link
+                      to="/compras/requerimientos"
+                      onClick={closeMobile}
+                      className={subItemClass("/compras/requerimientos")}
+                    >
+                      <ClipboardList size={18} />
+                      Requerimientos
+                    </Link>
+
+                    <Link
+                      to="/compras"
+                      onClick={closeMobile}
+                      className={subItemClass("/compras")}
+                    >
+                      <ShoppingBag size={18} />
+                      Compras
+                    </Link>
+
+                    <Link
+                      to="/compras/recepciones"
+                      onClick={closeMobile}
+                      className={subItemClass("/compras/recepciones")}
+                    >
+                      <Package size={18} />
+                      Recepciones
+                    </Link>
+
+                    <Link
+                      to="/operaciones/alertas"
+                      onClick={closeMobile}
+                      className={subItemClass("/operaciones/alertas")}
+                    >
+                      <ShieldCheck size={18} />
+                      Alertas
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hasPermission("contabilidad") && (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setAccountingOpen(!accountingOpen)}
+                  className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-gray-300 transition hover:bg-gray-900 hover:text-white"
+                >
+                  <div className="flex items-center gap-3">
+                    <Receipt size={20} />
+                    <span className="font-medium uppercase">Contabilidad</span>
+                  </div>
+
+                  <ChevronDown
+                    size={18}
+                    className={`transition-transform ${
+                      accountingOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {accountingOpen && (
+                  <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
+                    <Link
+                      to="/contabilidad/comprobantes"
+                      onClick={closeMobile}
+                      className={subItemClass("/contabilidad/comprobantes")}
+                    >
+                      <Receipt size={18} />
+                      Comprobantes
+                    </Link>
+
+                    <Link
+                      to="/contabilidad/cuentas-por-pagar"
+                      onClick={closeMobile}
+                      className={subItemClass("/contabilidad/cuentas-por-pagar")}
+                    >
+                      <HandCoins size={18} />
+                      CxP / Pagos
+                    </Link>
+
+                    <Link
+                      to="/contabilidad/cuentas-por-cobrar"
+                      onClick={closeMobile}
+                      className={subItemClass("/contabilidad/cuentas-por-cobrar")}
+                    >
+                      <Landmark size={18} />
+                      CxC / Cobros
+                    </Link>
+                  </div>
+                )}
+              </div>
             )}
 
             {hasPermission("servicios") && (

@@ -147,6 +147,44 @@ export interface OcRecibidaItem {
   } | null;
 }
 
+export interface OcAtencionSerie {
+  id: number;
+  serie?: string | null;
+  estado?: string | null;
+  factura_numero?: string | null;
+}
+
+export interface OcAtencionItem {
+  id: number;
+  oc_atencion_id?: number;
+  oc_recibida_item_id?: number;
+  producto_id?: number | string | null;
+  descripcion?: string | null;
+  codigo?: string | null;
+  marca?: string | null;
+  unidad_medida?: string | null;
+  cantidad?: number | string;
+  cantidad_entregada?: number | string;
+  inventario_movimiento_id?: number | string | null;
+  estado?: string;
+  series?: OcAtencionSerie[];
+}
+
+export interface OcAtencion {
+  id: number;
+  oc_recibida_id?: number;
+  numero?: string;
+  fecha_atencion?: string | null;
+  estado?: "borrador" | "preparando" | "despachado" | "entregado" | "cancelado" | string;
+  tipo_atencion?: string | null;
+  observacion?: string | null;
+  preparado_por?: number | string | null;
+  entregado_por?: number | string | null;
+  fecha_entrega?: string | null;
+  created_by?: number | string | null;
+  items?: OcAtencionItem[];
+}
+
 export interface OcEmitida {
   id: number;
   numero?: string;
@@ -224,6 +262,22 @@ export interface UpdateOcRecibidaItemsPayload {
     entregado: boolean;
     producto_serie_ids?: number[];
   }>;
+}
+
+export interface CreateOcAtencionPayload {
+  fecha_atencion?: string;
+  tipo_atencion?: string;
+  observacion?: string;
+  items: Array<{
+    oc_recibida_item_id: number;
+    cantidad: number;
+    producto_serie_ids?: number[];
+  }>;
+}
+
+export interface ConfirmOcAtencionPayload {
+  fecha_entrega?: string;
+  observacion?: string;
 }
 
 export interface OcListParams {
@@ -528,6 +582,31 @@ export async function deleteOcRecibidaDocumento(id: number | string, tipo: strin
 export async function deleteOcRecibidaDocumentoAdicional(id: number | string, documentoId: number | string) {
   const response = await api.delete(`/oc-recibidas/${id}/documentos-adicionales/${documentoId}`);
   return response.data;
+}
+
+export async function getOcRecibidaAtenciones(id: number | string) {
+  const response = await api.get(`/oc-recibidas/${id}/atenciones`);
+  return (response.data?.data ?? []) as OcAtencion[];
+}
+
+export async function createOcAtencion(id: number | string, payload: CreateOcAtencionPayload) {
+  const response = await api.post(`/oc-recibidas/${id}/atenciones`, payload);
+  return response.data?.atencion as OcAtencion;
+}
+
+export async function getOcAtencion(id: number | string) {
+  const response = await api.get(`/oc-atenciones/${id}`);
+  return response.data?.atencion as OcAtencion;
+}
+
+export async function confirmarOcAtencion(id: number | string, payload: ConfirmOcAtencionPayload = {}) {
+  const response = await api.patch(`/oc-atenciones/${id}/confirmar`, payload);
+  return response.data?.atencion as OcAtencion;
+}
+
+export async function cancelarOcAtencion(id: number | string) {
+  const response = await api.patch(`/oc-atenciones/${id}/cancelar`);
+  return response.data?.atencion as OcAtencion;
 }
 
 export async function getOcEmitidas(params: OcListParams = {}) {

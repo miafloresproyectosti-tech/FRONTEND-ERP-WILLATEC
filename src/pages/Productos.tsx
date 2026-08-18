@@ -1621,7 +1621,7 @@ export default function Productos() {
                         </button>
                       )
                     ) : (
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 gap-2">
                         <button
                           onClick={() => handleOpenExternalEditModal(item)}
                           className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-100 text-blue-700 hover:bg-blue-200"
@@ -1635,18 +1635,6 @@ export default function Productos() {
                           title="Agregar item a cotizacion"
                         >
                           <Plus size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleOpenConvertExternal(item)}
-                          disabled={Boolean(item.producto_id)}
-                          className={`inline-flex h-11 items-center justify-center rounded-xl ${
-                            item.producto_id
-                              ? "cursor-not-allowed bg-gray-100 text-gray-400"
-                              : "bg-amber-100 text-amber-700 hover:bg-amber-200"
-                          }`}
-                          title={item.producto_id ? "Ya convertido a producto interno" : "Convertir a producto interno"}
-                        >
-                          <PackageCheck size={16} />
                         </button>
                       </div>
                     )}
@@ -1977,18 +1965,6 @@ export default function Productos() {
                             title="Agregar item a cotización"
                           >
                             <Plus size={18} />
-                          </button>
-                          <button
-                            onClick={() => handleOpenConvertExternal(item)}
-                            disabled={Boolean(item.producto_id)}
-                            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-sm ${
-                              item.producto_id
-                                ? "cursor-not-allowed bg-gray-100 text-gray-400 hover:scale-100"
-                                : "bg-amber-100 text-amber-700 hover:bg-amber-200"
-                            }`}
-                            title={item.producto_id ? "Ya convertido a producto interno" : "Convertir a producto interno"}
-                          >
-                            <PackageCheck size={18} />
                           </button>
                         </div>
                       </td>

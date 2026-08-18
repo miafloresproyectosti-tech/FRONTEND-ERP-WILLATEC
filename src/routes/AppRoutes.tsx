@@ -26,6 +26,13 @@ const Auditoria = lazy(() => import("../pages/Auditoria"));
 const InventarioMovimientos = lazy(() => import("../pages/InventarioMovimientos"));
 const OrdenesCompraPage = lazy(() => import("../pages/OrdenesCompraPage"));
 const OrdenCompraDetail = lazy(() => import("../pages/OrdenCompraDetail"));
+const RequerimientosCompra = lazy(() => import("../pages/RequerimientosCompra"));
+const Compras = lazy(() => import("../pages/Compras"));
+const RecepcionesCompra = lazy(() => import("../pages/RecepcionesCompra"));
+const Comprobantes = lazy(() => import("../pages/Comprobantes"));
+const CuentasPorPagar = lazy(() => import("../pages/CuentasPorPagar"));
+const CuentasPorCobrar = lazy(() => import("../pages/CuentasPorCobrar"));
+const AlertasOperativas = lazy(() => import("../pages/AlertasOperativas"));
 const Notificaciones = lazy(() => import("../pages/Notificaciones"));
 
 // 🆕 SERVICIOS
@@ -272,6 +279,69 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute requiredPermission="inventario">
                 <InventarioMovimientos />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/compras/requerimientos"
+            element={
+              <ProtectedRoute requiredPermission="compras">
+                <RequerimientosCompra />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/compras"
+            element={
+              <ProtectedRoute requiredPermission="compras">
+                <Compras />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/compras/recepciones"
+            element={
+              <ProtectedRoute requiredPermission="compras">
+                <RecepcionesCompra />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/contabilidad/comprobantes"
+            element={
+              <ProtectedRoute requiredPermission="contabilidad">
+                <Comprobantes />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/contabilidad/cuentas-por-pagar"
+            element={
+              <ProtectedRoute requiredPermission="contabilidad">
+                <CuentasPorPagar />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/contabilidad/cuentas-por-cobrar"
+            element={
+              <ProtectedRoute requiredPermission="contabilidad">
+                <CuentasPorCobrar />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/operaciones/alertas"
+            element={
+              <ProtectedRoute requiredPermission="compras">
+                <AlertasOperativas />
               </ProtectedRoute>
             }
           />
