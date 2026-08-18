@@ -7,6 +7,8 @@ import {
 } from "../services/auth.service";
 import { useNotifications } from "../NotificationContext";
 import { useAuth } from "../AuthContext";
+import { getDefaultRouteByRole } from "../utils/roleRoutes";
+import { normalizeRole } from "../utils/permissions";
 
 export default function ChangePasswordPage() {
   const navigate = useNavigate();
@@ -45,7 +47,7 @@ export default function ChangePasswordPage() {
 
     try {
       setLoading(true);
-      let nextRole = "VENTAS";
+      let nextRole = normalizeRole("VENTAS");
 
       await changePasswordRequest(
         currentPassword,
@@ -56,21 +58,21 @@ export default function ChangePasswordPage() {
       if (storedEmail) {
         const { role, id, last_login_at, two_factor_enabled } =
           await loginRequest(storedEmail, password);
-        nextRole = role;
-        login(id, storedEmail, role, last_login_at, two_factor_enabled);
+        nextRole = normalizeRole(role);
+        login(id, storedEmail, nextRole, last_login_at, two_factor_enabled);
       } else {
         const me = await meRequest();
         const role =
           me.data?.roles && me.data.roles.length > 0
             ? me.data.roles[0].name.toUpperCase()
             : "VENTAS";
-        nextRole = role;
+        nextRole = normalizeRole(role);
         const id = me.data?.id;
         const email = me.data?.email || "";
         login(
           id,
           email,
-          role,
+          nextRole,
           me.data?.last_login_at || null,
           !!me.data?.two_factor_confirmed_at
         );
@@ -83,21 +85,7 @@ export default function ChangePasswordPage() {
       });
       sessionStorage.removeItem("temp_user_email");
       sessionStorage.removeItem("temp_user_id");
-      navigate(
-        nextRole === "SUPERADMIN"
-          ? "/"
-          : nextRole === "ADMIN"
-          ? "/clientes"
-          : nextRole === "VENTAS"
-          ? "/cotizaciones"
-          : nextRole === "SOPORTE"
-          ? "/productos"
-          : nextRole === "LOGISTICA"
-          ? "/productos"
-          : nextRole === "CONTABILIDAD"
-          ? "/ordenes-compra"
-          : "/not-authorized"
-      );
+      navigate(getDefaultRouteByRole(nextRole));
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Error al cambiar contrasena";
