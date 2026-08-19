@@ -637,7 +637,7 @@ export default function SeguimientoLicitaciones() {
         ...item.historial,
       ],
     });
-    await loadData();
+    await refreshSelectedOpportunity(item.id);
   };
 
   const submitLoss = async () => {
@@ -686,7 +686,7 @@ export default function SeguimientoLicitaciones() {
     setLossObservations("");
     setLossFile(null);
     setLossError("");
-    await loadData();
+    await refreshSelectedOpportunity(lossTarget.id);
     showToast({ title: "Oportunidad perdida", description: "Se registró el motivo y las observaciones de la pérdida.", type: "success" });
   };
 
@@ -721,6 +721,19 @@ export default function SeguimientoLicitaciones() {
     }
   };
 
+  const syncSelectedOpportunity = (detail: Oportunidad) => {
+    setSelectedDetail(detail);
+    setOpportunities((current) =>
+      current.map((item) => (item.id === detail.id ? { ...item, ...detail } : item)),
+    );
+  };
+
+  const refreshSelectedOpportunity = async (opportunityId: string) => {
+    const detail = await getOportunidad(opportunityId);
+    syncSelectedOpportunity(detail);
+    await loadData();
+  };
+
   const handleAddComment = async (comment: string) => {
     if (!selected) return;
     await addComentarioOportunidad(selected.id, {
@@ -729,14 +742,7 @@ export default function SeguimientoLicitaciones() {
       fecha: new Date().toISOString(),
       comentario: comment,
     });
-    await loadData();
-  };
-
-  const syncSelectedOpportunity = (detail: Oportunidad) => {
-    setSelectedDetail(detail);
-    setOpportunities((current) =>
-      current.map((item) => (item.id === detail.id ? { ...item, ...detail } : item)),
-    );
+    await refreshSelectedOpportunity(selected.id);
   };
 
   const isCreatedByCurrentUser = (createdBy?: string | null, createdById?: string | number | null) => {
@@ -968,7 +974,7 @@ export default function SeguimientoLicitaciones() {
         ],
       });
 
-      await loadData();
+      await refreshSelectedOpportunity(selected.id);
       showToast({
         title: "Propuesta presentada",
         description: wasExpired
@@ -1059,7 +1065,7 @@ export default function SeguimientoLicitaciones() {
     setReleaseTarget(null);
     setReleaseReason("");
     setReleaseError("");
-    await loadData();
+    await refreshSelectedOpportunity(item.id);
     showToast({ title: "Cotización liberada", description: "La oportunidad volvió a estar disponible para asignarse.", type: "success" });
   };
 

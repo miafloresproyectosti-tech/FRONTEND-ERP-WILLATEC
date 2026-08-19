@@ -1713,6 +1713,9 @@ export function CotizacionDetail() {
           isModificacionRechazadaEditable ? comentarioReenvioRevision : undefined
         );
         setModificacion(updated);
+        if (Array.isArray(updated.propuesta?.items)) {
+          setItems(normalizeEditableItems(updated.propuesta.items));
+        }
         if (isModificacionRechazadaEditable) {
           setComentarioReenvioRevision('');
         }

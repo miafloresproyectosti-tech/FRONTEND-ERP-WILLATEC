@@ -633,6 +633,9 @@ export default function InventarioMovimientos() {
   const handleSalidaProductoChange = (productoId: string) => {
     const producto = salidaProductosDisponibles.find((item) => item.id === Number(productoId));
 
+    if (producto) {
+      setProductos((current) => mergeProductosById(current, [producto]));
+    }
     setSalidaForm((current) => ({ ...current, producto_id: productoId }));
     setSalidaProductoSearch(producto ? getProductoOptionLabel(producto) : "");
     setSalidaProductoResultsOpen(false);
