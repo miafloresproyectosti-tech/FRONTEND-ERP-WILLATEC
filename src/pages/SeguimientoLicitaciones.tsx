@@ -349,6 +349,12 @@ export default function SeguimientoLicitaciones() {
         return normalizeText(`${item.empresa} ${item.requerimiento}`).includes(search);
       })
       .sort((a, b) => {
+        if (currentRole === "LICITACIONES") {
+          const dateA = new Date(a.creadoEn).getTime();
+          const dateB = new Date(b.creadoEn).getTime();
+          return dateB - dateA;
+        }
+
         if (isSalesRole && ["mis", "creadas"].includes(activeBandeja)) {
           const rankDiff = MIS_OPORTUNIDADES_ACTIVE_RANK[a.estado] - MIS_OPORTUNIDADES_ACTIVE_RANK[b.estado];
           if (rankDiff !== 0) return rankDiff;
@@ -369,7 +375,7 @@ export default function SeguimientoLicitaciones() {
         const [first, second] = values[sortKey];
         return String(first).localeCompare(String(second), "es", { numeric: true }) * direction;
       });
-  }, [activeBandeja, debouncedSearch, filters, isSalesRole, scopedOpportunities, sortDirection, sortKey]);
+  }, [activeBandeja, currentRole, debouncedSearch, filters, isSalesRole, scopedOpportunities, sortDirection, sortKey]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOpportunities.length / itemsPerPage));
   const paginationItems = getPaginationItems(currentPage, totalPages);
@@ -619,7 +625,7 @@ export default function SeguimientoLicitaciones() {
     }
 
     const now = new Date().toISOString();
-    await saveOportunidad({
+    const updated = await saveOportunidad({
       ...item,
       estado,
       motivoCierre: ESTADOS_CIERRE.includes(estado) ? motivo : item.motivoCierre,
@@ -637,7 +643,8 @@ export default function SeguimientoLicitaciones() {
         ...item.historial,
       ],
     });
-    await refreshSelectedOpportunity(item.id);
+    syncSelectedOpportunity(updated);
+    void refreshSelectedOpportunity(item.id, updated);
   };
 
   const submitLoss = async () => {
@@ -653,7 +660,7 @@ export default function SeguimientoLicitaciones() {
     const observations = lossObservations.trim();
     const lessons = [trimmedReason, observations].filter(Boolean);
 
-    await saveOportunidad({
+    const updated = await saveOportunidad({
       ...lossTarget,
       estado: "perdida",
       motivoCierre: trimmedReason,
@@ -686,7 +693,8 @@ export default function SeguimientoLicitaciones() {
     setLossObservations("");
     setLossFile(null);
     setLossError("");
-    await refreshSelectedOpportunity(lossTarget.id);
+    syncSelectedOpportunity(updated);
+    void refreshSelectedOpportunity(lossTarget.id, updated);
     showToast({ title: "Oportunidad perdida", description: "Se registró el motivo y las observaciones de la pérdida.", type: "success" });
   };
 
@@ -728,10 +736,21 @@ export default function SeguimientoLicitaciones() {
     );
   };
 
-  const refreshSelectedOpportunity = async (opportunityId: string) => {
-    const detail = await getOportunidad(opportunityId);
-    syncSelectedOpportunity(detail);
-    await loadData();
+  const refreshSelectedOpportunity = async (opportunityId: string, immediateDetail?: Oportunidad) => {
+    if (immediateDetail) {
+      syncSelectedOpportunity(immediateDetail);
+    }
+
+    try {
+      const detail = await getOportunidad(opportunityId);
+      syncSelectedOpportunity(detail);
+    } catch (error) {
+      console.warn("No se pudo refrescar el detalle de oportunidad", error);
+    }
+
+    void loadData().catch((error) => {
+      console.warn("No se pudo refrescar el listado de oportunidades", error);
+    });
   };
 
   const handleAddComment = async (comment: string) => {
@@ -953,7 +972,7 @@ export default function SeguimientoLicitaciones() {
     setPresentingProposalId(selected.id);
     try {
       const evidence = await fileToOpportunityFile(file, userName);
-      await saveOportunidad({
+      const updated = await saveOportunidad({
         ...selected,
         archivos: [evidence, ...selected.archivos],
         ...( { presentacionEvidencia: evidence } as { presentacionEvidencia: OportunidadArchivo }),
@@ -974,7 +993,8 @@ export default function SeguimientoLicitaciones() {
         ],
       });
 
-      await refreshSelectedOpportunity(selected.id);
+      syncSelectedOpportunity(updated);
+      void refreshSelectedOpportunity(selected.id, updated);
       showToast({
         title: "Propuesta presentada",
         description: wasExpired
@@ -1038,7 +1058,7 @@ export default function SeguimientoLicitaciones() {
     }
 
     const now = new Date().toISOString();
-    await saveOportunidad({
+    const updated = await saveOportunidad({
       ...item,
       ejecutivo: { id: 0, nombre: "Sin ejecutivo" },
       asignadoA: null,
@@ -1065,7 +1085,8 @@ export default function SeguimientoLicitaciones() {
     setReleaseTarget(null);
     setReleaseReason("");
     setReleaseError("");
-    await refreshSelectedOpportunity(item.id);
+    syncSelectedOpportunity(updated);
+    void refreshSelectedOpportunity(item.id, updated);
     showToast({ title: "Cotización liberada", description: "La oportunidad volvió a estar disponible para asignarse.", type: "success" });
   };
 
