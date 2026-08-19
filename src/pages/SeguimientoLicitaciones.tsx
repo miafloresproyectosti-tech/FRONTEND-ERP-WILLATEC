@@ -130,6 +130,7 @@ const TYPE_TABS = [
 const SALES_BANDEJAS = [
   { key: "disponibles", label: "Oportunidades Disponibles" },
   { key: "mis", label: "Mis Oportunidades" },
+  { key: "creadas", label: "Subidas por mi" },
 ] as const;
 
 const SUPERADMIN_BANDEJAS = [
@@ -284,6 +285,23 @@ export default function SeguimientoLicitaciones() {
     return Number(item.asignadoA ?? item.ejecutivo?.id ?? 0) === user.id;
   }, [user?.id]);
 
+  const isCreatedByMeOpportunity = useCallback((item: Oportunidad) => {
+    if (!user?.id) return false;
+    if (item.creadoPorId && Number(item.creadoPorId) === Number(user.id)) return true;
+
+    const creator = normalizeText(item.creadoPor || "");
+    return Boolean(creator) && (
+      creator === normalizeText(userName) ||
+      creator === normalizeText(user?.email || "")
+    );
+  }, [user?.email, user?.id, userName]);
+
+  const isCreatedByMeAssignedToOther = useCallback((item: Oportunidad) => (
+    isCreatedByMeOpportunity(item) &&
+    !isMyOpportunity(item) &&
+    !isAvailableOpportunity(item)
+  ), [isAvailableOpportunity, isCreatedByMeOpportunity, isMyOpportunity]);
+
   const isAttentionOpportunity = useCallback((item: Oportunidad) => (
     item.estado === "en_atencion" || item.estado === "atendido" || item.estado === "cotizacion_generada"
   ), []);
@@ -291,6 +309,7 @@ export default function SeguimientoLicitaciones() {
   const scopedOpportunities = useMemo(() => {
     if (isSalesRole) {
       if (activeBandeja === "mis") return opportunities.filter(isMyOpportunity);
+      if (activeBandeja === "creadas") return opportunities.filter(isCreatedByMeAssignedToOther);
       return opportunities.filter(isAvailableOpportunity);
     }
 
@@ -309,7 +328,7 @@ export default function SeguimientoLicitaciones() {
 
       return hasNoExecutive || executiveId === user?.id;
     });
-  }, [activeBandeja, currentRole, isAttentionOpportunity, isAvailableOpportunity, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
+  }, [activeBandeja, currentRole, isAttentionOpportunity, isAvailableOpportunity, isCreatedByMeAssignedToOther, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
 
   const filteredOpportunities = useMemo(() => {
     const search = normalizeText(debouncedSearch);
@@ -330,7 +349,7 @@ export default function SeguimientoLicitaciones() {
         return normalizeText(`${item.empresa} ${item.requerimiento}`).includes(search);
       })
       .sort((a, b) => {
-        if (isSalesRole && activeBandeja === "mis") {
+        if (isSalesRole && ["mis", "creadas"].includes(activeBandeja)) {
           const rankDiff = MIS_OPORTUNIDADES_ACTIVE_RANK[a.estado] - MIS_OPORTUNIDADES_ACTIVE_RANK[b.estado];
           if (rankDiff !== 0) return rankDiff;
 
@@ -969,14 +988,7 @@ export default function SeguimientoLicitaciones() {
   };
 
   const isOpportunityCreator = (item: Oportunidad) => {
-    if (!user?.id) return false;
-    if (item.creadoPorId && Number(item.creadoPorId) === Number(user.id)) return true;
-
-    const creator = normalizeText(item.creadoPor || "");
-    return Boolean(creator) && (
-      creator === normalizeText(userName) ||
-      creator === normalizeText(user?.email || "")
-    );
+    return isCreatedByMeOpportunity(item);
   };
 
   const canManageOpportunityQuote = (item: Oportunidad) => {
@@ -994,6 +1006,8 @@ export default function SeguimientoLicitaciones() {
     if (item.tipo === "licitacion") {
       return currentRole === "LICITACIONES" || isOpportunityCreator(item);
     }
+
+    if (currentRole === "VENTAS" && isOpportunityCreator(item)) return true;
 
     return Number(item.asignadoA ?? item.ejecutivo?.id ?? 0) === Number(user.id);
   };
@@ -1164,6 +1178,7 @@ export default function SeguimientoLicitaciones() {
   const getBandejaCount = (key: string) => {
     if (key === "disponibles") return opportunities.filter(isAvailableOpportunity).length;
     if (key === "mis") return opportunities.filter(isMyOpportunity).length;
+    if (key === "creadas") return opportunities.filter(isCreatedByMeAssignedToOther).length;
     if (key === "en_atencion") return opportunities.filter(isAttentionOpportunity).length;
     if (key === "finalizadas") return opportunities.filter((item) => isClosedOpportunity(item.estado)).length;
     return opportunities.length;
