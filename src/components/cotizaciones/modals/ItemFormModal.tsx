@@ -43,7 +43,6 @@ export function ItemFormModal({
   onSave,
   onUpdate,
   editingItem,
-  handleIntercambiarMoneda,
   readOnly = false,
   externalItemSuggestions = [],
   onSelectExternalSuggestion,

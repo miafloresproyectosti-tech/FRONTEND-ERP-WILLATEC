@@ -440,7 +440,7 @@ export function CotizacionDetail() {
   const canEditModificacion = Boolean(
     isModificationMode &&
     modificacion &&
-    (modificacion.estado === 'borrador' || modificacion.estado === 'rechazada') &&
+    (modificacion.estado === 'borrador' || modificacion.estado === 'rechazada' || modificacion.estado === 'en_revision') &&
     (isCotizacionCreator || isCotizacionEditDelegate || Number(modificacion.requested_by) === Number(user?.id))
   );
   const isModificacionRechazadaEditable = Boolean(
@@ -1720,9 +1720,11 @@ export function CotizacionDetail() {
           setComentarioReenvioRevision('');
         }
         showToast({
-          title: 'Borrador guardado',
-          description: 'La propuesta fue guardada como borrador. Puedes enviarla a revision cuando este lista.',
-          message: 'Borrador guardado',
+          title: modificacion?.estado === 'en_revision' ? 'Cambios guardados' : 'Borrador guardado',
+          description: modificacion?.estado === 'en_revision'
+            ? 'La propuesta en revision fue actualizada correctamente.'
+            : 'La propuesta fue guardada como borrador. Puedes enviarla a revision cuando este lista.',
+          message: modificacion?.estado === 'en_revision' ? 'Cambios guardados' : 'Borrador guardado',
           type: 'success',
           duration: 4000,
         } as any);
@@ -2205,7 +2207,7 @@ export function CotizacionDetail() {
       margen: 0,
       nota: '',
       marca: producto.marca || '',
-      codigo: producto.codigo || '',
+      codigo: producto.modelo || producto.codigo || producto.sku || '',
       unidad_medida: producto.unidad_medida || 'UND',
       garantia_meses: producto.garantia_meses || 12,
       disponibilidad_tipo: producto.disponibilidad_tipo || 'stock',
@@ -3304,12 +3306,12 @@ export function CotizacionDetail() {
                   </>
                 ) : (
                   <>
-                    <Save className="w-5 h-5" /> {isModificationMode ? 'Guardar borrador' : 'Guardar'}
+                    <Save className="w-5 h-5" /> {isModificationMode ? (modificacion?.estado === 'en_revision' ? 'Guardar cambios' : 'Guardar borrador') : 'Guardar'}
                   </>
                 )}
               </button>
 
-              {isModificationMode && canEditModificacion && (
+              {isModificationMode && canEditModificacion && modificacion?.estado !== 'en_revision' && (
                 <button
                   onClick={handleEnviarModificacionRevision}
                   disabled={isSendingReview || saving}

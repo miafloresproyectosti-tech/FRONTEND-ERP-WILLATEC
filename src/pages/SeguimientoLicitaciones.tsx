@@ -180,6 +180,7 @@ export default function SeguimientoLicitaciones() {
   const [uploadingOpportunityFile, setUploadingOpportunityFile] = useState(false);
   const [deletingOpportunityFileId, setDeletingOpportunityFileId] = useState<string | null>(null);
   const [unlinkingQuoteId, setUnlinkingQuoteId] = useState<string | null>(null);
+  const [assigningOpportunityId, setAssigningOpportunityId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const loadRequestRef = useRef(0);
   const showToastRef = useRef(showToast);
@@ -470,7 +471,7 @@ export default function SeguimientoLicitaciones() {
   };
 
   const handleAssignToMe = async (opportunity: Oportunidad) => {
-    if (!user?.id || !isAvailableOpportunity(opportunity)) return;
+    if (!user?.id || !isAvailableOpportunity(opportunity) || assigningOpportunityId) return;
 
     const now = new Date().toISOString();
     const next: Oportunidad = {
@@ -499,7 +500,9 @@ export default function SeguimientoLicitaciones() {
       ],
     };
 
-    await saveOportunidad(next);
+    try {
+      setAssigningOpportunityId(opportunity.id);
+      await saveOportunidad(next);
     const reminder = `Recuerda que tienes una cotización pendiente y se vence ${formatDateTime(next.vigencia)}.`;
     addNotification({
       title: "Cotización pendiente",
@@ -518,7 +521,10 @@ export default function SeguimientoLicitaciones() {
       targetRole: "SUPERADMIN",
     });
     await loadData();
-    showToast({ title: "Oportunidad asignada", description: reminder, type: "warning" });
+      showToast({ title: "Oportunidad asignada", description: reminder, type: "warning" });
+    } finally {
+      setAssigningOpportunityId(null);
+    }
   };
 
   const handleSave = async (data: OportunidadFormData) => {
@@ -698,8 +704,27 @@ export default function SeguimientoLicitaciones() {
     showToast({ title: "Oportunidad perdida", description: "Se registró el motivo y las observaciones de la pérdida.", type: "success" });
   };
 
+  const canDeleteOpportunity = (item: Oportunidad) => {
+    const hasQuote = Boolean(item.cotizacionId || item.cotizacionNumero || item.cotizaciones.length > 0);
+
+    return (
+      isOpportunityCreator(item) &&
+      item.estado === "sin_atender" &&
+      isAvailableOpportunity(item) &&
+      !hasQuote
+    );
+  };
+
   const handleDelete = async (item: Oportunidad) => {
-    if (isClosedOpportunity(item.estado)) return;
+    if (!canDeleteOpportunity(item)) {
+      showToast({
+        title: "No se puede eliminar",
+        description: "Solo se pueden eliminar oportunidades sin atender, sin responsable y sin cotizacion vinculada o generada.",
+        type: "warning",
+      });
+      return;
+    }
+
     if (!window.confirm(`Eliminar la oportunidad de ${item.empresa}?`)) return;
     await deleteOportunidad(item.id);
     await loadData();
@@ -1495,10 +1520,12 @@ export default function SeguimientoLicitaciones() {
                           {(isSalesRole || currentRole === "SUPERADMIN") && isAvailableOpportunity(item) && (
                             <button
                               type="button"
+                              disabled={Boolean(assigningOpportunityId)}
                               onClick={() => void handleAssignToMe(item)}
-                              className="inline-flex h-9 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                              className="inline-flex h-9 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              Asignarme
+                              {assigningOpportunityId === item.id && <Loader2 size={14} className="animate-spin" />}
+                              {assigningOpportunityId === item.id ? "Asignando" : "Asignarme"}
                             </button>
                           )}
                           {canReleaseOpportunity(item) && item.estado === "en_atencion" && (
@@ -1521,7 +1548,7 @@ export default function SeguimientoLicitaciones() {
                               {editingLoadingId === item.id ? <Loader2 size={17} className="animate-spin" /> : <Pencil size={17} />}
                             </IconButton>
                           )}
-                          {isOpportunityCreator(item) && (
+                          {canDeleteOpportunity(item) && (
                             <IconButton
                               title={locked ? "Registro bloqueado" : "Eliminar"}
                               disabled={locked}
