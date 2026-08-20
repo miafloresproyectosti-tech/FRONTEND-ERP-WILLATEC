@@ -64,10 +64,6 @@ export function ItemFormModal({
   const showImportCalcControls = itemForm.disponibilidad_tipo === 'importacion';
   const isImportCalcReadOnly = readOnly && hasImportCalc;
 
-  const gananciaSoles =
-    monedaId === 2
-      ? Number((Number(itemForm.ganancia || 0) * (tipoCambioSolesADolar || 1)).toFixed(2))
-      : null;
   const periodoMeses = Math.max(0, Number(itemForm.garantia_meses || 0));
   const costoBaseUnitario = Number(itemForm.costo_base || 0);
   const costoUnitarioCalculado = Number(itemForm.costo_unitario ?? itemForm.costo_base ?? 0);
@@ -265,6 +261,90 @@ export function ItemFormModal({
     itemForm.plantilla_ultimo_uso_nombre ||
     itemForm.plantilla_origen_nombre ||
     null;
+  const solesEquivalent = (value: number) =>
+    monedaId === 2 ? Number((Number(value || 0) * (tipoCambioSolesADolar || 1)).toFixed(2)) : null;
+  const moneyValue = (
+    value: number,
+    primaryClass = "text-xs font-semibold text-gray-800",
+    secondaryClass = "mt-0.5 text-[10px] leading-none font-semibold text-emerald-600",
+  ) => {
+    const secondary = solesEquivalent(value);
+
+    return (
+      <>
+        <p className={primaryClass}>{formatMoney(value, simboloMoneda)}</p>
+        {secondary !== null && (
+          <p className={secondaryClass}>
+            {formatMoney(secondary, "S/")}
+          </p>
+        )}
+      </>
+    );
+  };
+  const summaryEstimado = (
+    <div className="space-y-2 border-t border-gray-100 bg-white px-5 py-2.5 shadow-[0_-8px_18px_rgba(15,23,42,0.04)]">
+      {muestraCostoConAdicionales && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+          <span className="font-semibold">Costo usado para margen:</span>{" "}
+          {formatMoney(costoUnitarioCalculado, simboloMoneda)} por unidad
+          {solesEquivalent(costoUnitarioCalculado) !== null && (
+            <span className="font-semibold text-emerald-700"> / {formatMoney(solesEquivalent(costoUnitarioCalculado)!, "S/")}</span>
+          )}
+          <span className="text-amber-700">
+            {" "}({formatMoney(costoBaseUnitario, simboloMoneda)}
+            {solesEquivalent(costoBaseUnitario) !== null && ` / ${formatMoney(solesEquivalent(costoBaseUnitario)!, "S/")}`} base + {formatMoney(costoAdicionalUnitario, simboloMoneda)}
+            {solesEquivalent(costoAdicionalUnitario) !== null && ` / ${formatMoney(solesEquivalent(costoAdicionalUnitario)!, "S/")}`} adicionales)
+          </span>
+        </div>
+      )}
+      {isAlquiler ? (
+        <div className={`grid gap-2 ${canViewGanancia ? "grid-cols-2" : "grid-cols-1"}`}>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-blue-50 rounded-lg p-2">
+              <p className="text-[9px] text-gray-500 mb-0.5">Precio Unit Mensual</p>
+              {moneyValue(precioUnitMensual)}
+            </div>
+            <div className="bg-sky-50 rounded-lg p-2">
+              <p className="text-[9px] text-gray-500 mb-0.5">Precio Cantidad Mensual</p>
+              {moneyValue(precioCantidadMensual)}
+            </div>
+            <div className="bg-gray-50 rounded-lg p-2">
+              <p className="text-[9px] text-gray-500 mb-0.5">Precio Total x Meses</p>
+              {moneyValue(precioTotalMeses)}
+              <p className="mt-0.5 text-[9px] text-gray-500">{periodoMeses || 0} meses</p>
+            </div>
+          </div>
+          {canViewGanancia && (
+            <div className="bg-green-50 rounded-lg p-2">
+              <p className="text-[9px] text-gray-500 mb-0.5">Ganancia</p>
+              {moneyValue(itemForm.ganancia || 0, "text-xs font-semibold text-green-700")}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className={`grid gap-2 ${canViewGanancia ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}>
+          <div className="bg-amber-50 rounded-lg p-2">
+            <p className="text-[9px] text-gray-500 mb-0.5">Costo unit.</p>
+            {moneyValue(costoUnitarioCalculado, "text-xs font-semibold text-amber-800")}
+          </div>
+          <div className="bg-blue-50 rounded-lg p-2">
+            <p className="text-[9px] text-gray-500 mb-0.5">Precio venta</p>
+            {moneyValue(itemForm.precio_venta || 0)}
+          </div>
+          {canViewGanancia && (
+            <div className="bg-green-50 rounded-lg p-2">
+              <p className="text-[9px] text-gray-500 mb-0.5">Ganancia</p>
+              {moneyValue(itemForm.ganancia || 0, "text-xs font-semibold text-green-700")}
+            </div>
+          )}
+          <div className="bg-gray-50 rounded-lg p-2">
+            <p className="text-[9px] text-gray-500 mb-0.5">Subtotal</p>
+            {moneyValue(itemForm.subtotal || 0)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   const updateProveedor = (
     index: number,
@@ -663,74 +743,9 @@ export function ItemFormModal({
             </>
           )}
 
-          {/* Resumen estimado */}
-          <hr className="border-gray-200 my-2" />
-          {muestraCostoConAdicionales && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-              <span className="font-semibold">Costo usado para margen:</span>{" "}
-              {formatMoney(costoUnitarioCalculado, simboloMoneda)} por unidad
-              <span className="text-amber-700">
-                {" "}({formatMoney(costoBaseUnitario, simboloMoneda)} base + {formatMoney(costoAdicionalUnitario, simboloMoneda)} adicionales)
-              </span>
-            </div>
-          )}
-          {isAlquiler ? (
-            <div className={`grid gap-2 ${canViewGanancia ? "grid-cols-2" : "grid-cols-1"}`}>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="bg-blue-50 rounded-lg p-2">
-                  <p className="text-[9px] text-gray-500 mb-0.5">Precio Unit Mensual</p>
-                  <p className="text-xs font-semibold text-gray-800">{formatMoney(precioUnitMensual, simboloMoneda)}</p>
-                </div>
-                <div className="bg-sky-50 rounded-lg p-2">
-                  <p className="text-[9px] text-gray-500 mb-0.5">Precio Cantidad Mensual</p>
-                  <p className="text-xs font-semibold text-gray-800">{formatMoney(precioCantidadMensual, simboloMoneda)}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-2">
-                  <p className="text-[9px] text-gray-500 mb-0.5">Precio Total x Meses</p>
-                  <p className="text-xs font-semibold text-gray-800">{formatMoney(precioTotalMeses, simboloMoneda)}</p>
-                  <p className="mt-0.5 text-[9px] text-gray-500">{periodoMeses || 0} meses</p>
-                </div>
-              </div>
-              {canViewGanancia && (
-                <div className="bg-green-50 rounded-lg p-2">
-                  <p className="text-[9px] text-gray-500 mb-0.5">Ganancia</p>
-                  <p className="text-xs font-semibold text-green-700">{formatMoney(itemForm.ganancia || 0, simboloMoneda)}</p>
-                  {gananciaSoles !== null && (
-                    <p className="mt-0.5 text-[10px] leading-none font-semibold text-emerald-600">
-                      {formatMoney(gananciaSoles, "S/")}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className={`grid gap-2 ${canViewGanancia ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}>
-              <div className="bg-amber-50 rounded-lg p-2">
-                <p className="text-[9px] text-gray-500 mb-0.5">Costo unit.</p>
-                <p className="text-xs font-semibold text-amber-800">{formatMoney(costoUnitarioCalculado, simboloMoneda)}</p>
-              </div>
-              <div className="bg-blue-50 rounded-lg p-2">
-                <p className="text-[9px] text-gray-500 mb-0.5">Precio venta</p>
-                <p className="text-xs font-semibold text-gray-800">{formatMoney(itemForm.precio_venta || 0, simboloMoneda)}</p>
-              </div>
-              {canViewGanancia && (
-                <div className="bg-green-50 rounded-lg p-2">
-                  <p className="text-[9px] text-gray-500 mb-0.5">Ganancia</p>
-                  <p className="text-xs font-semibold text-green-700">{formatMoney(itemForm.ganancia || 0, simboloMoneda)}</p>
-                  {gananciaSoles !== null && (
-                    <p className="mt-0.5 text-[10px] leading-none font-semibold text-emerald-600">
-                      {formatMoney(gananciaSoles, "S/")}
-                    </p>
-                  )}
-                </div>
-              )}
-              <div className="bg-gray-50 rounded-lg p-2">
-                <p className="text-[9px] text-gray-500 mb-0.5">Subtotal</p>
-                <p className="text-xs font-semibold text-gray-800">{formatMoney(itemForm.subtotal || 0, simboloMoneda)}</p>
-              </div>
-            </div>
-          )}
         </div>
+
+        {summaryEstimado}
 
         {/* Footer */}
         <div className="flex gap-2 px-5 py-2.5 border-t border-gray-100 flex-shrink-0">

@@ -20,7 +20,7 @@ export interface OportunidadArchivo {
   nombre: string;
   tipo: string;
   tamanio: number;
-  dataUrl: string;
+  dataUrl?: string | null;
   creadoEn: string;
   creadoPor: string;
 }

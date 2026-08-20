@@ -657,6 +657,10 @@ function Info({ label, value, className = "" }: { label: string; value: string; 
 }
 
 function FilePreview({ file }: { file: OportunidadArchivo }) {
+  if (!file.dataUrl) {
+    return <p className="text-sm text-slate-500">El archivo se cargara al solicitar la vista previa o descarga.</p>;
+  }
+
   if (!canPreviewFile(file)) {
     return <p className="text-sm text-slate-500">El navegador no puede previsualizar este archivo.</p>;
   }

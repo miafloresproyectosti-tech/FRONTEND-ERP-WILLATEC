@@ -2,6 +2,7 @@ import api from "./api";
 import type {
   CotizacionRelacionada,
   Oportunidad,
+  OportunidadArchivo,
   OportunidadComentario,
 } from "../types/licitaciones";
 import { applyExpiredState } from "../utils/licitaciones";
@@ -69,9 +70,24 @@ export const getOportunidades = async (): Promise<Oportunidad[]> => {
   return normalizeList(Array.isArray(data) ? data : data.data || []);
 };
 
-export const getOportunidad = async (id: string): Promise<Oportunidad> => {
-  const { data } = await api.get<any>(`/licitaciones/${id}`);
+export const getOportunidad = async (
+  id: string,
+  options?: { includeFileData?: boolean },
+): Promise<Oportunidad> => {
+  const { data } = await api.get<any>(`/licitaciones/${id}`, {
+    params: options?.includeFileData === false ? { include_file_data: 0 } : undefined,
+  });
   return applyExpiredState(normalizeOpportunity(data));
+};
+
+export const getOportunidadByCotizacion = async (cotizacionId: number | string): Promise<Oportunidad> => {
+  const { data } = await api.get<any>(`/licitaciones/por-cotizacion/${cotizacionId}`);
+  return applyExpiredState(normalizeOpportunity(data));
+};
+
+export const getOportunidadArchivo = async (archivoId: number | string): Promise<OportunidadArchivo> => {
+  const { data } = await api.get<any>(`/licitaciones/archivos/${archivoId}`);
+  return data;
 };
 
 export const saveOportunidad = async (opportunity: Oportunidad) => {

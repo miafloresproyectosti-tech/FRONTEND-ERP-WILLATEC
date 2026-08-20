@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   AlertTriangle,
   Eye,
-  FileDown,
   FileSpreadsheet,
-  FileUp,
   LockOpen,
   Loader2,
   Pencil,
@@ -1279,19 +1277,6 @@ export default function SeguimientoLicitaciones() {
             <FileSpreadsheet size={18} />
             Excel
           </button>
-          <button type="button" onClick={handleExportPdf} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
-            <FileDown size={18} />
-            PDF
-          </button>
-          {canCreateOpportunity && (
-            <>
-              <button type="button" onClick={() => importInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
-                <FileUp size={18} />
-                Importar
-              </button>
-              <input ref={importInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(event) => void handleImportExcel(event.target.files?.[0])} />
-            </>
-          )}
         </div>
       </div>
 
@@ -1382,23 +1367,25 @@ export default function SeguimientoLicitaciones() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-5 xl:grid-cols-10">
-        {SUMMARY_ITEMS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => {
-              if (item.key in OPORTUNIDAD_ESTADOS) {
-                updateFilter("estado", item.key as OportunidadEstado);
-              }
-            }}
-            className={`rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-950 ${item.className}`}
-          >
-            <p className="min-h-8 text-xs font-semibold leading-4 text-slate-500">{item.label}</p>
-            <p className="text-xl font-bold text-slate-900 dark:text-white">{summary[item.key] || 0}</p>
-          </button>
-        ))}
-      </div>
+      {!(isSalesRole && ["disponibles", "creadas"].includes(activeBandeja)) && (
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-5 xl:grid-cols-10">
+          {SUMMARY_ITEMS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => {
+                if (item.key in OPORTUNIDAD_ESTADOS) {
+                  updateFilter("estado", item.key as OportunidadEstado);
+                }
+              }}
+              className={`rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-950 ${item.className}`}
+            >
+              <p className="min-h-8 text-xs font-semibold leading-4 text-slate-500">{item.label}</p>
+              <p className="text-xl font-bold text-slate-900 dark:text-white">{summary[item.key] || 0}</p>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-4 xl:grid-cols-8">
