@@ -90,6 +90,11 @@ export const getOportunidadArchivo = async (archivoId: number | string): Promise
   return data;
 };
 
+export const registrarVistaOportunidad = async (id: string): Promise<Oportunidad> => {
+  const { data } = await api.post<any>(`/licitaciones/${id}/registrar-vista`);
+  return applyExpiredState(normalizeOpportunity(data));
+};
+
 export const saveOportunidad = async (opportunity: Oportunidad) => {
   const payload = {
     ...opportunity,

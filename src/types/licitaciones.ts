@@ -36,7 +36,7 @@ export interface OportunidadHistorial {
   id: string;
   fecha: string;
   usuario: string;
-  tipo: "creacion" | "estado" | "responsable" | "comentario" | "archivo" | "cotizacion" | "cierre";
+  tipo: "creacion" | "estado" | "responsable" | "comentario" | "archivo" | "cotizacion" | "cierre" | "vista";
   descripcion: string;
 }
 

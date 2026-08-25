@@ -41,6 +41,7 @@ import {
   deleteOportunidad,
   getOportunidad,
   getOportunidades,
+  registrarVistaOportunidad,
   saveOportunidad,
 } from "../services/licitaciones.service";
 import { getUsers } from "../services/usuario.service";
@@ -136,6 +137,40 @@ const SUPERADMIN_BANDEJAS = [
   { key: "en_atencion", label: "Oportunidades en Atencion" },
   { key: "finalizadas", label: "Oportunidades Finalizadas" },
 ] as const;
+
+const findSimilarOpportunity = (
+  data: OportunidadFormData,
+  opportunities: Oportunidad[],
+  currentId?: string
+) => {
+  const empresa = normalizeText(data.empresa);
+  const requerimiento = normalizeText(data.requerimiento);
+  const wherexId = normalizeText(data.wherexId || "");
+  const wherexUrl = normalizeText(data.wherexUrl || "");
+
+  return opportunities.find((item) => {
+    if (currentId && item.id === currentId) return false;
+    if (item.tipo !== data.tipo) return false;
+
+    const sameCompanyAndRequirement =
+      empresa &&
+      requerimiento &&
+      normalizeText(item.empresa) === empresa &&
+      normalizeText(item.requerimiento) === requerimiento;
+
+    const sameWherexId =
+      data.tipo === "wherex" &&
+      wherexId &&
+      normalizeText(item.wherexId || "") === wherexId;
+
+    const sameWherexUrl =
+      data.tipo === "wherex" &&
+      wherexUrl &&
+      normalizeText(item.wherexUrl || "") === wherexUrl;
+
+    return sameCompanyAndRequirement || sameWherexId || sameWherexUrl;
+  });
+};
 
 export default function SeguimientoLicitaciones() {
   const { user } = useAuth();
@@ -399,6 +434,14 @@ export default function SeguimientoLicitaciones() {
         setOpportunities((current) =>
           current.map((item) => (item.id === detail.id ? { ...item, ...detail } : item)),
         );
+
+        void registrarVistaOportunidad(detail.id)
+          .then((viewedDetail) => {
+            if (!cancelled) syncSelectedOpportunity(viewedDetail);
+          })
+          .catch((error) => {
+            console.warn("No se pudo registrar vista de oportunidad", error);
+          });
       })
       .catch((error) => {
         if (cancelled) return;
@@ -531,6 +574,15 @@ export default function SeguimientoLicitaciones() {
     const hasEstadoChange = previous && previous.estado !== data.estado;
     const estado = previous ? data.estado : "sin_atender";
     const clean = (value?: string | null) => (value || "").trim();
+    const similar = findSimilarOpportunity(data, opportunities, previous?.id);
+
+    if (similar) {
+      const shouldContinue = window.confirm(
+        `Ya existe una oportunidad similar:\n\n${OPORTUNIDAD_TIPOS[similar.tipo]} - ${similar.empresa}\n${similar.requerimiento}\n\n¿Deseas guardar esta oportunidad de todas maneras?`
+      );
+
+      if (!shouldContinue) return;
+    }
 
     const next: Oportunidad = {
       id: previous?.id || createId("op"),
@@ -1431,7 +1483,118 @@ export default function SeguimientoLicitaciones() {
             </span>
           )}
         </div>
-        <div className="overflow-x-auto">
+        <div className="grid gap-3 p-3 xl:hidden">
+          {loading ? (
+            Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="h-44 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
+            ))
+          ) : paginated.length > 0 ? (
+            paginated.map((item) => {
+              const locked = isClosedOpportunity(item.estado);
+              const alert = getVigenciaAlert(item.vigencia, item.estado);
+
+              return (
+                <article key={item.id} className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 ${alert.rowClass}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <TipoBadge tipo={item.tipo} />
+                        {item.esNueva && isAvailableOpportunity(item) && (
+                          <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700 ring-1 ring-blue-200">
+                            Nueva
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="mt-2 line-clamp-2 text-sm font-bold text-slate-900 dark:text-white">
+                        {item.requerimiento}
+                      </h3>
+                      <p className="mt-1 truncate text-sm text-slate-600 dark:text-slate-300" title={item.empresa}>
+                        {item.empresa}
+                      </p>
+                    </div>
+                    <EstadoBadge estado={item.estado} />
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-slate-500">
+                    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+                      <p className="font-semibold uppercase tracking-wide">Categoria</p>
+                      <p className="mt-1 font-bold text-slate-800 dark:text-slate-100">{item.categoria}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+                      <p className="font-semibold uppercase tracking-wide">Ejecutivo</p>
+                      <p className="mt-1 truncate font-bold text-slate-800 dark:text-slate-100" title={item.ejecutivo.nombre}>
+                        {item.ejecutivo.nombre === "Sin ejecutivo" ? "Sin asignar" : item.ejecutivo.nombre}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+                      <p className="font-semibold uppercase tracking-wide">Vigencia</p>
+                      <p className="mt-1 font-bold text-slate-800 dark:text-slate-100">{formatDateTime(item.vigencia)}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+                      <p className="font-semibold uppercase tracking-wide">Tiempo restante</p>
+                      <p className={`mt-1 font-bold ${alert.textClass}`}>{formatRemainingTime(item.vigencia, item.estado)}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                    <IconButton title="Ver detalle" onClick={() => setSelectedId(item.id)}><Eye size={17} /></IconButton>
+                    {(isSalesRole || currentRole === "SUPERADMIN") && isAvailableOpportunity(item) && (
+                      <button
+                        type="button"
+                        disabled={Boolean(assigningOpportunityId)}
+                        onClick={() => void handleAssignToMe(item)}
+                        className="inline-flex h-9 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {assigningOpportunityId === item.id && <Loader2 size={14} className="animate-spin" />}
+                        {assigningOpportunityId === item.id ? "Asignando" : "Asignarme"}
+                      </button>
+                    )}
+                    {canReleaseOpportunity(item) && item.estado === "en_atencion" && (
+                      <button
+                        type="button"
+                        title="Liberar"
+                        onClick={() => openReleaseModal(item)}
+                        className="inline-flex h-9 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                      >
+                        <LockOpen size={16} />
+                        Liberar
+                      </button>
+                    )}
+                    {isOpportunityCreator(item) && (
+                      <IconButton
+                        title={locked ? "Registro bloqueado" : "Editar"}
+                        disabled={locked || editingLoadingId === item.id}
+                        onClick={() => void handleEditOpportunity(item)}
+                      >
+                        {editingLoadingId === item.id ? <Loader2 size={17} className="animate-spin" /> : <Pencil size={17} />}
+                      </IconButton>
+                    )}
+                    {canDeleteOpportunity(item) && (
+                      <IconButton
+                        title={locked ? "Registro bloqueado" : "Eliminar"}
+                        disabled={locked}
+                        danger
+                        onClick={() => void handleDelete(item)}
+                      >
+                        <Trash2 size={17} />
+                      </IconButton>
+                    )}
+                    {currentRole === "LICITACIONES" && item.estado === "atendido" && (
+                      <IconButton title="Marcar como perdida" danger onClick={() => void changeEstado(item, "perdida")}>
+                        <XCircle size={17} />
+                      </IconButton>
+                    )}
+                  </div>
+                </article>
+              );
+            })
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
+              No se encontraron oportunidades.
+            </div>
+          )}
+        </div>
+        <div className="hidden overflow-x-auto xl:block">
           <table className="min-w-[1180px] w-full">
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
               <tr>
@@ -1636,6 +1799,11 @@ export default function SeguimientoLicitaciones() {
           return Boolean(quote && quote.origen === "vinculada" && isCreatedByCurrentUser(quote.creadoPor, quote.creadoPorId));
         }}
         onUnlinkQuote={(relacionId) => void handleUnlinkQuote(relacionId)}
+        canAssignToMe={Boolean(selected && (isSalesRole || currentRole === "SUPERADMIN") && isAvailableOpportunity(selected))}
+        assigningToMe={Boolean(selected && assigningOpportunityId === selected.id)}
+        onAssignToMe={() => {
+          if (selected) void handleAssignToMe(selected);
+        }}
       />
 
       {quoteLinkModalOpen && selected && (

@@ -1,4 +1,4 @@
-import { CheckCircle2, ExternalLink, FileDown, FileText, LockOpen, MessageSquare, Paperclip, Plus, Trash2, Unlink, Upload, X } from "lucide-react";
+import { CheckCircle2, ExternalLink, FileDown, FileText, LockOpen, MessageSquare, Paperclip, Plus, Trash2, Unlink, Upload, UserPlus, Users, X } from "lucide-react";
 import { useState, type ClipboardEvent } from "react";
 
 import { FORMAS_PAGO, OPORTUNIDAD_ESTADOS, OPORTUNIDAD_TIPOS } from "../../constants/licitaciones";
@@ -38,6 +38,9 @@ interface Props {
   unlinkingQuoteId?: string | null;
   canUnlinkQuote?: (cotizacionId: string) => boolean;
   onUnlinkQuote?: (cotizacionId: string) => void;
+  canAssignToMe?: boolean;
+  assigningToMe?: boolean;
+  onAssignToMe?: () => void;
 }
 
 export function OportunidadDetailDrawer({
@@ -65,12 +68,16 @@ export function OportunidadDetailDrawer({
   unlinkingQuoteId = null,
   canUnlinkQuote,
   onUnlinkQuote,
+  canAssignToMe = false,
+  assigningToMe = false,
+  onAssignToMe,
 }: Props) {
   const [comment, setComment] = useState("");
   const [previewFile, setPreviewFile] = useState<OportunidadArchivo | null>(null);
   const [presentationModalOpen, setPresentationModalOpen] = useState(false);
   const [presentationFile, setPresentationFile] = useState<File | null>(null);
   const [presentationError, setPresentationError] = useState("");
+  const [viewsModalOpen, setViewsModalOpen] = useState(false);
 
   if (!opportunity) return null;
 
@@ -102,6 +109,9 @@ export function OportunidadDetailDrawer({
   const emptyMainAttachmentLabel = opportunity.tipo === "privado"
     ? "No hay guia o documento adjunto."
     : "No hay TDR adjunto.";
+  const viewEvents = opportunity.historial
+    .filter((item) => item.tipo === "vista")
+    .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
 
   const submitComment = () => {
     const trimmed = comment.trim();
@@ -195,6 +205,28 @@ export function OportunidadDetailDrawer({
             <Info label="Estado" value={OPORTUNIDAD_ESTADOS[opportunity.estado]} />
           </section>
 
+          <div className="flex flex-wrap gap-2">
+            {canAssignToMe && onAssignToMe && (
+              <button
+                type="button"
+                onClick={onAssignToMe}
+                disabled={assigningToMe}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <UserPlus size={17} />
+                {assigningToMe ? "Asignando..." : "Asignarme"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setViewsModalOpen(true)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+            >
+              <Users size={17} />
+              Vistas ({viewEvents.length})
+            </button>
+          </div>
+
           {locked && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
               Registro bloqueado. Solo puede visualizarse por estar cerrado o vencido.
@@ -238,7 +270,7 @@ export function OportunidadDetailDrawer({
                       href={opportunity.wherexUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-700"
+                      className="inline-flex h-10 w-[150px] shrink-0 items-center justify-center gap-2 self-start whitespace-nowrap rounded-xl bg-orange-600 px-4 text-sm font-semibold text-white hover:bg-orange-700"
                     >
                       <ExternalLink size={16} />
                       Abrir WHEREX
@@ -639,6 +671,43 @@ export function OportunidadDetailDrawer({
               >
                 {presentingProposal ? "Registrando..." : "Confirmar"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[82vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-5 dark:border-slate-800">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Usuarios que vieron la oportunidad</h3>
+                <p className="mt-1 text-sm text-slate-500">Fechas mostradas en hora America/Lima.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewsModalOpen(false)}
+                className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900"
+                title="Cerrar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-5">
+              {viewEvents.length ? (
+                <div className="space-y-3">
+                  {viewEvents.map((item) => (
+                    <div key={item.id} className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+                      <p className="font-semibold text-slate-900 dark:text-white">{item.usuario || "Usuario"}</p>
+                      <p className="mt-1 text-sm text-slate-500">{formatDateTime(item.fecha)}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500 dark:border-slate-800">
+                  Todavia no hay vistas registradas para esta oportunidad.
+                </div>
+              )}
             </div>
           </div>
         </div>
