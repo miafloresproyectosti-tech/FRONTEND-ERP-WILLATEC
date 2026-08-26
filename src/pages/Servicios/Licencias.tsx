@@ -11,6 +11,7 @@ import {
   Download,
   FileText,
   Upload,
+  RefreshCw,
 } from "lucide-react";
 
 import {
@@ -22,8 +23,9 @@ import {
   confirmLicenciasImport,
   deleteLicencia,
   deleteLicenciaDocumento,
-  getLicencias,
+  getAllLicencias,
   previewLicenciasImport,
+  renovarLicencia,
   updateLicencia,
   uploadLicenciaDocumentos,
   type LicenciaApi,
@@ -49,6 +51,10 @@ interface Licencia {
   correoLicencia: string;
   fechaInicio: string;
   fechaRenovacion: string;
+  renovacionProgramada: boolean;
+  renovacionModo: "ANUAL" | "MENSUAL" | null;
+  renovacionMeses: number | null;
+  renovacionProgramadaPara: string | null;
   estado: "VIGENTE" | "POR VENCER" | "VENCIDO";
   alertasCount: number;
   ultimaAlerta: string | null;
@@ -84,6 +90,10 @@ export default function Licencias() {
 
   const [openModal, setOpenModal] = useState(false);
   const [viewModal, setViewModal] = useState<Licencia | null>(null);
+  const [renewModal, setRenewModal] = useState<Licencia | null>(null);
+  const [renewMode, setRenewMode] = useState<"ANUAL" | "MENSUAL">("ANUAL");
+  const [renewMonths, setRenewMonths] = useState("1");
+  const [renewing, setRenewing] = useState(false);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clientesLoading, setClientesLoading] = useState(false);
   const [clienteSearch, setClienteSearch] = useState("");
@@ -119,6 +129,10 @@ export default function Licencias() {
     correoLicencia: licencia.correo_licencia || "",
     fechaInicio: licencia.fecha_inicio,
     fechaRenovacion: licencia.fecha_renovacion,
+    renovacionProgramada: Boolean(licencia.renovacion_programada),
+    renovacionModo: licencia.renovacion_modo || null,
+    renovacionMeses: licencia.renovacion_meses ?? null,
+    renovacionProgramadaPara: licencia.renovacion_programada_para || null,
     estado: getEstado(licencia.fecha_renovacion),
     alertasCount: Number(licencia.alertas_enviadas_count || 0),
     ultimaAlerta: licencia.alertas_enviadas_max_sent_at || null,
@@ -132,6 +146,18 @@ export default function Licencias() {
     })),
   });
 
+  const daysInMonth = (year: number, monthIndex: number) =>
+    new Date(year, monthIndex + 1, 0).getDate();
+
+  const addMonthsNoOverflow = (date: Date, months: number) => {
+    const targetMonthIndex = date.getMonth() + months;
+    const targetYear = date.getFullYear() + Math.floor(targetMonthIndex / 12);
+    const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
+    const targetDay = Math.min(date.getDate(), daysInMonth(targetYear, normalizedMonth));
+
+    return new Date(targetYear, normalizedMonth, targetDay);
+  };
+
   const calculateFechaRenovacion = (fechaInicio: string, mesesValue: string) => {
     const meses = Number(mesesValue);
 
@@ -140,8 +166,7 @@ export default function Licencias() {
     }
 
     const [year, month, day] = fechaInicio.split("-").map(Number);
-    const fecha = new Date(year, month - 1, day);
-    fecha.setMonth(fecha.getMonth() + meses);
+    const fecha = addMonthsNoOverflow(new Date(year, month - 1, day), meses);
     fecha.setDate(fecha.getDate() - 1);
 
     const yyyy = fecha.getFullYear();
@@ -296,8 +321,7 @@ export default function Licencias() {
   const loadLicencias = async () => {
     try {
       setLoadingLicencias(true);
-      const response = await getLicencias({ perPage: 100 });
-      const data = Array.isArray(response) ? response : response.data || [];
+      const data = await getAllLicencias();
       setLicencias(data.map(mapLicencia));
     } catch (error) {
       console.error("Error al cargar licencias:", error);
@@ -404,6 +428,39 @@ export default function Licencias() {
     );
     setDocumentModal((current) => (current?.id === mapped.id ? mapped : current));
     setViewModal((current) => (current?.id === mapped.id ? mapped : current));
+  };
+
+  const openRenewModal = (licencia: Licencia) => {
+    setRenewModal(licencia);
+    setRenewMode("ANUAL");
+    setRenewMonths("1");
+  };
+
+  const handleRenovar = async () => {
+    if (!renewModal) return;
+
+    const meses = renewMode === "MENSUAL" ? Number(renewMonths) : null;
+    if (renewMode === "MENSUAL" && (!Number.isFinite(meses) || Number(meses) <= 0)) {
+      alert("Ingresa una cantidad de meses valida.");
+      return;
+    }
+
+    try {
+      setRenewing(true);
+      const result = await renovarLicencia(renewModal.id, {
+        modo: renewMode,
+        meses: renewMode === "MENSUAL" ? Number(meses) : null,
+      });
+
+      updateLicenciaEnLista(result.licencia);
+      setRenewModal(null);
+      alert(result.message || "Renovacion procesada correctamente.");
+    } catch (error) {
+      console.error("Error al renovar licencia:", error);
+      alert("No se pudo renovar la licencia.");
+    } finally {
+      setRenewing(false);
+    }
   };
 
   const handleUploadDocumentos = async (files: FileList | null) => {
@@ -1412,6 +1469,19 @@ export default function Licencias() {
                   </tr>
 
                   <tr className="border-b">
+                    <td className="p-3 font-semibold bg-gray-50">Renovación programada</td>
+                    <td className="p-3">
+                      {viewModal.renovacionProgramada ? (
+                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
+                          {viewModal.renovacionModo} - {viewModal.renovacionMeses} meses desde {viewModal.renovacionProgramadaPara}
+                        </span>
+                      ) : (
+                        <span className="text-gray-500">Sin programación</span>
+                      )}
+                    </td>
+                  </tr>
+
+                  <tr className="border-b">
                     <td className="p-3 font-semibold bg-gray-50">Estado</td>
                     <td className="p-3">
                       <div className="space-y-1">
@@ -1518,7 +1588,14 @@ export default function Licencias() {
               </div>
             </div>
 
-            <div className="flex justify-end px-6 py-4 bg-gray-50">
+            <div className="flex flex-col gap-3 px-6 py-4 bg-gray-50 sm:flex-row sm:justify-end">
+              <button
+                onClick={() => openRenewModal(viewModal)}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-6 py-2 font-medium text-white transition-colors hover:bg-emerald-700"
+              >
+                <RefreshCw size={16} />
+                RENOVAR
+              </button>
               <button
                 onClick={() => setViewModal(null)}
                 className="px-6 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-colors font-medium"
@@ -1527,6 +1604,82 @@ export default function Licencias() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {renewModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-gray-100 px-6 py-4">
+              <h2 className="text-lg font-semibold">Renovar licencia</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {renewModal.empresa} - {renewModal.producto}
+              </p>
+            </div>
+
+            <div className="space-y-4 p-6">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-gray-700">
+                  Modo de suscripción
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["ANUAL", "MENSUAL"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setRenewMode(mode)}
+                      className={`rounded-lg border px-4 py-3 text-sm font-bold transition ${
+                        renewMode === mode
+                          ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                          : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {renewMode === "MENSUAL" && (
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">
+                    Meses renovados
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="240"
+                    value={renewMonths}
+                    onChange={(event) => setRenewMonths(event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 p-3 outline-none focus:border-transparent focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              )}
+
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                Si la licencia aún no vence, la renovación quedará programada para el día siguiente al vencimiento actual.
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t bg-gray-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setRenewModal(null)}
+                className="rounded-lg bg-gray-200 px-5 py-2 font-medium text-gray-800 hover:bg-gray-300"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRenovar()}
+                disabled={renewing}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2 font-medium text-white hover:bg-emerald-700 disabled:bg-gray-400"
+              >
+                <RefreshCw size={16} />
+                {renewing ? "Procesando..." : "Confirmar"}
+              </button>
+            </div>
           </div>
         </div>
       )}

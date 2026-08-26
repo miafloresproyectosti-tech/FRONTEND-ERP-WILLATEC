@@ -4,6 +4,7 @@ import { useAuth } from '../../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { loginRequest } from '../../services/auth.service';
 import { normalizeRole } from '../../utils/permissions';
+import { getDefaultRouteByRole } from '../../utils/roleRoutes';
 import ResetPasswordModal from './ResetPasswordModal';
 
 export default function LoginComponent() {
@@ -73,23 +74,7 @@ export default function LoginComponent() {
       const normalizedRole = normalizeRole(role);
       login(id, email, normalizedRole, last_login_at, two_factor_enabled);
 
-      const targetRoute =
-        normalizedRole === 'SUPERADMIN'
-          ? '/'
-          : normalizedRole === 'ADMIN'
-            ? '/clientes'
-            : normalizedRole === 'VENTAS'
-              ? '/seguimiento-licitaciones'
-              : normalizedRole === 'LICITACIONES'
-                ? '/seguimiento-licitaciones'
-                : normalizedRole === 'SOPORTE'
-                  ? '/productos'
-                : normalizedRole === 'LOGISTICA'
-                  ? '/productos'
-                : normalizedRole === 'CONTABILIDAD'
-                  ? '/ordenes-compra'
-                : '/login';
-      navigate(targetRoute);
+      navigate(getDefaultRouteByRole(normalizedRole));
     } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Error al iniciar sesión, revise sus credenciales');
 

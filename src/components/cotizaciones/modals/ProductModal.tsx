@@ -26,6 +26,17 @@ export function ProductModal({
   onSelect,
 }: Props) {
   const toNumber = (value: number | string | null | undefined) => Number(value ?? 0) || 0;
+  const getProductPrice = (producto: Producto) =>
+    [
+      producto.precio_referencial,
+      producto.precio_venta,
+      producto.costo_unitario,
+      producto.costo_base,
+    ]
+      .map(toNumber)
+      .find((value) => value > 0) ?? 0;
+  const getProductMoneySymbol = (producto: Producto) =>
+    producto.moneda?.simbolo || (Number(producto.moneda_id) === 2 ? "$" : simboloMoneda || "S/.");
   const formatUnits = (value: number) =>
     value.toLocaleString("es-PE", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
@@ -67,6 +78,9 @@ export function ProductModal({
               const stockReservado = toNumber(producto.stock_reservado);
               const stockDisponible = toNumber(producto.stock_disponible ?? producto.stock);
               const unidad = producto.unidad_medida || "UND";
+              const precioProducto = getProductPrice(producto);
+              const simboloProducto = getProductMoneySymbol(producto);
+              const codigoMonedaProducto = producto.moneda?.codigo || (Number(producto.moneda_id) === 2 ? "USD" : "PEN");
 
               return (
                 <div
@@ -79,10 +93,13 @@ export function ProductModal({
                       {producto.nombre}
                     </p>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                      <span>Sugerido: {formatMoney(producto.precio_referencial, simboloMoneda)}</span>
+                      <span className="font-semibold text-slate-700">
+                        Precio: {formatMoney(precioProducto, simboloProducto)} {codigoMonedaProducto} sin IGV
+                      </span>
                       {(producto.sku || producto.codigo) && (
                         <span>Codigo: {producto.sku || producto.codigo}</span>
                       )}
+                      {producto.modelo && <span>Modelo: {producto.modelo}</span>}
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                       <span className="rounded-md bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">

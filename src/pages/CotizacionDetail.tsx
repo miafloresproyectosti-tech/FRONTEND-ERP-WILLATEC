@@ -48,7 +48,9 @@ import {
   type CotizacionVersion,
   type CotizacionVersionesResponse,
 } from '../services/cotizacion.service';
-import { addCotizacionRelacionada } from '../services/licitaciones.service';
+import { addCotizacionRelacionada, getOportunidad, getOportunidadArchivo, getOportunidadByCotizacion } from '../services/licitaciones.service';
+import type { Oportunidad, OportunidadArchivo } from '../types/licitaciones';
+import { canPreviewFile, downloadFile } from '../utils/licitaciones';
 import {
   ArrowLeft,
   Save,
@@ -62,17 +64,52 @@ import {
   UserCheck,
   History,
   GitBranch,
+  Briefcase,
+  CalendarClock,
+  Building2,
+  ExternalLink,
+  Eye,
+  Download,
+  FileText,
 } from 'lucide-react';
 
 const ESTADO_COTIZACION_APROBADA_ID = 4;
 const COTIZACION_DRAFT_VERSION = 1;
 const COTIZACION_DRAFT_PREFIX = 'erp_cotizacion_draft';
 const UNSAVED_CHANGES_MESSAGE = 'Tienes cambios sin guardar en esta cotizacion. Si sales ahora, podrias perderlos.';
+const OPORTUNIDAD_TIPO_LABELS: Record<string, string> = {
+  licitacion: 'Licitacion',
+  privado: 'Privado',
+  wherex: 'WHEREX',
+};
+const OPORTUNIDAD_FORMA_PAGO_LABELS: Record<string, string> = {
+  credito_15: 'Credito 15 dias',
+  credito_30: 'Credito 30 dias',
+  al_contado: 'Al contado',
+};
 
 interface CotizacionLocalDraft {
   version: number;
   savedAt: string;
   payload: any;
+}
+
+interface OpportunitySummary {
+  id: string;
+  tipo: string;
+  empresa: string;
+  requerimiento: string;
+  vigencia: string;
+  categoria: string;
+  garantia: string;
+  plazo: string;
+  formaPago: string;
+  destinoEntrega: string;
+  observacion: string;
+  comentarios: string;
+  carpetaServidor: string;
+  wherexId: string;
+  wherexUrl: string;
 }
 
 const getLocalDateString = (value?: string | null) => {
@@ -250,11 +287,28 @@ export function CotizacionDetail() {
 
     return {
       id: params.get('oportunidad_id') || '',
+      tipo: params.get('oportunidad_tipo') || '',
       empresa: params.get('oportunidad_empresa') || '',
       requerimiento: params.get('oportunidad_requerimiento') || '',
+      vigencia: params.get('oportunidad_vigencia') || '',
+      categoria: params.get('oportunidad_categoria') || '',
+      garantia: params.get('oportunidad_garantia') || '',
+      plazo: params.get('oportunidad_plazo') || '',
+      formaPago: params.get('oportunidad_forma_pago') || '',
+      destinoEntrega: params.get('oportunidad_destino_entrega') || '',
+      observacion: params.get('oportunidad_observacion') || '',
+      comentarios: params.get('oportunidad_comentarios') || '',
+      carpetaServidor: params.get('oportunidad_carpeta_servidor') || '',
+      wherexId: params.get('oportunidad_wherex_id') || '',
+      wherexUrl: params.get('oportunidad_wherex_url') || '',
     };
   }, [location.search]);
   const hasOpportunityContext = Boolean(opportunityContext.id);
+  const [linkedOpportunity, setLinkedOpportunity] = useState<Oportunidad | null>(null);
+  const [linkedOpportunityLoading, setLinkedOpportunityLoading] = useState(false);
+  const [showOpportunityFiles, setShowOpportunityFiles] = useState(false);
+  const [previewOpportunityFile, setPreviewOpportunityFile] = useState<OportunidadArchivo | null>(null);
+  const [loadingOpportunityFileId, setLoadingOpportunityFileId] = useState<string | null>(null);
 
   const isViewMode = location.pathname.includes('/view');
   const draftScope = isModificationMode
@@ -388,6 +442,123 @@ export function CotizacionDetail() {
 
   const [estadoCotizacionId, setEstadoCotizacionId] = useState<number>(1);
 
+  const linkedOpportunityCotizacionId = currentCotizacionId || modificacion?.cotizacion_id || cotizacion?.id || null;
+
+  useEffect(() => {
+    const oportunidadId = opportunityContext.id;
+
+    if (!oportunidadId && (!linkedOpportunityCotizacionId || loading)) {
+      setLinkedOpportunity(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLinkedOpportunityLoading(true);
+
+    const request = oportunidadId
+      ? getOportunidad(oportunidadId, { includeFileData: false })
+      : getOportunidadByCotizacion(linkedOpportunityCotizacionId as number);
+
+    request
+      .then((opportunity) => {
+        if (!cancelled) {
+          setLinkedOpportunity(opportunity);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLinkedOpportunity(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLinkedOpportunityLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedOpportunityCotizacionId, loading, opportunityContext.id]);
+
+  const opportunitySummary = useMemo<OpportunitySummary>(() => {
+    if (linkedOpportunity) {
+      return {
+        id: linkedOpportunity.id,
+        tipo: linkedOpportunity.tipo || '',
+        empresa: linkedOpportunity.empresa || '',
+        requerimiento: linkedOpportunity.requerimiento || '',
+        vigencia: linkedOpportunity.vigencia || '',
+        categoria: linkedOpportunity.categoria || '',
+        garantia: linkedOpportunity.garantia || '',
+        plazo: linkedOpportunity.plazo || '',
+        formaPago: linkedOpportunity.formaPago || '',
+        destinoEntrega: linkedOpportunity.destinoEntrega || '',
+        observacion: linkedOpportunity.observacion || '',
+        comentarios: linkedOpportunity.comentariosGenerales || '',
+        carpetaServidor: linkedOpportunity.carpetaServidor || '',
+        wherexId: linkedOpportunity.wherexId || '',
+        wherexUrl: linkedOpportunity.wherexUrl || '',
+      };
+    }
+
+    return opportunityContext;
+  }, [linkedOpportunity, opportunityContext]);
+
+  const opportunityFiles = useMemo(() => {
+    if (!linkedOpportunity) return [];
+
+    return [linkedOpportunity.tdr, ...(linkedOpportunity.archivos || [])].filter(Boolean) as OportunidadArchivo[];
+  }, [linkedOpportunity]);
+
+  const hasOpportunitySummary = Boolean(opportunitySummary.id);
+
+  const cacheOpportunityFile = useCallback((file: OportunidadArchivo) => {
+    setLinkedOpportunity((current) => {
+      if (!current) return current;
+
+      return {
+        ...current,
+        tdr: current.tdr?.id === file.id ? file : current.tdr,
+        archivos: (current.archivos || []).map((archivo) => (archivo.id === file.id ? file : archivo)),
+      };
+    });
+  }, []);
+
+  const loadOpportunityFile = useCallback(async (file: OportunidadArchivo) => {
+    if (file.dataUrl) return file;
+
+    setLoadingOpportunityFileId(file.id);
+    try {
+      const hydratedFile = await getOportunidadArchivo(file.id);
+      cacheOpportunityFile(hydratedFile);
+      return hydratedFile;
+    } catch (error) {
+      showToast({
+        title: 'No se pudo cargar el archivo',
+        description: 'Intenta nuevamente en unos segundos.',
+        type: 'warning',
+      });
+      return null;
+    } finally {
+      setLoadingOpportunityFileId(null);
+    }
+  }, [cacheOpportunityFile, showToast]);
+
+  const handlePreviewOpportunityFile = useCallback(async (file: OportunidadArchivo) => {
+    const hydratedFile = await loadOpportunityFile(file);
+    if (hydratedFile) {
+      setPreviewOpportunityFile(hydratedFile);
+    }
+  }, [loadOpportunityFile]);
+
+  const handleDownloadOpportunityFile = useCallback(async (file: OportunidadArchivo) => {
+    const hydratedFile = await loadOpportunityFile(file);
+    if (hydratedFile) {
+      downloadFile(hydratedFile);
+    }
+  }, [loadOpportunityFile]);
+
   // tipoCambio es ahora estado editable por el usuario
 
   // Verificar permisos del usuario actual sobre la cotización
@@ -414,7 +585,7 @@ export function CotizacionDetail() {
   const canEditModificacion = Boolean(
     isModificationMode &&
     modificacion &&
-    (modificacion.estado === 'borrador' || modificacion.estado === 'rechazada') &&
+    (modificacion.estado === 'borrador' || modificacion.estado === 'rechazada' || modificacion.estado === 'en_revision') &&
     (isCotizacionCreator || isCotizacionEditDelegate || Number(modificacion.requested_by) === Number(user?.id))
   );
   const isModificacionRechazadaEditable = Boolean(
@@ -1687,13 +1858,18 @@ export function CotizacionDetail() {
           isModificacionRechazadaEditable ? comentarioReenvioRevision : undefined
         );
         setModificacion(updated);
+        if (Array.isArray(updated.propuesta?.items)) {
+          setItems(normalizeEditableItems(updated.propuesta.items));
+        }
         if (isModificacionRechazadaEditable) {
           setComentarioReenvioRevision('');
         }
         showToast({
-          title: 'Borrador guardado',
-          description: 'La propuesta fue guardada como borrador. Puedes enviarla a revision cuando este lista.',
-          message: 'Borrador guardado',
+          title: modificacion?.estado === 'en_revision' ? 'Cambios guardados' : 'Borrador guardado',
+          description: modificacion?.estado === 'en_revision'
+            ? 'La propuesta en revision fue actualizada correctamente.'
+            : 'La propuesta fue guardada como borrador. Puedes enviarla a revision cuando este lista.',
+          message: modificacion?.estado === 'en_revision' ? 'Cambios guardados' : 'Borrador guardado',
           type: 'success',
           duration: 4000,
         } as any);
@@ -1739,6 +1915,7 @@ export function CotizacionDetail() {
             estado: newCotizacionData.estadoCotizacion?.nombre || newCotizacionData.estado_cotizacion?.nombre || 'borrador',
             monto: Number(newCotizacion.total || 0),
             moneda: newCotizacionData.moneda?.codigo || newCotizacionData.codigo_moneda,
+            origen: 'generada',
           });
           postSavePath = '/seguimiento-licitaciones';
         }
@@ -2175,7 +2352,7 @@ export function CotizacionDetail() {
       margen: 0,
       nota: '',
       marca: producto.marca || '',
-      codigo: producto.codigo || '',
+      codigo: producto.modelo || producto.codigo || producto.sku || '',
       unidad_medida: producto.unidad_medida || 'UND',
       garantia_meses: producto.garantia_meses || 12,
       disponibilidad_tipo: producto.disponibilidad_tipo || 'stock',
@@ -2775,6 +2952,132 @@ export function CotizacionDetail() {
         </div>
       )}
 
+      {hasOpportunitySummary && (
+        <section className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-slate-900 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
+                  <Briefcase className="h-3.5 w-3.5" />
+                  Oportunidad {OPORTUNIDAD_TIPO_LABELS[opportunitySummary.tipo] || opportunitySummary.tipo || ''}
+                </span>
+                {opportunitySummary.categoria && (
+                  <span className="rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-700">
+                    {opportunitySummary.categoria}
+                  </span>
+                )}
+                {linkedOpportunityLoading && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-700">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Cargando detalle
+                  </span>
+                )}
+              </div>
+              <h2 className="text-lg font-bold text-slate-950">{opportunitySummary.empresa || 'Empresa no definida'}</h2>
+              <p className="mt-1 text-sm font-semibold text-blue-900">{opportunitySummary.requerimiento || 'Requerimiento no definido'}</p>
+            </div>
+            <div className="grid min-w-0 grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:w-[520px]">
+              <div className="rounded-xl bg-white/80 px-3 py-2">
+                <span className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500">
+                  <CalendarClock className="h-3.5 w-3.5" />
+                  Vigencia
+                </span>
+                <p className="mt-1 font-semibold text-slate-800">
+                  {opportunitySummary.vigencia ? new Date(opportunitySummary.vigencia).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Lima' }) : 'No definida'}
+                </p>
+              </div>
+              <div className="rounded-xl bg-white/80 px-3 py-2">
+                <span className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500">
+                  <Building2 className="h-3.5 w-3.5" />
+                  Entrega / pago
+                </span>
+                <p className="mt-1 font-semibold text-slate-800">
+                  {[OPORTUNIDAD_FORMA_PAGO_LABELS[opportunitySummary.formaPago] || '', opportunitySummary.destinoEntrega].filter(Boolean).join(' - ') || 'No definido'}
+                </p>
+              </div>
+              {(opportunitySummary.garantia || opportunitySummary.plazo) && (
+                <div className="rounded-xl bg-white/80 px-3 py-2">
+                  <span className="text-xs font-bold uppercase text-slate-500">Garantia / plazo</span>
+                  <p className="mt-1 font-semibold text-slate-800">
+                    {[opportunitySummary.garantia, opportunitySummary.plazo].filter(Boolean).join(' - ')}
+                  </p>
+                </div>
+              )}
+              {(opportunitySummary.carpetaServidor || opportunitySummary.wherexId || opportunitySummary.wherexUrl) && (
+                <div className="rounded-xl bg-white/80 px-3 py-2">
+                  <span className="text-xs font-bold uppercase text-slate-500">Referencia</span>
+                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 font-semibold text-slate-800">
+                    {opportunitySummary.carpetaServidor && <span>{opportunitySummary.carpetaServidor}</span>}
+                    {opportunitySummary.wherexId && <span>{opportunitySummary.wherexId}</span>}
+                    {opportunitySummary.wherexUrl && (
+                      <a href={opportunitySummary.wherexUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-blue-700 hover:underline">
+                        WHEREX <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          {(opportunitySummary.observacion || opportunitySummary.comentarios) && (
+            <div className="mt-3 rounded-xl border border-blue-100 bg-white/80 px-3 py-2 text-sm text-slate-700">
+              <span className="font-bold text-slate-900">Notas de oportunidad: </span>
+              {[opportunitySummary.observacion, opportunitySummary.comentarios].filter(Boolean).join(' | ')}
+            </div>
+          )}
+          {opportunityFiles.length > 0 && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => setShowOpportunityFiles((current) => !current)}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
+              >
+                <FileText className="h-4 w-4" />
+                {showOpportunityFiles ? 'Ocultar archivos' : `Ver archivos (${opportunityFiles.length})`}
+              </button>
+
+              {showOpportunityFiles && (
+                <div className="mt-2 rounded-xl border border-blue-100 bg-white/80 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase text-slate-500">
+                    <FileText className="h-4 w-4" />
+                    Archivos de oportunidad
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {opportunityFiles.map((file) => (
+                      <div key={file.id} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                        <span className="min-w-0 truncate text-sm font-semibold text-slate-800" title={file.nombre}>
+                          {file.nombre}
+                        </span>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handlePreviewOpportunityFile(file)}
+                            disabled={loadingOpportunityFileId === file.id}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+                          >
+                            {loadingOpportunityFileId === file.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                            {loadingOpportunityFileId === file.id ? 'Cargando' : 'Vista previa'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDownloadOpportunityFile(file)}
+                            disabled={loadingOpportunityFileId === file.id}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+                          >
+                            {loadingOpportunityFileId === file.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                            Descargar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
           {/* FORM INFO GENERAL */}
@@ -3204,12 +3507,12 @@ export function CotizacionDetail() {
                   </>
                 ) : (
                   <>
-                    <Save className="w-5 h-5" /> {isModificationMode ? 'Guardar borrador' : 'Guardar'}
+                    <Save className="w-5 h-5" /> {isModificationMode ? (modificacion?.estado === 'en_revision' ? 'Guardar cambios' : 'Guardar borrador') : 'Guardar'}
                   </>
                 )}
               </button>
 
-              {isModificationMode && canEditModificacion && (
+              {isModificationMode && canEditModificacion && modificacion?.estado !== 'en_revision' && (
                 <button
                   onClick={handleEnviarModificacionRevision}
                   disabled={isSendingReview || saving}
@@ -3515,6 +3818,40 @@ export function CotizacionDetail() {
       )}
 
       {/* 5. Modal Exportación */}
+      {previewOpportunityFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase text-slate-500">Archivo de oportunidad</p>
+                <h3 className="truncate text-lg font-bold text-slate-900">{previewOpportunityFile.nombre}</h3>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadFile(previewOpportunityFile)}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  <Download className="h-4 w-4" />
+                  Descargar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewOpportunityFile(null)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
+                  aria-label="Cerrar vista previa"
+                >
+                  <XCircle className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div className="overflow-auto bg-slate-50 p-4">
+              <OpportunityFilePreview file={previewOpportunityFile} />
+            </div>
+          </div>
+        </div>
+      )}
+
       <ExportModal
         open={puedeExportar() && showExportModal}
         onClose={() => setShowExportModal(false)}
@@ -3522,6 +3859,38 @@ export function CotizacionDetail() {
         exportandoPdf={exportandoPdf}
       />
 
+    </div>
+  );
+}
+
+function OpportunityFilePreview({ file }: { file: OportunidadArchivo }) {
+  if (!file.dataUrl) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
+        Este archivo no tiene una vista previa disponible. Puedes descargarlo para revisarlo.
+      </div>
+    );
+  }
+
+  if (!canPreviewFile(file)) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
+        El navegador no puede previsualizar este tipo de archivo. Usa Descargar para abrirlo.
+      </div>
+    );
+  }
+
+  if ((file.tipo || '').includes('image')) {
+    return <img src={file.dataUrl} alt={file.nombre} className="mx-auto max-h-[70vh] w-full rounded-xl object-contain" />;
+  }
+
+  if ((file.tipo || '').includes('pdf')) {
+    return <iframe title={file.nombre} src={file.dataUrl} className="h-[70vh] w-full rounded-xl border border-slate-200 bg-white" />;
+  }
+
+  return (
+    <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
+      Vista previa solicitada para {file.nombre}. Si no se muestra correctamente, usa Descargar.
     </div>
   );
 }

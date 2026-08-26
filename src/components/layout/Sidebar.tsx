@@ -80,11 +80,12 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const formatLastLogin = (value?: string | null) => {
     if (!value) return "No disponible";
 
+    const hasExplicitTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value.trim());
     const localDateTimeMatch = value.match(
       /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/
     );
 
-    if (localDateTimeMatch) {
+    if (localDateTimeMatch && !hasExplicitTimezone) {
       const [, year, month, day, hour, minute] = localDateTimeMatch;
       const date = new Date(Number(year), Number(month) - 1, Number(day));
       const formattedDate = date.toLocaleDateString("es-PE", {

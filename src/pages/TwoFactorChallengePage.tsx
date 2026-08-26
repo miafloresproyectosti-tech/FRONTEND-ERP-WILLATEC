@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import { twoFactorChallengeRequest } from "../services/auth.service";
 import { useAuth } from "../AuthContext";
+import { getDefaultRouteByRole } from "../utils/roleRoutes";
+import { normalizeRole } from "../utils/permissions";
 
 export default function TwoFactorChallengePage() {
   const [code, setCode] = useState("");
@@ -49,25 +51,17 @@ export default function TwoFactorChallengePage() {
       sessionStorage.removeItem("two_factor_login_token");
       sessionStorage.removeItem("two_factor_email");
 
+      const normalizedRole = normalizeRole(result.role);
+
       login(
         result.id,
         result.email || email,
-        result.role,
+        normalizedRole,
         result.last_login_at,
         result.two_factor_enabled
       );
 
-      navigate(
-        result.role === "SUPERADMIN"
-          ? "/"
-          : result.role === "ADMIN"
-          ? "/clientes"
-          : result.role === "VENTAS"
-          ? "/cotizaciones"
-          : result.role === "SOPORTE"
-          ? "/productos"
-          : "/not-authorized"
-      );
+      navigate(getDefaultRouteByRole(normalizedRole));
     } catch {
       setError("Codigo invalido o expirado");
     } finally {

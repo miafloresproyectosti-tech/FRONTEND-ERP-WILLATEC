@@ -16,7 +16,7 @@ import {
   Download,
 } from "lucide-react";
 
-import { getProductos, getProductosPaginated, getExternalItems, createProducto, updateProducto, deleteProducto, updateCotizacionItem, convertirProductoExternoAInterno, type Producto, type ProductoPayload, type CotizacionItem, type ProductoSerie } from "../services/producto.service";
+import { getProductos, getProductosPaginated, getExternalItems, getProductoExternoHistorialCotizaciones, createProducto, updateProducto, deleteProducto, updateCotizacionItem, convertirProductoExternoAInterno, type Producto, type ProductoPayload, type CotizacionItem, type ProductoSerie, type ProductoExternoHistorialResponse, type ProductoExternoHistorialItem } from "../services/producto.service";
 import {
   getCotizacion,
   getCotizacionesPaginated,
@@ -243,6 +243,23 @@ const formatExternalItemMoney = (
   value: number | string | null | undefined
 ) => `${getExternalItemCurrencySymbol(item)} ${Number(value || 0).toLocaleString()}${getExternalItemPricingSuffix(item)}`;
 
+const formatHistoryMoney = (
+  row: ProductoExternoHistorialItem,
+  fallbackItem: ExternalItem | null,
+  value: number | string | null | undefined
+) => {
+  const symbol = row.cotizacion?.simbolo_moneda || (fallbackItem ? getExternalItemCurrencySymbol(fallbackItem) : "S/.");
+  return `${symbol} ${Number(value || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const formatShortDate = (value?: string | null) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("es-PE", { timeZone: "America/Lima" });
+};
+
 const PLANTILLA_IDS_CON_IGV = new Set([3, 5]);
 
 const roundMoney = (value: number) => Number(value.toFixed(2));
@@ -318,6 +335,9 @@ export default function Productos() {
   const [showAddToCotizacionModal, setShowAddToCotizacionModal] = useState(false);
   const [selectedExternalItem, setSelectedExternalItem] = useState<ExternalItem | null>(null);
   const [conversionExternalItem, setConversionExternalItem] = useState<ExternalItem | null>(null);
+  const [externalHistoryItem, setExternalHistoryItem] = useState<ExternalItem | null>(null);
+  const [externalHistory, setExternalHistory] = useState<ProductoExternoHistorialResponse | null>(null);
+  const [externalHistoryLoading, setExternalHistoryLoading] = useState(false);
   const [conversionFactura, setConversionFactura] = useState<File | null>(null);
   const [convertingExternal, setConvertingExternal] = useState(false);
   const [conversionForm, setConversionForm] = useState({
@@ -882,13 +902,16 @@ export default function Productos() {
       estado: productoSeleccionado.estado,
       tipo_producto: "stock",
       controla_stock: true,
-      stock_actual: isNaN(stockNum) ? 0 : stockNum,
       stock_minimo: 0,
       costo_unitario: isNaN(precioNum) ? 0 : precioNum,
       precio_venta: isNaN(precioNum) ? 0 : precioNum,
-      stock: isNaN(stockNum) ? 0 : stockNum,
       categoria_id: productoSeleccionado.categoria_id,
     };
+
+    if (!modoEdicion) {
+      payload.stock_actual = isNaN(stockNum) ? 0 : stockNum;
+      payload.stock = isNaN(stockNum) ? 0 : stockNum;
+    }
 
     try {
       setSaving(true);
@@ -1257,38 +1280,25 @@ export default function Productos() {
     });
   };
 
-  const handleOpenExternalEditModal = (item: ExternalItem) => {
-    addNotification({
-      title: "Catálogo externo",
-      description: "La edición directa de productos externos aún no está disponible.",
-      type: "warning",
-      icon: "MessageCircle",
-      route: "/productos",
-    });
-    return;
+  const handleOpenExternalHistoryModal = async (item: ExternalItem) => {
+    setExternalHistoryItem(item);
+    setExternalHistory(null);
+    setExternalHistoryLoading(true);
 
-    setEditingExternalItem(item);
-    setExternalItemForm({
-      descripcion: item.descripcion || "",
-      cantidad: String(item.cantidad || ""),
-      marca: item.marca || "",
-      codigo: item.codigo || "",
-      unidad_medida: item.unidad_medida || "unidad",
-      costo_unitario: item.costo_unitario || 0,
-      precio_venta: item.precio_venta || 0,
-      margen: item.margen || 0,
-      disponibilidad_tipo: item.disponibilidad_tipo || "stock",
-      disponibilidad_dias: String(item.disponibilidad_dias || ""),
-      garantia_meses: String(item.garantia_meses || ""),
-      proveedor: item.proveedor || "",
-      link_proveedor: item.link_proveedor || "",
-      imagen: item.imagen || item.imagen_url || "",
-      imagen_url: item.imagen_url || item.imagen || "",
-      imagen_path: item.imagen_path || item.imagen || "",
-      stock: String(item.stock ?? ""),
-      producto_id: item.producto_id ? String(item.producto_id) : "",
-    });
-    setShowExternalEditModal(true);
+    try {
+      const response = await getProductoExternoHistorialCotizaciones(item.producto_externo_id || item.id);
+      setExternalHistory(response);
+    } catch (error) {
+      addNotification({
+        title: "Historial no disponible",
+        description: getApiErrorMessage(error, "No se pudo cargar el historial de cotizaciones del producto externo."),
+        type: "error",
+        icon: "MessageCircle",
+        route: "/productos",
+      });
+    } finally {
+      setExternalHistoryLoading(false);
+    }
   };
 
   const handleCloseExternalEditModal = () => {
@@ -1623,11 +1633,11 @@ export default function Productos() {
                     ) : (
                       <div className="grid grid-cols-2 gap-2">
                         <button
-                          onClick={() => handleOpenExternalEditModal(item)}
+                          onClick={() => void handleOpenExternalHistoryModal(item)}
                           className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-100 text-blue-700 hover:bg-blue-200"
-                          title="Editar Item Externo"
+                          title="Ver historial de cotizaciones"
                         >
-                          <Pencil size={16} />
+                          <Eye size={16} />
                         </button>
                         <button
                           onClick={() => handleAddExternalItem(item)}
@@ -1951,13 +1961,11 @@ export default function Productos() {
                       <td className="bg-white px-3 py-5">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
-                            onClick={() =>
-                              handleOpenExternalEditModal(item)
-                            }
+                            onClick={() => void handleOpenExternalHistoryModal(item)}
                             className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
-                            title="Editar Item Externo"
+                            title="Ver historial de cotizaciones"
                           >
-                            <Pencil size={18} />
+                            <Eye size={18} />
                           </button>
                           <button
                             onClick={() => handleAddExternalItem(item)}
@@ -2369,6 +2377,104 @@ export default function Productos() {
               ) : (
                 <div className="rounded-2xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-500">
                   Este producto todavia no tiene series registradas.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {externalHistoryItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-4">
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-gray-900">Historial de cotizaciones</h2>
+                <p className="mt-1 truncate text-sm text-gray-500" title={externalHistoryItem.descripcion}>
+                  {externalHistoryItem.descripcion}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setExternalHistoryItem(null);
+                  setExternalHistory(null);
+                }}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                title="Cerrar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-6">
+              {externalHistoryLoading ? (
+                <div className="flex min-h-[220px] items-center justify-center gap-2 text-sm font-semibold text-blue-700">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Cargando historial...
+                </div>
+              ) : externalHistory?.historial.length ? (
+                <div className="space-y-3">
+                  {externalHistory.historial.map((row) => (
+                    <article key={row.id} className="rounded-2xl border border-gray-200 p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900">
+                            COT. {row.cotizacion?.numero || "-"}
+                          </p>
+                          <p className="mt-1 text-sm text-gray-600">
+                            {row.cotizacion?.cliente_nombre || "Cliente no registrado"}
+                          </p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            Ejecutivo: {row.cotizacion?.ejecutivo || "-"} · Fecha: {formatShortDate(row.cotizacion?.fecha || row.created_at)}
+                          </p>
+                        </div>
+                        <span className="inline-flex w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                          {row.cotizacion?.estado || "Sin estado"}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <p className="text-xs font-semibold uppercase text-gray-400">Cantidad</p>
+                          <p className="mt-1 font-bold text-gray-900">{Number(row.cantidad || 0).toLocaleString("es-PE")}</p>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <p className="text-xs font-semibold uppercase text-gray-400">Costo base</p>
+                          <p className="mt-1 font-bold text-gray-900">{formatHistoryMoney(row, externalHistoryItem, row.costo_base || row.costo_unitario)}</p>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <p className="text-xs font-semibold uppercase text-gray-400">Precio venta</p>
+                          <p className="mt-1 font-bold text-gray-900">{formatHistoryMoney(row, externalHistoryItem, row.precio_venta)}</p>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <p className="text-xs font-semibold uppercase text-gray-400">Subtotal</p>
+                          <p className="mt-1 font-bold text-gray-900">{formatHistoryMoney(row, externalHistoryItem, row.subtotal)}</p>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <p className="text-xs font-semibold uppercase text-gray-400">Margen</p>
+                          <p className="mt-1 font-bold text-gray-900">{Number(row.margen || 0).toLocaleString("es-PE", { maximumFractionDigits: 2 })}%</p>
+                        </div>
+                      </div>
+
+                      {row.proveedores?.length ? (
+                        <div className="mt-4 rounded-xl border border-gray-100 bg-white p-3">
+                          <p className="text-xs font-semibold uppercase text-gray-400">Proveedores usados</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {row.proveedores.map((proveedor, index) => (
+                              <span key={`${row.id}-${proveedor.id || index}`} className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                                {proveedor.nombre || "Proveedor"}{proveedor.precio ? ` · ${formatHistoryMoney(row, externalHistoryItem, proveedor.precio)}` : ""}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-gray-200 p-10 text-center text-sm text-gray-500">
+                  Este producto externo todavia no tiene historial de cotizaciones.
                 </div>
               )}
             </div>

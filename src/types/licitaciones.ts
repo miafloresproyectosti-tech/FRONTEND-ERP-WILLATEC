@@ -20,7 +20,7 @@ export interface OportunidadArchivo {
   nombre: string;
   tipo: string;
   tamanio: number;
-  dataUrl: string;
+  dataUrl?: string | null;
   creadoEn: string;
   creadoPor: string;
 }
@@ -36,7 +36,7 @@ export interface OportunidadHistorial {
   id: string;
   fecha: string;
   usuario: string;
-  tipo: "creacion" | "estado" | "responsable" | "comentario" | "archivo" | "cotizacion" | "cierre";
+  tipo: "creacion" | "estado" | "responsable" | "comentario" | "archivo" | "cotizacion" | "cierre" | "vista";
   descripcion: string;
 }
 
@@ -54,7 +54,12 @@ export interface CotizacionRelacionada {
   numero: string;
   fecha: string;
   estado: string;
+  origen?: "vinculada" | "generada";
+  creadoPorId?: number | string | null;
+  creadoPor?: string;
   tieneModificacionPendiente?: boolean;
+  puedeDescargarPdf?: boolean;
+  pdfBloqueoMotivo?: string | null;
   modificacionPendiente?: {
     id: number | string;
     estado: string;

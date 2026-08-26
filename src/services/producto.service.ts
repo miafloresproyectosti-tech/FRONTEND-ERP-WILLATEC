@@ -226,13 +226,13 @@ export interface ProductoPayload {
     estado: "nuevo" | "usado";
     tipo_producto: "stock" | "servicio" | "externo" | "personalizado";
     controla_stock: boolean;
-    stock_actual: number;
+    stock_actual?: number;
     stock_minimo?: number;
     costo_unitario?: number;
     precio_venta?: number;
     codigo_barras?: string;
     moneda_id?: number | null;
-    stock: number;
+    stock?: number;
     categoria_id: number;
 }
 
@@ -259,6 +259,48 @@ export interface ProductoPaginationMeta {
 
 export interface ProductoPaginatedResponse extends ProductoPaginationMeta {
     data: Producto[];
+}
+
+export interface ProductoExternoHistorialItem {
+    id: number;
+    descripcion?: string | null;
+    cantidad?: number | string | null;
+    costo_base?: number | string | null;
+    costo_unitario?: number | string | null;
+    precio_venta?: number | string | null;
+    subtotal?: number | string | null;
+    ganancia?: number | string | null;
+    margen?: number | string | null;
+    created_at?: string | null;
+    proveedores?: {
+        id?: number | string | null;
+        nombre?: string | null;
+        link?: string | null;
+        precio?: number | string | null;
+        notas?: string | null;
+    }[];
+    cotizacion?: {
+        id?: number | string | null;
+        numero?: string | null;
+        titulo?: string | null;
+        fecha?: string | null;
+        cliente_nombre?: string | null;
+        estado?: string | null;
+        moneda?: string | null;
+        simbolo_moneda?: string | null;
+        ejecutivo?: string | null;
+    } | null;
+}
+
+export interface ProductoExternoHistorialResponse {
+    producto: {
+        id: number;
+        descripcion?: string | null;
+        codigo?: string | null;
+        marca?: string | null;
+        veces_cotizado?: number;
+    };
+    historial: ProductoExternoHistorialItem[];
 }
 
 function buildCotizacionItemFormData(payload: Partial<CotizacionItem>): FormData {
@@ -545,6 +587,17 @@ export const getExternalItems = async (page = 1, search = "", perPage = 10): Pro
             total: raw.total ?? (Array.isArray(raw.data) ? raw.data.length : 0),
             per_page: raw.per_page ?? perPage,
         },
+    };
+};
+
+export const getProductoExternoHistorialCotizaciones = async (
+    id: number | string,
+): Promise<ProductoExternoHistorialResponse> => {
+    const res = await api.get(`/productos-externos/${id}/historial-cotizaciones`);
+
+    return {
+        producto: res.data?.producto ?? { id: Number(id) },
+        historial: Array.isArray(res.data?.historial) ? res.data.historial : [],
     };
 };
 

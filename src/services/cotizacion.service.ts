@@ -1198,10 +1198,16 @@ function decodeHeaderFilename(value?: string): string | null {
 /**
  * Exportar cotización a PDF
  */
-export async function exportarCotizacionPdf(id: number): Promise<CotizacionPdfExport> {
+export async function exportarCotizacionPdf(
+  id: number,
+  options: { desdeOportunidad?: boolean } = {}
+): Promise<CotizacionPdfExport> {
   try {
     const response = await api.get(`/cotizaciones/${id}/exportar-pdf`, {
       responseType: "blob",
+      params: {
+        desde_oportunidad: options.desdeOportunidad ? 1 : undefined,
+      },
     });
 
     return {

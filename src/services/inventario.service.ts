@@ -206,11 +206,20 @@ export async function getInventarioMovimientos(
   };
 }
 
-export async function getProductosInventario(): Promise<ProductoInventarioOption[]> {
+export interface ProductosInventarioFilters {
+  search?: string;
+  activo?: boolean | number | string;
+  per_page?: number;
+}
+
+export async function getProductosInventario(
+  filters: ProductosInventarioFilters = {},
+): Promise<ProductoInventarioOption[]> {
   const response = await api.get("/productos", {
     params: {
-      activo: 1,
-      per_page: 100,
+      activo: filters.activo ?? 1,
+      per_page: filters.per_page ?? 100,
+      search: filters.search || undefined,
     },
   });
 

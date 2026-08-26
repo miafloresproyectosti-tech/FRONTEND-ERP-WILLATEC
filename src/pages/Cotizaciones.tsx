@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -133,6 +133,7 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
 export default function Cotizaciones() {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
+  const addNotificationRef = useRef(addNotification);
 
   const navigate = useNavigate();
 
@@ -165,6 +166,10 @@ export default function Cotizaciones() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const paginationItems = getPaginationItems(currentPage, totalPages);
 
+  useEffect(() => {
+    addNotificationRef.current = addNotification;
+  }, [addNotification]);
+
   const loadCotizaciones = useCallback(async () => {
     try {
       setLoading(true);
@@ -186,7 +191,7 @@ export default function Cotizaciones() {
       setCotizacionesLastSync(new Date().toISOString());
     } catch (error) {
       console.error('Error al cargar cotizaciones:', error);
-      addNotification({
+      addNotificationRef.current({
         title: 'Error al cargar cotizaciones',
         description: getApiErrorMessage(error, 'Verifica tu conexion e intenta de nuevo'),
         type: 'warning',
@@ -196,7 +201,7 @@ export default function Cotizaciones() {
     } finally {
       setLoading(false);
     }
-  }, [addNotification, currentPage, debouncedSearchTerm, fechaDesde, fechaHasta, filterEjecutivo, filterEstado, itemsPerPage]);
+  }, [currentPage, debouncedSearchTerm, fechaDesde, fechaHasta, filterEjecutivo, filterEstado, itemsPerPage]);
 
   const paginatedCotizaciones = cotizaciones;
   const canReviewCotizaciones = user?.role === "SUPERADMIN" || user?.role === "ADMIN";

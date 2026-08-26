@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   AlertTriangle,
   Eye,
-  FileDown,
   FileSpreadsheet,
-  FileUp,
   LockOpen,
   Loader2,
   Pencil,
@@ -36,10 +34,14 @@ import {
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
   addComentarioOportunidad,
+  addArchivoOportunidad,
   addCotizacionRelacionada,
+  deleteArchivoOportunidad,
+  deleteCotizacionRelacionada,
   deleteOportunidad,
   getOportunidad,
   getOportunidades,
+  registrarVistaOportunidad,
   saveOportunidad,
 } from "../services/licitaciones.service";
 import { getUsers } from "../services/usuario.service";
@@ -85,6 +87,17 @@ const DEFAULT_FILTERS: OportunidadFilters = {
   search: "",
 };
 
+const MIS_OPORTUNIDADES_ACTIVE_RANK: Record<OportunidadEstado, number> = {
+  en_atencion: 0,
+  cotizacion_generada: 1,
+  sin_atender: 2,
+  atendido: 3,
+  ganada: 4,
+  perdida: 4,
+  no_se_realizara: 4,
+  vencida: 4,
+};
+
 const SORT_LABELS: Record<OportunidadSortKey, string> = {
   empresa: "Empresa",
   vigencia: "Vigencia",
@@ -116,6 +129,7 @@ const TYPE_TABS = [
 const SALES_BANDEJAS = [
   { key: "disponibles", label: "Oportunidades Disponibles" },
   { key: "mis", label: "Mis Oportunidades" },
+  { key: "creadas", label: "Subidas por mi" },
 ] as const;
 
 const SUPERADMIN_BANDEJAS = [
@@ -123,6 +137,40 @@ const SUPERADMIN_BANDEJAS = [
   { key: "en_atencion", label: "Oportunidades en Atencion" },
   { key: "finalizadas", label: "Oportunidades Finalizadas" },
 ] as const;
+
+const findSimilarOpportunity = (
+  data: OportunidadFormData,
+  opportunities: Oportunidad[],
+  currentId?: string
+) => {
+  const empresa = normalizeText(data.empresa);
+  const requerimiento = normalizeText(data.requerimiento);
+  const wherexId = normalizeText(data.wherexId || "");
+  const wherexUrl = normalizeText(data.wherexUrl || "");
+
+  return opportunities.find((item) => {
+    if (currentId && item.id === currentId) return false;
+    if (item.tipo !== data.tipo) return false;
+
+    const sameCompanyAndRequirement =
+      empresa &&
+      requerimiento &&
+      normalizeText(item.empresa) === empresa &&
+      normalizeText(item.requerimiento) === requerimiento;
+
+    const sameWherexId =
+      data.tipo === "wherex" &&
+      wherexId &&
+      normalizeText(item.wherexId || "") === wherexId;
+
+    const sameWherexUrl =
+      data.tipo === "wherex" &&
+      wherexUrl &&
+      normalizeText(item.wherexUrl || "") === wherexUrl;
+
+    return sameCompanyAndRequirement || sameWherexId || sameWherexUrl;
+  });
+};
 
 export default function SeguimientoLicitaciones() {
   const { user } = useAuth();
@@ -140,6 +188,7 @@ export default function SeguimientoLicitaciones() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Oportunidad | null>(null);
+  const [editingLoadingId, setEditingLoadingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<Oportunidad | null>(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
@@ -161,6 +210,10 @@ export default function SeguimientoLicitaciones() {
   const [quoteLinkSelectedId, setQuoteLinkSelectedId] = useState<number | null>(null);
   const [downloadingQuoteId, setDownloadingQuoteId] = useState<string | number | null>(null);
   const [presentingProposalId, setPresentingProposalId] = useState<string | null>(null);
+  const [uploadingOpportunityFile, setUploadingOpportunityFile] = useState(false);
+  const [deletingOpportunityFileId, setDeletingOpportunityFileId] = useState<string | null>(null);
+  const [unlinkingQuoteId, setUnlinkingQuoteId] = useState<string | null>(null);
+  const [assigningOpportunityId, setAssigningOpportunityId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const loadRequestRef = useRef(0);
   const showToastRef = useRef(showToast);
@@ -266,6 +319,23 @@ export default function SeguimientoLicitaciones() {
     return Number(item.asignadoA ?? item.ejecutivo?.id ?? 0) === user.id;
   }, [user?.id]);
 
+  const isCreatedByMeOpportunity = useCallback((item: Oportunidad) => {
+    if (!user?.id) return false;
+    if (item.creadoPorId && Number(item.creadoPorId) === Number(user.id)) return true;
+
+    const creator = normalizeText(item.creadoPor || "");
+    return Boolean(creator) && (
+      creator === normalizeText(userName) ||
+      creator === normalizeText(user?.email || "")
+    );
+  }, [user?.email, user?.id, userName]);
+
+  const isCreatedByMeAssignedToOther = useCallback((item: Oportunidad) => (
+    isCreatedByMeOpportunity(item) &&
+    !isMyOpportunity(item) &&
+    !isAvailableOpportunity(item)
+  ), [isAvailableOpportunity, isCreatedByMeOpportunity, isMyOpportunity]);
+
   const isAttentionOpportunity = useCallback((item: Oportunidad) => (
     item.estado === "en_atencion" || item.estado === "atendido" || item.estado === "cotizacion_generada"
   ), []);
@@ -273,6 +343,7 @@ export default function SeguimientoLicitaciones() {
   const scopedOpportunities = useMemo(() => {
     if (isSalesRole) {
       if (activeBandeja === "mis") return opportunities.filter(isMyOpportunity);
+      if (activeBandeja === "creadas") return opportunities.filter(isCreatedByMeAssignedToOther);
       return opportunities.filter(isAvailableOpportunity);
     }
 
@@ -291,7 +362,7 @@ export default function SeguimientoLicitaciones() {
 
       return hasNoExecutive || executiveId === user?.id;
     });
-  }, [activeBandeja, currentRole, isAttentionOpportunity, isAvailableOpportunity, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
+  }, [activeBandeja, currentRole, isAttentionOpportunity, isAvailableOpportunity, isCreatedByMeAssignedToOther, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
 
   const filteredOpportunities = useMemo(() => {
     const search = normalizeText(debouncedSearch);
@@ -312,6 +383,21 @@ export default function SeguimientoLicitaciones() {
         return normalizeText(`${item.empresa} ${item.requerimiento}`).includes(search);
       })
       .sort((a, b) => {
+        if (currentRole === "LICITACIONES") {
+          const dateA = new Date(a.creadoEn).getTime();
+          const dateB = new Date(b.creadoEn).getTime();
+          return dateB - dateA;
+        }
+
+        if (isSalesRole && ["mis", "creadas"].includes(activeBandeja)) {
+          const rankDiff = MIS_OPORTUNIDADES_ACTIVE_RANK[a.estado] - MIS_OPORTUNIDADES_ACTIVE_RANK[b.estado];
+          if (rankDiff !== 0) return rankDiff;
+
+          const dateA = new Date(a.modificadoEn || a.creadoEn || a.vigencia).getTime();
+          const dateB = new Date(b.modificadoEn || b.creadoEn || b.vigencia).getTime();
+          return dateB - dateA;
+        }
+
         const direction = sortDirection === "asc" ? 1 : -1;
         const values: Record<OportunidadSortKey, [string | number, string | number]> = {
           empresa: [a.empresa, b.empresa],
@@ -323,7 +409,7 @@ export default function SeguimientoLicitaciones() {
         const [first, second] = values[sortKey];
         return String(first).localeCompare(String(second), "es", { numeric: true }) * direction;
       });
-  }, [debouncedSearch, filters, scopedOpportunities, sortDirection, sortKey]);
+  }, [activeBandeja, currentRole, debouncedSearch, filters, isSalesRole, scopedOpportunities, sortDirection, sortKey]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOpportunities.length / itemsPerPage));
   const paginationItems = getPaginationItems(currentPage, totalPages);
@@ -348,6 +434,14 @@ export default function SeguimientoLicitaciones() {
         setOpportunities((current) =>
           current.map((item) => (item.id === detail.id ? { ...item, ...detail } : item)),
         );
+
+        void registrarVistaOportunidad(detail.id)
+          .then((viewedDetail) => {
+            if (!cancelled) syncSelectedOpportunity(viewedDetail);
+          })
+          .catch((error) => {
+            console.warn("No se pudo registrar vista de oportunidad", error);
+          });
       })
       .catch((error) => {
         if (cancelled) return;
@@ -418,7 +512,7 @@ export default function SeguimientoLicitaciones() {
   };
 
   const handleAssignToMe = async (opportunity: Oportunidad) => {
-    if (!user?.id || !isAvailableOpportunity(opportunity)) return;
+    if (!user?.id || !isAvailableOpportunity(opportunity) || assigningOpportunityId) return;
 
     const now = new Date().toISOString();
     const next: Oportunidad = {
@@ -447,7 +541,9 @@ export default function SeguimientoLicitaciones() {
       ],
     };
 
-    await saveOportunidad(next);
+    try {
+      setAssigningOpportunityId(opportunity.id);
+      await saveOportunidad(next);
     const reminder = `Recuerda que tienes una cotización pendiente y se vence ${formatDateTime(next.vigencia)}.`;
     addNotification({
       title: "Cotización pendiente",
@@ -466,7 +562,10 @@ export default function SeguimientoLicitaciones() {
       targetRole: "SUPERADMIN",
     });
     await loadData();
-    showToast({ title: "Oportunidad asignada", description: reminder, type: "warning" });
+      showToast({ title: "Oportunidad asignada", description: reminder, type: "warning" });
+    } finally {
+      setAssigningOpportunityId(null);
+    }
   };
 
   const handleSave = async (data: OportunidadFormData) => {
@@ -475,6 +574,15 @@ export default function SeguimientoLicitaciones() {
     const hasEstadoChange = previous && previous.estado !== data.estado;
     const estado = previous ? data.estado : "sin_atender";
     const clean = (value?: string | null) => (value || "").trim();
+    const similar = findSimilarOpportunity(data, opportunities, previous?.id);
+
+    if (similar) {
+      const shouldContinue = window.confirm(
+        `Ya existe una oportunidad similar:\n\n${OPORTUNIDAD_TIPOS[similar.tipo]} - ${similar.empresa}\n${similar.requerimiento}\n\n¿Deseas guardar esta oportunidad de todas maneras?`
+      );
+
+      if (!shouldContinue) return;
+    }
 
     const next: Oportunidad = {
       id: previous?.id || createId("op"),
@@ -498,7 +606,7 @@ export default function SeguimientoLicitaciones() {
       garantia: data.tipo === "licitacion" ? clean(data.garantia) : undefined,
       plazo: data.tipo === "licitacion" ? clean(data.plazo) : undefined,
       carpetaServidor: data.tipo === "licitacion" ? clean(data.carpetaServidor) : undefined,
-      tdr: data.tipo === "licitacion" ? data.tdr : undefined,
+      tdr: data.tipo === "licitacion" || data.tipo === "privado" ? data.tdr : undefined,
       formaPago: data.tipo !== "licitacion" && data.formaPago ? data.formaPago : undefined,
       destinoEntrega: data.tipo === "privado" ? clean(data.destinoEntrega) : undefined,
       wherexId: data.tipo === "wherex" ? clean(data.wherexId) : undefined,
@@ -573,7 +681,7 @@ export default function SeguimientoLicitaciones() {
     }
 
     const now = new Date().toISOString();
-    await saveOportunidad({
+    const updated = await saveOportunidad({
       ...item,
       estado,
       motivoCierre: ESTADOS_CIERRE.includes(estado) ? motivo : item.motivoCierre,
@@ -591,7 +699,8 @@ export default function SeguimientoLicitaciones() {
         ...item.historial,
       ],
     });
-    await loadData();
+    syncSelectedOpportunity(updated);
+    void refreshSelectedOpportunity(item.id, updated);
   };
 
   const submitLoss = async () => {
@@ -607,7 +716,7 @@ export default function SeguimientoLicitaciones() {
     const observations = lossObservations.trim();
     const lessons = [trimmedReason, observations].filter(Boolean);
 
-    await saveOportunidad({
+    const updated = await saveOportunidad({
       ...lossTarget,
       estado: "perdida",
       motivoCierre: trimmedReason,
@@ -640,16 +749,83 @@ export default function SeguimientoLicitaciones() {
     setLossObservations("");
     setLossFile(null);
     setLossError("");
-    await loadData();
+    syncSelectedOpportunity(updated);
+    void refreshSelectedOpportunity(lossTarget.id, updated);
     showToast({ title: "Oportunidad perdida", description: "Se registró el motivo y las observaciones de la pérdida.", type: "success" });
   };
 
+  const canDeleteOpportunity = (item: Oportunidad) => {
+    const hasQuote = Boolean(item.cotizacionId || item.cotizacionNumero || item.cotizaciones.length > 0);
+
+    return (
+      isOpportunityCreator(item) &&
+      item.estado === "sin_atender" &&
+      isAvailableOpportunity(item) &&
+      !hasQuote
+    );
+  };
+
   const handleDelete = async (item: Oportunidad) => {
-    if (isClosedOpportunity(item.estado)) return;
+    if (!canDeleteOpportunity(item)) {
+      showToast({
+        title: "No se puede eliminar",
+        description: "Solo se pueden eliminar oportunidades sin atender, sin responsable y sin cotizacion vinculada o generada.",
+        type: "warning",
+      });
+      return;
+    }
+
     if (!window.confirm(`Eliminar la oportunidad de ${item.empresa}?`)) return;
     await deleteOportunidad(item.id);
     await loadData();
     showToast({ title: "Oportunidad eliminada", type: "success" });
+  };
+
+  const handleEditOpportunity = async (item: Oportunidad) => {
+    if (editingLoadingId) return;
+
+    setEditingLoadingId(item.id);
+    try {
+      const detail = selectedDetail?.id === item.id ? selectedDetail : await getOportunidad(item.id);
+      setOpportunities((current) =>
+        current.map((opportunity) => (opportunity.id === detail.id ? { ...opportunity, ...detail } : opportunity)),
+      );
+      setEditing(detail);
+      setModalOpen(true);
+    } catch (error) {
+      console.error("No se pudo cargar oportunidad para editar", error);
+      showToast({
+        title: "No se pudo abrir la edicion",
+        description: "Intenta nuevamente para cargar archivos y detalle completo.",
+        type: "error",
+      });
+    } finally {
+      setEditingLoadingId(null);
+    }
+  };
+
+  const syncSelectedOpportunity = (detail: Oportunidad) => {
+    setSelectedDetail(detail);
+    setOpportunities((current) =>
+      current.map((item) => (item.id === detail.id ? { ...item, ...detail } : item)),
+    );
+  };
+
+  const refreshSelectedOpportunity = async (opportunityId: string, immediateDetail?: Oportunidad) => {
+    if (immediateDetail) {
+      syncSelectedOpportunity(immediateDetail);
+    }
+
+    try {
+      const detail = await getOportunidad(opportunityId);
+      syncSelectedOpportunity(detail);
+    } catch (error) {
+      console.warn("No se pudo refrescar el detalle de oportunidad", error);
+    }
+
+    void loadData().catch((error) => {
+      console.warn("No se pudo refrescar el listado de oportunidades", error);
+    });
   };
 
   const handleAddComment = async (comment: string) => {
@@ -660,7 +836,84 @@ export default function SeguimientoLicitaciones() {
       fecha: new Date().toISOString(),
       comentario: comment,
     });
-    await loadData();
+    await refreshSelectedOpportunity(selected.id);
+  };
+
+  const isCreatedByCurrentUser = (createdBy?: string | null, createdById?: string | number | null) => {
+    if (!user?.id) return false;
+    if (createdById && Number(createdById) === Number(user.id)) return true;
+
+    const creator = normalizeText(createdBy || "");
+    return Boolean(creator) && (
+      creator === normalizeText(userName) ||
+      creator === normalizeText(user?.email || "")
+    );
+  };
+
+  const handleUploadOpportunityFile = async (file: File) => {
+    if (!selected || uploadingOpportunityFile) return;
+
+    setUploadingOpportunityFile(true);
+    try {
+      const parsed = await fileToOpportunityFile(file, userName);
+      const detail = await addArchivoOportunidad(selected.id, parsed);
+      syncSelectedOpportunity(detail);
+      showToast({ title: "Archivo subido", description: "El documento quedo asociado a la oportunidad.", type: "success" });
+    } catch (error) {
+      const response = error as { response?: { data?: { message?: string } }; message?: string };
+      showToast({
+        title: "No se pudo subir archivo",
+        description: response.response?.data?.message || response.message || "Intenta nuevamente.",
+        type: "error",
+      });
+    } finally {
+      setUploadingOpportunityFile(false);
+    }
+  };
+
+  const handleDeleteOpportunityFile = async (file: OportunidadArchivo) => {
+    if (!selected || deletingOpportunityFileId) return;
+    if (!window.confirm(`Eliminar el archivo "${file.nombre}"?`)) return;
+
+    setDeletingOpportunityFileId(file.id);
+    try {
+      const detail = await deleteArchivoOportunidad(selected.id, file.id);
+      syncSelectedOpportunity(detail);
+      showToast({ title: "Archivo eliminado", type: "success" });
+    } catch (error) {
+      const response = error as { response?: { data?: { message?: string } }; message?: string };
+      showToast({
+        title: "No se pudo eliminar archivo",
+        description: response.response?.data?.message || response.message || "Solo puedes eliminar archivos subidos por ti.",
+        type: "error",
+      });
+    } finally {
+      setDeletingOpportunityFileId(null);
+    }
+  };
+
+  const handleUnlinkQuote = async (relacionId: string) => {
+    if (!selected || unlinkingQuoteId) return;
+    const quote = selected.cotizaciones.find((item) => item.id === relacionId);
+    if (!quote) return;
+    if (!window.confirm(`Desvincular la cotizacion ${quote.numero}?`)) return;
+
+    setUnlinkingQuoteId(relacionId);
+    try {
+      const detail = await deleteCotizacionRelacionada(selected.id, relacionId);
+      syncSelectedOpportunity(detail);
+      showToast({ title: "Cotizacion desvinculada", description: "La oportunidad quedo actualizada.", type: "success" });
+      await loadData();
+    } catch (error) {
+      const response = error as { response?: { data?: { message?: string } }; message?: string };
+      showToast({
+        title: "No se pudo desvincular",
+        description: response.response?.data?.message || response.message || "Solo puedes desvincular cotizaciones que vinculaste manualmente.",
+        type: "error",
+      });
+    } finally {
+      setUnlinkingQuoteId(null);
+    }
   };
 
   const handleGenerateQuote = async () => {
@@ -676,8 +929,20 @@ export default function SeguimientoLicitaciones() {
 
     const params = new URLSearchParams({
       oportunidad_id: selected.id,
+      oportunidad_tipo: selected.tipo,
       oportunidad_empresa: selected.empresa,
       oportunidad_requerimiento: selected.requerimiento,
+      oportunidad_vigencia: selected.vigencia,
+      oportunidad_categoria: selected.categoria || "",
+      oportunidad_garantia: selected.garantia || "",
+      oportunidad_plazo: selected.plazo || "",
+      oportunidad_forma_pago: selected.formaPago || "",
+      oportunidad_destino_entrega: selected.destinoEntrega || "",
+      oportunidad_observacion: selected.observacion || "",
+      oportunidad_comentarios: selected.comentariosGenerales || "",
+      oportunidad_carpeta_servidor: selected.carpetaServidor || "",
+      oportunidad_wherex_id: selected.wherexId || "",
+      oportunidad_wherex_url: selected.wherexUrl || "",
     });
 
     navigate(`/cotizaciones/new?${params.toString()}`);
@@ -733,6 +998,7 @@ export default function SeguimientoLicitaciones() {
       estado: cotizacionData.estadoCotizacion?.nombre || cotizacionData.estado_cotizacion?.nombre || "registrada",
       monto: Number(cotizacion.total || 0),
       moneda: cotizacionData.moneda?.codigo || cotizacionData.codigo_moneda,
+      origen: "vinculada",
     });
 
     setQuoteLinkModalOpen(false);
@@ -751,13 +1017,13 @@ export default function SeguimientoLicitaciones() {
 
     setDownloadingQuoteId(cotizacionId);
     try {
-      const { blob, filename } = await exportarCotizacionPdf(parsedId);
+      const { blob, filename } = await exportarCotizacionPdf(parsedId, { desdeOportunidad: true });
       await descargarPdfCotizacion(filename || `cotizacion-${parsedId}.pdf`, blob);
     } catch (error) {
       console.error("Error al descargar PDF de cotizacion vinculada:", error);
       showToast({
         title: "No se pudo descargar el PDF",
-        description: "Verifica que la cotizacion exista y que tengas permisos para exportarla.",
+        description: "Solo se puede descargar si la cotizacion esta aprobada y sin modificacion pendiente.",
         type: "error",
       });
     } finally {
@@ -781,7 +1047,7 @@ export default function SeguimientoLicitaciones() {
     setPresentingProposalId(selected.id);
     try {
       const evidence = await fileToOpportunityFile(file, userName);
-      await saveOportunidad({
+      const updated = await saveOportunidad({
         ...selected,
         archivos: [evidence, ...selected.archivos],
         ...( { presentacionEvidencia: evidence } as { presentacionEvidencia: OportunidadArchivo }),
@@ -802,7 +1068,8 @@ export default function SeguimientoLicitaciones() {
         ],
       });
 
-      await loadData();
+      syncSelectedOpportunity(updated);
+      void refreshSelectedOpportunity(selected.id, updated);
       showToast({
         title: "Propuesta presentada",
         description: wasExpired
@@ -822,14 +1089,7 @@ export default function SeguimientoLicitaciones() {
   };
 
   const isOpportunityCreator = (item: Oportunidad) => {
-    if (!user?.id) return false;
-    if (item.creadoPorId && Number(item.creadoPorId) === Number(user.id)) return true;
-
-    const creator = normalizeText(item.creadoPor || "");
-    return Boolean(creator) && (
-      creator === normalizeText(userName) ||
-      creator === normalizeText(user?.email || "")
-    );
+    return isCreatedByMeOpportunity(item);
   };
 
   const canManageOpportunityQuote = (item: Oportunidad) => {
@@ -847,6 +1107,8 @@ export default function SeguimientoLicitaciones() {
     if (item.tipo === "licitacion") {
       return currentRole === "LICITACIONES" || isOpportunityCreator(item);
     }
+
+    if (currentRole === "VENTAS" && isOpportunityCreator(item)) return true;
 
     return Number(item.asignadoA ?? item.ejecutivo?.id ?? 0) === Number(user.id);
   };
@@ -871,7 +1133,7 @@ export default function SeguimientoLicitaciones() {
     }
 
     const now = new Date().toISOString();
-    await saveOportunidad({
+    const updated = await saveOportunidad({
       ...item,
       ejecutivo: { id: 0, nombre: "Sin ejecutivo" },
       asignadoA: null,
@@ -898,7 +1160,8 @@ export default function SeguimientoLicitaciones() {
     setReleaseTarget(null);
     setReleaseReason("");
     setReleaseError("");
-    await loadData();
+    syncSelectedOpportunity(updated);
+    void refreshSelectedOpportunity(item.id, updated);
     showToast({ title: "Cotización liberada", description: "La oportunidad volvió a estar disponible para asignarse.", type: "success" });
   };
 
@@ -1017,6 +1280,7 @@ export default function SeguimientoLicitaciones() {
   const getBandejaCount = (key: string) => {
     if (key === "disponibles") return opportunities.filter(isAvailableOpportunity).length;
     if (key === "mis") return opportunities.filter(isMyOpportunity).length;
+    if (key === "creadas") return opportunities.filter(isCreatedByMeAssignedToOther).length;
     if (key === "en_atencion") return opportunities.filter(isAttentionOpportunity).length;
     if (key === "finalizadas") return opportunities.filter((item) => isClosedOpportunity(item.estado)).length;
     return opportunities.length;
@@ -1065,19 +1329,6 @@ export default function SeguimientoLicitaciones() {
             <FileSpreadsheet size={18} />
             Excel
           </button>
-          <button type="button" onClick={handleExportPdf} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
-            <FileDown size={18} />
-            PDF
-          </button>
-          {canCreateOpportunity && (
-            <>
-              <button type="button" onClick={() => importInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
-                <FileUp size={18} />
-                Importar
-              </button>
-              <input ref={importInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(event) => void handleImportExcel(event.target.files?.[0])} />
-            </>
-          )}
         </div>
       </div>
 
@@ -1168,23 +1419,25 @@ export default function SeguimientoLicitaciones() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-5 xl:grid-cols-10">
-        {SUMMARY_ITEMS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => {
-              if (item.key in OPORTUNIDAD_ESTADOS) {
-                updateFilter("estado", item.key as OportunidadEstado);
-              }
-            }}
-            className={`rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-950 ${item.className}`}
-          >
-            <p className="min-h-8 text-xs font-semibold leading-4 text-slate-500">{item.label}</p>
-            <p className="text-xl font-bold text-slate-900 dark:text-white">{summary[item.key] || 0}</p>
-          </button>
-        ))}
-      </div>
+      {!(isSalesRole && ["disponibles", "creadas"].includes(activeBandeja)) && (
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-5 xl:grid-cols-10">
+          {SUMMARY_ITEMS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => {
+                if (item.key in OPORTUNIDAD_ESTADOS) {
+                  updateFilter("estado", item.key as OportunidadEstado);
+                }
+              }}
+              className={`rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-950 ${item.className}`}
+            >
+              <p className="min-h-8 text-xs font-semibold leading-4 text-slate-500">{item.label}</p>
+              <p className="text-xl font-bold text-slate-900 dark:text-white">{summary[item.key] || 0}</p>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-4 xl:grid-cols-8">
@@ -1230,7 +1483,118 @@ export default function SeguimientoLicitaciones() {
             </span>
           )}
         </div>
-        <div className="overflow-x-auto">
+        <div className="grid gap-3 p-3 xl:hidden">
+          {loading ? (
+            Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="h-44 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
+            ))
+          ) : paginated.length > 0 ? (
+            paginated.map((item) => {
+              const locked = isClosedOpportunity(item.estado);
+              const alert = getVigenciaAlert(item.vigencia, item.estado);
+
+              return (
+                <article key={item.id} className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 ${alert.rowClass}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <TipoBadge tipo={item.tipo} />
+                        {item.esNueva && isAvailableOpportunity(item) && (
+                          <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700 ring-1 ring-blue-200">
+                            Nueva
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="mt-2 line-clamp-2 text-sm font-bold text-slate-900 dark:text-white">
+                        {item.requerimiento}
+                      </h3>
+                      <p className="mt-1 truncate text-sm text-slate-600 dark:text-slate-300" title={item.empresa}>
+                        {item.empresa}
+                      </p>
+                    </div>
+                    <EstadoBadge estado={item.estado} />
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-slate-500">
+                    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+                      <p className="font-semibold uppercase tracking-wide">Categoria</p>
+                      <p className="mt-1 font-bold text-slate-800 dark:text-slate-100">{item.categoria}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+                      <p className="font-semibold uppercase tracking-wide">Ejecutivo</p>
+                      <p className="mt-1 truncate font-bold text-slate-800 dark:text-slate-100" title={item.ejecutivo.nombre}>
+                        {item.ejecutivo.nombre === "Sin ejecutivo" ? "Sin asignar" : item.ejecutivo.nombre}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+                      <p className="font-semibold uppercase tracking-wide">Vigencia</p>
+                      <p className="mt-1 font-bold text-slate-800 dark:text-slate-100">{formatDateTime(item.vigencia)}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+                      <p className="font-semibold uppercase tracking-wide">Tiempo restante</p>
+                      <p className={`mt-1 font-bold ${alert.textClass}`}>{formatRemainingTime(item.vigencia, item.estado)}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                    <IconButton title="Ver detalle" onClick={() => setSelectedId(item.id)}><Eye size={17} /></IconButton>
+                    {(isSalesRole || currentRole === "SUPERADMIN") && isAvailableOpportunity(item) && (
+                      <button
+                        type="button"
+                        disabled={Boolean(assigningOpportunityId)}
+                        onClick={() => void handleAssignToMe(item)}
+                        className="inline-flex h-9 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {assigningOpportunityId === item.id && <Loader2 size={14} className="animate-spin" />}
+                        {assigningOpportunityId === item.id ? "Asignando" : "Asignarme"}
+                      </button>
+                    )}
+                    {canReleaseOpportunity(item) && item.estado === "en_atencion" && (
+                      <button
+                        type="button"
+                        title="Liberar"
+                        onClick={() => openReleaseModal(item)}
+                        className="inline-flex h-9 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                      >
+                        <LockOpen size={16} />
+                        Liberar
+                      </button>
+                    )}
+                    {isOpportunityCreator(item) && (
+                      <IconButton
+                        title={locked ? "Registro bloqueado" : "Editar"}
+                        disabled={locked || editingLoadingId === item.id}
+                        onClick={() => void handleEditOpportunity(item)}
+                      >
+                        {editingLoadingId === item.id ? <Loader2 size={17} className="animate-spin" /> : <Pencil size={17} />}
+                      </IconButton>
+                    )}
+                    {canDeleteOpportunity(item) && (
+                      <IconButton
+                        title={locked ? "Registro bloqueado" : "Eliminar"}
+                        disabled={locked}
+                        danger
+                        onClick={() => void handleDelete(item)}
+                      >
+                        <Trash2 size={17} />
+                      </IconButton>
+                    )}
+                    {currentRole === "LICITACIONES" && item.estado === "atendido" && (
+                      <IconButton title="Marcar como perdida" danger onClick={() => void changeEstado(item, "perdida")}>
+                        <XCircle size={17} />
+                      </IconButton>
+                    )}
+                  </div>
+                </article>
+              );
+            })
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
+              No se encontraron oportunidades.
+            </div>
+          )}
+        </div>
+        <div className="hidden overflow-x-auto xl:block">
           <table className="min-w-[1180px] w-full">
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
               <tr>
@@ -1303,13 +1667,15 @@ export default function SeguimientoLicitaciones() {
                       <Td className="sticky right-0 z-10 w-[148px] min-w-[148px] bg-white shadow-[-10px_0_18px_-18px_rgba(15,23,42,0.7)] dark:bg-slate-950">
                         <div className="flex flex-wrap items-center justify-center gap-1.5">
                           <IconButton title="Ver detalle" onClick={() => setSelectedId(item.id)}><Eye size={17} /></IconButton>
-                          {isSalesRole && isAvailableOpportunity(item) && (
+                          {(isSalesRole || currentRole === "SUPERADMIN") && isAvailableOpportunity(item) && (
                             <button
                               type="button"
+                              disabled={Boolean(assigningOpportunityId)}
                               onClick={() => void handleAssignToMe(item)}
-                              className="inline-flex h-9 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                              className="inline-flex h-9 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              Asignarme
+                              {assigningOpportunityId === item.id && <Loader2 size={14} className="animate-spin" />}
+                              {assigningOpportunityId === item.id ? "Asignando" : "Asignarme"}
                             </button>
                           )}
                           {canReleaseOpportunity(item) && item.estado === "en_atencion" && (
@@ -1326,13 +1692,13 @@ export default function SeguimientoLicitaciones() {
                           {isOpportunityCreator(item) && (
                             <IconButton
                               title={locked ? "Registro bloqueado" : "Editar"}
-                              disabled={locked}
-                              onClick={() => { setEditing(item); setModalOpen(true); }}
+                              disabled={locked || editingLoadingId === item.id}
+                              onClick={() => void handleEditOpportunity(item)}
                             >
-                              <Pencil size={17} />
+                              {editingLoadingId === item.id ? <Loader2 size={17} className="animate-spin" /> : <Pencil size={17} />}
                             </IconButton>
                           )}
-                          {isOpportunityCreator(item) && (
+                          {canDeleteOpportunity(item) && (
                             <IconButton
                               title={locked ? "Registro bloqueado" : "Eliminar"}
                               disabled={locked}
@@ -1417,6 +1783,27 @@ export default function SeguimientoLicitaciones() {
         downloadingQuoteId={downloadingQuoteId}
         onDownloadQuotePdf={(cotizacionId) => void handleDownloadQuotePdf(cotizacionId)}
         loadingDetails={selectedLoading}
+        canUploadFile={Boolean(selected && !isClosedOpportunity(selected.estado) && (
+          isOpportunityCreator(selected) ||
+          Number(selected.asignadoA ?? selected.ejecutivo?.id ?? 0) === Number(user?.id) ||
+          currentRole === "SUPERADMIN"
+        ))}
+        uploadingFile={uploadingOpportunityFile}
+        onUploadFile={(file) => void handleUploadOpportunityFile(file)}
+        deletingFileId={deletingOpportunityFileId}
+        canDeleteFile={(file) => isCreatedByCurrentUser(file.creadoPor)}
+        onDeleteFile={(file) => void handleDeleteOpportunityFile(file)}
+        unlinkingQuoteId={unlinkingQuoteId}
+        canUnlinkQuote={(relacionId) => {
+          const quote = selected?.cotizaciones.find((item) => item.id === relacionId);
+          return Boolean(quote && quote.origen === "vinculada" && isCreatedByCurrentUser(quote.creadoPor, quote.creadoPorId));
+        }}
+        onUnlinkQuote={(relacionId) => void handleUnlinkQuote(relacionId)}
+        canAssignToMe={Boolean(selected && (isSalesRole || currentRole === "SUPERADMIN") && isAvailableOpportunity(selected))}
+        assigningToMe={Boolean(selected && assigningOpportunityId === selected.id)}
+        onAssignToMe={() => {
+          if (selected) void handleAssignToMe(selected);
+        }}
       />
 
       {quoteLinkModalOpen && selected && (

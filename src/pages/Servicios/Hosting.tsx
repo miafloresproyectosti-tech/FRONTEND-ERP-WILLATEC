@@ -11,6 +11,7 @@ import {
   Download,
   FileText,
   Upload,
+  RefreshCw,
 } from "lucide-react";
 
 import {
@@ -18,10 +19,12 @@ import {
   createHosting,
   deleteHostingDocumento,
   deleteHosting,
-  getHostings,
+  getAllHostings,
   previewHostingsImport,
+  renovarHosting,
   updateHosting,
   uploadHostingDocumentos,
+  type HostingAlertaEnviadaApi,
   type HostingApi,
   type HostingDocumentoApi,
   type HostingImportPreview,
@@ -49,11 +52,24 @@ interface Hosting {
   suscripcion: "ANUAL" | "MENSUAL";
   fechaInicio: string;
   fechaRenovacion: string;
+  renovacionProgramada: boolean;
+  renovacionModo: "ANUAL" | "MENSUAL" | null;
+  renovacionMeses: number | null;
+  renovacionProgramadaPara: string | null;
   contacto: string;
   cliente: string;
   correoHosting: string;
   documentos: HostingDocumentoApi[];
   estado: "VIGENTE" | "POR VENCER" | "VENCIDO";
+  alertasCount: number;
+  ultimaAlerta: string | null;
+  alertas: {
+    id: number;
+    diasAntes: number;
+    correoDestino: string;
+    correoCopia: string;
+    sentAt: string | null;
+  }[];
 }
 
 export default function Hosting() {
@@ -78,6 +94,10 @@ export default function Hosting() {
 
   const [openModal, setOpenModal] = useState(false);
   const [viewModal, setViewModal] = useState<Hosting | null>(null);
+  const [renewModal, setRenewModal] = useState<Hosting | null>(null);
+  const [renewMode, setRenewMode] = useState<"ANUAL" | "MENSUAL">("ANUAL");
+  const [renewMonths, setRenewMonths] = useState("1");
+  const [renewing, setRenewing] = useState(false);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clientesLoading, setClientesLoading] = useState(false);
   const [clienteSearch, setClienteSearch] = useState("");
@@ -116,12 +136,37 @@ export default function Hosting() {
     suscripcion: hosting.suscripcion,
     fechaInicio: hosting.fecha_inicio,
     fechaRenovacion: hosting.fecha_renovacion,
+    renovacionProgramada: Boolean(hosting.renovacion_programada),
+    renovacionModo: hosting.renovacion_modo || null,
+    renovacionMeses: hosting.renovacion_meses ?? null,
+    renovacionProgramadaPara: hosting.renovacion_programada_para || null,
     contacto: hosting.contacto || "",
     cliente: hosting.cliente || hosting.cliente_relacionado?.nombre || "",
     correoHosting: hosting.correo_hosting || hosting.cliente_relacionado?.correo || "",
     documentos: hosting.documentos || [],
     estado: getEstado(hosting.fecha_renovacion),
+    alertasCount: Number(hosting.alertas_enviadas_count || 0),
+    ultimaAlerta: hosting.alertas_enviadas_max_sent_at || null,
+    alertas: (hosting.alertas_enviadas || []).map((alerta: HostingAlertaEnviadaApi) => ({
+      id: alerta.id,
+      diasAntes: Number(alerta.dias_antes),
+      correoDestino: alerta.correo_destino || "",
+      correoCopia: alerta.correo_copia || "",
+      sentAt: alerta.sent_at || alerta.created_at || null,
+    })),
   });
+
+  const daysInMonth = (year: number, monthIndex: number) =>
+    new Date(year, monthIndex + 1, 0).getDate();
+
+  const addMonthsNoOverflow = (date: Date, months: number) => {
+    const targetMonthIndex = date.getMonth() + months;
+    const targetYear = date.getFullYear() + Math.floor(targetMonthIndex / 12);
+    const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
+    const targetDay = Math.min(date.getDate(), daysInMonth(targetYear, normalizedMonth));
+
+    return new Date(targetYear, normalizedMonth, targetDay);
+  };
 
   const calculateFechaRenovacion = (
     fechaInicio: string,
@@ -130,13 +175,10 @@ export default function Hosting() {
     if (!fechaInicio) return "";
 
     const [year, month, day] = fechaInicio.split("-").map(Number);
-    const fecha = new Date(year, month - 1, day);
-
-    if (suscripcion === "MENSUAL") {
-      fecha.setMonth(fecha.getMonth() + 1);
-    } else {
-      fecha.setFullYear(fecha.getFullYear() + 1);
-    }
+    const fecha = addMonthsNoOverflow(
+      new Date(year, month - 1, day),
+      suscripcion === "MENSUAL" ? 1 : 12
+    );
 
     fecha.setDate(fecha.getDate() - 1);
 
@@ -216,6 +258,36 @@ export default function Hosting() {
     return "VIGENTE";
   };
 
+  const formatDateTime = (value: string | null) => {
+    if (!value) return "-";
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+
+    return date.toLocaleString("es-PE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const parseDateOnly = (value: string) => {
+    const [year, month, day] = value.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  };
+
+  const formatDateOnly = (date: Date | null) => {
+    if (!date || Number.isNaN(date.getTime())) return "-";
+
+    return date.toLocaleDateString("es-PE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  };
+
   const formatPrecioHosting = (hosting: Hosting) => {
     if (hosting.precioSinIgv === null || Number.isNaN(hosting.precioSinIgv)) {
       return "-";
@@ -225,6 +297,40 @@ export default function Hosting() {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
+  };
+
+  const alertDaysFor = (suscripcion: Hosting["suscripcion"]) =>
+    suscripcion === "ANUAL" ? [90, 60, 30, 15, 3, 2, 1, 0] : [7, 4, 3, 2, 1, 0];
+
+  const alertLegendText = (suscripcion: Hosting["suscripcion"]) =>
+    suscripcion === "ANUAL"
+      ? "Periodo anual: se enviará faltando 90, 60, 30, 15, 3, 2, 1 día y el mismo día del vencimiento."
+      : "Periodo mensual: se enviará faltando 7, 4, 3, 2, 1 día y el mismo día del vencimiento.";
+
+  const getNextAlert = (hosting: Hosting) => {
+    const vencimiento = parseDateOnly(hosting.fechaRenovacion);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (Number.isNaN(vencimiento.getTime()) || vencimiento < today) {
+      return null;
+    }
+
+    const sentDays = new Set(hosting.alertas.map((alerta) => alerta.diasAntes));
+
+    for (const daysBefore of alertDaysFor(hosting.suscripcion)) {
+      const alertDate = new Date(vencimiento);
+      alertDate.setDate(alertDate.getDate() - daysBefore);
+
+      if (alertDate >= today && !sentDays.has(daysBefore)) {
+        return {
+          date: alertDate,
+          daysBefore,
+        };
+      }
+    }
+
+    return null;
   };
 
   const updateHostingEnLista = (hosting: HostingApi) => {
@@ -240,8 +346,7 @@ export default function Hosting() {
   const loadHostings = async () => {
     try {
       setLoadingHostings(true);
-      const response = await getHostings({ perPage: 100 });
-      const data = Array.isArray(response) ? response : response.data || [];
+      const data = await getAllHostings();
       setHostings(data.map(mapHosting));
     } catch (error) {
       console.error("Error al cargar hostings:", error);
@@ -327,6 +432,39 @@ export default function Hosting() {
     } catch (error) {
       console.error("Error al eliminar hosting:", error);
       alert("No se pudo eliminar el hosting.");
+    }
+  };
+
+  const openRenewModal = (hosting: Hosting) => {
+    setRenewModal(hosting);
+    setRenewMode("ANUAL");
+    setRenewMonths("1");
+  };
+
+  const handleRenovar = async () => {
+    if (!renewModal) return;
+
+    const meses = renewMode === "MENSUAL" ? Number(renewMonths) : null;
+    if (renewMode === "MENSUAL" && (!Number.isFinite(meses) || Number(meses) <= 0)) {
+      alert("Ingresa una cantidad de meses valida.");
+      return;
+    }
+
+    try {
+      setRenewing(true);
+      const result = await renovarHosting(renewModal.id, {
+        modo: renewMode,
+        meses: renewMode === "MENSUAL" ? Number(meses) : null,
+      });
+
+      updateHostingEnLista(result.hosting);
+      setRenewModal(null);
+      alert(result.message || "Renovacion procesada correctamente.");
+    } catch (error) {
+      console.error("Error al renovar hosting:", error);
+      alert("No se pudo renovar el hosting.");
+    } finally {
+      setRenewing(false);
     }
   };
 
@@ -906,7 +1044,7 @@ export default function Hosting() {
       {/* TABLE */}
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-        <table className="min-w-[1300px] w-full text-sm">
+        <table className="min-w-[1440px] w-full text-sm">
 
           <thead className="bg-gray-100">
             <tr>
@@ -920,6 +1058,7 @@ export default function Hosting() {
               <th className="p-3 text-left font-semibold">F. Inicio</th>
               <th className="p-3 text-left font-semibold">F. Renovación</th>
               <th className="p-3 text-left font-semibold">Estado</th>
+              <th className="p-3 text-left font-semibold">Alertas</th>
               <th className="sticky right-0 z-10 bg-gray-100 p-3 text-left font-semibold shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">Acciones</th>
             </tr>
           </thead>
@@ -927,18 +1066,21 @@ export default function Hosting() {
           <tbody>
             {loadingHostings ? (
               <tr>
-                <td colSpan={11} className="p-8 text-center text-gray-500">
+                <td colSpan={12} className="p-8 text-center text-gray-500">
                   Cargando hostings...
                 </td>
               </tr>
             ) : filtrados.length === 0 ? (
               <tr>
-                <td colSpan={11} className="p-8 text-center text-gray-500">
+                <td colSpan={12} className="p-8 text-center text-gray-500">
                   No hay hostings que mostrar
                 </td>
               </tr>
             ) : (
-              filtrados.map((h) => (
+              filtrados.map((h) => {
+                const nextAlert = getNextAlert(h);
+
+                return (
                 <tr key={h.id} className="border-t hover:bg-gray-50 transition-colors">
                   <td className="p-3 font-medium">{h.empresa}</td>
                   <td className="p-3">{h.ruc}</td>
@@ -977,6 +1119,24 @@ export default function Hosting() {
                           : 'Vencido'
                         }
                       </span>
+                    </div>
+                  </td>
+
+                  <td className="p-3">
+                    <div className="min-w-[120px] space-y-1">
+                      <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                        h.alertasCount > 0
+                          ? "bg-blue-50 text-blue-700 border border-blue-100"
+                          : "bg-gray-50 text-gray-500 border border-gray-100"
+                      }`}>
+                        {h.alertasCount} enviada{h.alertasCount === 1 ? "" : "s"}
+                      </span>
+                      <p className="text-xs text-gray-500">
+                        Ultima: {formatDateTime(h.ultimaAlerta)}
+                      </p>
+                      <p className="text-xs font-medium text-blue-700">
+                        Proxima: {nextAlert ? formatDateOnly(nextAlert.date) : "Sin pendiente"}
+                      </p>
                     </div>
                   </td>
 
@@ -1021,7 +1181,8 @@ export default function Hosting() {
                     </div>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
 
@@ -1294,7 +1455,7 @@ export default function Hosting() {
               <h2 className="text-lg font-semibold">Detalle de Hosting</h2>
             </div>
 
-            <div className="p-6 max-h-[60vh] overflow-y-auto">
+            <div className="p-6 max-h-[70vh] overflow-y-auto space-y-5">
               <table className="w-full text-sm">
                 <tbody>
                   <tr className="border-b">
@@ -1343,6 +1504,19 @@ export default function Hosting() {
                   <tr className="border-b">
                     <td className="p-3 font-semibold bg-gray-50">Fecha Renovación</td>
                     <td className="p-3 font-bold">{viewModal.fechaRenovacion}</td>
+                  </tr>
+
+                  <tr className="border-b">
+                    <td className="p-3 font-semibold bg-gray-50">Renovación programada</td>
+                    <td className="p-3">
+                      {viewModal.renovacionProgramada ? (
+                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
+                          {viewModal.renovacionModo} - {viewModal.renovacionMeses} meses desde {viewModal.renovacionProgramadaPara}
+                        </span>
+                      ) : (
+                        <span className="text-gray-500">Sin programación</span>
+                      )}
+                    </td>
                   </tr>
 
                   <tr className="border-b">
@@ -1412,9 +1586,95 @@ export default function Hosting() {
                   </tr>
                 </tbody>
               </table>
+
+              {(() => {
+                const nextAlert = getNextAlert(viewModal);
+
+                return (
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="font-semibold text-amber-950">Leyenda de alertas automáticas</h3>
+                        <p className="mt-1 text-sm leading-relaxed text-amber-800">
+                          {alertLegendText(viewModal.suscripcion)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm shadow-sm sm:min-w-[210px]">
+                        <p className="text-xs font-semibold uppercase text-amber-700">Próxima alerta</p>
+                        {nextAlert ? (
+                          <>
+                            <p className="mt-1 font-bold text-amber-950">{formatDateOnly(nextAlert.date)}</p>
+                            <p className="text-xs text-amber-700">
+                              {nextAlert.daysBefore === 0
+                                ? "El mismo día del vencimiento"
+                                : `Faltando ${nextAlert.daysBefore} días`}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="mt-1 font-semibold text-gray-500">Sin alertas pendientes</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+                <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="font-semibold text-blue-950">Historial de alertas</h3>
+                    <p className="text-xs text-blue-700">
+                      Registro visual de correos automáticos enviados para este hosting.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
+                    {viewModal.alertasCount} envío{viewModal.alertasCount === 1 ? "" : "s"}
+                  </span>
+                </div>
+
+                {viewModal.alertas.length > 0 ? (
+                  <div className="overflow-hidden rounded-xl border border-blue-100 bg-white">
+                    <table className="w-full min-w-[620px] text-sm">
+                      <thead className="bg-blue-50 text-blue-900">
+                        <tr>
+                          <th className="p-3 text-left font-semibold">Fecha envío</th>
+                          <th className="p-3 text-left font-semibold">Días antes</th>
+                          <th className="p-3 text-left font-semibold">Destino</th>
+                          <th className="p-3 text-left font-semibold">Copia</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewModal.alertas.map((alerta) => (
+                          <tr key={alerta.id} className="border-t border-blue-50">
+                            <td className="p-3 text-gray-700">{formatDateTime(alerta.sentAt)}</td>
+                            <td className="p-3">
+                              <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                                {alerta.diasAntes === 0 ? "Vencimiento" : `${alerta.diasAntes} días`}
+                              </span>
+                            </td>
+                            <td className="p-3 text-gray-600">{alerta.correoDestino || "-"}</td>
+                            <td className="p-3 text-gray-600">{alerta.correoCopia || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-blue-200 bg-white px-4 py-5 text-sm text-gray-500">
+                    Todavía no hay alertas automáticas enviadas para este hosting.
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="flex justify-end px-6 py-4 bg-gray-50">
+            <div className="flex flex-col gap-3 px-6 py-4 bg-gray-50 sm:flex-row sm:justify-end">
+              <button
+                onClick={() => openRenewModal(viewModal)}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-6 py-2 font-medium text-white transition-colors hover:bg-emerald-700"
+              >
+                <RefreshCw size={16} />
+                RENOVAR
+              </button>
               <button
                 onClick={() => setViewModal(null)}
                 className="px-6 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-colors font-medium"
@@ -1423,6 +1683,40 @@ export default function Hosting() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {renewModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-gray-100 px-6 py-4">
+              <h2 className="text-lg font-semibold">Renovar hosting</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {renewModal.empresa} - {renewModal.dominio}
+              </p>
+            </div>
+            <div className="space-y-4 p-6">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-gray-700">Modo de suscripción</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["ANUAL", "MENSUAL"] as const).map((mode) => (
+                    <button key={mode} type="button" onClick={() => setRenewMode(mode)} className={`rounded-lg border px-4 py-3 text-sm font-bold transition ${renewMode === mode ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"}`}>{mode}</button>
+                  ))}
+                </div>
+              </div>
+              {renewMode === "MENSUAL" && (
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">Meses renovados</label>
+                  <input type="number" min="1" max="240" value={renewMonths} onChange={(event) => setRenewMonths(event.target.value)} className="w-full rounded-lg border border-gray-300 p-3 outline-none focus:border-transparent focus:ring-2 focus:ring-emerald-500" />
+                </div>
+              )}
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Si el hosting aún no vence, la renovación quedará programada para el día siguiente al vencimiento actual.</div>
+            </div>
+            <div className="flex justify-end gap-3 border-t bg-gray-50 px-6 py-4">
+              <button type="button" onClick={() => setRenewModal(null)} className="rounded-lg bg-gray-200 px-5 py-2 font-medium text-gray-800 hover:bg-gray-300">Cancelar</button>
+              <button type="button" onClick={() => void handleRenovar()} disabled={renewing} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2 font-medium text-white hover:bg-emerald-700 disabled:bg-gray-400"><RefreshCw size={16} />{renewing ? "Procesando..." : "Confirmar"}</button>
+            </div>
           </div>
         </div>
       )}

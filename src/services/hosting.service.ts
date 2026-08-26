@@ -17,16 +17,33 @@ export interface HostingApi {
   suscripcion: "ANUAL" | "MENSUAL";
   fecha_inicio: string;
   fecha_renovacion: string;
+  renovacion_programada?: boolean | number;
+  renovacion_modo?: "ANUAL" | "MENSUAL" | null;
+  renovacion_meses?: number | null;
+  renovacion_programada_para?: string | null;
   contacto?: string | null;
   cliente?: string | null;
   correo_hosting?: string | null;
   documentos?: HostingDocumentoApi[];
+  alertas_enviadas_count?: number;
+  alertas_enviadas_max_sent_at?: string | null;
+  alertas_enviadas?: HostingAlertaEnviadaApi[];
   cliente_relacionado?: {
     id: number;
     nombre: string;
     ruc?: string | null;
     correo?: string | null;
   } | null;
+}
+
+export interface HostingAlertaEnviadaApi {
+  id: number;
+  hosting_id: number;
+  dias_antes: number;
+  correo_destino?: string | null;
+  correo_copia?: string | null;
+  sent_at?: string | null;
+  created_at?: string | null;
 }
 
 export interface HostingDocumentoApi {
@@ -53,6 +70,11 @@ export interface HostingPayload {
   contacto?: string | null;
   cliente?: string | null;
   correo_hosting?: string | null;
+}
+
+export interface RenovacionPayload {
+  modo: "ANUAL" | "MENSUAL";
+  meses?: number | null;
 }
 
 export interface HostingImportRow {
@@ -120,6 +142,22 @@ export const getHostings = async (params: GetHostingsParams = {}) => {
   return response.data;
 };
 
+export const getAllHostings = async (params: Omit<GetHostingsParams, "page" | "perPage"> = {}) => {
+  const all: HostingApi[] = [];
+  let page = 1;
+  let lastPage = 1;
+
+  do {
+    const response = await getHostings({ ...params, page, perPage: 100 });
+    const data = Array.isArray(response) ? response : response.data || [];
+    all.push(...data);
+    lastPage = Array.isArray(response) ? 1 : Number(response.last_page || page);
+    page += 1;
+  } while (page <= lastPage);
+
+  return all;
+};
+
 export const createHosting = async (
   payload: HostingPayload
 ): Promise<HostingApi> => {
@@ -137,6 +175,14 @@ export const updateHosting = async (
 
 export const deleteHosting = async (id: number): Promise<void> => {
   await api.delete(`/hostings/${id}`);
+};
+
+export const renovarHosting = async (
+  id: number,
+  payload: RenovacionPayload
+): Promise<{ message: string; hosting: HostingApi }> => {
+  const response = await api.post(`/hostings/${id}/renovar`, payload);
+  return response.data;
 };
 
 export const uploadHostingDocumentos = async (

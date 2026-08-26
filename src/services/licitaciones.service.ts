@@ -2,6 +2,7 @@ import api from "./api";
 import type {
   CotizacionRelacionada,
   Oportunidad,
+  OportunidadArchivo,
   OportunidadComentario,
 } from "../types/licitaciones";
 import { applyExpiredState } from "../utils/licitaciones";
@@ -29,6 +30,8 @@ const normalizeOpportunity = (item: any): Oportunidad => ({
   creadoPor: item.creado_por ?? item.creadoPor ?? "Sistema",
   modificadoEn: item.modificado_en ?? item.modificadoEn,
   modificadoPor: item.modificado_por ?? item.modificadoPor,
+  motivoCierre: item.motivo_cierre ?? item.motivoCierre ?? "",
+  comentarioCierre: item.comentario_cierre ?? item.comentarioCierre ?? "",
   garantia: item.garantia ?? "",
   plazo: item.plazo ?? "",
   carpetaServidor: item.carpeta_servidor ?? item.carpetaServidor ?? "",
@@ -47,7 +50,12 @@ const normalizeOpportunity = (item: any): Oportunidad => ({
     ? item.cotizaciones.map((cotizacion: any) => ({
         ...cotizacion,
         cotizacionId: cotizacion.cotizacionId ?? cotizacion.cotizacion_id ?? null,
+        origen: cotizacion.origen ?? "vinculada",
+        creadoPorId: cotizacion.creadoPorId ?? cotizacion.creado_por_id ?? null,
+        creadoPor: cotizacion.creadoPor ?? cotizacion.creado_por,
         tieneModificacionPendiente: Boolean(cotizacion.tieneModificacionPendiente ?? cotizacion.tiene_modificacion_pendiente ?? false),
+        puedeDescargarPdf: Boolean(cotizacion.puedeDescargarPdf ?? cotizacion.puede_descargar_pdf ?? false),
+        pdfBloqueoMotivo: cotizacion.pdfBloqueoMotivo ?? cotizacion.pdf_bloqueo_motivo ?? null,
         modificacionPendiente: cotizacion.modificacionPendiente ?? cotizacion.modificacion_pendiente ?? null,
       }))
     : [],
@@ -62,8 +70,28 @@ export const getOportunidades = async (): Promise<Oportunidad[]> => {
   return normalizeList(Array.isArray(data) ? data : data.data || []);
 };
 
-export const getOportunidad = async (id: string): Promise<Oportunidad> => {
-  const { data } = await api.get<any>(`/licitaciones/${id}`);
+export const getOportunidad = async (
+  id: string,
+  options?: { includeFileData?: boolean },
+): Promise<Oportunidad> => {
+  const { data } = await api.get<any>(`/licitaciones/${id}`, {
+    params: options?.includeFileData === false ? { include_file_data: 0 } : undefined,
+  });
+  return applyExpiredState(normalizeOpportunity(data));
+};
+
+export const getOportunidadByCotizacion = async (cotizacionId: number | string): Promise<Oportunidad> => {
+  const { data } = await api.get<any>(`/licitaciones/por-cotizacion/${cotizacionId}`);
+  return applyExpiredState(normalizeOpportunity(data));
+};
+
+export const getOportunidadArchivo = async (archivoId: number | string): Promise<OportunidadArchivo> => {
+  const { data } = await api.get<any>(`/licitaciones/archivos/${archivoId}`);
+  return data;
+};
+
+export const registrarVistaOportunidad = async (id: string): Promise<Oportunidad> => {
+  const { data } = await api.post<any>(`/licitaciones/${id}/registrar-vista`);
   return applyExpiredState(normalizeOpportunity(data));
 };
 
@@ -79,6 +107,10 @@ export const saveOportunidad = async (opportunity: Oportunidad) => {
     creadoPor: opportunity.creadoPor,
     modificadoEn: opportunity.modificadoEn,
     modificadoPor: opportunity.modificadoPor,
+    motivoCierre: opportunity.motivoCierre,
+    comentarioCierre: opportunity.comentarioCierre,
+    motivo_cierre: opportunity.motivoCierre,
+    comentario_cierre: opportunity.comentarioCierre,
     carpetaServidor: opportunity.carpetaServidor,
     comentariosGenerales: opportunity.comentariosGenerales,
     cotizacionId: opportunity.cotizacionId,
@@ -114,6 +146,14 @@ export const addComentarioOportunidad = async (
   return data;
 };
 
+export const addArchivoOportunidad = async (
+  oportunidadId: string,
+  archivo: any
+): Promise<Oportunidad> => {
+  const { data } = await api.post<any>(`/licitaciones/${oportunidadId}/archivos`, { archivo });
+  return applyExpiredState(normalizeOpportunity(data));
+};
+
 export const addCotizacionRelacionada = async (
   id: string,
   userName: string,
@@ -123,6 +163,7 @@ export const addCotizacionRelacionada = async (
     estado?: string;
     monto?: number;
     moneda?: string;
+    origen?: "vinculada" | "generada";
   }
 ): Promise<CotizacionRelacionada> => {
   const { data } = await api.post<any>(`/licitaciones/${id}/cotizaciones`, {
@@ -130,4 +171,20 @@ export const addCotizacionRelacionada = async (
     ...cotizacion,
   });
   return data;
+};
+
+export const deleteArchivoOportunidad = async (
+  oportunidadId: string,
+  archivoId: string
+): Promise<Oportunidad> => {
+  const { data } = await api.delete<any>(`/licitaciones/${oportunidadId}/archivos/${archivoId}`);
+  return applyExpiredState(normalizeOpportunity(data));
+};
+
+export const deleteCotizacionRelacionada = async (
+  oportunidadId: string,
+  relacionId: string
+): Promise<Oportunidad> => {
+  const { data } = await api.delete<any>(`/licitaciones/${oportunidadId}/cotizaciones/${relacionId}`);
+  return applyExpiredState(normalizeOpportunity(data));
 };
