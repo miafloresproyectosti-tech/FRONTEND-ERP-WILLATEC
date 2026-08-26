@@ -563,7 +563,9 @@ export function CompraFormModal({
                           className="w-28 rounded-lg border border-slate-200 px-3 py-2 text-right focus:border-blue-500 focus:outline-none"
                         />
                         {item.cantidadMaxima !== undefined && (
-                          <div className="mt-1 text-right text-xs text-slate-400">Saldo req. {item.cantidadMaxima}</div>
+                          <div className="mt-1 text-right text-xs text-slate-400">
+                            Saldo req. {item.cantidadMaxima}. El excedente va a stock.
+                          </div>
                         )}
                       </td>
                       <td className="px-4 py-3">
