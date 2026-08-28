@@ -17,6 +17,7 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  ShoppingBag,
   ShoppingCart,
   UserCheck,
   Users,
@@ -236,6 +237,15 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       </Link>
                     )}
 
+                    <Link
+                      to="/woocommerce/pedidos"
+                      onClick={closeMobile}
+                      className={subItemClass("/woocommerce/pedidos")}
+                    >
+                      <ShoppingBag size={18} />
+                      WooCommerce
+                    </Link>
+
                     {hasPermission("clientes") && (
                       <Link
                         to="/clientes"
@@ -320,6 +330,15 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <ClipboardList size={20} />
                   <span className="font-medium">KARDEX</span>
+                </Link>
+
+                <Link
+                  to="/woocommerce/pedidos"
+                  onClick={closeMobile}
+                  className={itemClass("/woocommerce/pedidos")}
+                >
+                  <ShoppingBag size={20} />
+                  <span className="font-medium">WooCommerce</span>
                 </Link>
               </>
             )}

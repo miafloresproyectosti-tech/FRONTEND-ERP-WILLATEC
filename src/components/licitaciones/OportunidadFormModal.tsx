@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 import { Building2, Briefcase, Download, Eye, FileText, Globe2, Loader2, Save, Trash2, Upload, X, type LucideIcon } from "lucide-react";
 
 import {
@@ -123,17 +123,23 @@ export function OportunidadFormModal({
   }, [open, opportunity]);
 
   const selectedTipo = form.tipo;
-  const showMainAttachment = selectedTipo === "licitacion" || selectedTipo === "privado";
+  const showMainAttachment = true;
   const attachmentLabels = selectedTipo === "privado"
     ? {
         field: "Guia / solicitud del cliente",
-        loaded: "Documento cargado. Puedes previsualizarlo, descargarlo o reemplazarlo.",
-        upload: "Subir guia o documento",
+        loaded: "Documento cargado. Puedes previsualizarlo, descargarlo, reemplazarlo o pegar otra captura.",
+        upload: "Subir, arrastrar o pegar guia/documento",
       }
+    : selectedTipo === "wherex"
+      ? {
+          field: "Guia / evidencia de oportunidad",
+          loaded: "Documento cargado. Puedes previsualizarlo, descargarlo, reemplazarlo o pegar otra captura.",
+          upload: "Subir, arrastrar o pegar guia/evidencia",
+        }
     : {
         field: "Archivo TDR",
-        loaded: "Archivo cargado. Puedes previsualizarlo, descargarlo o reemplazarlo.",
-        upload: "Subir archivo TDR",
+        loaded: "Archivo cargado. Puedes previsualizarlo, descargarlo, reemplazarlo o pegar otra captura.",
+        upload: "Subir, arrastrar o pegar archivo TDR",
       };
 
   const inputClass = (field?: keyof OportunidadFormData) =>
@@ -163,13 +169,48 @@ export function OportunidadFormModal({
 
   const handleTdrChange = async (file?: File) => {
     if (submitting || !file) return;
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      setErrors((current) => ({ ...current, tdr: "Solo se permiten imagenes o PDF" }));
+      return;
+    }
+
     setLoadingFile(true);
     try {
       const parsed = await fileToOpportunityFile(file, userName);
       update("tdr", parsed);
+      setShowTdrPreview(false);
+      setErrors((current) => ({ ...current, tdr: undefined }));
     } finally {
       setLoadingFile(false);
     }
+  };
+
+  const buildPastedImageName = (file: File) => {
+    const extension = file.type.split("/")[1] || "png";
+    return `archivo-oportunidad-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`;
+  };
+
+  const handleAttachmentPaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    if (submitting || loadingFile) return;
+
+    const pastedImage = Array.from(event.clipboardData.items)
+      .find((item) => item.type.startsWith("image/"));
+
+    if (!pastedImage) return;
+
+    const file = pastedImage.getAsFile();
+    if (!file) return;
+
+    event.preventDefault();
+    void handleTdrChange(new File([file], buildPastedImageName(file), { type: file.type }));
+  };
+
+  const handleAttachmentDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (submitting || loadingFile) return;
+
+    const file = event.dataTransfer.files?.[0];
+    if (file) void handleTdrChange(file);
   };
 
   const submit = async () => {
@@ -329,7 +370,14 @@ export function OportunidadFormModal({
 
             {showMainAttachment && (
                 <Field label={attachmentLabels.field} error={errors.tdr} wide>
-                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+                  <div
+                    className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-3 transition focus-within:border-blue-400 hover:border-blue-300 dark:border-slate-700 dark:bg-slate-900/40"
+                    onPaste={handleAttachmentPaste}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={handleAttachmentDrop}
+                    tabIndex={0}
+                    title="Puedes pegar una captura, arrastrar un archivo o seleccionarlo"
+                  >
                     {form.tdr ? (
                       <div className="space-y-3">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -340,6 +388,7 @@ export function OportunidadFormModal({
                             <div className="min-w-0">
                               <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{form.tdr.nombre}</p>
                               <p className="text-xs text-slate-500">{attachmentLabels.loaded}</p>
+                              <p className="text-[11px] text-slate-400">Pega una captura o arrastra otro archivo para reemplazarlo.</p>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
@@ -395,7 +444,10 @@ export function OportunidadFormModal({
                       </div>
                     ) : (
                       <label className={`flex items-center justify-between gap-3 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900 ${submitting ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
-                        <span className="truncate">{attachmentLabels.upload}</span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-semibold">{attachmentLabels.upload}</span>
+                          <span className="block truncate text-xs text-slate-400">PDF o imagen. Tambien puedes pegar una captura aqui.</span>
+                        </span>
                         <span className="inline-flex items-center gap-2 font-semibold text-blue-600">
                           {loadingFile ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
                           Archivo

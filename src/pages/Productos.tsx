@@ -14,9 +14,12 @@ import {
   List,
   Upload,
   Download,
+  RefreshCw,
+  Link2,
+  ShieldCheck,
 } from "lucide-react";
 
-import { getProductos, getProductosPaginated, getExternalItems, getProductoExternoHistorialCotizaciones, createProducto, updateProducto, deleteProducto, updateCotizacionItem, convertirProductoExternoAInterno, type Producto, type ProductoPayload, type CotizacionItem, type ProductoSerie, type ProductoExternoHistorialResponse, type ProductoExternoHistorialItem } from "../services/producto.service";
+import { getProductos, getProductosPaginated, getExternalItems, getProductoExternoHistorialCotizaciones, createProducto, updateProducto, deleteProducto, updateCotizacionItem, convertirProductoExternoAInterno, mapearProductoWooCommercePorSku, sincronizarProductoWooCommerce, sincronizarProductosWooCommerceActivos, previewProductoSkuNormalization, applyProductoSkuNormalization, type Producto, type ProductoPayload, type CotizacionItem, type ProductoSerie, type ProductoExternoHistorialResponse, type ProductoExternoHistorialItem, type ProductoSkuPreviewResponse } from "../services/producto.service";
 import {
   getCotizacion,
   getCotizacionesPaginated,
@@ -97,6 +100,7 @@ interface ProductoForm {
 
 type ProductoUI = ProductoForm & {
   id: number;
+  sku?: string | null;
   categoria_label: string;
   precio_referencial: string;
   activo: "true" | "false";
@@ -106,6 +110,8 @@ type ProductoUI = ProductoForm & {
   stock_disponible?: number | string | null;
   series?: ProductoSerie[];
   moneda?: Producto["moneda"];
+  woocommerce_producto?: Producto["woocommerce_producto"];
+  woocommerceProducto?: Producto["woocommerceProducto"];
 };
 
 type ExternalItem = CotizacionItem;
@@ -133,6 +139,7 @@ const getEditableSeriesText = (producto: Producto | ProductoUI) => {
 const mapProducto = (producto: Producto): ProductoUI => ({
 
   id: producto.id,
+  sku: producto.sku ?? null,
   codigo: producto.codigo || producto.sku || "",
   nombre: producto.nombre,
   marca: producto.marca ?? "",
@@ -156,7 +163,35 @@ const mapProducto = (producto: Producto): ProductoUI => ({
   estado: producto.estado ?? "nuevo",
   unidad_medida: producto.unidad_medida ?? "unidad",
   series: producto.series ?? [],
+  woocommerce_producto: producto.woocommerce_producto ?? producto.woocommerceProducto ?? null,
+  woocommerceProducto: producto.woocommerceProducto ?? producto.woocommerce_producto ?? null,
 });
+
+const getWooCommerceMapping = (producto: ProductoUI | Producto) =>
+  producto.woocommerce_producto ?? producto.woocommerceProducto ?? null;
+
+const getWooCommerceStatusBadge = (status?: string | null) => {
+  const normalized = String(status || "").toLowerCase();
+
+  if (normalized === "exitoso") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (normalized === "error") return "border-red-200 bg-red-50 text-red-700";
+  if (normalized === "pendiente") return "border-amber-200 bg-amber-50 text-amber-700";
+
+  return "border-slate-200 bg-slate-50 text-slate-600";
+};
+
+const formatWooCommerceDate = (value?: string | null) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toLocaleString("es-PE", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
 const getExternalItemCurrencySymbol = (item: ExternalItem) => {
   if (item.moneda?.simbolo) return item.moneda.simbolo;
@@ -406,10 +441,18 @@ export default function Productos() {
   });
   const [savingExternal, setSavingExternal] = useState(false);
   const [exportingProductos, setExportingProductos] = useState(false);
+  const [syncingWooProductId, setSyncingWooProductId] = useState<number | null>(null);
+  const [syncingWooAll, setSyncingWooAll] = useState(false);
+  const [skuPreview, setSkuPreview] = useState<ProductoSkuPreviewResponse | null>(null);
+  const [skuPreviewLoading, setSkuPreviewLoading] = useState(false);
+  const [skuApplyLoading, setSkuApplyLoading] = useState(false);
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
   const userRole = normalizeRole(user?.role);
   const canUseExternalProducts = userRole !== "SOPORTE" && userRole !== "LOGISTICA";
   const canManageInternalProducts = userRole !== "VENTAS";
+  const canManageWooCommerce = userRole === "SUPERADMIN" || userRole === "ADMIN" || userRole === "LOGISTICA";
+  const canPreviewSkuNormalization = userRole === "SUPERADMIN" || userRole === "ADMIN" || userRole === "LOGISTICA";
+  const canApplySkuNormalization = userRole === "SUPERADMIN" || userRole === "LOGISTICA";
 
   const isStockTab = activeTab === "stock";
   const cotizacionesFiltradas = cotizaciones.filter((cotizacion) => {
@@ -792,6 +835,132 @@ export default function Productos() {
     setProductoAEliminar(producto);
   };
 
+  const handleMapearWooCommerce = async (producto: ProductoUI) => {
+    if (!canManageWooCommerce || syncingWooProductId) return;
+
+    try {
+      setSyncingWooProductId(producto.id);
+      const response = await mapearProductoWooCommercePorSku(producto.id);
+      await fetchProductos(currentPage, debouncedSearchTerm);
+      showToast({
+        title: "WooCommerce listo",
+        description: response.message || "El producto fue conectado o creado en WooCommerce y el stock fue sincronizado.",
+        type: "success",
+      });
+    } catch (error) {
+      console.error(error);
+      showToast({
+        title: "No se pudo conectar WooCommerce",
+        description: getApiErrorMessage(error, "Verifica que el SKU/codigo exista igual en WooCommerce y que las credenciales esten configuradas."),
+        type: "warning",
+      });
+    } finally {
+      setSyncingWooProductId(null);
+    }
+  };
+
+  const handleSincronizarWooCommerce = async (producto: ProductoUI) => {
+    if (!canManageWooCommerce || syncingWooProductId) return;
+
+    try {
+      setSyncingWooProductId(producto.id);
+      const response = await sincronizarProductoWooCommerce(producto.id);
+      await fetchProductos(currentPage, debouncedSearchTerm);
+      showToast({
+        title: "Stock sincronizado",
+        description: response.message || "WooCommerce recibio el stock disponible del ERP.",
+        type: "success",
+      });
+    } catch (error) {
+      console.error(error);
+      showToast({
+        title: "No se pudo sincronizar",
+        description: getApiErrorMessage(error, "Revisa el mapeo del producto y las credenciales WooCommerce."),
+        type: "warning",
+      });
+    } finally {
+      setSyncingWooProductId(null);
+    }
+  };
+
+  const handleSincronizarWooCommerceActivos = async () => {
+    if (!canManageWooCommerce || syncingWooAll) return;
+
+    try {
+      setSyncingWooAll(true);
+      const response = await sincronizarProductosWooCommerceActivos(100);
+      await fetchProductos(currentPage, debouncedSearchTerm);
+      showToast({
+        title: "Sincronizacion WooCommerce",
+        description: response.message || "Los productos activos fueron procesados.",
+        type: response.resumen?.errores ? "warning" : "success",
+      });
+    } catch (error) {
+      console.error(error);
+      showToast({
+        title: "No se pudo sincronizar el lote",
+        description: getApiErrorMessage(error, "Revisa las credenciales WooCommerce o intenta con menos productos."),
+        type: "warning",
+      });
+    } finally {
+      setSyncingWooAll(false);
+    }
+  };
+
+  const handlePreviewSkuNormalization = async () => {
+    if (!canPreviewSkuNormalization || skuPreviewLoading) return;
+
+    try {
+      setSkuPreviewLoading(true);
+      const response = await previewProductoSkuNormalization(25);
+      setSkuPreview(response);
+      showToast({
+        title: "Preview SKU listo",
+        description: `Se detectaron ${response.total_legacy ?? 0} SKU legacy. Revisa antes de aplicar.`,
+        type: "success",
+      });
+    } catch (error) {
+      console.error(error);
+      showToast({
+        title: "No se pudo previsualizar",
+        description: getApiErrorMessage(error, "Intenta nuevamente o revisa permisos."),
+        type: "warning",
+      });
+    } finally {
+      setSkuPreviewLoading(false);
+    }
+  };
+
+  const handleApplySkuNormalization = async () => {
+    if (!canApplySkuNormalization || skuApplyLoading) return;
+
+    try {
+      setSkuApplyLoading(true);
+      const response = await applyProductoSkuNormalization(25);
+      setSkuPreview(response);
+      await fetchProductos(currentPage, debouncedSearchTerm);
+      showToast({
+        title: "Lote SKU procesado",
+        description: `Aplicados: ${response.resumen?.APLICADO ?? 0}. Conflictos/errores: ${
+          (response.resumen?.CONFLICTO_SKU_WOOCOMMERCE ?? 0) +
+          (response.resumen?.CONFLICTO_SKU_LOCAL ?? 0) +
+          (response.resumen?.ERROR_WOOCOMMERCE ?? 0) +
+          (response.resumen?.ERROR_LOCAL ?? 0)
+        }.`,
+        type: "success",
+      });
+    } catch (error) {
+      console.error(error);
+      showToast({
+        title: "No se pudo aplicar el lote",
+        description: getApiErrorMessage(error, "El lote no pudo procesarse."),
+        type: "warning",
+      });
+    } finally {
+      setSkuApplyLoading(false);
+    }
+  };
+
   // CONFIRMAR ELIMINAR
   const confirmarEliminar = async () => {
     if (!productoAEliminar) return;
@@ -883,7 +1052,6 @@ export default function Productos() {
     }
 
     const payload: ProductoPayload = {
-      sku: productoSeleccionado.codigo,
       nombre: productoSeleccionado.nombre,
       marca: productoSeleccionado.marca,
       modelo: productoSeleccionado.modelo,
@@ -1409,6 +1577,25 @@ export default function Productos() {
 
         {isStockTab && (
           <div className="flex flex-wrap gap-2">
+            {canManageWooCommerce && (
+              <button
+                type="button"
+                onClick={() => void handleSincronizarWooCommerceActivos()}
+                disabled={syncingWooAll}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-700 shadow-sm transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 sm:h-auto sm:w-auto sm:gap-2 sm:px-5 sm:py-3"
+                title="Crear/conectar y sincronizar hasta 100 productos activos con WooCommerce"
+              >
+                {syncingWooAll ? (
+                  <Loader2 size={20} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={20} />
+                )}
+                <span className="hidden sm:inline">
+                  {syncingWooAll ? "Sincronizando..." : "WooCommerce"}
+                </span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleExportProductosInternos}
@@ -1464,6 +1651,101 @@ export default function Productos() {
         </div>
       )}
 
+      {isStockTab && canPreviewSkuNormalization && (
+        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="text-blue-700" size={18} />
+                <h2 className="text-sm font-bold text-slate-800">Administracion SKU</h2>
+              </div>
+              <p className="mt-1 max-w-3xl text-xs text-slate-500">
+                Separa el codigo interno del SKU comercial. Primero previsualiza; Superadmin y Logistica pueden aplicar lotes de 25 productos.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void handlePreviewSkuNormalization()}
+                disabled={skuPreviewLoading}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+              >
+                {skuPreviewLoading ? <Loader2 className="animate-spin" size={15} /> : <Eye size={15} />}
+                Previsualizar
+              </button>
+              {canApplySkuNormalization && (
+                <button
+                  type="button"
+                  onClick={() => void handleApplySkuNormalization()}
+                  disabled={skuApplyLoading || !skuPreview}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                >
+                  {skuApplyLoading ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
+                  Aplicar lote
+                </button>
+              )}
+            </div>
+          </div>
+
+          {skuPreview && (
+            <div className="mt-4 space-y-3">
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-700">
+                  Legacy: {skuPreview.total_legacy ?? skuPreview.total_legacy_restante ?? 0}
+                </span>
+                {Object.entries(skuPreview.resumen || {}).map(([key, value]) => (
+                  <span key={key} className="rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-700">
+                    {key}: {value}
+                  </span>
+                ))}
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-100">
+                <table className="min-w-[900px] w-full text-xs">
+                  <thead className="bg-slate-50 text-left text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Codigo</th>
+                      <th className="px-3 py-2">SKU actual</th>
+                      <th className="px-3 py-2">SKU propuesto</th>
+                      <th className="px-3 py-2">Producto</th>
+                      <th className="px-3 py-2">Woo</th>
+                      <th className="px-3 py-2">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {skuPreview.items.map((item) => (
+                      <tr key={item.id} className="bg-white">
+                        <td className="px-3 py-2 font-semibold text-slate-700">{item.codigo || "-"}</td>
+                        <td className="px-3 py-2 text-slate-600">{item.sku_actual || "-"}</td>
+                        <td className="px-3 py-2 font-semibold text-blue-700">{item.sku_nuevo || "-"}</td>
+                        <td className="px-3 py-2 text-slate-700">
+                          <span className="line-clamp-1" title={item.producto || ""}>{item.producto || "-"}</span>
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">
+                          {item.vinculado_woocommerce ? `SI #${item.woo_variation_id || item.woo_product_id || "-"}` : "NO"}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`rounded-full px-2 py-1 font-semibold ${
+                            item.estado === "APLICADO" || item.estado === "PENDIENTE"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : item.estado.includes("CONFLICTO") || item.estado.includes("ERROR")
+                                ? "bg-red-50 text-red-700"
+                                : "bg-slate-100 text-slate-700"
+                          }`} title={item.mensaje || ""}>
+                            {item.estado}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* TABLA */}
       <div className="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm sm:rounded-3xl">
         {(isStockTab ? loading : externalLoading) ? (
@@ -1489,7 +1771,8 @@ export default function Productos() {
                     )}
                     <div className="min-w-0 flex-1">
                       <h3 className="truncate font-bold text-gray-900">{isStockTab ? item.nombre : item.descripcion}</h3>
-                      <p className="truncate text-sm text-gray-500">#{item.codigo || "Sin codigo"}</p>
+                      <p className="truncate text-sm text-gray-500">Codigo interno: {item.codigo || "Sin codigo"}</p>
+                      <p className="truncate text-xs font-semibold text-blue-700">SKU: {item.sku || getWooCommerceMapping(item)?.woo_sku || "-"}</p>
                       {isStockTab ? (
                         (item.marca || item.modelo) && (
                           <p className="truncate text-xs text-gray-500">{[item.marca, item.modelo].filter(Boolean).join(" / ")}</p>
@@ -1598,6 +1881,60 @@ export default function Productos() {
                     </button>
                   )}
 
+                  {isStockTab && canManageWooCommerce && (() => {
+                    const wooMapping = getWooCommerceMapping(item);
+                    const isSyncing = syncingWooProductId === item.id;
+
+                    return (
+                      <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-700">
+                              WooCommerce
+                            </p>
+                            {wooMapping ? (
+                              <p className="mt-1 truncate text-slate-500">
+                                SKU {wooMapping.woo_sku || item.codigo} · Stock enviado {wooMapping.last_stock_sent ?? "-"}
+                              </p>
+                            ) : (
+                              <p className="mt-1 text-slate-500">Sin conectar por SKU</p>
+                            )}
+                          </div>
+                          <span className={`shrink-0 rounded-full border px-2 py-0.5 font-semibold ${getWooCommerceStatusBadge(wooMapping?.last_sync_status)}`}>
+                            {wooMapping?.last_sync_status || "No conectado"}
+                          </span>
+                        </div>
+                        {wooMapping?.last_sync_error && (
+                          <p className="mt-2 line-clamp-2 text-red-600" title={wooMapping.last_sync_error}>
+                            {wooMapping.last_sync_error}
+                          </p>
+                        )}
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            disabled={isSyncing}
+                            onClick={() => void handleMapearWooCommerce(item)}
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white text-xs font-semibold text-blue-700 ring-1 ring-blue-100 hover:bg-blue-50 disabled:opacity-60"
+                            title="Buscar por SKU/codigo en WooCommerce; si no existe, crearlo y conectarlo"
+                          >
+                            {isSyncing ? <Loader2 className="animate-spin" size={14} /> : <Link2 size={14} />}
+                            Conectar/crear
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isSyncing || !wooMapping}
+                            onClick={() => void handleSincronizarWooCommerce(item)}
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-50 disabled:opacity-60"
+                            title="Enviar el stock disponible del ERP a WooCommerce"
+                          >
+                            {isSyncing ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+                            Sync
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="mt-4 border-t border-gray-100 pt-3">
                     {isStockTab ? (
                       canManageInternalProducts ? (
@@ -1685,9 +2022,9 @@ export default function Productos() {
                 <col className="w-[14%]" />
                 <col className="w-[8%]" />
                 <col className="w-[12%]" />
-                <col className="w-[16%]" />
+                <col className="w-[14%]" />
                 <col className="w-[8%]" />
-                <col className="w-[12%]" />
+                <col className="w-[14%]" />
               </>
             ) : (
               <>
@@ -1794,7 +2131,10 @@ export default function Productos() {
                               {item.nombre}
                             </h3>
                             <p className="text-sm text-gray-500 truncate">
-                              #{item.codigo}
+                              Codigo interno: {item.codigo}
+                            </p>
+                            <p className="truncate text-xs font-semibold text-blue-700">
+                              SKU: {item.sku || getWooCommerceMapping(item)?.woo_sku || "-"}
                             </p>
                             {(item.marca || item.modelo) && (
                               <p className="text-xs text-gray-500 truncate">
@@ -1811,6 +2151,24 @@ export default function Productos() {
                                 Series {item.series?.length || 1}
                               </button>
                             )}
+                            {canManageWooCommerce && (() => {
+                              const wooMapping = getWooCommerceMapping(item);
+
+                              return (
+                                <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                                  <span className={`inline-flex max-w-full rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getWooCommerceStatusBadge(wooMapping?.last_sync_status)}`}>
+                                    <span className="truncate">
+                                      Woo: {wooMapping ? wooMapping.last_sync_status || "conectado" : "sin conectar"}
+                                    </span>
+                                  </span>
+                                  {wooMapping?.last_synced_at && (
+                                    <span className="truncate text-[10px] text-slate-400">
+                                      {formatWooCommerceDate(wooMapping.last_synced_at)}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       </td>
@@ -1858,6 +2216,33 @@ export default function Productos() {
                       <td className="bg-white px-3 py-5">
                         {canManageInternalProducts ? (
                           <div className="flex items-center justify-center gap-1.5">
+                            {canManageWooCommerce && (() => {
+                              const wooMapping = getWooCommerceMapping(item);
+                              const isSyncing = syncingWooProductId === item.id;
+
+                              return (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={isSyncing}
+                                    onClick={() => void handleMapearWooCommerce(item)}
+                                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 shadow-sm transition hover:bg-slate-200 hover:scale-105 disabled:opacity-60"
+                                    title="Conectar o crear en WooCommerce por SKU/codigo"
+                                  >
+                                    {isSyncing ? <Loader2 className="animate-spin" size={16} /> : <Link2 size={17} />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isSyncing || !wooMapping}
+                                    onClick={() => void handleSincronizarWooCommerce(item)}
+                                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 shadow-sm transition hover:bg-emerald-200 hover:scale-105 disabled:opacity-60"
+                                    title="Sincronizar stock disponible con WooCommerce"
+                                  >
+                                    {isSyncing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={17} />}
+                                  </button>
+                                </>
+                              );
+                            })()}
                             <button
                               onClick={() =>
                                 handleEditar(item)

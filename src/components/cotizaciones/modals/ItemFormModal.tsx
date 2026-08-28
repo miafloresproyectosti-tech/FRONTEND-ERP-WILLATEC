@@ -1,9 +1,15 @@
 import React from "react";
 import type { ImportacionCalculoTipo, ItemForm } from "../../../types/cotizaciones.type";
-import { Calculator, Copy, Plus, Trash2, X } from "lucide-react";
+import { Calculator, Copy, ExternalLink, Eye, History, Loader2, Plus, Trash2, X } from "lucide-react";
 import { formatMoney } from "../../../utils/formatNumber";
 import { resolveItemImageUrl } from "../../../utils/storageImage";
 import api from "../../../services/api";
+import {
+  getProductoHistorialCotizaciones,
+  getProductoExternoHistorialCotizaciones,
+  type ProductoExternoHistorialItem,
+  type ProductoExternoHistorialResponse,
+} from "../../../services/producto.service";
 
 interface Props {
   open: boolean;
@@ -50,6 +56,11 @@ export function ItemFormModal({
   costoSinIgv = false
 }: Props) {
   const [importCalcOpen, setImportCalcOpen] = React.useState(false);
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
+  const [historyError, setHistoryError] = React.useState("");
+  const [productHistory, setProductHistory] = React.useState<ProductoExternoHistorialResponse | null>(null);
+  const [loadedHistoryKey, setLoadedHistoryKey] = React.useState("");
   const [importCalcType, setImportCalcType] = React.useState<'under200' | 'from201to1999' | 'from2000up'>('under200');
   const [importCalcForm, setImportCalcForm] = React.useState({
     precioProducto: itemForm.costo_base ? String(itemForm.costo_base) : '',
@@ -73,6 +84,13 @@ export function ItemFormModal({
   const precioCantidadMensual = Number((precioUnitMensual * Number(itemForm.cantidad || 0)).toFixed(2));
   const precioTotalMeses = Number(itemForm.subtotal || 0);
   const costoLabel = `Costo${costoSinIgv ? ' (SIN IGV)' : ''} (${monedaId === 1 ? 'S/.' : '$'})`;
+  const historyProductId = itemForm.producto_externo_id || itemForm.producto_id || null;
+  const historyKey = itemForm.producto_externo_id
+    ? `externo:${itemForm.producto_externo_id}`
+    : itemForm.producto_id
+      ? `interno:${itemForm.producto_id}`
+      : "";
+  const canViewProductHistory = Boolean(historyProductId);
 
   const field = (label: string, children: React.ReactNode) => (
     <div>
@@ -188,6 +206,45 @@ export function ItemFormModal({
   })();
   const formatUsd = (value: number) =>
     `$ ${value.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const formatDate = (value?: string | null) => {
+    if (!value) return "Sin fecha";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Sin fecha";
+
+    return date.toLocaleDateString("es-PE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      timeZone: "America/Lima",
+    });
+  };
+  const formatHistoryMoney = (
+    value: number | string | null | undefined,
+    fallbackSymbol = simboloMoneda,
+  ) => formatMoney(Number(value || 0), fallbackSymbol);
+  const getCostoAdicionalUnitario = (item: ProductoExternoHistorialItem) =>
+    Math.max(0, Number((Number(item.costo_unitario || 0) - Number(item.costo_base || 0)).toFixed(2)));
+  const handleOpenProductHistory = async () => {
+    if (!historyProductId) return;
+
+    setHistoryOpen(true);
+    if (loadedHistoryKey === historyKey && productHistory) return;
+
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const data = itemForm.producto_externo_id
+        ? await getProductoExternoHistorialCotizaciones(itemForm.producto_externo_id)
+        : await getProductoHistorialCotizaciones(historyProductId);
+      setProductHistory(data);
+      setLoadedHistoryKey(historyKey);
+    } catch (error) {
+      console.error("No se pudo cargar el historial del producto externo", error);
+      setHistoryError("No se pudo cargar el historial de cotizaciones de este producto.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
   const handleOpenImportCalculation = () => {
     if (importCalc) {
       setImportCalcType(importCalc.tipo as ImportacionCalculoTipo);
@@ -408,9 +465,21 @@ export function ItemFormModal({
               {itemForm.tipo ?? 'Externo'}
             </span>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {canViewProductHistory && (
+              <button
+                type="button"
+                onClick={() => void handleOpenProductHistory()}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                title="Ver historial de uso del producto"
+              >
+                <Eye className="h-4 w-4" />
+              </button>
+            )}
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="px-5 py-3 space-y-3 overflow-y-auto flex-1">
@@ -544,25 +613,16 @@ export function ItemFormModal({
                     <option value="UND">UND</option>
                     <option value="KIT">KIT</option>
                     <option value="PAR">PAR</option>
-                    <option value="PZA">PZA</option>
-                    <option value="SET">SET</option>
                     <option value="CAJA">CAJA</option>
                     <option value="PAQ">PAQ</option>
                     <option value="BOLSA">BOLSA</option>
                     <option value="ROLLO">ROLLO</option>
-                    <option value="MTS">MTS</option>
-                    <option value="CM">CM</option>
-                    <option value="MM">MM</option>
-                    <option value="SRV">SRV</option>
-                    <option value="HORA">HORA</option>
-                    <option value="DIA">DIA</option>
+                    <option value="MTS">MTS</option> 
                     <option value="KG">KG</option>
-                    <option value="GR">GR</option>
+                    <option value="GR">GL</option>
                     <option value="LT">LT</option>
-                    <option value="ML">ML</option>
                     <option value="CIENTO">CIENTO</option>
                     <option value="MILES">MILES</option>
-                    <option value="DOC">DOC</option>
                   </select>
                 )}
               </div>
@@ -649,7 +709,16 @@ export function ItemFormModal({
               <hr className="border-gray-200 my-2" />
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Proveedores</p>
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                      Proveedores ({proveedores.length})
+                    </p>
+                    {proveedores.length > 5 && (
+                      <p className="mt-0.5 text-[11px] text-gray-500">
+                        Se guardan todas las filas; para emitir OC se agrupan por proveedor.
+                      </p>
+                    )}
+                  </div>
                   {!readOnly && (
                     <button
                       type="button"
@@ -663,7 +732,7 @@ export function ItemFormModal({
                   )}
                 </div>
 
-                <div className="space-y-2">
+                <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
                   {proveedores.map((proveedor, index) => (
                     <div key={index} className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
                       <div className="flex items-center justify-between mb-2">
@@ -927,6 +996,129 @@ export function ItemFormModal({
           </div>
         </div>
       )}
+
+      {historyOpen && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/55 p-4">
+          <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <History className="h-4 w-4 text-indigo-600" />
+                  <h3 className="text-sm font-bold text-gray-900">Historial del producto</h3>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {productHistory?.producto?.descripcion || itemForm.descripcion || "Producto externo reutilizado"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(false)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                title="Cerrar historial"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto px-5 py-4">
+              {historyLoading ? (
+                <div className="flex items-center justify-center gap-2 rounded-xl border border-gray-100 bg-gray-50 py-10 text-sm font-semibold text-gray-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Cargando historial...
+                </div>
+              ) : historyError ? (
+                <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                  {historyError}
+                </div>
+              ) : productHistory?.historial?.length ? (
+                <div className="space-y-3">
+                  {productHistory.historial.map((row) => {
+                    const symbol = row.cotizacion?.simbolo_moneda || simboloMoneda;
+                    const costoAdicional = getCostoAdicionalUnitario(row);
+                    const costoAdicionalTotal = Number((costoAdicional * Number(row.cantidad || 0)).toFixed(2));
+                    const cotizacionId = row.cotizacion?.id;
+
+                    return (
+                      <div key={row.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-gray-900">
+                              {row.cotizacion?.cliente_nombre || "Cliente no registrado"}
+                            </p>
+                            <p className="mt-0.5 text-xs text-gray-500">
+                              Cot. {row.cotizacion?.numero || "-"} · {formatDate(row.cotizacion?.fecha || row.created_at)} · {row.cotizacion?.estado || "Sin estado"}
+                            </p>
+                            <p className="mt-1 text-xs text-gray-600">
+                              Ejecutivo: <span className="font-semibold text-gray-800">{row.cotizacion?.ejecutivo || "No definido"}</span>
+                            </p>
+                          </div>
+                          {cotizacionId && (
+                            <a
+                              href={`/cotizaciones/${cotizacionId}/view`}
+                              className="inline-flex shrink-0 items-center justify-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                              title="Abrir cotización"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Ver cot.
+                            </a>
+                          )}
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                          <HistoryMetric label="Costo base" value={formatHistoryMoney(row.costo_base, symbol)} />
+                          <HistoryMetric label="Costo usado" value={formatHistoryMoney(row.costo_unitario, symbol)} />
+                          <HistoryMetric label="Adicional unit." value={formatHistoryMoney(costoAdicional, symbol)} muted={costoAdicional <= 0} />
+                          <HistoryMetric label="Adicional total" value={formatHistoryMoney(costoAdicionalTotal, symbol)} muted={costoAdicionalTotal <= 0} />
+                          <HistoryMetric label="Vendido unit." value={formatHistoryMoney(row.precio_venta, symbol)} />
+                          <HistoryMetric label="Margen" value={`${Number(row.margen || 0).toFixed(2)}%`} />
+                        </div>
+
+                        {row.proveedores?.length ? (
+                          <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Proveedores usados</p>
+                            <div className="mt-2 space-y-1">
+                              {row.proveedores.map((proveedor, index) => (
+                                <div key={`${proveedor.id || index}-${proveedor.nombre}`} className="flex flex-col gap-1 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+                                  <span className="font-semibold text-slate-800">{proveedor.nombre || "Proveedor"}</span>
+                                  <span className="text-slate-500">
+                                    {proveedor.precio ? formatHistoryMoney(proveedor.precio, symbol) : "Sin precio"}
+                                    {proveedor.notas ? ` · ${proveedor.notas}` : ""}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+                  Todavía no hay historial de cotizaciones para este producto.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HistoryMetric({
+  label,
+  value,
+  muted = false,
+}: {
+  label: string;
+  value: string;
+  muted?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+      <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
+      <p className={`mt-1 text-xs font-bold ${muted ? "text-gray-400" : "text-gray-900"}`}>{value}</p>
     </div>
   );
 }

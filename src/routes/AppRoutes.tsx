@@ -27,6 +27,7 @@ const InventarioMovimientos = lazy(() => import("../pages/InventarioMovimientos"
 const OrdenesCompraPage = lazy(() => import("../pages/OrdenesCompraPage"));
 const OrdenCompraDetail = lazy(() => import("../pages/OrdenCompraDetail"));
 const Notificaciones = lazy(() => import("../pages/Notificaciones"));
+const WooCommercePedidos = lazy(() => import("../pages/WooCommercePedidos"));
 
 // 🆕 SERVICIOS
 import Licencias from "../pages/Servicios/Licencias";
@@ -272,6 +273,15 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute requiredPermission="inventario">
                 <InventarioMovimientos />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/woocommerce/pedidos"
+            element={
+              <ProtectedRoute requiredRoles={["SUPERADMIN", "ADMIN", "LOGISTICA"]}>
+                <WooCommercePedidos />
               </ProtectedRoute>
             }
           />

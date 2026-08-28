@@ -606,7 +606,7 @@ export default function SeguimientoLicitaciones() {
       garantia: data.tipo === "licitacion" ? clean(data.garantia) : undefined,
       plazo: data.tipo === "licitacion" ? clean(data.plazo) : undefined,
       carpetaServidor: data.tipo === "licitacion" ? clean(data.carpetaServidor) : undefined,
-      tdr: data.tipo === "licitacion" || data.tipo === "privado" ? data.tdr : undefined,
+      tdr: data.tdr,
       formaPago: data.tipo !== "licitacion" && data.formaPago ? data.formaPago : undefined,
       destinoEntrega: data.tipo === "privado" ? clean(data.destinoEntrega) : undefined,
       wherexId: data.tipo === "wherex" ? clean(data.wherexId) : undefined,

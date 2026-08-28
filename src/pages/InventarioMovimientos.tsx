@@ -723,7 +723,6 @@ export default function InventarioMovimientos() {
       setError(null);
       const costoEntrada = Number(entradaForm.costo_unitario || 0);
       const payload: ProductoPayload = {
-        sku: nextProductoCodigo,
         codigo: nextProductoCodigo,
         nombre,
         marca: nuevoProducto.marca.trim(),
