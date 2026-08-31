@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Calendar,
@@ -26,11 +26,21 @@ import {
 
 import { useAuth } from "../../AuthContext";
 import { featureFlags } from "../../config/featureFlags";
+import {
+  notificationService,
+  NOTIFICATIONS_UPDATED_EVENT,
+} from "../../services/notification.service";
+import {
+  getNotificationSectionKey,
+  type NotificationSectionKey,
+} from "../../utils/notificationSections";
 
 interface SidebarProps {
   mobile?: boolean;
   onClose?: () => void;
 }
+
+const SIDEBAR_NOTIFICATION_POLL_MS = 60_000;
 
 export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const location = useLocation();
@@ -44,6 +54,9 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const [seguimientoOpen, setSeguimientoOpen] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [notificationCounts, setNotificationCounts] = useState<
+    Partial<Record<NotificationSectionKey, number>>
+  >({});
   const dropdownTimeoutRef = useRef<number | null>(null);
 
   const canSeeCommercialGroup =
@@ -62,18 +75,90 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   };
 
   const itemClass = (path: string) =>
-    `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all sm:text-base ${
+    `relative flex items-center gap-3 rounded-2xl px-4 py-3 pr-10 text-sm transition-all sm:text-base ${
       isActive(path)
         ? "bg-blue-600 text-white shadow-lg"
         : "text-gray-300 hover:bg-gray-900 hover:text-white"
     }`;
 
   const subItemClass = (path: string) =>
-    `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all ${
+    `relative flex items-center gap-3 rounded-2xl px-4 py-3 pr-10 text-sm transition-all ${
       isActive(path)
         ? "bg-blue-600 text-white shadow-lg"
         : "text-gray-400 hover:bg-gray-900 hover:text-white"
     }`;
+
+  const notificationCount = (...keys: NotificationSectionKey[]) =>
+    keys.reduce((total, key) => total + (notificationCounts[key] || 0), 0);
+
+  const NotificationBadge = ({ count }: { count: number }) => {
+    if (count <= 0) return null;
+
+    return (
+      <span
+        className="absolute right-2.5 top-1/2 flex h-5 min-w-5 -translate-y-1/2 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold leading-none text-white shadow-sm ring-2 ring-gray-950"
+        title={`${count} notificación${count === 1 ? "" : "es"} no leída${count === 1 ? "" : "s"}`}
+      >
+        {count > 99 ? "99+" : count}
+      </span>
+    );
+  };
+
+  const InlineNotificationBadge = ({ count }: { count: number }) => {
+    if (count <= 0) return null;
+
+    return (
+      <span
+        className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold leading-none text-white shadow-sm"
+        title={`${count} notificación${count === 1 ? "" : "es"} no leída${count === 1 ? "" : "s"}`}
+      >
+        {count > 99 ? "99+" : count}
+      </span>
+    );
+  };
+
+  useEffect(() => {
+    if (!user?.id) {
+      setNotificationCounts({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadCounts = async (force = false) => {
+      try {
+        const notifications = await notificationService.getNotifications({ force });
+        if (cancelled) return;
+
+        const counts = notifications
+          .filter((notification) => !notification.read_at)
+          .reduce<Partial<Record<NotificationSectionKey, number>>>((acc, notification) => {
+            const key = getNotificationSectionKey(notification);
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+          }, {});
+
+        setNotificationCounts(counts);
+      } catch (error) {
+        console.warn("No se pudieron cargar indicadores de notificaciones del sidebar:", error);
+      }
+    };
+
+    void loadCounts();
+    const intervalId = window.setInterval(() => void loadCounts(), SIDEBAR_NOTIFICATION_POLL_MS);
+    const handleFocus = () => void loadCounts();
+    const handleUpdated = () => void loadCounts(true);
+
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, handleUpdated);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, handleUpdated);
+    };
+  }, [user?.id]);
 
   const formatLastLogin = (value?: string | null) => {
     if (!value) return "No disponible";
@@ -168,6 +253,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               >
                 <ClipboardList size={20} />
                 <span className="font-medium">Oportunidades</span>
+                <NotificationBadge count={notificationCount("oportunidades")} />
               </Link>
             )}
 
@@ -183,12 +269,17 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     <span className="font-medium uppercase">Comercial</span>
                   </div>
 
-                  <ChevronDown
-                    size={18}
-                    className={`transition-transform ${
-                      commercialOpen ? "rotate-180" : ""
-                    }`}
-                  />
+                  <div className="flex items-center gap-2">
+                    <InlineNotificationBadge
+                      count={notificationCount("cotizaciones", "ordenes", "inventario", "usuarios")}
+                    />
+                    <ChevronDown
+                      size={18}
+                      className={`transition-transform ${
+                        commercialOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </div>
                 </button>
 
                 {commercialOpen && (
@@ -201,6 +292,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       >
                         <FileText size={18} />
                         Cotizaciones
+                        <NotificationBadge count={notificationCount("cotizaciones")} />
                       </Link>
                     )}
 
@@ -223,6 +315,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       >
                         <ShoppingCart size={18} />
                         Ordenes de Compra
+                        <NotificationBadge count={notificationCount("ordenes")} />
                       </Link>
                     )}
 
@@ -234,6 +327,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       >
                         <Package size={18} />
                         Productos
+                        <NotificationBadge count={notificationCount("inventario")} />
                       </Link>
                     )}
 
@@ -244,6 +338,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     >
                       <ShoppingBag size={18} />
                       WooCommerce
+                      <NotificationBadge count={notificationCount("ordenes")} />
                     </Link>
 
                     {hasPermission("clientes") && (
@@ -254,6 +349,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       >
                         <UserCheck size={18} />
                         Clientes
+                        <NotificationBadge count={notificationCount("usuarios")} />
                       </Link>
                     )}
                   </div>
@@ -270,6 +366,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <Package size={20} />
                   <span className="font-medium">Productos</span>
+                  <NotificationBadge count={notificationCount("inventario")} />
                 </Link>
 
                 <Link
@@ -279,6 +376,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <UserCheck size={20} />
                   <span className="font-medium">Clientes</span>
+                  <NotificationBadge count={notificationCount("usuarios")} />
                 </Link>
 
                 <Link
@@ -288,6 +386,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <FileText size={20} />
                   <span className="font-medium">Cotizaciones</span>
+                  <NotificationBadge count={notificationCount("cotizaciones")} />
                 </Link>
 
                 <Link
@@ -297,6 +396,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <ShoppingCart size={20} />
                   <span className="font-medium">Ordenes de Compra</span>
+                  <NotificationBadge count={notificationCount("ordenes")} />
                 </Link>
               </>
             )}
@@ -309,6 +409,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               >
                 <Package size={20} />
                 <span className="font-medium">Productos</span>
+                <NotificationBadge count={notificationCount("inventario")} />
               </Link>
             )}
 
@@ -321,6 +422,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <Package size={20} />
                   <span className="font-medium">Productos</span>
+                  <NotificationBadge count={notificationCount("inventario")} />
                 </Link>
 
                 <Link
@@ -330,6 +432,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <ClipboardList size={20} />
                   <span className="font-medium">KARDEX</span>
+                  <NotificationBadge count={notificationCount("inventario")} />
                 </Link>
 
                 <Link
@@ -339,6 +442,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <ShoppingBag size={20} />
                   <span className="font-medium">WooCommerce</span>
+                  <NotificationBadge count={notificationCount("ordenes")} />
                 </Link>
               </>
             )}
@@ -351,6 +455,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               >
                 <ShoppingCart size={20} />
                 <span className="font-medium">Ordenes de Compra</span>
+                <NotificationBadge count={notificationCount("ordenes")} />
               </Link>
             )}
 
@@ -366,12 +471,15 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     <span className="font-medium uppercase">Servicios</span>
                   </div>
 
-                  <ChevronDown
-                    size={18}
-                    className={`transition-transform ${
-                      servicesOpen ? "rotate-180" : ""
-                    }`}
-                  />
+                  <div className="flex items-center gap-2">
+                    <InlineNotificationBadge count={notificationCount("servicios")} />
+                    <ChevronDown
+                      size={18}
+                      className={`transition-transform ${
+                        servicesOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </div>
                 </button>
 
                 {servicesOpen && (
@@ -383,6 +491,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     >
                       <KeyRound size={18} />
                       Licencias
+                      <NotificationBadge count={notificationCount("servicios")} />
                     </Link>
 
                     <Link
@@ -392,6 +501,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     >
                       <Server size={18} />
                       Hosting
+                      <NotificationBadge count={notificationCount("servicios")} />
                     </Link>
                   </div>
                 )}
@@ -507,6 +617,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               >
                 <Users size={20} />
                 <span className="font-medium">Usuarios</span>
+                <NotificationBadge count={notificationCount("usuarios")} />
               </Link>
             )}
 
@@ -518,6 +629,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               >
                 <ShieldCheck size={20} />
                 <span className="font-medium">Auditoria</span>
+                <NotificationBadge count={notificationCount("usuarios")} />
               </Link>
             )}
 
@@ -529,6 +641,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               >
                 <ClipboardList size={20} />
                 <span className="font-medium">KARDEX</span>
+                <NotificationBadge count={notificationCount("inventario")} />
               </Link>
             )}
           </nav>

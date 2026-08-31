@@ -92,6 +92,7 @@ interface CotizacionLocalDraft {
   version: number;
   savedAt: string;
   payload: any;
+  reason?: 'autosave' | 'conflict';
 }
 
 interface OpportunitySummary {
@@ -276,6 +277,7 @@ export function CotizacionDetail() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [availableDraft, setAvailableDraft] = useState<CotizacionLocalDraft | null>(null);
   const [showDraftModal, setShowDraftModal] = useState(false);
+  const [conflictDraftNeedsReload, setConflictDraftNeedsReload] = useState(false);
   const baselineDraftRef = useRef<string>('');
   const lastSavedDraftRef = useRef<string>('');
   const allowNextNavigationRef = useRef(false);
@@ -363,6 +365,7 @@ export function CotizacionDetail() {
   const [items, setItems] = useState<CotizacionItem[]>([]);
   const [costos, setCostos] = useState<CotizacionCostosAdicional[]>([]);
   const [historial, setHistorial] = useState<CotizacionHistorial[]>([]);
+  const [loadedCotizacionUpdatedAt, setLoadedCotizacionUpdatedAt] = useState<string | null>(null);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [productosSearchTerm, setProductosSearchTerm] = useState('');
   const debouncedProductosSearchTerm = useDebouncedValue(productosSearchTerm, 350);
@@ -1189,6 +1192,7 @@ export function CotizacionDetail() {
       setSelectedVersion(null);
       const data = await getCotizacion(currentCotizacionId);
       setCotizacion(data);
+      setLoadedCotizacionUpdatedAt(data.updated_at || null);
       setEstadoCotizacionId(Number(data.estado_cotizacion_id));
       setClienteId(Number(data.cliente_id));
       setPlantillaId(Number(data.plantilla_id));
@@ -1712,6 +1716,10 @@ export function CotizacionDetail() {
     const status = error?.response?.status;
     const data = error?.response?.data;
     const backendMessage = data?.message;
+    if (status === 409) {
+      return backendMessage || 'Esta cotizacion fue modificada por otro usuario mientras la editabas. Recarga la cotizacion antes de volver a guardar.';
+    }
+
     const validationErrors = data?.errors && typeof data.errors === 'object'
       ? Object.values(data.errors)
         .flat()
@@ -1726,6 +1734,10 @@ export function CotizacionDetail() {
 
     if (status === 413) {
       return 'El archivo o una imagen es demasiado pesada. Revisa las imágenes de los ítems e intenta nuevamente.';
+    }
+
+    if (status === 409) {
+      return backendMessage || 'Esta cotizacion fue modificada por otro usuario mientras la editabas. Recarga la cotizacion antes de volver a guardar.';
     }
 
     if (status === 422) {
@@ -1805,7 +1817,31 @@ export function CotizacionDetail() {
       payload.delegado_cotizacion_id = delegadoCotizacionId;
     }
 
+    if (!isModificationMode && isEditing && currentCotizacionId && loadedCotizacionUpdatedAt) {
+      payload.last_known_updated_at = loadedCotizacionUpdatedAt;
+    }
+
     return payload;
+  };
+
+  const saveConflictDraft = (payload: any) => {
+    const draft: CotizacionLocalDraft = {
+      version: COTIZACION_DRAFT_VERSION,
+      savedAt: new Date().toISOString(),
+      payload,
+      reason: 'conflict',
+    };
+
+    try {
+      localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+      setAvailableDraft(draft);
+      setConflictDraftNeedsReload(true);
+      setShowDraftModal(true);
+      baselineDraftRef.current = JSON.stringify(payload);
+      lastSavedDraftRef.current = JSON.stringify(payload);
+    } catch (error) {
+      console.warn('No se pudo guardar el borrador local tras conflicto de cotizacion', error);
+    }
   };
 
   const handleSaveCotizacion = async () => {
@@ -1886,6 +1922,7 @@ export function CotizacionDetail() {
 
         // sincronizar estado local con respuesta del servidor
         setCotizacion(finalCotizacion);
+        setLoadedCotizacionUpdatedAt(finalCotizacion.updated_at || null);
         setEstadoCotizacionId(Number(finalCotizacion.estado_cotizacion_id || estadoCotizacionId));
         setDelegadoId(finalCotizacion.delegado_id || null);
         setDelegadoCotizacionId(finalCotizacion.delegado_cotizacion_id ?? (finalCotizacion as any).delegadoCotizacionId ?? null);
@@ -1926,6 +1963,7 @@ export function CotizacionDetail() {
           duration: 4000,
         } as any);
         setCotizacion(newCotizacion);
+        setLoadedCotizacionUpdatedAt(newCotizacion.updated_at || null);
       }
       clearLocalDraft();
       markCurrentStateAsSaved();
@@ -1933,6 +1971,9 @@ export function CotizacionDetail() {
       navigate(postSavePath);
     } catch (error: any) {
       console.error('Error al guardar cotización:', error);
+      if (error?.response?.status === 409) {
+        saveConflictDraft(payload);
+      }
       showToast({
         title: 'Error al guardar cotización',
         description: getCotizacionSaveErrorMessage(error),
@@ -2639,6 +2680,7 @@ export function CotizacionDetail() {
 
     setAvailableDraft(null);
     setShowDraftModal(false);
+    setConflictDraftNeedsReload(false);
     lastSavedDraftRef.current = '';
   }, [draftStorageKey]);
 
@@ -2685,6 +2727,7 @@ export function CotizacionDetail() {
         JSON.stringify(parsedDraft.payload) !== snapshot
       ) {
         setAvailableDraft(parsedDraft);
+        setConflictDraftNeedsReload(false);
         setShowDraftModal(true);
       }
     } catch (error) {
@@ -2789,6 +2832,11 @@ export function CotizacionDetail() {
   const discardLocalDraft = () => {
     clearLocalDraft();
     markCurrentStateAsSaved();
+  };
+
+  const reloadAfterConflictDraft = () => {
+    allowProgrammaticNavigation();
+    window.location.reload();
   };
 
   const estadoLabels: Record<number, string> = {
@@ -3579,34 +3627,65 @@ export function CotizacionDetail() {
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="border-b border-gray-100 px-6 py-4">
-              <h2 className="text-lg font-bold text-gray-900">Borrador encontrado</h2>
+              <h2 className="text-lg font-bold text-gray-900">
+                {conflictDraftNeedsReload ? 'Cotizacion actualizada por otro usuario' : 'Borrador encontrado'}
+              </h2>
               <p className="mt-1 text-sm text-gray-500">
-                Hay cambios no guardados de esta cotizacion en este equipo.
+                {conflictDraftNeedsReload
+                  ? 'Tus cambios se guardaron como borrador local para que no pierdas tu trabajo.'
+                  : 'Hay cambios no guardados de esta cotizacion en este equipo.'}
               </p>
             </div>
             <div className="space-y-3 px-6 py-5 text-sm text-gray-600">
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
                 Ultimo guardado local: {new Date(availableDraft.savedAt).toLocaleString('es-PE')}
               </div>
-              <p>
-                Puedes recuperar el borrador para continuar editando, o descartarlo y seguir con la version cargada del sistema.
-              </p>
+              {conflictDraftNeedsReload ? (
+                <p>
+                  Otra persona guardo esta cotizacion antes que tu. Recarga para traer la version vigente; al abrir nuevamente podras recuperar este borrador local.
+                </p>
+              ) : (
+                <p>
+                  Puedes recuperar el borrador para continuar editando, o descartarlo y seguir con la version cargada del sistema.
+                </p>
+              )}
             </div>
             <div className="flex flex-col-reverse gap-2 border-t border-gray-100 px-6 py-4 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={discardLocalDraft}
-                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-              >
-                Descartar
-              </button>
-              <button
-                type="button"
-                onClick={restoreLocalDraft}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-              >
-                Recuperar borrador
-              </button>
+              {conflictDraftNeedsReload ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowDraftModal(false)}
+                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Seguir revisando
+                  </button>
+                  <button
+                    type="button"
+                    onClick={reloadAfterConflictDraft}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Recargar cotizacion
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={discardLocalDraft}
+                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Descartar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={restoreLocalDraft}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Recuperar borrador
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

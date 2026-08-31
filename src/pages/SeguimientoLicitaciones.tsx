@@ -132,6 +132,8 @@ const SALES_BANDEJAS = [
   { key: "creadas", label: "Subidas por mi" },
 ] as const;
 
+const OPPORTUNITY_EXECUTIVE_ROLES = new Set(["VENTAS", "SUPERADMIN"]);
+
 const SUPERADMIN_BANDEJAS = [
   { key: "disponibles", label: "Oportunidades Disponibles" },
   { key: "en_atencion", label: "Oportunidades en Atencion" },
@@ -255,6 +257,11 @@ export default function SeguimientoLicitaciones() {
 
       const mappedUsers = users
         .filter((item) => item.activo !== false)
+        .filter((item) =>
+          item.roles?.some((role) =>
+            OPPORTUNITY_EXECUTIVE_ROLES.has(normalizeRole(role.name)),
+          ),
+        )
         .map((item) => ({
           id: item.id,
           nombre: `${item.nombres || ""} ${item.apellidos || ""}`.trim() || item.email,
@@ -264,11 +271,9 @@ export default function SeguimientoLicitaciones() {
       setEjecutivos(
         mappedUsers.length > 0
           ? mappedUsers
-          : [
-              { id: user?.id || 1, nombre: userName, email: user?.email },
-              { id: 2, nombre: "Maria Ventas", email: "maria@willatec.com" },
-              { id: 3, nombre: "Supervisor Comercial", email: "supervisor@willatec.com" },
-            ]
+          : user?.id && OPPORTUNITY_EXECUTIVE_ROLES.has(currentRole)
+            ? [{ id: user.id, nombre: userName, email: user.email }]
+            : []
       );
       setOpportunities(items);
     } catch (error) {
@@ -372,7 +377,14 @@ export default function SeguimientoLicitaciones() {
     return scopedOpportunities
       .filter((item) => filters.tipo === "todos" || item.tipo === filters.tipo)
       .filter((item) => filters.estado === "todos" || item.estado === filters.estado)
-      .filter((item) => filters.ejecutivo === "todos" || String(item.ejecutivo.id) === filters.ejecutivo)
+      .filter((item) => {
+        if (filters.ejecutivo === "todos") return true;
+
+        const executiveId = Number(item.asignadoA ?? item.ejecutivo?.id ?? 0);
+        if (filters.ejecutivo === "sin_asignar") return executiveId === 0;
+
+        return String(executiveId) === filters.ejecutivo;
+      })
       .filter((item) => filters.categoria === "todos" || item.categoria === filters.categoria)
       .filter((item) => !filters.empresa || normalizeText(item.empresa).includes(normalizeText(filters.empresa)))
       .filter((item) => !filters.requerimiento || normalizeText(item.requerimiento).includes(normalizeText(filters.requerimiento)))
@@ -543,25 +555,26 @@ export default function SeguimientoLicitaciones() {
 
     try {
       setAssigningOpportunityId(opportunity.id);
-      await saveOportunidad(next);
-    const reminder = `Recuerda que tienes una cotización pendiente y se vence ${formatDateTime(next.vigencia)}.`;
-    addNotification({
-      title: "Cotización pendiente",
-      description: reminder,
-      type: "warning",
-      icon: "UserCheck",
-      route: "/seguimiento-licitaciones",
-      targetUserId: next.ejecutivo.id,
-    });
-    addNotification({
-      title: "Oportunidad asignada",
-      description: `${userName} se asigno la oportunidad "${next.requerimiento} - ${next.empresa}".`,
-      type: "info",
-      icon: "UserCheck",
-      route: "/seguimiento-licitaciones",
-      targetRole: "SUPERADMIN",
-    });
-    await loadData();
+      const updated = await saveOportunidad(next);
+      syncSelectedOpportunity(updated);
+      void refreshSelectedOpportunity(opportunity.id, updated);
+      const reminder = `Recuerda que tienes una cotización pendiente y se vence ${formatDateTime(next.vigencia)}.`;
+      addNotification({
+        title: "Cotización pendiente",
+        description: reminder,
+        type: "warning",
+        icon: "UserCheck",
+        route: "/seguimiento-licitaciones",
+        targetUserId: next.ejecutivo.id,
+      });
+      addNotification({
+        title: "Oportunidad asignada",
+        description: `${userName} se asigno la oportunidad "${next.requerimiento} - ${next.empresa}".`,
+        type: "info",
+        icon: "UserCheck",
+        route: "/seguimiento-licitaciones",
+        targetRole: "SUPERADMIN",
+      });
       showToast({ title: "Oportunidad asignada", description: reminder, type: "warning" });
     } finally {
       setAssigningOpportunityId(null);
@@ -639,10 +652,11 @@ export default function SeguimientoLicitaciones() {
     };
 
     try {
-      await saveOportunidad(next);
+      const updated = await saveOportunidad(next);
       setModalOpen(false);
       setEditing(null);
-      await loadData();
+      syncSelectedOpportunity(updated);
+      void refreshSelectedOpportunity(updated.id, updated);
       showToast({ title: "Oportunidad guardada", description: "El seguimiento fue actualizado.", type: "success" });
     } catch (error) {
       const response = error as { response?: { data?: { message?: string } }; message?: string };
@@ -804,12 +818,12 @@ export default function SeguimientoLicitaciones() {
     }
   };
 
-  const syncSelectedOpportunity = (detail: Oportunidad) => {
+  function syncSelectedOpportunity(detail: Oportunidad) {
     setSelectedDetail(detail);
     setOpportunities((current) =>
       current.map((item) => (item.id === detail.id ? { ...item, ...detail } : item)),
     );
-  };
+  }
 
   const refreshSelectedOpportunity = async (opportunityId: string, immediateDetail?: Oportunidad) => {
     if (immediateDetail) {
@@ -1003,7 +1017,7 @@ export default function SeguimientoLicitaciones() {
 
     setQuoteLinkModalOpen(false);
     setQuoteLinkSelectedId(null);
-    await loadData();
+    await refreshSelectedOpportunity(selected.id);
     showToast({
       title: "Cotizacion vinculada",
       description: `${cotizacion.numero || `#${cotizacion.id}`} quedo asociada a la oportunidad.`,
@@ -1427,10 +1441,15 @@ export default function SeguimientoLicitaciones() {
               type="button"
               onClick={() => {
                 if (item.key in OPORTUNIDAD_ESTADOS) {
-                  updateFilter("estado", item.key as OportunidadEstado);
+                  updateFilter(
+                    "estado",
+                    filters.estado === item.key ? "todos" : item.key as OportunidadEstado,
+                  );
                 }
               }}
-              className={`rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-950 ${item.className}`}
+              className={`rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-950 ${item.className} ${
+                filters.estado === item.key ? "ring-2 ring-blue-400" : ""
+              }`}
             >
               <p className="min-h-8 text-xs font-semibold leading-4 text-slate-500">{item.label}</p>
               <p className="text-xl font-bold text-slate-900 dark:text-white">{summary[item.key] || 0}</p>
@@ -1440,7 +1459,7 @@ export default function SeguimientoLicitaciones() {
       )}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4 xl:grid-cols-8">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
           <label className="relative lg:col-span-2">
             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
             <input
@@ -1450,16 +1469,13 @@ export default function SeguimientoLicitaciones() {
               placeholder="Buscar empresa o requerimiento"
             />
           </label>
-          <select value={filters.tipo} onChange={(event) => updateFilter("tipo", event.target.value as OportunidadFilters["tipo"])} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
-            <option value="todos">Todos los tipos</option>
-            {Object.entries(OPORTUNIDAD_TIPOS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
           <select value={filters.estado} onChange={(event) => updateFilter("estado", event.target.value as OportunidadFilters["estado"])} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
             <option value="todos">Todos los estados</option>
             {Object.entries(OPORTUNIDAD_ESTADOS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
           <select value={filters.ejecutivo} onChange={(event) => updateFilter("ejecutivo", event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
             <option value="todos">Todos los ejecutivos</option>
+            <option value="sin_asignar">Sin asignar</option>
             {ejecutivos.map((ejecutivo) => <option key={ejecutivo.id} value={ejecutivo.id}>{ejecutivo.nombre}</option>)}
           </select>
           <select value={filters.categoria} onChange={(event) => updateFilter("categoria", event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">

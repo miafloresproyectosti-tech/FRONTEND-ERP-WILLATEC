@@ -47,6 +47,13 @@ const normalizeNotifications = (
 
 const NOTIFICATIONS_CACHE_KEY = "notifications:current-user";
 const NOTIFICATIONS_TTL_MS = 15_000;
+export const NOTIFICATIONS_UPDATED_EVENT = "erp:notifications-updated";
+
+const notifyNotificationsUpdated = () => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(NOTIFICATIONS_UPDATED_EVENT));
+  }
+};
 
 export const notificationService = {
   // Obtener todas las notificaciones del usuario autenticado
@@ -71,6 +78,7 @@ export const notificationService = {
       `/notifications/${id}/read`
     );
     clearCache(NOTIFICATIONS_CACHE_KEY);
+    notifyNotificationsUpdated();
     return response.data;
   },
 
@@ -98,5 +106,6 @@ export const notificationService = {
     }
 
     clearCache(NOTIFICATIONS_CACHE_KEY);
+    notifyNotificationsUpdated();
   },
 };

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Save, Building, Settings, Shield, Bell, Eye, EyeOff, AlertTriangle } from "lucide-react";
 import {
   enableTwoFactorRequest,
@@ -27,6 +27,7 @@ export default function Configuracion() {
   const { user, updateTwoFactorEnabled } = useAuth();
   const twoFactorEnabled = !!user?.two_factor_enabled;
   const isSuperAdmin = user?.role === "SUPERADMIN";
+  const canManageSystemSettings = user?.role === "SUPERADMIN" || user?.role === "ADMIN";
   const [loadingEmpresaConfig, setLoadingEmpresaConfig] = useState(false);
   const [savingEmpresaConfig, setSavingEmpresaConfig] = useState(false);
   const [empresaForm, setEmpresaForm] = useState({
@@ -37,12 +38,12 @@ export default function Configuracion() {
     correo: "",
   });
 
-  const tabs = [
+  const tabs = useMemo(() => [
     { id: "empresa", name: "Empresa", icon: Building },
     { id: "sistema", name: "Sistema", icon: Settings },
     { id: "seguridad", name: "Seguridad", icon: Shield },
     { id: "notificaciones", name: "Notificaciones", icon: Bell },
-  ];
+  ].filter((tab) => !user || canManageSystemSettings || ["seguridad", "notificaciones"].includes(tab.id)), [canManageSystemSettings, user]);
 
   //VERIFICACION DE 2 PASOS
   const [qr, setQr] = useState("");
@@ -70,6 +71,8 @@ export default function Configuracion() {
   ]);
 
   useEffect(() => {
+    if (!canManageSystemSettings) return;
+
     const loadEmpresaConfig = async () => {
       try {
         setLoadingEmpresaConfig(true);
@@ -89,7 +92,12 @@ export default function Configuracion() {
     };
 
     void loadEmpresaConfig();
-  }, []);
+  }, [canManageSystemSettings]);
+
+  useEffect(() => {
+    if (tabs.some((tab) => tab.id === activeTab)) return;
+    setActiveTab(tabs[0]?.id || "seguridad");
+  }, [activeTab, tabs]);
 
   const handleEmpresaChange = (field: keyof typeof empresaForm, value: string) => {
     setEmpresaForm((current) => ({
@@ -137,6 +145,15 @@ export default function Configuracion() {
   };
 
   const handleSaveChanges = () => {
+    if (!canManageSystemSettings) {
+      showToast({
+        title: "Sin cambios pendientes",
+        description: "Por ahora este apartado no requiere guardado manual",
+        type: "info",
+      });
+      return;
+    }
+
     if (activeTab === "empresa") {
       void saveEmpresaConfig();
       return;
@@ -408,6 +425,8 @@ ${recoveryCodes.join("\n")}
   const renderTabContent = () => {
     switch (activeTab) {
       case "empresa":
+        if (!canManageSystemSettings) return null;
+
         return (
           <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
@@ -495,6 +514,8 @@ ${recoveryCodes.join("\n")}
           </div>
         );
       case "sistema":
+        if (!canManageSystemSettings) return null;
+
         return (
           <div className="max-w-4xl mx-auto space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -542,6 +563,7 @@ ${recoveryCodes.join("\n")}
       case "seguridad":
         return (
           <div className="max-w-4xl mx-auto space-y-8">
+            {canManageSystemSettings && (
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-semibold text-gray-800 mb-4 pb-3 border-b border-gray-200">
@@ -574,6 +596,7 @@ ${recoveryCodes.join("\n")}
                 </div>
               </div>
             </div>
+            )}
             {isSuperAdmin && (
               <div className="bg-white rounded-2xl p-6 shadow">
                 <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -923,15 +946,17 @@ ${recoveryCodes.join("\n")}
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleSaveChanges}
-          disabled={activeTab === "empresa" && savingEmpresaConfig}
-          className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
-        >
-          <Save size={20} />
-          {activeTab === "empresa" && savingEmpresaConfig ? "Guardando..." : "Guardar Cambios"}
-        </button>
+        {canManageSystemSettings && activeTab === "empresa" && (
+          <button
+            type="button"
+            onClick={handleSaveChanges}
+            disabled={savingEmpresaConfig}
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+          >
+            <Save size={20} />
+            {savingEmpresaConfig ? "Guardando..." : "Guardar Cambios"}
+          </button>
+        )}
       </div>
 
       {/* TABS */}
