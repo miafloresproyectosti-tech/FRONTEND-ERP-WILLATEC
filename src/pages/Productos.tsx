@@ -613,6 +613,7 @@ export default function Productos() {
 
       const headers = [
         "Codigo",
+        "SKU",
         "Nombre",
         "Marca",
         "Modelo",
@@ -654,23 +655,24 @@ export default function Productos() {
           nombre: productoUI.nombre,
           codigo: productoUI.codigo,
           values: [
-          productoUI.codigo,
-          productoUI.nombre,
-          productoUI.marca,
-          productoUI.modelo,
-          productoUI.categoria_label,
-          productoUI.estado === "usado" ? "Usado" : "Nuevo",
-          productoUI.unidad_medida,
-          moneda,
-          productoUI.precio_referencial,
-          productoUI.stock_actual ?? productoUI.stock,
-          productoUI.stock_reservado ?? 0,
-          productoUI.stock_disponible ?? productoUI.stock,
-          productoUI.ubicacion_almacen || "",
-          series || productoUI.serie,
-          productoUI.factura_numero,
-          productoUI.descripcion,
-          productoUI.activo === "true" ? "Activo" : "Inactivo",
+            productoUI.codigo,
+            productoUI.sku || "",
+            productoUI.nombre,
+            productoUI.marca,
+            productoUI.modelo,
+            productoUI.categoria_label,
+            productoUI.estado === "usado" ? "Usado" : "Nuevo",
+            productoUI.unidad_medida,
+            moneda,
+            productoUI.precio_referencial,
+            productoUI.stock_actual ?? productoUI.stock,
+            productoUI.stock_reservado ?? 0,
+            productoUI.stock_disponible ?? productoUI.stock,
+            productoUI.ubicacion_almacen || "",
+            series || productoUI.serie,
+            productoUI.factura_numero,
+            productoUI.descripcion,
+            productoUI.activo === "true" ? "Activo" : "Inactivo",
           ],
         };
       }).sort((a, b) => {
@@ -690,7 +692,7 @@ export default function Productos() {
         views: [{ state: "frozen", ySplit: 6 }],
       });
 
-      worksheet.mergeCells("A1:Q3");
+      worksheet.mergeCells("A1:R3");
 
       const logoBuffer = await getLogoBuffer();
       if (logoBuffer) {
@@ -704,7 +706,7 @@ export default function Productos() {
         });
       }
 
-      worksheet.mergeCells("A4:Q4");
+      worksheet.mergeCells("A4:R4");
       worksheet.getCell("A4").value = "PRODUCTOS STOCK";
       worksheet.getCell("A4").font = {
         bold: true,
@@ -713,7 +715,7 @@ export default function Productos() {
       };
       worksheet.getCell("A4").alignment = { horizontal: "center" };
 
-      worksheet.mergeCells("A5:Q5");
+      worksheet.mergeCells("A5:R5");
       worksheet.getCell("A5").value = `Inventario interno de productos | Exportado: ${today} | Total: ${exportRows.length}`;
       worksheet.getCell("A5").font = { size: 10, color: { argb: "FF64748B" } };
       worksheet.getCell("A5").alignment = { horizontal: "center" };
@@ -756,6 +758,7 @@ export default function Productos() {
 
       worksheet.columns = [
         { width: 18 },
+        { width: 18 },
         { width: 32 },
         { width: 18 },
         { width: 22 },
@@ -773,7 +776,7 @@ export default function Productos() {
         { width: 42 },
         { width: 12 },
       ];
-      worksheet.autoFilter = "A7:Q7";
+      worksheet.autoFilter = "A7:R7";
 
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], {

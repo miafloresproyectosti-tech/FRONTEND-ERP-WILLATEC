@@ -1,5 +1,11 @@
 import api from "./api";
 import { cachedRequest, clearCache } from "../utils/cache";
+import { getNotificationSectionKey } from "../utils/notificationSections";
+import {
+  notificationPreferenceService,
+  NOTIFICATION_PREFERENCES_CACHE_KEY,
+  type NotificationPreferences,
+} from "./notificationPreference.service";
 
 export interface DatabaseNotification {
   id: string;
@@ -55,14 +61,55 @@ const notifyNotificationsUpdated = () => {
   }
 };
 
+const filterNotificationsByPreferences = (
+  notifications: DatabaseNotification[],
+  preferences: NotificationPreferences
+) => {
+  if (!preferences.system_enabled) return [];
+
+  return notifications.filter((notification) => {
+    const section = getNotificationSectionKey(notification);
+
+    return preferences.allowed_modules.includes(section) && preferences.modules[section] !== false;
+  });
+};
+
 export const notificationService = {
+  getPreferences: async (): Promise<NotificationPreferences> =>
+    cachedRequest(
+      NOTIFICATION_PREFERENCES_CACHE_KEY,
+      () => notificationPreferenceService.get(),
+      {
+        ttlMs: 60_000,
+        persist: false,
+      }
+    ),
+
+  updatePreferences: async (payload: NotificationPreferences): Promise<NotificationPreferences> => {
+    const preferences = await notificationPreferenceService.update(payload);
+    clearCache(NOTIFICATIONS_CACHE_KEY);
+    notifyNotificationsUpdated();
+    return preferences;
+  },
+
+  uploadSound: async (file: File): Promise<NotificationPreferences> => {
+    const preferences = await notificationPreferenceService.uploadSound(file);
+    clearCache(NOTIFICATIONS_CACHE_KEY);
+    notifyNotificationsUpdated();
+    return preferences;
+  },
+
   // Obtener todas las notificaciones del usuario autenticado
   getNotifications: async (options?: { force?: boolean }): Promise<DatabaseNotification[]> => {
     return cachedRequest(
       NOTIFICATIONS_CACHE_KEY,
       async () => {
-        const response = await api.get<NotificationResponse>("/notifications");
-        return normalizeNotifications(response.data);
+        const [response, preferences] = await Promise.all([
+          api.get<NotificationResponse>("/notifications"),
+          notificationService.getPreferences(),
+        ]);
+
+        return filterNotificationsByPreferences(normalizeNotifications(response.data), preferences);
       },
       {
         ttlMs: NOTIFICATIONS_TTL_MS,

@@ -25,6 +25,11 @@ import {
   type DatabaseNotification,
 } from "../../services/notification.service";
 import {
+  defaultNotificationPreferences,
+  NOTIFICATION_PREFERENCES_UPDATED_EVENT,
+  type NotificationPreferences,
+} from "../../services/notificationPreference.service";
+import {
   getNotificationDescription,
   getNotificationTone,
   getNotificationTitle,
@@ -117,10 +122,12 @@ async function playGeneratedNotificationSound() {
   }
 }
 
-async function playNotificationSound() {
-  if (CUSTOM_NOTIFICATION_SOUND_URL) {
+async function playNotificationSound(customSoundUrl?: string | null) {
+  const soundUrl = String(customSoundUrl || CUSTOM_NOTIFICATION_SOUND_URL || "").trim();
+
+  if (soundUrl) {
     try {
-      const audio = new Audio(CUSTOM_NOTIFICATION_SOUND_URL);
+      const audio = new Audio(soundUrl);
       audio.preload = "auto";
       audio.volume = 0.85;
       await audio.play();
@@ -336,6 +343,7 @@ export default function Topbar({
   const knownUnreadIdsRef = useRef<Set<string>>(new Set());
   const hasLoadedNotificationsRef = useRef(false);
   const lastNotificationsFetchRef = useRef(0);
+  const notificationPreferencesRef = useRef<NotificationPreferences>(defaultNotificationPreferences);
   const { refreshing, refresh } = useRefresh();
 
   const unreadCount = notifications.filter(
@@ -394,8 +402,13 @@ export default function Topbar({
         );
       }
 
-      void playNotificationSound();
-      showNativeNotification(newUnreadNotifications[0]);
+      if (notificationPreferencesRef.current.sound_enabled) {
+        void playNotificationSound(notificationPreferencesRef.current.custom_sound_url);
+      }
+
+      if (notificationPreferencesRef.current.browser_enabled) {
+        showNativeNotification(newUnreadNotifications[0]);
+      }
     }
 
     hasLoadedNotificationsRef.current = true;
@@ -406,7 +419,11 @@ export default function Topbar({
       setNotificationsLoading(true);
       setNotificationsError(null);
       lastNotificationsFetchRef.current = Date.now();
-      const data = await notificationService.getNotifications({ force });
+      const [data, preferences] = await Promise.all([
+        notificationService.getNotifications({ force }),
+        notificationService.getPreferences(),
+      ]);
+      notificationPreferencesRef.current = preferences;
       applyNotifications(data, true);
     } catch (error) {
       console.error("Error al cargar notificaciones:", error);
@@ -426,10 +443,13 @@ export default function Topbar({
       }
 
       lastNotificationsFetchRef.current = Date.now();
-      notificationService
-        .getNotifications({ force })
-        .then((data) => {
+      Promise.all([
+        notificationService.getNotifications({ force }),
+        notificationService.getPreferences(),
+      ])
+        .then(([data, preferences]) => {
           if (!cancelled) {
+            notificationPreferencesRef.current = preferences;
             applyNotifications(data, notifyNewUnread);
           }
         })
@@ -450,10 +470,12 @@ export default function Topbar({
       }
     };
     const handleRefresh = () => fetchNotifications(true, true);
+    const handlePreferencesUpdated = () => fetchNotifications(false, true);
 
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("erp:refreshed", handleRefresh);
+    window.addEventListener(NOTIFICATION_PREFERENCES_UPDATED_EVENT, handlePreferencesUpdated);
 
     return () => {
       cancelled = true;
@@ -461,6 +483,7 @@ export default function Topbar({
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("erp:refreshed", handleRefresh);
+      window.removeEventListener(NOTIFICATION_PREFERENCES_UPDATED_EVENT, handlePreferencesUpdated);
     };
   }, []);
 
@@ -603,7 +626,9 @@ export default function Topbar({
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => {
-              void requestNativeNotificationPermission();
+              if (notificationPreferencesRef.current.browser_enabled) {
+                void requestNativeNotificationPermission();
+              }
               const nextOpen = !notificationsOpen;
 
               if (nextOpen) {

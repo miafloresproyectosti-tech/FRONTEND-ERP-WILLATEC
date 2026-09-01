@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Save, Building, Settings, Shield, Bell, Eye, EyeOff, AlertTriangle } from "lucide-react";
+import { Save, Building, Settings, Shield, Bell, Eye, EyeOff, AlertTriangle, Volume2, Monitor, Mail, BellRing, UploadCloud } from "lucide-react";
 import {
   enableTwoFactorRequest,
   getTwoFactorQrRequest,
@@ -15,6 +15,18 @@ import {
   getEmpresaConfiguracion,
   updateEmpresaConfiguracion,
 } from "../services/empresaConfiguracion.service";
+import {
+  notificationService,
+} from "../services/notification.service";
+import {
+  defaultNotificationPreferences,
+  type NotificationPreferences,
+} from "../services/notificationPreference.service";
+import {
+  NOTIFICATION_SECTION_META,
+  NOTIFICATION_SECTION_ORDER,
+  type NotificationSectionKey,
+} from "../utils/notificationSections";
 
 const SUPERADMIN_SECURITY_QUESTIONS = [
   "¿Cual es el nombre de tu primera mascota?",
@@ -65,6 +77,10 @@ export default function Configuracion() {
   const [savingSecurityQuestions, setSavingSecurityQuestions] = useState(false);
   const [securityQuestionsConfigured, setSecurityQuestionsConfigured] = useState(false);
   const [securityQuestionsPassword, setSecurityQuestionsPassword] = useState("");
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(defaultNotificationPreferences);
+  const [loadingNotificationPreferences, setLoadingNotificationPreferences] = useState(false);
+  const [savingNotificationPreferences, setSavingNotificationPreferences] = useState(false);
+  const [uploadingNotificationSound, setUploadingNotificationSound] = useState(false);
   const [securityQuestionsForm, setSecurityQuestionsForm] = useState<Array<{ answer: string }>>([
     { answer: "" },
     { answer: "" },
@@ -98,6 +114,29 @@ export default function Configuracion() {
     if (tabs.some((tab) => tab.id === activeTab)) return;
     setActiveTab(tabs[0]?.id || "seguridad");
   }, [activeTab, tabs]);
+
+  useEffect(() => {
+    if (activeTab !== "notificaciones") return;
+
+    const loadNotificationPreferences = async () => {
+      try {
+        setLoadingNotificationPreferences(true);
+        const data = await notificationService.getPreferences();
+        setNotificationPreferences(data);
+      } catch (error) {
+        console.warn("Error al cargar preferencias de notificaciones:", error);
+        showToast({
+          title: "No se pudieron cargar las preferencias",
+          description: "Se mostrara la configuracion predeterminada para tu rol.",
+          type: "warning",
+        });
+      } finally {
+        setLoadingNotificationPreferences(false);
+      }
+    };
+
+    void loadNotificationPreferences();
+  }, [activeTab, showToast]);
 
   const handleEmpresaChange = (field: keyof typeof empresaForm, value: string) => {
     setEmpresaForm((current) => ({
@@ -144,7 +183,155 @@ export default function Configuracion() {
     }
   };
 
+  const saveNotificationPreferences = async () => {
+    try {
+      setSavingNotificationPreferences(true);
+      const data = await notificationService.updatePreferences(notificationPreferences);
+      setNotificationPreferences(data);
+      showToast({
+        title: "Notificaciones actualizadas",
+        description: "Tus preferencias fueron guardadas correctamente",
+        type: "success",
+      });
+    } catch (error: unknown) {
+      const backendMessage =
+        (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+
+      showToast({
+        title: "Error al guardar notificaciones",
+        description: backendMessage || "No se pudieron guardar tus preferencias",
+        type: "error",
+      });
+    } finally {
+      setSavingNotificationPreferences(false);
+    }
+  };
+
+  const updateNotificationChannel = (
+    field: "system_enabled" | "email_enabled" | "sound_enabled" | "browser_enabled",
+    value: boolean
+  ) => {
+    setNotificationPreferences((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const updateNotificationModule = (module: NotificationSectionKey, value: boolean) => {
+    setNotificationPreferences((current) => ({
+      ...current,
+      modules: {
+        ...current.modules,
+        [module]: value,
+      },
+    }));
+  };
+
+  const getNotificationSoundLabel = () => {
+    const soundUrl = String(notificationPreferences.custom_sound_url || "").trim();
+    if (!soundUrl) return "Tono predeterminado del sistema";
+
+    const filename = soundUrl.split("?")[0].split("/").filter(Boolean).pop();
+    return filename || "Tono personalizado";
+  };
+
+  const playNotificationPreview = async () => {
+    const soundUrl = String(notificationPreferences.custom_sound_url || "/sounds/notificacion.mp3").trim();
+    try {
+      const audio = new Audio(soundUrl);
+      audio.volume = 0.85;
+      await audio.play();
+    } catch {
+      showToast({
+        title: "No se pudo reproducir el tono",
+        description: "Verifica que el archivo exista o usa una ruta publica valida.",
+        type: "warning",
+      });
+    }
+  };
+
+  const uploadNotificationSound = async (file?: File | null) => {
+    if (!file) return;
+
+    const isMp3 = file.type === "audio/mpeg" || file.name.toLowerCase().endsWith(".mp3");
+    const maxSizeMb = 5;
+
+    if (!isMp3) {
+      showToast({
+        title: "Archivo no permitido",
+        description: "Sube un archivo en formato MP3.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (file.size > maxSizeMb * 1024 * 1024) {
+      showToast({
+        title: "Archivo demasiado pesado",
+        description: `El tono debe pesar maximo ${maxSizeMb} MB.`,
+        type: "warning",
+      });
+      return;
+    }
+
+    try {
+      setUploadingNotificationSound(true);
+      const data = await notificationService.uploadSound(file);
+      setNotificationPreferences(data);
+      showToast({
+        title: "Tono actualizado",
+        description: "El MP3 fue guardado y seleccionado como tono de notificacion.",
+        type: "success",
+      });
+    } catch (error: unknown) {
+      const backendMessage =
+        (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+
+      showToast({
+        title: "No se pudo subir el tono",
+        description: backendMessage || "Verifica que el archivo sea MP3 e intenta nuevamente.",
+        type: "error",
+      });
+    } finally {
+      setUploadingNotificationSound(false);
+    }
+  };
+
+  const resetNotificationSound = async () => {
+    const nextPreferences: NotificationPreferences = {
+      ...notificationPreferences,
+      custom_sound_url: null,
+    };
+
+    try {
+      setSavingNotificationPreferences(true);
+      const data = await notificationService.updatePreferences(nextPreferences);
+      setNotificationPreferences(data);
+      showToast({
+        title: "Tono predeterminado activado",
+        description: "Se usara el sonido predeterminado del sistema.",
+        type: "success",
+      });
+    } catch (error: unknown) {
+      const backendMessage =
+        (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+
+      showToast({
+        title: "No se pudo quitar el tono",
+        description: backendMessage || "Intenta nuevamente en unos segundos.",
+        type: "error",
+      });
+    } finally {
+      setSavingNotificationPreferences(false);
+    }
+  };
+
   const handleSaveChanges = () => {
+    if (activeTab === "notificaciones") {
+      void saveNotificationPreferences();
+      return;
+    }
+
     if (!canManageSystemSettings) {
       showToast({
         title: "Sin cambios pendientes",
@@ -858,77 +1045,196 @@ ${recoveryCodes.join("\n")}
             </div>
           </div>
         );
-      case "notificaciones":
+      case "notificaciones": {
+        const channelOptions = [
+          {
+            key: "system_enabled" as const,
+            title: "Dentro del sistema",
+            description: "Muestra avisos en la campana y contadores del sidebar.",
+            icon: BellRing,
+          },
+          {
+            key: "sound_enabled" as const,
+            title: "Sonido",
+            description: "Reproduce un tono cuando llegan avisos nuevos.",
+            icon: Volume2,
+          },
+          {
+            key: "browser_enabled" as const,
+            title: "Notificacion del navegador",
+            description: "Muestra avisos del navegador si diste permiso.",
+            icon: Monitor,
+          },
+          {
+            key: "email_enabled" as const,
+            title: "Email",
+            description: "Preferencia preparada para avisos por correo.",
+            icon: Mail,
+          },
+        ];
+        const allowedModules = notificationPreferences.allowed_modules || [];
+        const visibleModules = NOTIFICATION_SECTION_ORDER.filter((module) =>
+          allowedModules.includes(module)
+        );
+
         return (
-          <div className="max-w-4xl mx-auto space-y-6">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-4 pb-3 border-b border-gray-200">
-                Notificaciones por Email
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
-                    <input
-                      type="checkbox"
-                      id="pedidos"
-                      defaultChecked
-                      className="w-5 h-5 text-blue-600"
-                    />
-                    <label
-                      htmlFor="pedidos"
-                      className="text-sm font-medium text-gray-700"
-                    >
-                      Nuevos pedidos
-                    </label>
-                  </div>
-                  <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
-                    <input
-                      type="checkbox"
-                      id="stock"
-                      defaultChecked
-                      className="w-5 h-5 text-blue-600"
-                    />
-                    <label
-                      htmlFor="stock"
-                      className="text-sm font-medium text-gray-700"
-                    >
-                      Stock bajo
-                    </label>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
-                    <input
-                      type="checkbox"
-                      id="usuarios"
-                      defaultChecked
-                      className="w-5 h-5 text-blue-600"
-                    />
-                    <label
-                      htmlFor="usuarios"
-                      className="text-sm font-medium text-gray-700"
-                    >
-                      Nuevos usuarios
-                    </label>
-                  </div>
-                  <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
-                    <input
-                      type="checkbox"
-                      id="reportes"
-                      className="w-5 h-5 text-blue-600"
-                    />
-                    <label
-                      htmlFor="reportes"
-                      className="text-sm font-medium text-gray-700"
-                    >
-                      Reportes semanales
-                    </label>
-                  </div>
-                </div>
-              </div>
+          <div className="mx-auto max-w-5xl space-y-6">
+            <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-900">
+              <p className="font-semibold">Preferencias personales</p>
+              <p className="mt-1 text-blue-800">
+                Solo puedes configurar los modulos disponibles para tu rol. Los cambios afectan tu campana, contadores y avisos en este usuario.
+              </p>
             </div>
+
+            {loadingNotificationPreferences ? (
+              <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500">
+                Cargando preferencias...
+              </div>
+            ) : (
+              <>
+                <section className="space-y-3">
+                  <h3 className="text-lg font-semibold text-gray-800">Canales</h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {channelOptions.map((option) => {
+                      const Icon = option.icon;
+                      const checked = Boolean(notificationPreferences[option.key]);
+
+                      return (
+                        <label
+                          key={option.key}
+                          className={`flex cursor-pointer items-start gap-4 rounded-2xl border p-4 transition ${
+                            checked
+                              ? "border-blue-200 bg-blue-50"
+                              : "border-gray-200 bg-white hover:bg-gray-50"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => updateNotificationChannel(option.key, event.target.checked)}
+                            className="mt-1 h-5 w-5 rounded border-gray-300 text-blue-600"
+                          />
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-700 shadow-sm">
+                            <Icon size={20} />
+                          </span>
+                          <span>
+                            <span className="block text-sm font-bold text-gray-900">{option.title}</span>
+                            <span className="mt-1 block text-sm text-gray-600">{option.description}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section className="space-y-3">
+                  <h3 className="text-lg font-semibold text-gray-800">Modulos</h3>
+                  <p className="text-sm text-gray-500">Activa solo los avisos que quieres ver en tu cuenta.</p>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {visibleModules.map((module) => {
+                      const meta = NOTIFICATION_SECTION_META[module];
+                      const Icon = meta.icon;
+                      const checked = notificationPreferences.modules[module] !== false;
+
+                      return (
+                        <label
+                          key={module}
+                          className={`flex cursor-pointer items-start gap-4 rounded-2xl border p-4 transition ${
+                            checked
+                              ? "border-slate-200 bg-white shadow-sm"
+                              : "border-gray-200 bg-gray-50 opacity-75"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => updateNotificationModule(module, event.target.checked)}
+                            disabled={!notificationPreferences.system_enabled}
+                            className="mt-1 h-5 w-5 rounded border-gray-300 text-blue-600 disabled:opacity-50"
+                          />
+                          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${meta.accent}`}>
+                            <Icon size={20} />
+                          </span>
+                          <span>
+                            <span className="block text-sm font-bold text-gray-900">{meta.label}</span>
+                            <span className="mt-1 block text-sm text-gray-600">{meta.description}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-gray-200 bg-white p-5">
+                  <div className="flex flex-col gap-5">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-800">Tono personalizado</h3>
+                      <p className="mt-1 text-sm text-gray-500">
+                        Sube un MP3 para usarlo como tono cuando lleguen nuevas notificaciones.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+                      <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/60 px-5 py-6 text-center transition hover:bg-blue-50">
+                        <UploadCloud className="mb-2 text-blue-700" size={28} />
+                        <span className="text-sm font-bold text-blue-800">
+                          {uploadingNotificationSound ? "Subiendo tono..." : "Seleccionar MP3"}
+                        </span>
+                        <span className="mt-1 text-xs text-blue-700">Formato .mp3, maximo 5 MB</span>
+                        <input
+                          type="file"
+                          accept=".mp3,audio/mpeg"
+                          disabled={uploadingNotificationSound}
+                          onChange={(event) => {
+                            void uploadNotificationSound(event.target.files?.[0]);
+                            event.currentTarget.value = "";
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => void playNotificationPreview()}
+                        disabled={!notificationPreferences.sound_enabled || uploadingNotificationSound}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Volume2 size={16} />
+                        Probar tono
+                      </button>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-800">Tono seleccionado</p>
+                          <p className="mt-1 truncate text-sm text-gray-600" title={notificationPreferences.custom_sound_url || undefined}>
+                            {getNotificationSoundLabel()}
+                          </p>
+                        </div>
+                        {notificationPreferences.custom_sound_url && (
+                          <button
+                            type="button"
+                            onClick={() => void resetNotificationSound()}
+                            disabled={savingNotificationPreferences || uploadingNotificationSound}
+                            className="inline-flex items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Usar predeterminado
+                          </button>
+                        )}
+                      </div>
+                      <p className="mt-3 text-xs text-gray-500">
+                        Al subir un MP3 se guarda y queda seleccionado automaticamente para tu usuario.
+                      </p>
+                    </div>
+                  </div>
+                </section>
+              </>
+            )}
           </div>
         );
+      }
 
       default:
         return null;
@@ -946,15 +1252,15 @@ ${recoveryCodes.join("\n")}
           </p>
         </div>
 
-        {canManageSystemSettings && activeTab === "empresa" && (
+        {((canManageSystemSettings && activeTab === "empresa") || activeTab === "notificaciones") && (
           <button
             type="button"
             onClick={handleSaveChanges}
-            disabled={savingEmpresaConfig}
+            disabled={savingEmpresaConfig || savingNotificationPreferences}
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
           >
             <Save size={20} />
-            {savingEmpresaConfig ? "Guardando..." : "Guardar Cambios"}
+            {savingEmpresaConfig || savingNotificationPreferences ? "Guardando..." : "Guardar Cambios"}
           </button>
         )}
       </div>
