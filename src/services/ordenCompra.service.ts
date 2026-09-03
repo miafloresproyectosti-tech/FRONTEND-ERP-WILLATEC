@@ -32,6 +32,7 @@ export interface OcPreviewItem {
   cantidad_recibida?: number | string;
   precio_unitario?: number | string;
   costo_base?: number | string;
+  costo_unitario?: number | string;
   proveedor?: string | null;
   proveedores?: Array<{
     id?: number | string | null;
@@ -51,9 +52,16 @@ export interface OcPreview {
     estado?: string;
     estado_nombre?: string;
     estado_cotizacion_id?: number | string;
+    moneda?: string | null;
   };
   items: OcPreviewItem[];
   proveedores?: string[];
+}
+
+export interface MonedaOc {
+  id?: number | string;
+  codigo: string;
+  simbolo?: string | null;
 }
 
 export interface OcDocumentoAdicional {
@@ -157,13 +165,21 @@ export interface OcEmitida {
     numero?: string;
     cliente_nombre?: string;
     titulo?: string;
+    estado_cotizacion_id?: number | string;
     cliente?: {
       nombre?: string;
     };
   };
   proveedor?: string;
+  proveedor_id?: number | string | null;
+  proveedor_ruc?: string | null;
+  proveedor_direccion?: string | null;
+  proveedor_telefono?: string | null;
+  proveedor_contacto?: string | null;
+  proveedor_correo?: string | null;
   fecha_emision?: string;
   observaciones?: string | null;
+  moneda?: string | null;
   factura_path?: string | null;
   factura_uploaded_by?: number | string | null;
   comprobante_pago_path?: string | null;
@@ -208,6 +224,7 @@ export interface CreateOcEmitidaPayload {
   cotizacion_id: number;
   proveedor: string;
   proveedor_id?: number | null;
+  moneda?: string;
   fecha_emision: string;
   observaciones?: string;
   items: Array<{
@@ -322,8 +339,9 @@ const normalizePreviewItem = (item: any): OcPreviewItem => {
     cantidad_pendiente: item?.cantidad_pendiente ?? source?.cantidad_pendiente,
     cantidad_disponible: item?.cantidad_disponible ?? source?.cantidad_disponible,
     proveedor: proveedor || primaryProveedor?.nombre || null,
-    precio_unitario: item?.precio_unitario ?? item?.precio ?? item?.costo_base ?? primaryProveedor?.precio ?? source?.precio_unitario ?? source?.precio ?? source?.costo_base,
+    precio_unitario: item?.precio_unitario ?? item?.precio ?? item?.costo_unitario ?? item?.costo_base ?? primaryProveedor?.precio ?? source?.precio_unitario ?? source?.precio ?? source?.costo_unitario ?? source?.costo_base,
     costo_base: item?.costo_base ?? source?.costo_base,
+    costo_unitario: item?.costo_unitario ?? source?.costo_unitario,
     proveedores,
   };
 };
@@ -564,6 +582,26 @@ export async function getOcEmitidaItems(cotizacionId: number, proveedor: string,
 export async function createOcEmitida(payload: CreateOcEmitidaPayload) {
   const response = await api.post("/oc-emitidas", payload);
   return response.data;
+}
+
+export async function updateOcEmitida(id: number | string, payload: CreateOcEmitidaPayload) {
+  const response = await api.put(`/oc-emitidas/${id}`, payload);
+  return response.data;
+}
+
+export async function getMonedasOc() {
+  const response = await api.get("/monedas");
+  const data = Array.isArray(response.data)
+    ? response.data
+    : Array.isArray(response.data?.data)
+      ? response.data.data
+      : [];
+
+  return data.map((moneda: any) => ({
+    id: moneda.id,
+    codigo: String(moneda.codigo || moneda.code || "").toUpperCase(),
+    simbolo: moneda.simbolo || moneda.symbol || null,
+  })).filter((moneda: MonedaOc) => moneda.codigo);
 }
 
 function getFilenameFromContentDisposition(value?: string): string | null {

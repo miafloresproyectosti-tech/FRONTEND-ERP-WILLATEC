@@ -51,7 +51,7 @@ const emptyColSpan =
   5 +
   (showCostosAdicionalesToggle ? 1 : 0) +
   (estadoCotizacionId === 3 ? 2 : 0) +
-  4 +
+  (isOwnCotizacion ? 4 : 3) +
   (isOwnCotizacion ? 1 : 0) +
   2 +
   (canReorder ? 1 : 0);
@@ -163,10 +163,12 @@ return (
                   <p className="text-gray-500">{isAlquiler ? "Periodo" : "Garantia"}</p>
                   <p className="font-bold text-amber-700">{item.garantia_meses}m</p>
                 </div>
-                <div className="flex items-center justify-between sm:block">
-                  <p className="text-gray-500">Margen</p>
-                  <p className="font-bold text-gray-900">{(margen ?? 0).toFixed(1)}%</p>
-                </div>
+                {isOwnCotizacion && (
+                  <div className="flex items-center justify-between sm:block">
+                    <p className="text-gray-500">Margen</p>
+                    <p className="font-bold text-gray-900">{(margen ?? 0).toFixed(1)}%</p>
+                  </div>
+                )}
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
@@ -257,7 +259,7 @@ return (
           {estadoCotizacionId === 3 && <><col style={{ width: '60px' }} /><col style={{ width: '74px' }} /></>}
           <col style={{ width: '76px' }} />
           <col style={{ width: '76px' }} />
-          <col style={{ width: '60px' }} />
+          {isOwnCotizacion && <col style={{ width: '60px' }} />}
           <col style={{ width: '76px' }} />
           {isOwnCotizacion && <col style={{ width: monedaId === 2 ? '98px' : '76px' }} />}
           <col style={{ width: '84px' }} />
@@ -282,7 +284,7 @@ return (
             )}
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Costo un.</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Costo tot.</th>
-            <th className="py-2.5 px-2 text-center font-medium text-gray-500">Margen</th>
+            {isOwnCotizacion && <th className="py-2.5 px-2 text-center font-medium text-gray-500">Margen</th>}
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">{isAlquiler ? "P. unit. mensual" : "P. venta"}</th>
             {isOwnCotizacion && <th className="py-2.5 px-2 text-center font-medium text-gray-500">Ganancia</th>}
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">{isAlquiler ? "Total x meses" : "Subtotal"}</th>
@@ -438,7 +440,7 @@ return (
 
                   <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{formatMoney(costoUnitario, simboloMoneda)}</td>
                   <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{formatMoney(costoTotal, simboloMoneda)}</td>
-                  <td className="py-3 px-2 font-medium text-xs">{(margen ?? 0).toFixed(1)} % </td>
+                  {isOwnCotizacion && <td className="py-3 px-2 font-medium text-xs">{(margen ?? 0).toFixed(1)} % </td>}
                   <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{formatMoney(precioVenta, simboloMoneda)}</td>
                   {isOwnCotizacion && <td className={`py-2.5 px-2 text-center tabular-nums font-medium ${ganancia > 0 ? 'text-green-700' : 'text-red-700'}`}>
                     <div>{formatMoney(ganancia, simboloMoneda)}</div>

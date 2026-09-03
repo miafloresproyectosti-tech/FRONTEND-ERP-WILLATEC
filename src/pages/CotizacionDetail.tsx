@@ -15,6 +15,7 @@ import { CotizacionGeneralForm } from '../components/cotizaciones/CotizacionGene
 import { CotizacionItemsTable } from '../components/cotizaciones/CotizacionItemsTable';
 import type { ItemForm } from '../types/cotizaciones.type';
 import { normalizeStorageImageUrl } from '../utils/storageImage';
+import { normalizeRole } from '../utils/permissions';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { ExportModal } from '../components/cotizaciones/modals/ExportModal';
 import { ItemTypeModal } from '../components/cotizaciones/modals/ItemTypeModal';
@@ -259,11 +260,13 @@ const convertirPrecioExternoAPlantilla = (
 export function CotizacionDetail() {
   const navigate = useNavigate();
   const { id, modificacionId } = useParams<{ id: string; modificacionId: string }>();
+  const location = useLocation();
   const { user } = useAuth();
   const { showToast, addNotification } = useNotifications();
 
   const isModificationMode = Boolean(modificacionId);
   const currentModificacionId = modificacionId ? parseInt(modificacionId) : null;
+  const isNewCotizacion = !isModificationMode && (id === 'new' || location.pathname === '/cotizaciones/new');
   const isEditing = !isModificationMode && id !== 'new' && id !== undefined;
   const currentCotizacionId = id && !isModificationMode ? parseInt(id) : null;
   const [exportandoPdf, setExportandoPdf] = useState(false);
@@ -283,7 +286,6 @@ export function CotizacionDetail() {
   const allowNextNavigationRef = useRef(false);
 
   //LOCALIZACIÓN
-  const location = useLocation();
   const opportunityContext = useMemo(() => {
     const params = new URLSearchParams(location.search);
 
@@ -565,8 +567,9 @@ export function CotizacionDetail() {
   // tipoCambio es ahora estado editable por el usuario
 
   // Verificar permisos del usuario actual sobre la cotización
-  const userRole = user?.role?.toUpperCase();
+  const userRole = normalizeRole(user?.role);
   const isSuperAdmin = userRole === 'SUPERADMIN';
+  const canCreateCotizacion = ['SUPERADMIN', 'VENTAS'].includes(userRole);
   const currentEstadoCotizacionId = Number(estadoCotizacionId);
   const currentDelegadoId = delegadoId === null || delegadoId === undefined ? null : Number(delegadoId);
   const currentDelegadoCotizacionId =
@@ -579,8 +582,8 @@ export function CotizacionDetail() {
       : Number(currentDelegadoCotizacionId);
   const isCotizacionCreator = Boolean(cotizacion && user && Number(cotizacion.user_id) === Number(user.id));
   const isCotizacionEditDelegate = Boolean(cotizacion && user && currentDelegadoCotizacionIdNumber === Number(user.id));
-  const canViewGanancia = !cotizacion || isCotizacionCreator || isSuperAdmin;
-  const canEditCotizacion = !cotizacion || isCotizacionCreator || isCotizacionEditDelegate;
+  const canViewGanancia = isNewCotizacion ? canCreateCotizacion : isCotizacionCreator || isSuperAdmin;
+  const canEditCotizacion = isNewCotizacion ? canCreateCotizacion : isCotizacionCreator || isCotizacionEditDelegate;
   const isCotizacionAprobada = currentEstadoCotizacionId === ESTADO_COTIZACION_APROBADA_ID;
   const modificacionPendiente = versionesInfo?.modificaciones?.find((item) =>
     item.estado === 'borrador' || item.estado === 'en_revision'
@@ -625,11 +628,29 @@ export function CotizacionDetail() {
   const canChangeReviewEstado = Boolean(
     user && (isSuperAdmin || currentDelegadoId === Number(user.id))
   );
+  const isNewCotizacionBlockedForRole = Boolean(
+    isNewCotizacion &&
+    user &&
+    !canCreateCotizacion
+  );
   const isCotizacionReadOnly = selectedVersion
     ? true
     : isModificationMode
     ? !canEditModificacion
-    : isViewMode || !canEditCotizacion || isCotizacionAprobada;
+    : isNewCotizacion
+      ? isNewCotizacionBlockedForRole
+      : isViewMode || !canEditCotizacion || isCotizacionAprobada;
+
+  useEffect(() => {
+    if (!user || !isNewCotizacion || canCreateCotizacion) return;
+
+    showToast({
+      title: 'Acceso de solo lectura',
+      description: 'Tu rol puede ver cotizaciones y gestionar OC, pero no crear cotizaciones.',
+      type: 'warning',
+    });
+    navigate('/cotizaciones', { replace: true });
+  }, [canCreateCotizacion, isNewCotizacion, navigate, showToast, user]);
 
   useEffect(() => {
     if (!cotizacion) return;

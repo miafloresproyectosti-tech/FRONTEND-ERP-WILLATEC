@@ -23,6 +23,7 @@ import {
   Truck,
   Upload,
   X,
+  Pencil,
 } from "lucide-react";
 
 import { useNotifications } from "../NotificationContext";
@@ -36,17 +37,19 @@ import {
   deleteOcRecibidaDocumentoAdicional,
   downloadOcEmitidaPdf,
   getOcEmitida,
-  getOcEmitidaItems,
   getOcEmitidaPreview,
   getOcEmitidas,
+  getMonedasOc,
   getOcRecibida,
   getOcRecibidaPreview,
   getOcRecibidas,
   updateOcRecibidaItems,
+  updateOcEmitida,
   uploadOcEmitidaDocumentos,
   uploadOcRecibidaDocumentos,
   type OcDocumentoAdicional,
   type OcEmitida,
+  type MonedaOc,
   type OcPreview,
   type OcPreviewItem,
   type OcRecibida,
@@ -59,6 +62,7 @@ import { getCotizacion } from "../services/cotizacion.service";
 import {
   createProveedor,
   getProveedores,
+  updateProveedor,
   type Proveedor,
   type ProveedorPayload,
 } from "../services/proveedor.service";
@@ -131,37 +135,20 @@ const getProveedorPrecio = (item: OcPreviewItem, proveedor?: string) => {
     : item.proveedores?.[0];
 
   return toNumber(
-    proveedorRow?.precio ?? item.precio_unitario ?? item.costo_base,
-  );
-};
-
-const itemBelongsToProveedor = (item: OcPreviewItem, proveedor: string) => {
-  const selectedProveedorKey = normalizeProveedorKey(proveedor);
-  if (!selectedProveedorKey) return true;
-
-  const itemProveedorKey = normalizeProveedorKey(item.proveedor ?? undefined);
-  return (
-    itemProveedorKey === selectedProveedorKey ||
-    Boolean(
-      item.proveedores?.some(
-        (row) => normalizeProveedorKey(row.nombre) === selectedProveedorKey,
-      ),
-    )
+    item.costo_unitario ?? item.costo_base ?? item.precio_unitario ?? proveedorRow?.precio,
   );
 };
 
 const buildEmitidaDraftItems = (
   items: OcPreviewItem[],
-  proveedor?: string,
 ): EmitidaDraftItem[] =>
   items
-    .filter((item) => itemBelongsToProveedor(item, proveedor || ""))
     .map((item) => ({
       cotizacion_item_id: item.cotizacion_item_id ?? item.id,
       descripcion: itemDescription(item),
       seleccionado: true,
       cantidad: getQuotedQuantity(item),
-      precio_unitario: getProveedorPrecio(item, proveedor),
+      precio_unitario: getProveedorPrecio(item),
     }));
 
 const emptyPagination: PaginationState = {
@@ -395,26 +382,70 @@ const getOcItemsCount = (oc: OcRecibida | OcEmitida) => {
   return Number.isFinite(count) ? count : 0;
 };
 
-const isApprovedCotizacion = (preview: OcPreview) => {
-  const estadoId = Number(preview.cotizacion?.estado_cotizacion_id ?? 0);
-  const estadoNombre = String(
+const getCotizacionEstadoNormalized = (preview: OcPreview) => {
+  const id = Number(preview.cotizacion?.estado_cotizacion_id ?? 0);
+  const nombre = String(
     preview.cotizacion?.estado_nombre || preview.cotizacion?.estado || "",
   )
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  const estadoPermiteOc = estadoNombre.includes("aprobada") || estadoNombre.includes("oc_registrada");
-  const hasOcPendingItems = preview.items.some(
-    (item) => toNumber(item.cantidad_pendiente ?? item.cantidad_recibida ?? item.cantidad) > 0,
+
+  return { id, nombre };
+};
+
+const hasItemsForOc = (preview: OcPreview) =>
+  preview.items.some(
+    (item) =>
+      toNumber(
+        item.cantidad_pendiente ??
+          item.cantidad_recibida ??
+          item.cantidad ??
+          item.cantidad_cotizada,
+      ) > 0,
   );
 
-  return estadoId === 4 || (estadoPermiteOc && hasOcPendingItems);
+const canRegisterOcRecibidaForPreview = (preview: OcPreview) => {
+  const { id, nombre } = getCotizacionEstadoNormalized(preview);
+  const isOcRegistrada = id === 6 || nombre.includes("oc_registrada");
+  const estadoPermiteRecibir =
+    id === 3 ||
+    id === 4 ||
+    (nombre.includes("aprobada") && !isOcRegistrada);
+
+  return estadoPermiteRecibir && !isOcRegistrada && hasItemsForOc(preview);
 };
+
+const canEmitOcForPreview = (preview: OcPreview) => {
+  const { id, nombre } = getCotizacionEstadoNormalized(preview);
+
+  return (
+    id === 3 ||
+    id === 4 ||
+    id === 6 ||
+    nombre.includes("aprobada") ||
+    nombre.includes("oc_registrada")
+  );
+};
+
+const canUsePreviewForMode = (
+  preview: OcPreview,
+  mode: Exclude<ModalMode, null>,
+) =>
+  mode === "recibir"
+    ? canRegisterOcRecibidaForPreview(preview)
+    : canEmitOcForPreview(preview);
 
 const previewEstadoId = (preview: OcPreview) =>
   preview.cotizacion?.estado_cotizacion_id ?? "";
 
 const getOcLabel = (oc: OcEmitida | OcRecibida) => oc.numero || `OC-${oc.id}`;
+
+const getOcCurrencySymbol = (oc: OcEmitida | OcRecibida) => {
+  const moneda = String((oc as OcEmitida).moneda || "").toUpperCase();
+  if (moneda === "USD" || moneda === "DOLARES" || moneda === "DÓLARES") return "$";
+  return "S/";
+};
 
 const getBadgeClass = (estado?: string) => {
   switch (estado) {
@@ -618,8 +649,10 @@ export default function OrdenesCompraPage() {
     useState<OcPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingEmitidaId, setEditingEmitidaId] = useState<number | null>(null);
   const [cotizacionId, setCotizacionId] = useState("");
   const [proveedor, setProveedor] = useState("");
+  const [monedaOc, setMonedaOc] = useState("PEN");
   const [fecha, setFecha] = useState(today);
   const [observaciones, setObservaciones] = useState("");
   const [recibidaItems, setRecibidaItems] = useState<RecibidaDraftItem[]>([]);
@@ -641,11 +674,17 @@ export default function OrdenesCompraPage() {
     [],
   );
   const [proveedoresCatalog, setProveedoresCatalog] = useState<Proveedor[]>([]);
+  const [monedas, setMonedas] = useState<MonedaOc[]>([]);
   const [showNuevoProveedorForm, setShowNuevoProveedorForm] = useState(false);
   const [nuevoProveedor, setNuevoProveedor] = useState<ProveedorPayload>(
     initialNuevoProveedor,
   );
   const [creatingProveedor, setCreatingProveedor] = useState(false);
+  const [proveedorEditDraft, setProveedorEditDraft] =
+    useState<ProveedorPayload>(initialNuevoProveedor);
+  const [editingProveedorCatalog, setEditingProveedorCatalog] = useState(false);
+  const [updatingProveedorCatalog, setUpdatingProveedorCatalog] =
+    useState(false);
   const [updatingItemOc, setUpdatingItemOc] = useState<number | null>(null);
   const [ocItemSeries, setOcItemSeries] = useState<Record<number, number[]>>(
     {},
@@ -693,7 +732,7 @@ export default function OrdenesCompraPage() {
     [canEditOc],
   );
   const canCreateOc = user
-    ? ["SUPERADMIN", "VENTAS"].includes(user.role)
+    ? ["SUPERADMIN", "VENTAS", "ADMIN", "CONTABILIDAD"].includes(user.role)
     : false;
   const canDeleteOcDocument = useCallback(
     (oc: OcEmitida | OcRecibida, document: DocumentLink) => {
@@ -777,9 +816,27 @@ export default function OrdenesCompraPage() {
 
   const selectedModalProviderRuc = findProveedorCatalog(proveedor)?.ruc || "";
   const selectedProveedorCatalog = findProveedorCatalog(proveedor);
+  const selectedProveedorCatalogId = selectedProveedorCatalog?.id ?? null;
+  const selectedProveedorMissingOcData = Boolean(
+    selectedProveedorCatalog &&
+      (!selectedProveedorCatalog.ruc?.trim() ||
+        !selectedProveedorCatalog.contacto?.trim() ||
+        !selectedProveedorCatalog.telefono?.trim() ||
+        !selectedProveedorCatalog.direccion?.trim()),
+  );
+  const selectedMonedaSymbol =
+    monedas.find((moneda) => moneda.codigo === monedaOc)?.simbolo ||
+    (monedaOc === "USD" ? "$" : "S/");
+  const monedaOptions =
+    monedas.length > 0
+      ? monedas
+      : [
+          { codigo: "PEN", simbolo: "S/" },
+          { codigo: "USD", simbolo: "$" },
+        ];
   const selectedOcProviderRuc =
     selectedOc && "proveedor" in selectedOc
-      ? findProveedorCatalog(selectedOc.proveedor)?.ruc || ""
+      ? selectedOc.proveedor_ruc || findProveedorCatalog(selectedOc.proveedor)?.ruc || ""
       : "";
 
   const similarProveedor = useMemo(() => {
@@ -793,6 +850,26 @@ export default function OrdenesCompraPage() {
     return exactMatch ? null : result;
   }, [proveedor, proveedoresCatalog, selectedProveedorCatalog]);
 
+  useEffect(() => {
+    if (!selectedProveedorCatalog) {
+      setProveedorEditDraft(initialNuevoProveedor);
+      setEditingProveedorCatalog(false);
+      return;
+    }
+
+    setProveedorEditDraft({
+      nombre: selectedProveedorCatalog.nombre || "",
+      ruc: selectedProveedorCatalog.ruc || "",
+      contacto: selectedProveedorCatalog.contacto || "",
+      telefono: selectedProveedorCatalog.telefono || "",
+      correo: selectedProveedorCatalog.correo || "",
+      direccion: selectedProveedorCatalog.direccion || "",
+      observaciones: selectedProveedorCatalog.observaciones || "",
+      activo: selectedProveedorCatalog.activo ?? true,
+    });
+    setEditingProveedorCatalog(selectedProveedorMissingOcData);
+  }, [selectedProveedorCatalogId]);
+
   const resetNuevoProveedorForm = () => {
     setNuevoProveedor(initialNuevoProveedor);
     setShowNuevoProveedorForm(false);
@@ -803,6 +880,16 @@ export default function OrdenesCompraPage() {
     value: string,
   ) => {
     setNuevoProveedor((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const handleProveedorEditChange = (
+    field: keyof ProveedorPayload,
+    value: string,
+  ) => {
+    setProveedorEditDraft((current) => ({
       ...current,
       [field]: value,
     }));
@@ -874,6 +961,65 @@ export default function OrdenesCompraPage() {
       });
     } finally {
       setCreatingProveedor(false);
+    }
+  };
+
+  const handleUpdateSelectedProveedor = async () => {
+    if (!selectedProveedorCatalog) return;
+
+    const nombre = proveedorEditDraft.nombre.trim();
+    if (!nombre) {
+      showToast({
+        title: "Nombre requerido",
+        description: "El proveedor debe mantener un nombre registrado.",
+        type: "warning",
+      });
+      return;
+    }
+
+    try {
+      setUpdatingProveedorCatalog(true);
+      const proveedorActualizado = await updateProveedor(
+        selectedProveedorCatalog.id,
+        {
+          ...proveedorEditDraft,
+          nombre,
+          ruc: proveedorEditDraft.ruc?.trim() || undefined,
+          contacto: proveedorEditDraft.contacto?.trim() || undefined,
+          telefono: proveedorEditDraft.telefono?.trim() || undefined,
+          correo: proveedorEditDraft.correo?.trim() || undefined,
+          direccion: proveedorEditDraft.direccion?.trim() || undefined,
+          observaciones: proveedorEditDraft.observaciones?.trim() || undefined,
+          activo: proveedorEditDraft.activo ?? true,
+        },
+      );
+
+      setProveedoresCatalog((current) =>
+        current
+          .map((item) =>
+            item.id === proveedorActualizado.id ? proveedorActualizado : item,
+          )
+          .sort((a, b) => a.nombre.localeCompare(b.nombre)),
+      );
+      setProveedor(proveedorActualizado.nombre);
+      setEditingProveedorCatalog(false);
+      showToast({
+        title: "Proveedor actualizado",
+        description:
+          "Los datos del proveedor quedaron listos para esta OC y futuras emisiones.",
+        type: "success",
+      });
+    } catch (error) {
+      showToast({
+        title: "Error al actualizar proveedor",
+        description: getErrorMessage(
+          error,
+          "No se pudieron guardar los datos del proveedor.",
+        ),
+        type: "error",
+      });
+    } finally {
+      setUpdatingProveedorCatalog(false);
     }
   };
 
@@ -966,6 +1112,27 @@ export default function OrdenesCompraPage() {
     };
 
     void loadProveedores();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadMonedas = async () => {
+      try {
+        const rows = await getMonedasOc();
+        if (!cancelled && rows.length > 0) {
+          setMonedas(rows);
+        }
+      } catch (error) {
+        console.error("Error al cargar monedas:", error);
+      }
+    };
+
+    void loadMonedas();
 
     return () => {
       cancelled = true;
@@ -1107,8 +1274,10 @@ export default function OrdenesCompraPage() {
   const resetForm = () => {
     setPreview(null);
     setEmitidaBasePreview(null);
+    setEditingEmitidaId(null);
     setCotizacionId("");
     setProveedor("");
+    setMonedaOc("PEN");
     setFecha(today);
     setObservaciones("");
     setRecibidaItems([]);
@@ -1163,15 +1332,23 @@ export default function OrdenesCompraPage() {
         },
       };
 
-      if (!isApprovedCotizacion(dataWithCotizacion)) {
+      const currentMode = modalMode || "recibir";
+
+      if (!canUsePreviewForMode(dataWithCotizacion, currentMode)) {
         setPreview(dataWithCotizacion);
         setRecibidaItems([]);
         setEmitidaItems([]);
         const estadoRecibido =
           previewEstadoId(dataWithCotizacion) || "sin estado_cotizacion_id";
         showToast({
-          title: "Cotizacion no aprobada",
-          description: `Solo se puede registrar o emitir OC cuando estado_cotizacion_id es 4. Recibido: ${estadoRecibido}.`,
+          title:
+            currentMode === "recibir"
+              ? "OC recibida no disponible"
+              : "Cotizacion no disponible para emitir OC",
+          description:
+            currentMode === "recibir"
+              ? `Solo se puede registrar OC recibida si la cotizacion tiene cantidades pendientes. Recibido: ${estadoRecibido}.`
+              : `Solo se puede emitir OC desde cotizaciones aprobadas, parcialmente aprobadas u OC registrada. Recibido: ${estadoRecibido}.`,
           type: "warning",
         });
         return;
@@ -1180,6 +1357,14 @@ export default function OrdenesCompraPage() {
       setPreview(dataWithCotizacion);
       if (modalMode === "emitir") {
         setEmitidaBasePreview(dataWithCotizacion);
+        setMonedaOc(
+          String(
+            dataWithCotizacion.cotizacion?.moneda ||
+              (cotizacionData as any).moneda?.codigo ||
+              monedaOc ||
+              "PEN",
+          ).toUpperCase(),
+        );
       }
       setRecibidaItems(
         dataWithCotizacion.items.map((item) => ({
@@ -1197,24 +1382,8 @@ export default function OrdenesCompraPage() {
         })),
       );
       setEmitidaItems(
-        buildEmitidaDraftItems(
-          dataWithCotizacion.items,
-          modalMode === "emitir" ? proveedor : undefined,
-        ),
+        buildEmitidaDraftItems(dataWithCotizacion.items),
       );
-
-      if (
-        modalMode === "emitir" &&
-        !proveedor &&
-        dataWithCotizacion.proveedores?.[0]
-      ) {
-        const firstProveedor = dataWithCotizacion.proveedores[0];
-        setProveedor(firstProveedor);
-        setEmitidaItems(
-          buildEmitidaDraftItems(dataWithCotizacion.items, firstProveedor),
-        );
-        void handleProveedorChange(firstProveedor);
-      }
     } catch (error) {
       showToast({
         title: "No se pudo cargar el preview",
@@ -1234,50 +1403,6 @@ export default function OrdenesCompraPage() {
     const matchedProveedor = findProveedorCatalog(cleaned);
     const nextProveedor = matchedProveedor ? matchedProveedor.nombre : cleaned;
     setProveedor(nextProveedor);
-
-    const id = Number(cotizacionId);
-    if (!id || !nextProveedor) return;
-
-    const fallbackPreview = emitidaBasePreview ?? preview;
-    if (fallbackPreview) {
-      setEmitidaItems(
-        buildEmitidaDraftItems(fallbackPreview.items, nextProveedor),
-      );
-    }
-
-    try {
-      setPreviewLoading(true);
-      const data = await getOcEmitidaItems(id, nextProveedor, matchedProveedor?.id);
-      const nextItems =
-        data.items.length > 0 ? data.items : fallbackPreview?.items || [];
-      const filteredItems =
-        data.items.length > 0
-          ? buildEmitidaDraftItems(nextItems)
-          : buildEmitidaDraftItems(nextItems, nextProveedor);
-      setPreview((current) => ({
-        ...data,
-        cotizacion: current?.cotizacion ?? fallbackPreview?.cotizacion,
-        items: nextItems,
-        proveedores:
-          current?.proveedores ??
-          fallbackPreview?.proveedores ??
-          data.proveedores,
-      }));
-      setEmitidaItems(filteredItems);
-    } catch (error) {
-      if (!fallbackPreview) {
-        showToast({
-          title: "Error al filtrar proveedor",
-          description: getErrorMessage(
-            error,
-            "No se pudieron obtener los items del proveedor.",
-          ),
-          type: "warning",
-        });
-      }
-    } finally {
-      setPreviewLoading(false);
-    }
   };
 
   const handleSaveRecibida = async () => {
@@ -1286,11 +1411,11 @@ export default function OrdenesCompraPage() {
       (item) => item.seleccionado && item.cantidad_recibida > 0,
     );
 
-    if (!preview || !isApprovedCotizacion(preview)) {
+    if (!preview || !canRegisterOcRecibidaForPreview(preview)) {
       showToast({
-        title: "Cotizacion no aprobada",
+        title: "OC recibida no disponible",
         description:
-          "Carga una cotizacion aprobada antes de registrar la OC recibida.",
+          "Carga una cotizacion aprobada o parcialmente aprobada con cantidades pendientes.",
         type: "warning",
       });
       return;
@@ -1361,10 +1486,11 @@ export default function OrdenesCompraPage() {
       (item) => item.seleccionado && item.cantidad > 0,
     );
 
-    if (!preview || !isApprovedCotizacion(preview)) {
+    if (!preview || !canEmitOcForPreview(preview)) {
       showToast({
-        title: "Cotizacion no aprobada",
-        description: "Carga una cotizacion aprobada antes de emitir la OC.",
+        title: "Cotizacion no disponible para emitir OC",
+        description:
+          "Carga una cotizacion aprobada, parcialmente aprobada u OC registrada antes de emitir la OC.",
         type: "warning",
       });
       return;
@@ -1393,7 +1519,7 @@ export default function OrdenesCompraPage() {
       showToast({
         title: "RUC faltante",
         description:
-          "El proveedor seleccionado debe tener un RUC registrado para emitir la OC.",
+          "Completa el RUC en los datos del proveedor dentro de este modal y vuelve a emitir la OC.",
         type: "warning",
       });
       return;
@@ -1401,17 +1527,21 @@ export default function OrdenesCompraPage() {
 
     try {
       setSaving(true);
-      const response = await createOcEmitida({
+      const payload = {
         cotizacion_id: id,
         proveedor,
         proveedor_id: selectedProveedorCatalog.id,
+        moneda: monedaOc,
         fecha_emision: fecha,
         observaciones,
         items,
-      });
+      };
+      const response = editingEmitidaId
+        ? await updateOcEmitida(editingEmitidaId, payload)
+        : await createOcEmitida(payload);
 
       showToast({
-        title: response?.message || "OC emitida",
+        title: response?.message || (editingEmitidaId ? "OC reemitida" : "OC emitida"),
         description: response?.pdf_url
           ? "PDF generado por el backend. Iniciando descarga..."
           : "La orden fue emitida correctamente.",
@@ -1595,6 +1725,58 @@ export default function OrdenesCompraPage() {
           error,
           "No se pudo obtener el detalle de la OC emitida.",
         ),
+        type: "warning",
+      });
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const handleEditEmitida = async (oc: OcEmitida) => {
+    try {
+      setLoadingDetail(true);
+      const detail = await getOcEmitida(oc.id);
+      resetForm();
+
+      const detailItems = (detail.items || []).map((item) => ({
+        cotizacion_item_id: item.cotizacion_item_id ?? item.id,
+        descripcion: item.descripcion || item.producto || "Item sin descripcion",
+        seleccionado: true,
+        cantidad: toNumber(item.cantidad),
+        precio_unitario: toNumber(item.precio_unitario),
+      }));
+
+      setEditingEmitidaId(Number(detail.id));
+      setModalMode("emitir");
+      setActiveTab("emitidas");
+      setCotizacionId(String(detail.cotizacion_id || detail.cotizacion?.id || ""));
+      setProveedor(detail.proveedor || "");
+      setMonedaOc(String(detail.moneda || "PEN").toUpperCase());
+      setFecha(detail.fecha_emision || today);
+      setObservaciones(detail.observaciones || "");
+      setEmitidaItems(detailItems);
+      setPreview({
+        cotizacion: {
+          id: detail.cotizacion_id || detail.cotizacion?.id,
+          numero: detail.cotizacion?.numero,
+          cliente_nombre:
+            detail.cotizacion?.cliente_nombre || detail.cotizacion?.cliente?.nombre,
+          titulo: detail.cotizacion?.titulo,
+          estado_cotizacion_id: detail.cotizacion?.estado_cotizacion_id,
+        },
+        items: detailItems.map((item) => ({
+          id: item.cotizacion_item_id,
+          cotizacion_item_id: item.cotizacion_item_id,
+          descripcion: item.descripcion,
+          cantidad: item.cantidad,
+          precio_unitario: item.precio_unitario,
+        })),
+        proveedores: detail.proveedor ? [detail.proveedor] : [],
+      });
+    } catch (error) {
+      showToast({
+        title: "Error al cargar OC emitida",
+        description: getErrorMessage(error, "No se pudo preparar la reemision."),
         type: "warning",
       });
     } finally {
@@ -2008,6 +2190,7 @@ export default function OrdenesCompraPage() {
             <EmitidasTable
               rows={emitidas}
               onView={handleViewEmitida}
+              onEdit={handleEditEmitida}
               onDocuments={openDocumentModal}
               onDownloadPdf={handleDownloadEmitidaPdf}
               canEditOc={canEditOc}
@@ -2104,7 +2287,9 @@ export default function OrdenesCompraPage() {
             <ModalHeader
               title={
                 modalMode === "emitir"
-                  ? "Emitir OC a proveedor"
+                  ? editingEmitidaId
+                    ? "Editar y reemitir OC"
+                    : "Emitir OC a proveedor"
                   : "Registrar OC recibida"
               }
               onClose={closeCreateModal}
@@ -2165,6 +2350,24 @@ export default function OrdenesCompraPage() {
 
               {modalMode === "emitir" && (
                 <div className="space-y-3">
+                  <label className="space-y-2">
+                    <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                      Moneda de la OC emitida
+                    </span>
+                    <select
+                      value={monedaOc}
+                      onChange={(event) => setMonedaOc(event.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                    >
+                      {monedaOptions.map((moneda) => (
+                        <option key={moneda.codigo} value={moneda.codigo}>
+                          {moneda.codigo}
+                          {moneda.simbolo ? ` - ${moneda.simbolo}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
                   <div className="space-y-2">
                     <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
                       Proveedor
@@ -2201,12 +2404,180 @@ export default function OrdenesCompraPage() {
                   </div>
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                    {selectedModalProviderRuc ? (
-                      <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-200">
-                        <span>Proveedor registrado</span>
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800 dark:bg-emerald-700/30 dark:text-emerald-100">
-                          RUC: {selectedModalProviderRuc}
-                        </span>
+                    {selectedProveedorCatalog ? (
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="inline-flex flex-wrap items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-200">
+                            <span>Proveedor registrado</span>
+                            {selectedModalProviderRuc ? (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800 dark:bg-emerald-700/30 dark:text-emerald-100">
+                                RUC: {selectedModalProviderRuc}
+                              </span>
+                            ) : (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 dark:bg-amber-700/30 dark:text-amber-100">
+                                RUC pendiente
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingProveedorCatalog((current) => !current)
+                            }
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                          >
+                            {editingProveedorCatalog
+                              ? "Ocultar edicion"
+                              : "Editar datos"}
+                          </button>
+                        </div>
+
+                        {selectedProveedorMissingOcData && (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/20 dark:text-amber-100">
+                            Completa los datos faltantes del proveedor antes de
+                            emitir la OC. Puedes hacerlo desde este mismo
+                            formulario.
+                          </div>
+                        )}
+
+                        {editingProveedorCatalog ? (
+                          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950 md:grid-cols-2">
+                            <label className="space-y-1">
+                              <span className="text-xs font-semibold uppercase text-slate-500">
+                                Nombre
+                              </span>
+                              <input
+                                value={proveedorEditDraft.nombre}
+                                onChange={(event) =>
+                                  handleProveedorEditChange(
+                                    "nombre",
+                                    event.target.value,
+                                  )
+                                }
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                              />
+                            </label>
+                            <label className="space-y-1">
+                              <span className="text-xs font-semibold uppercase text-slate-500">
+                                RUC
+                              </span>
+                              <input
+                                value={proveedorEditDraft.ruc || ""}
+                                onChange={(event) =>
+                                  handleProveedorEditChange(
+                                    "ruc",
+                                    event.target.value,
+                                  )
+                                }
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                              />
+                            </label>
+                            <label className="space-y-1">
+                              <span className="text-xs font-semibold uppercase text-slate-500">
+                                Atencion / contacto
+                              </span>
+                              <input
+                                value={proveedorEditDraft.contacto || ""}
+                                onChange={(event) =>
+                                  handleProveedorEditChange(
+                                    "contacto",
+                                    event.target.value,
+                                  )
+                                }
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                              />
+                            </label>
+                            <label className="space-y-1">
+                              <span className="text-xs font-semibold uppercase text-slate-500">
+                                Telefono
+                              </span>
+                              <input
+                                value={proveedorEditDraft.telefono || ""}
+                                onChange={(event) =>
+                                  handleProveedorEditChange(
+                                    "telefono",
+                                    event.target.value,
+                                  )
+                                }
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                              />
+                            </label>
+                            <label className="space-y-1">
+                              <span className="text-xs font-semibold uppercase text-slate-500">
+                                Correo
+                              </span>
+                              <input
+                                type="email"
+                                value={proveedorEditDraft.correo || ""}
+                                onChange={(event) =>
+                                  handleProveedorEditChange(
+                                    "correo",
+                                    event.target.value,
+                                  )
+                                }
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                              />
+                            </label>
+                            <label className="space-y-1 md:col-span-2">
+                              <span className="text-xs font-semibold uppercase text-slate-500">
+                                Direccion
+                              </span>
+                              <input
+                                value={proveedorEditDraft.direccion || ""}
+                                onChange={(event) =>
+                                  handleProveedorEditChange(
+                                    "direccion",
+                                    event.target.value,
+                                  )
+                                }
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                              />
+                            </label>
+                            <div className="flex flex-wrap justify-end gap-2 md:col-span-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingProveedorCatalog(false)
+                                }
+                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleUpdateSelectedProveedor}
+                                disabled={
+                                  updatingProveedorCatalog ||
+                                  !proveedorEditDraft.nombre.trim()
+                                }
+                                className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                              >
+                                {updatingProveedorCatalog
+                                  ? "Guardando..."
+                                  : "Guardar datos"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid gap-3 text-xs md:grid-cols-2">
+                            <InfoLine
+                              label="Contacto"
+                              value={selectedProveedorCatalog.contacto || "-"}
+                            />
+                            <InfoLine
+                              label="Telefono"
+                              value={selectedProveedorCatalog.telefono || "-"}
+                            />
+                            <InfoLine
+                              label="Correo"
+                              value={selectedProveedorCatalog.correo || "-"}
+                            />
+                            <InfoLine
+                              label="Direccion"
+                              value={selectedProveedorCatalog.direccion || "-"}
+                            />
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div>
@@ -2280,6 +2651,67 @@ export default function OrdenesCompraPage() {
                             className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                           />
                         </label>
+                        <label className="space-y-2">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Atencion / contacto
+                          </span>
+                          <input
+                            value={nuevoProveedor.contacto || ""}
+                            onChange={(event) =>
+                              handleNuevoProveedorChange(
+                                "contacto",
+                                event.target.value,
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                          />
+                        </label>
+                        <label className="space-y-2">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Telefono
+                          </span>
+                          <input
+                            value={nuevoProveedor.telefono || ""}
+                            onChange={(event) =>
+                              handleNuevoProveedorChange(
+                                "telefono",
+                                event.target.value,
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                          />
+                        </label>
+                        <label className="space-y-2">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Correo
+                          </span>
+                          <input
+                            type="email"
+                            value={nuevoProveedor.correo || ""}
+                            onChange={(event) =>
+                              handleNuevoProveedorChange(
+                                "correo",
+                                event.target.value,
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                          />
+                        </label>
+                        <label className="space-y-2 md:col-span-2">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Direccion
+                          </span>
+                          <input
+                            value={nuevoProveedor.direccion || ""}
+                            onChange={(event) =>
+                              handleNuevoProveedorChange(
+                                "direccion",
+                                event.target.value,
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                          />
+                        </label>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
@@ -2327,6 +2759,7 @@ export default function OrdenesCompraPage() {
                 <EmitidaDraftTable
                   rows={emitidaItems}
                   setRows={setEmitidaItems}
+                  currencySymbol={selectedMonedaSymbol}
                 />
               )}
 
@@ -2381,7 +2814,11 @@ export default function OrdenesCompraPage() {
                 ) : (
                   <FilePlus2 size={17} />
                 )}
-                {modalMode === "emitir" ? "Emitir OC" : "Guardar OC recibida"}
+                {modalMode === "emitir"
+                  ? editingEmitidaId
+                    ? "Reemitir OC"
+                    : "Emitir OC"
+                  : "Guardar OC recibida"}
               </button>
             </div>
           </div>
@@ -2865,9 +3302,21 @@ function MultipleFileInput({
   );
 }
 
+function InfoLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-white px-3 py-2 dark:bg-slate-950">
+      <p className="font-semibold uppercase text-slate-400">{label}</p>
+      <p className="mt-1 break-words font-medium text-slate-700 dark:text-slate-200">
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function EmitidasTable({
   rows,
   onView,
+  onEdit,
   onDocuments,
   onDownloadPdf,
   canEditOc,
@@ -2875,6 +3324,7 @@ function EmitidasTable({
 }: {
   rows: OcEmitida[];
   onView: (oc: OcEmitida) => void;
+  onEdit: (oc: OcEmitida) => void;
   onDocuments: (oc: OcEmitida) => void;
   onDownloadPdf: (oc: OcEmitida) => void;
   canEditOc: (oc: OcEmitida) => boolean;
@@ -2923,7 +3373,7 @@ function EmitidasTable({
                     Total
                   </p>
                   <p className="mt-1 font-bold text-slate-900 dark:text-slate-100">
-                    {formatMoney(oc.total, "S/")}
+                    {formatMoney(oc.total, getOcCurrencySymbol(oc))}
                   </p>
                 </div>
                 <div>
@@ -2935,11 +3385,17 @@ function EmitidasTable({
                   </div>
                 </div>
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
+              <div className="mt-4 grid grid-cols-4 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
                 <IconButton
                   title="Ver detalle"
                   onClick={() => onView(oc)}
                   icon={<Eye size={17} />}
+                />
+                <IconButton
+                  title={canEditOc(oc) ? "Editar y reemitir OC" : "No tienes permisos para editar"}
+                  onClick={() => onEdit(oc)}
+                  icon={<Pencil size={17} />}
+                  disabled={!canEditOc(oc)}
                 />
                 <IconButton
                   title={
@@ -3006,7 +3462,7 @@ function EmitidasTable({
                     </span>
                   </td>
                   <td className="px-5 py-4 font-semibold">
-                    {formatMoney(oc.total, "S/")}
+                    {formatMoney(oc.total, getOcCurrencySymbol(oc))}
                   </td>
                   <td className="px-5 py-4">
                     <DocumentStatus oc={oc} />
@@ -3023,6 +3479,12 @@ function EmitidasTable({
                         title="Ver detalle"
                         onClick={() => onView(oc)}
                         icon={<Eye size={17} />}
+                      />
+                      <IconButton
+                        title={canEditOc(oc) ? "Editar y reemitir OC" : "No tienes permisos para editar"}
+                        onClick={() => onEdit(oc)}
+                        icon={<Pencil size={17} />}
+                        disabled={!canEditOc(oc)}
                       />
                       <IconButton
                         title={
@@ -3480,9 +3942,11 @@ function RecibidaDraftTable({
 function EmitidaDraftTable({
   rows,
   setRows,
+  currencySymbol,
 }: {
   rows: EmitidaDraftItem[];
   setRows: React.Dispatch<React.SetStateAction<EmitidaDraftItem[]>>;
+  currencySymbol: string;
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-slate-800">
@@ -3492,7 +3956,7 @@ function EmitidaDraftTable({
             <th className="px-4 py-3">Incluir</th>
             <th className="px-4 py-3">Item</th>
             <th className="px-4 py-3">Cantidad</th>
-            <th className="px-4 py-3">Precio unitario</th>
+            <th className="px-4 py-3">Precio sin IGV</th>
             <th className="px-4 py-3">Subtotal</th>
           </tr>
         </thead>
@@ -3563,7 +4027,7 @@ function EmitidaDraftTable({
               <td className="px-4 py-3 font-semibold">
                 {formatMoney(
                   item.seleccionado ? item.cantidad * item.precio_unitario : 0,
-                  "S/",
+                  currencySymbol,
                 )}
               </td>
             </tr>
@@ -3796,17 +4260,17 @@ function DetailModal({
               <InfoTile
                 icon={<FileText size={18} />}
                 label="Subtotal"
-                value={formatMoney((oc as OcEmitida).subtotal, "S/")}
+                value={formatMoney((oc as OcEmitida).subtotal, getOcCurrencySymbol(oc))}
               />
               <InfoTile
                 icon={<FileText size={18} />}
                 label="IGV"
-                value={formatMoney((oc as OcEmitida).igv, "S/")}
+                value={formatMoney((oc as OcEmitida).igv, getOcCurrencySymbol(oc))}
               />
               <InfoTile
                 icon={<FileText size={18} />}
                 label="Total"
-                value={formatMoney((oc as OcEmitida).total, "S/")}
+                value={formatMoney((oc as OcEmitida).total, getOcCurrencySymbol(oc))}
               />
             </div>
           )}
@@ -3855,7 +4319,7 @@ function DetailModal({
                     <th className="px-4 py-3">Descripcion</th>
                     <th className="px-4 py-3">Cantidad</th>
                     {isEmitida ? (
-                      <th className="px-4 py-3">Precio</th>
+                      <th className="px-4 py-3">Precio sin IGV</th>
                     ) : (
                       <>
                         <th className="px-4 py-3">Comprado</th>
@@ -4050,7 +4514,7 @@ function DetailModal({
                         </td>
                         {isEmitida ? (
                           <td className="px-4 py-3">
-                            {formatMoney(item.precio_unitario, "S/")}
+                            {formatMoney(item.precio_unitario, getOcCurrencySymbol(oc))}
                           </td>
                         ) : (
                           <>

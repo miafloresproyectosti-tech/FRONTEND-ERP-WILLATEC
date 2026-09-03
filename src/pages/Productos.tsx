@@ -2055,7 +2055,7 @@ export default function Productos() {
                     Stock real
                   </th>
                   <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Precio
+                    Precio (Sin IGV)
                   </th>
                   <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                     Ubicacion

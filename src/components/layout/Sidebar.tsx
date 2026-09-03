@@ -448,15 +448,27 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             )}
 
             {user?.role === "CONTABILIDAD" && (
-              <Link
-                to="/ordenes-compra"
-                onClick={closeMobile}
-                className={itemClass("/ordenes-compra")}
-              >
-                <ShoppingCart size={20} />
-                <span className="font-medium">Ordenes de Compra</span>
-                <NotificationBadge count={notificationCount("ordenes")} />
-              </Link>
+              <>
+                <Link
+                  to="/cotizaciones"
+                  onClick={closeMobile}
+                  className={itemClass("/cotizaciones")}
+                >
+                  <FileText size={20} />
+                  <span className="font-medium">Cotizaciones</span>
+                  <NotificationBadge count={notificationCount("cotizaciones")} />
+                </Link>
+
+                <Link
+                  to="/ordenes-compra"
+                  onClick={closeMobile}
+                  className={itemClass("/ordenes-compra")}
+                >
+                  <ShoppingCart size={20} />
+                  <span className="font-medium">Ordenes de Compra</span>
+                  <NotificationBadge count={notificationCount("ordenes")} />
+                </Link>
+              </>
             )}
 
             {hasPermission("servicios") && (

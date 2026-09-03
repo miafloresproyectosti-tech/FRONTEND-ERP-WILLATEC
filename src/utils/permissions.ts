@@ -90,6 +90,7 @@ export const rolePermissions: Record<UserRole, string[]> = {
   ],
 
   CONTABILIDAD: [
+    "cotizaciones",
     "ordenes_compra"
   ]
 };

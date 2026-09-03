@@ -204,7 +204,10 @@ export default function Cotizaciones() {
   }, [currentPage, debouncedSearchTerm, fechaDesde, fechaHasta, filterEjecutivo, filterEstado, itemsPerPage]);
 
   const paginatedCotizaciones = cotizaciones;
-  const canReviewCotizaciones = user?.role === "SUPERADMIN" || user?.role === "ADMIN";
+  const userRole = user?.role?.toUpperCase();
+  const canReviewCotizaciones = userRole === "SUPERADMIN" || userRole === "ADMIN";
+  const canCreateCotizacion = userRole === "SUPERADMIN" || userRole === "VENTAS";
+  const canCreateOcForAnyCotizacion = ["SUPERADMIN", "ADMIN", "CONTABILIDAD"].includes(userRole || "");
 
   // ✅ BADGES
   const getEstadoBadge = (estadoId: number) => {
@@ -446,6 +449,9 @@ export default function Cotizaciones() {
     setCotizacionForOc(null);
   };
 
+  const cotizacionForOcEstadoId = Number(cotizacionForOc?.estado_cotizacion_id ?? 0);
+  const cotizacionForOcRegistrada = cotizacionForOcEstadoId === ESTADO_FILTER_MAP.oc_registrada;
+
 
   return (
     <div className="space-y-6">
@@ -474,13 +480,15 @@ export default function Cotizaciones() {
       </div>
 
       {/* BOTÓN */}
-      <button
-        onClick={() => navigate("/cotizaciones/new")}
-        className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition shadow-lg"
-      >
-        <Plus size={20} />
-        Nueva Cotización
-      </button>
+      {canCreateCotizacion && (
+        <button
+          onClick={() => navigate("/cotizaciones/new")}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition shadow-lg"
+        >
+          <Plus size={20} />
+          Nueva Cotización
+        </button>
+      )}
 
       {/* CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
@@ -741,9 +749,10 @@ export default function Cotizaciones() {
                     ESTADO_FILTER_MAP.oc_registrada,
                   ].includes(estadoActualId);
                   const puedeEditarDirecto = puedeEditar && !bloqueaEdicion;
-                  const puedeGenerarOc = puedeEditar && [
+                  const puedeGenerarOc = (puedeEditar || canCreateOcForAnyCotizacion) && [
                     ESTADO_FILTER_MAP.aprobada,
                     ESTADO_FILTER_MAP.parcialmente_aprobada,
+                    ESTADO_FILTER_MAP.oc_registrada,
                   ].includes(estadoActualId);
                   const modificacionesPendientes = Number(cotizacion.modificaciones_pendientes_count || 0);
 
@@ -920,9 +929,10 @@ export default function Cotizaciones() {
                       ESTADO_FILTER_MAP.oc_registrada,
                     ].includes(estadoActualId);
                     const puedeEditarDirecto = puedeEditar && !bloqueaEdicion;
-                    const puedeGenerarOc = puedeEditar && [
+                    const puedeGenerarOc = (puedeEditar || canCreateOcForAnyCotizacion) && [
                       ESTADO_FILTER_MAP.aprobada,
                       ESTADO_FILTER_MAP.parcialmente_aprobada,
+                      ESTADO_FILTER_MAP.oc_registrada,
                     ].includes(estadoActualId);
                     const modificacionesPendientes = Number(cotizacion.modificaciones_pendientes_count || 0);
 
@@ -1154,18 +1164,20 @@ export default function Cotizaciones() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 p-6 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => openOrdenCompraFlow("recibir")}
-                className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left transition hover:bg-emerald-100"
-              >
-                <ClipboardCheck className="mb-3 h-7 w-7 text-emerald-600" />
-                <p className="font-bold text-emerald-900">OC recibida</p>
-                <p className="mt-1 text-sm text-emerald-700">
-                  Registrar la orden enviada por el cliente.
-                </p>
-              </button>
+            <div className={`grid grid-cols-1 gap-3 p-6 ${cotizacionForOcRegistrada ? "" : "sm:grid-cols-2"}`}>
+              {!cotizacionForOcRegistrada && (
+                <button
+                  type="button"
+                  onClick={() => openOrdenCompraFlow("recibir")}
+                  className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left transition hover:bg-emerald-100"
+                >
+                  <ClipboardCheck className="mb-3 h-7 w-7 text-emerald-600" />
+                  <p className="font-bold text-emerald-900">OC recibida</p>
+                  <p className="mt-1 text-sm text-emerald-700">
+                    Registrar la orden enviada por el cliente.
+                  </p>
+                </button>
+              )}
 
               <button
                 type="button"
