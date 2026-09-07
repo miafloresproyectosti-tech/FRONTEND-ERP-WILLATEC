@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   Search,
@@ -105,6 +105,12 @@ const ESTADO_FILTER_MAP: Record<EstadoResumenKey, number> = {
   oc_registrada: 6,
 };
 
+const ESTADO_FILTER_VALUES = new Set([
+  "todos",
+  "pendientes_revision",
+  ...Object.keys(ESTADO_FILTER_MAP),
+]);
+
 const EMPTY_TOTAL_POR_ESTADO: Record<EstadoResumenKey, number> = {
   borrador: 0,
   enviada: 0,
@@ -136,6 +142,7 @@ export default function Cotizaciones() {
   const addNotificationRef = useRef(addNotification);
 
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
 
 
@@ -146,7 +153,10 @@ export default function Cotizaciones() {
   const [loadingEjecutivos, setLoadingEjecutivos] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
-  const [filterEstado, setFilterEstado] = useState("todos");
+  const [filterEstado, setFilterEstado] = useState(() => {
+    const estadoParam = searchParams.get("estado") || "todos";
+    return ESTADO_FILTER_VALUES.has(estadoParam) ? estadoParam : "todos";
+  });
   const [filterEjecutivo, setFilterEjecutivo] = useState("todos");
   const [fechaDesde, setFechaDesde] = useState("");
   const [fechaHasta, setFechaHasta] = useState("");
@@ -169,6 +179,36 @@ export default function Cotizaciones() {
   useEffect(() => {
     addNotificationRef.current = addNotification;
   }, [addNotification]);
+
+  const applyEstadoFilter = useCallback(
+    (estado: string) => {
+      const safeEstado = ESTADO_FILTER_VALUES.has(estado) ? estado : "todos";
+      setFilterEstado(safeEstado);
+      setCurrentPage(1);
+      const nextParams = new URLSearchParams(searchParams);
+
+      if (safeEstado === "todos") {
+        nextParams.delete("estado");
+      } else {
+        nextParams.set("estado", safeEstado);
+      }
+
+      setSearchParams(nextParams, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  useEffect(() => {
+    const estadoParam = searchParams.get("estado") || "todos";
+    const safeEstado = ESTADO_FILTER_VALUES.has(estadoParam)
+      ? estadoParam
+      : "todos";
+
+    if (safeEstado !== filterEstado) {
+      setFilterEstado(safeEstado);
+      setCurrentPage(1);
+    }
+  }, [filterEstado, searchParams]);
 
   const loadCotizaciones = useCallback(async () => {
     try {
@@ -463,7 +503,7 @@ export default function Cotizaciones() {
           </h1>
 
           <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Gestión de cotizaciones del sistema
+            Gestión de cotizaciones
           </p>
         </div>
 
@@ -571,7 +611,7 @@ export default function Cotizaciones() {
 
             <button
               type="button"
-              onClick={() => setFilterEstado("pendientes_revision")}
+              onClick={() => applyEstadoFilter("pendientes_revision")}
               className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-yellow-700 bg-yellow-50 px-4 py-2 rounded-2xl hover:bg-yellow-100"
             >
               Ver pendientes
@@ -702,8 +742,7 @@ export default function Cotizaciones() {
             <select
               value={filterEstado}
               onChange={(e) => {
-                setFilterEstado(e.target.value);
-                setCurrentPage(1);
+                applyEstadoFilter(e.target.value);
               }}
               className="w-full px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white sm:w-56"
             >

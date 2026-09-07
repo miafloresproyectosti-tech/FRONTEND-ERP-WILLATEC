@@ -39,8 +39,6 @@ const FORM_VACIO: ClienteForm = {
   moneda_id: 1,
 };
 
-const ITEMS_PER_PAGE = 5;
-
 const tipoClienteOptions = [
   { id: 1, label: "Prospecto" },
   { id: 2, label: "Activo" },
@@ -69,8 +67,6 @@ export default function Clientes() {
   const [saving, setSaving] = useState(false);
   const [openModal, setOpenModal] = useState(false);
   const [modoEdicion, setModoEdicion] = useState(false);
-  const [editandoId, setEditandoId] = useState<number | null>(null);
-  const [form, setForm] = useState<ClienteForm>(FORM_VACIO);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState<"todos" | "activo" | "inactivo">("todos");
   const [filterTipoCliente, setFilterTipoCliente] = useState("todos");
@@ -153,10 +149,6 @@ export default function Clientes() {
     setClienteSeleccionado(cliente);
     setModoEdicion(true);
     setOpenModal(true);
-  };
-
-  const handleEliminar = (cliente: Cliente) => {
-    setClienteAEliminar(cliente);
   };
 
   const confirmarEliminar = async () => {

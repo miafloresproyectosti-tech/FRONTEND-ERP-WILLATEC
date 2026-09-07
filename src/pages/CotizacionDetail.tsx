@@ -15,7 +15,7 @@ import { CotizacionGeneralForm } from '../components/cotizaciones/CotizacionGene
 import { CotizacionItemsTable } from '../components/cotizaciones/CotizacionItemsTable';
 import type { ItemForm } from '../types/cotizaciones.type';
 import { normalizeStorageImageUrl } from '../utils/storageImage';
-import { normalizeRole } from '../utils/permissions';
+import { normalizeRole, rolePermissions } from '../utils/permissions';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { ExportModal } from '../components/cotizaciones/modals/ExportModal';
 import { ItemTypeModal } from '../components/cotizaciones/modals/ItemTypeModal';
@@ -540,7 +540,7 @@ export function CotizacionDetail() {
       return hydratedFile;
     } catch (error) {
       showToast({
-        title: 'No se pudo cargar el archivo',
+        title: 'No se pudo cargar el archivo' + error,
         description: 'Intenta nuevamente en unos segundos.',
         type: 'warning',
       });
@@ -569,6 +569,9 @@ export function CotizacionDetail() {
   // Verificar permisos del usuario actual sobre la cotización
   const userRole = normalizeRole(user?.role);
   const isSuperAdmin = userRole === 'SUPERADMIN';
+  const canOpenOportunidades =
+    rolePermissions[userRole]?.includes('*') ||
+    rolePermissions[userRole]?.includes('licitaciones');
   const canCreateCotizacion = ['SUPERADMIN', 'VENTAS'].includes(userRole);
   const currentEstadoCotizacionId = Number(estadoCotizacionId);
   const currentDelegadoId = delegadoId === null || delegadoId === undefined ? null : Number(delegadoId);
@@ -625,6 +628,8 @@ export function CotizacionDetail() {
     user &&
     (isSuperAdmin || currentDelegadoId === Number(user.id))
   );
+  const shouldReturnToPendingReview = isSuperAdmin || userRole === 'ADMIN';
+  const pendingReviewPath = '/cotizaciones?estado=pendientes_revision';
   const canChangeReviewEstado = Boolean(
     user && (isSuperAdmin || currentDelegadoId === Number(user.id))
   );
@@ -1061,7 +1066,7 @@ export function CotizacionDetail() {
       } catch (error) {
         addNotification({
           title: 'Error',
-          description: 'Error al cargar productos',
+          description: 'Error al cargar productos' + error,
           message: 'Error al cargar productos',
           type: 'error',
           duration: 4000,
@@ -1167,7 +1172,7 @@ export function CotizacionDetail() {
       } catch (error) {
         addNotification({
           title: 'Error',
-          description: 'Error al cargar plataformas',
+          description: 'Error al cargar plataformas' + error,
           message: 'Error al cargar plataformas',
           type: 'error',
           duration: 4000,
@@ -1254,7 +1259,7 @@ export function CotizacionDetail() {
           const historialApi = await Promise.resolve([]).then(() => getCotizacionHistorial(currentCotizacionId));
           setHistorial(historialApi);
         } catch (historialError) {
-          console.warn('No se pudo cargar el historial de la cotizaciÃ³n', historialError);
+          console.warn('No se pudo cargar el historial de la cotización', historialError);
         }
       }
     } catch (error) {
@@ -1295,6 +1300,7 @@ export function CotizacionDetail() {
         console.warn('No se pudo cargar versiones de la cotizacion', versionError);
         setVersionesInfo(null);
       }
+
     } catch (error: any) {
       showToast({
         title: 'Error',
@@ -1403,6 +1409,10 @@ export function CotizacionDetail() {
           targetUserId,
         } as any);
       }
+
+      if (shouldReturnToPendingReview) {
+        navigate(pendingReviewPath);
+      }
     } catch (error: any) {
       showToast({
         title: 'Error al aprobar la cotización',
@@ -1474,6 +1484,10 @@ export function CotizacionDetail() {
           route: `/cotizaciones/${cotizacionId}/view`,
           targetUserId,
         } as any);
+      }
+
+      if (shouldReturnToPendingReview) {
+        navigate(pendingReviewPath);
       }
     } catch (error: any) {
       showToast({
@@ -2289,8 +2303,6 @@ export function CotizacionDetail() {
       monto: 0,
       descripcion: '',
     });
-
-    // setShowCostosModal(false);
   };
 
 
@@ -3044,6 +3056,16 @@ export function CotizacionDetail() {
               </div>
               <h2 className="text-lg font-bold text-slate-950">{opportunitySummary.empresa || 'Empresa no definida'}</h2>
               <p className="mt-1 text-sm font-semibold text-blue-900">{opportunitySummary.requerimiento || 'Requerimiento no definido'}</p>
+              {canOpenOportunidades && opportunitySummary.id && (
+                <button
+                  type="button"
+                  onClick={() => guardedNavigate(`/seguimiento-licitaciones?oportunidad_id=${opportunitySummary.id}`)}
+                  className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Ver oportunidad
+                </button>
+              )}
             </div>
             <div className="grid min-w-0 grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:w-[520px]">
               <div className="rounded-xl bg-white/80 px-3 py-2">

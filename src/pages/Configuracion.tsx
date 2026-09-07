@@ -1,5 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { Save, Building, Settings, Shield, Bell, Eye, EyeOff, AlertTriangle, Volume2, Monitor, Mail, BellRing, UploadCloud } from "lucide-react";
+import {
+  Save,
+  Building,
+  Settings,
+  Shield,
+  Bell,
+  Eye,
+  EyeOff,
+  AlertTriangle,
+  Volume2,
+  Monitor,
+  Mail,
+  BellRing,
+  UploadCloud,
+} from "lucide-react";
 import {
   enableTwoFactorRequest,
   getTwoFactorQrRequest,
@@ -15,9 +29,7 @@ import {
   getEmpresaConfiguracion,
   updateEmpresaConfiguracion,
 } from "../services/empresaConfiguracion.service";
-import {
-  notificationService,
-} from "../services/notification.service";
+import { notificationService } from "../services/notification.service";
 import {
   defaultNotificationPreferences,
   type NotificationPreferences,
@@ -39,7 +51,8 @@ export default function Configuracion() {
   const { user, updateTwoFactorEnabled } = useAuth();
   const twoFactorEnabled = !!user?.two_factor_enabled;
   const isSuperAdmin = user?.role === "SUPERADMIN";
-  const canManageSystemSettings = user?.role === "SUPERADMIN" || user?.role === "ADMIN";
+  const canManageSystemSettings =
+    user?.role === "SUPERADMIN" || user?.role === "ADMIN";
   const [loadingEmpresaConfig, setLoadingEmpresaConfig] = useState(false);
   const [savingEmpresaConfig, setSavingEmpresaConfig] = useState(false);
   const [empresaForm, setEmpresaForm] = useState({
@@ -50,12 +63,21 @@ export default function Configuracion() {
     correo: "",
   });
 
-  const tabs = useMemo(() => [
-    { id: "empresa", name: "Empresa", icon: Building },
-    { id: "sistema", name: "Sistema", icon: Settings },
-    { id: "seguridad", name: "Seguridad", icon: Shield },
-    { id: "notificaciones", name: "Notificaciones", icon: Bell },
-  ].filter((tab) => !user || canManageSystemSettings || ["seguridad", "notificaciones"].includes(tab.id)), [canManageSystemSettings, user]);
+  const tabs = useMemo(
+    () =>
+      [
+        { id: "empresa", name: "Empresa", icon: Building },
+        { id: "sistema", name: "Sistema", icon: Settings },
+        { id: "seguridad", name: "Seguridad", icon: Shield },
+        { id: "notificaciones", name: "Notificaciones", icon: Bell },
+      ].filter(
+        (tab) =>
+          !user ||
+          canManageSystemSettings ||
+          ["seguridad", "notificaciones"].includes(tab.id),
+      ),
+    [canManageSystemSettings, user],
+  );
 
   //VERIFICACION DE 2 PASOS
   const [qr, setQr] = useState("");
@@ -72,19 +94,26 @@ export default function Configuracion() {
   });
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [showSecurityQuestionAnswers, setShowSecurityQuestionAnswers] = useState([false, false]);
-  const [loadingSecurityQuestions, setLoadingSecurityQuestions] = useState(false);
+  const [showSecurityQuestionAnswers, setShowSecurityQuestionAnswers] =
+    useState([false, false]);
+  const [loadingSecurityQuestions, setLoadingSecurityQuestions] =
+    useState(false);
   const [savingSecurityQuestions, setSavingSecurityQuestions] = useState(false);
-  const [securityQuestionsConfigured, setSecurityQuestionsConfigured] = useState(false);
-  const [securityQuestionsPassword, setSecurityQuestionsPassword] = useState("");
-  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(defaultNotificationPreferences);
-  const [loadingNotificationPreferences, setLoadingNotificationPreferences] = useState(false);
-  const [savingNotificationPreferences, setSavingNotificationPreferences] = useState(false);
-  const [uploadingNotificationSound, setUploadingNotificationSound] = useState(false);
-  const [securityQuestionsForm, setSecurityQuestionsForm] = useState<Array<{ answer: string }>>([
-    { answer: "" },
-    { answer: "" },
-  ]);
+  const [securityQuestionsConfigured, setSecurityQuestionsConfigured] =
+    useState(false);
+  const [securityQuestionsPassword, setSecurityQuestionsPassword] =
+    useState("");
+  const [notificationPreferences, setNotificationPreferences] =
+    useState<NotificationPreferences>(defaultNotificationPreferences);
+  const [loadingNotificationPreferences, setLoadingNotificationPreferences] =
+    useState(false);
+  const [savingNotificationPreferences, setSavingNotificationPreferences] =
+    useState(false);
+  const [uploadingNotificationSound, setUploadingNotificationSound] =
+    useState(false);
+  const [securityQuestionsForm, setSecurityQuestionsForm] = useState<
+    Array<{ answer: string }>
+  >([{ answer: "" }, { answer: "" }]);
 
   useEffect(() => {
     if (!canManageSystemSettings) return;
@@ -127,7 +156,8 @@ export default function Configuracion() {
         console.warn("Error al cargar preferencias de notificaciones:", error);
         showToast({
           title: "No se pudieron cargar las preferencias",
-          description: "Se mostrara la configuracion predeterminada para tu rol.",
+          description:
+            "Se mostrara la configuracion predeterminada para tu rol.",
           type: "warning",
         });
       } finally {
@@ -138,7 +168,10 @@ export default function Configuracion() {
     void loadNotificationPreferences();
   }, [activeTab, showToast]);
 
-  const handleEmpresaChange = (field: keyof typeof empresaForm, value: string) => {
+  const handleEmpresaChange = (
+    field: keyof typeof empresaForm,
+    value: string,
+  ) => {
     setEmpresaForm((current) => ({
       ...current,
       [field]: value,
@@ -170,12 +203,14 @@ export default function Configuracion() {
         type: "success",
       });
     } catch (error: unknown) {
-      const backendMessage =
-        (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      const backendMessage = (
+        error as { response?: { data?: { message?: string } } }
+      )?.response?.data?.message;
 
       showToast({
         title: "Error al guardar empresa",
-        description: backendMessage || "No se pudieron guardar los datos de empresa",
+        description:
+          backendMessage || "No se pudieron guardar los datos de empresa",
         type: "error",
       });
     } finally {
@@ -186,7 +221,9 @@ export default function Configuracion() {
   const saveNotificationPreferences = async () => {
     try {
       setSavingNotificationPreferences(true);
-      const data = await notificationService.updatePreferences(notificationPreferences);
+      const data = await notificationService.updatePreferences(
+        notificationPreferences,
+      );
       setNotificationPreferences(data);
       showToast({
         title: "Notificaciones actualizadas",
@@ -194,12 +231,14 @@ export default function Configuracion() {
         type: "success",
       });
     } catch (error: unknown) {
-      const backendMessage =
-        (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      const backendMessage = (
+        error as { response?: { data?: { message?: string } } }
+      )?.response?.data?.message;
 
       showToast({
         title: "Error al guardar notificaciones",
-        description: backendMessage || "No se pudieron guardar tus preferencias",
+        description:
+          backendMessage || "No se pudieron guardar tus preferencias",
         type: "error",
       });
     } finally {
@@ -208,8 +247,12 @@ export default function Configuracion() {
   };
 
   const updateNotificationChannel = (
-    field: "system_enabled" | "email_enabled" | "sound_enabled" | "browser_enabled",
-    value: boolean
+    field:
+      | "system_enabled"
+      | "email_enabled"
+      | "sound_enabled"
+      | "browser_enabled",
+    value: boolean,
   ) => {
     setNotificationPreferences((current) => ({
       ...current,
@@ -217,7 +260,10 @@ export default function Configuracion() {
     }));
   };
 
-  const updateNotificationModule = (module: NotificationSectionKey, value: boolean) => {
+  const updateNotificationModule = (
+    module: NotificationSectionKey,
+    value: boolean,
+  ) => {
     setNotificationPreferences((current) => ({
       ...current,
       modules: {
@@ -228,7 +274,9 @@ export default function Configuracion() {
   };
 
   const getNotificationSoundLabel = () => {
-    const soundUrl = String(notificationPreferences.custom_sound_url || "").trim();
+    const soundUrl = String(
+      notificationPreferences.custom_sound_url || "",
+    ).trim();
     if (!soundUrl) return "Tono predeterminado del sistema";
 
     const filename = soundUrl.split("?")[0].split("/").filter(Boolean).pop();
@@ -236,7 +284,9 @@ export default function Configuracion() {
   };
 
   const playNotificationPreview = async () => {
-    const soundUrl = String(notificationPreferences.custom_sound_url || "/sounds/notificacion.mp3").trim();
+    const soundUrl = String(
+      notificationPreferences.custom_sound_url || "/sounds/notificacion.mp3",
+    ).trim();
     try {
       const audio = new Audio(soundUrl);
       audio.volume = 0.85;
@@ -244,7 +294,8 @@ export default function Configuracion() {
     } catch {
       showToast({
         title: "No se pudo reproducir el tono",
-        description: "Verifica que el archivo exista o usa una ruta publica valida.",
+        description:
+          "Verifica que el archivo exista o usa una ruta publica valida.",
         type: "warning",
       });
     }
@@ -253,7 +304,8 @@ export default function Configuracion() {
   const uploadNotificationSound = async (file?: File | null) => {
     if (!file) return;
 
-    const isMp3 = file.type === "audio/mpeg" || file.name.toLowerCase().endsWith(".mp3");
+    const isMp3 =
+      file.type === "audio/mpeg" || file.name.toLowerCase().endsWith(".mp3");
     const maxSizeMb = 5;
 
     if (!isMp3) {
@@ -280,16 +332,20 @@ export default function Configuracion() {
       setNotificationPreferences(data);
       showToast({
         title: "Tono actualizado",
-        description: "El MP3 fue guardado y seleccionado como tono de notificacion.",
+        description:
+          "El MP3 fue guardado y seleccionado como tono de notificacion.",
         type: "success",
       });
     } catch (error: unknown) {
-      const backendMessage =
-        (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      const backendMessage = (
+        error as { response?: { data?: { message?: string } } }
+      )?.response?.data?.message;
 
       showToast({
         title: "No se pudo subir el tono",
-        description: backendMessage || "Verifica que el archivo sea MP3 e intenta nuevamente.",
+        description:
+          backendMessage ||
+          "Verifica que el archivo sea MP3 e intenta nuevamente.",
         type: "error",
       });
     } finally {
@@ -313,8 +369,9 @@ export default function Configuracion() {
         type: "success",
       });
     } catch (error: unknown) {
-      const backendMessage =
-        (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      const backendMessage = (
+        error as { response?: { data?: { message?: string } } }
+      )?.response?.data?.message;
 
       showToast({
         title: "No se pudo quitar el tono",
@@ -371,7 +428,10 @@ export default function Configuracion() {
     void loadSecurityQuestions();
   }, [activeTab, isSuperAdmin]);
 
-  const handlePasswordFormChange = (field: keyof typeof passwordForm, value: string) => {
+  const handlePasswordFormChange = (
+    field: keyof typeof passwordForm,
+    value: string,
+  ) => {
     setPasswordForm((current) => ({
       ...current,
       [field]: value,
@@ -384,7 +444,7 @@ export default function Configuracion() {
     if (!passwordForm.current_password.trim()) {
       showToast({
         title: "Datos incompletos",
-        description: "Ingresa tu contrasena actual",
+        description: "Ingresa tu contraseña actual",
         type: "warning",
       });
       return;
@@ -392,8 +452,8 @@ export default function Configuracion() {
 
     if (passwordForm.password.length < 6) {
       showToast({
-        title: "Nueva contrasena invalida",
-        description: "La nueva contrasena debe tener minimo 6 caracteres",
+        title: "Nueva contraseña invalida",
+        description: "La nueva contraseña debe tener minimo 6 caracteres",
         type: "warning",
       });
       return;
@@ -413,7 +473,7 @@ export default function Configuracion() {
       await changePasswordRequest(
         passwordForm.current_password,
         passwordForm.password,
-        passwordForm.password_confirmation
+        passwordForm.password_confirmation,
       );
 
       setPasswordForm({
@@ -423,19 +483,20 @@ export default function Configuracion() {
       });
 
       showToast({
-        title: "Contrasena actualizada",
-        description: "Tu contrasena fue cambiada correctamente",
+        title: "Contraseña actualizada",
+        description: "Tu contraseña fue cambiada correctamente",
         type: "success",
       });
     } catch (error: unknown) {
-      const backendMessage =
-        (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      const backendMessage = (
+        error as { response?: { data?: { message?: string } } }
+      )?.response?.data?.message;
 
       showToast({
-        title: "Error al cambiar contrasena",
+        title: "Error al cambiar contraseña",
         description:
           backendMessage ||
-          "No se pudo cambiar la contrasena. Revisa los datos ingresados",
+          "No se pudo cambiar la contraseña. Revisa los datos ingresados",
         type: "error",
       });
     } finally {
@@ -443,10 +504,7 @@ export default function Configuracion() {
     }
   };
 
-  const handleSecurityQuestionChange = (
-    index: number,
-    value: string,
-  ) => {
+  const handleSecurityQuestionChange = (index: number, value: string) => {
     setSecurityQuestionsForm((current) =>
       current.map((row, rowIndex) =>
         rowIndex === index ? { ...row, answer: value } : row,
@@ -454,7 +512,9 @@ export default function Configuracion() {
     );
   };
 
-  const saveSecurityQuestions = async (event: React.FormEvent<HTMLFormElement>) => {
+  const saveSecurityQuestions = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
 
     if (!securityQuestionsPassword.trim()) {
@@ -491,16 +551,20 @@ export default function Configuracion() {
       );
       showToast({
         title: "Preguntas actualizadas",
-        description: data.message || "Tus preguntas de seguridad fueron guardadas",
+        description:
+          data.message || "Tus preguntas de seguridad fueron guardadas",
         type: "success",
       });
     } catch (error: unknown) {
-      const backendMessage =
-        (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      const backendMessage = (
+        error as { response?: { data?: { message?: string } } }
+      )?.response?.data?.message;
 
       showToast({
         title: "Error al guardar preguntas",
-        description: backendMessage || "No se pudieron actualizar las preguntas de seguridad",
+        description:
+          backendMessage ||
+          "No se pudieron actualizar las preguntas de seguridad",
         type: "error",
       });
     } finally {
@@ -579,7 +643,7 @@ export default function Configuracion() {
     } catch {
       showToast({
         title: "Error al desactivar 2FA",
-        description: "No se pudo desactivar el 2FA. Verifica tu contrasena",
+        description: "No se pudo desactivar el 2FA. Verifica tu contraseña",
         type: "error",
       });
     } finally {
@@ -623,7 +687,8 @@ ${recoveryCodes.join("\n")}
                   Esta direccion sera mostrada en los PDF de cotizacion.
                 </p>
                 <p className="mt-1 text-sm">
-                  Si no configuras una direccion, se seguira usando la direccion actual por defecto.
+                  Si no configuras una direccion, se seguira usando la direccion
+                  actual por defecto.
                 </p>
               </div>
             </div>
@@ -642,7 +707,9 @@ ${recoveryCodes.join("\n")}
                 <input
                   type="text"
                   value={empresaForm.nombre}
-                  onChange={(event) => handleEmpresaChange("nombre", event.target.value)}
+                  onChange={(event) =>
+                    handleEmpresaChange("nombre", event.target.value)
+                  }
                   placeholder="WILLATEC S.A.C"
                   className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
                 />
@@ -654,7 +721,9 @@ ${recoveryCodes.join("\n")}
                 <input
                   type="text"
                   value={empresaForm.ruc}
-                  onChange={(event) => handleEmpresaChange("ruc", event.target.value)}
+                  onChange={(event) =>
+                    handleEmpresaChange("ruc", event.target.value)
+                  }
                   placeholder="20602503331"
                   className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
                 />
@@ -667,7 +736,9 @@ ${recoveryCodes.join("\n")}
               <input
                 type="text"
                 value={empresaForm.direccion}
-                onChange={(event) => handleEmpresaChange("direccion", event.target.value)}
+                onChange={(event) =>
+                  handleEmpresaChange("direccion", event.target.value)
+                }
                 placeholder="Jr. Jorge Chavez Nro. 1747 - Of.1002 - Brena - Lima"
                 className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
               />
@@ -680,7 +751,9 @@ ${recoveryCodes.join("\n")}
                 <input
                   type="tel"
                   value={empresaForm.telefono}
-                  onChange={(event) => handleEmpresaChange("telefono", event.target.value)}
+                  onChange={(event) =>
+                    handleEmpresaChange("telefono", event.target.value)
+                  }
                   placeholder="(01) 757-1253"
                   className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
                 />
@@ -692,7 +765,9 @@ ${recoveryCodes.join("\n")}
                 <input
                   type="email"
                   value={empresaForm.correo}
-                  onChange={(event) => handleEmpresaChange("correo", event.target.value)}
+                  onChange={(event) =>
+                    handleEmpresaChange("correo", event.target.value)
+                  }
                   placeholder="ventas@willatec.com"
                   className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
                 />
@@ -751,53 +826,57 @@ ${recoveryCodes.join("\n")}
         return (
           <div className="max-w-4xl mx-auto space-y-8">
             {canManageSystemSettings && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4 pb-3 border-b border-gray-200">
-                  Política de Contraseñas
-                </h3>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700">
-                      Longitud Mínima
-                    </label>
-                    <input
-                      type="number"
-                      defaultValue="8"
-                      min="6"
-                      max="20"
-                      className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700">
-                      Días para Expiración
-                    </label>
-                    <input
-                      type="number"
-                      defaultValue="90"
-                      min="30"
-                      className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
-                    />
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4 pb-3 border-b border-gray-200">
+                    Política de Contraseñas
+                  </h3>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700">
+                        Longitud Mínima
+                      </label>
+                      <input
+                        type="number"
+                        defaultValue="8"
+                        min="6"
+                        max="20"
+                        className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700">
+                        Días para Expiración
+                      </label>
+                      <input
+                        type="number"
+                        defaultValue="90"
+                        min="30"
+                        className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
             )}
             {isSuperAdmin && (
               <div className="bg-white rounded-2xl p-6 shadow">
                 <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h2 className="text-xl font-bold">Preguntas de seguridad</h2>
+                    <h2 className="text-xl font-bold">
+                      Preguntas de seguridad
+                    </h2>
                     <p className="text-sm text-gray-600">
                       Solo se usarán para recuperar la cuenta SUPERADMIN.
                     </p>
                   </div>
-                  <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${
-                    securityQuestionsConfigured
-                      ? "bg-green-100 text-green-700"
-                      : "bg-amber-100 text-amber-700"
-                  }`}>
+                  <span
+                    className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${
+                      securityQuestionsConfigured
+                        ? "bg-green-100 text-green-700"
+                        : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
                     {loadingSecurityQuestions
                       ? "Cargando..."
                       : securityQuestionsConfigured
@@ -808,7 +887,10 @@ ${recoveryCodes.join("\n")}
 
                 <form onSubmit={saveSecurityQuestions} className="space-y-4">
                   {securityQuestionsForm.map((row, index) => (
-                    <div key={index} className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    <div
+                      key={index}
+                      className="grid grid-cols-1 gap-3 lg:grid-cols-2"
+                    >
                       <div className="space-y-2">
                         <label className="text-sm font-semibold text-gray-700">
                           Pregunta {index + 1}
@@ -827,14 +909,25 @@ ${recoveryCodes.join("\n")}
                         </label>
                         <div className="relative">
                           <input
-                            type={showSecurityQuestionAnswers[index] ? "text" : "password"}
+                            type={
+                              showSecurityQuestionAnswers[index]
+                                ? "text"
+                                : "password"
+                            }
                             value={row.answer}
                             onChange={(event) =>
-                              handleSecurityQuestionChange(index, event.target.value)
+                              handleSecurityQuestionChange(
+                                index,
+                                event.target.value,
+                              )
                             }
                             className="w-full px-4 py-3 pr-12 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
                             autoComplete="off"
-                            placeholder={securityQuestionsConfigured ? "Nueva respuesta" : "Respuesta"}
+                            placeholder={
+                              securityQuestionsConfigured
+                                ? "Nueva respuesta"
+                                : "Respuesta"
+                            }
                           />
                           <button
                             type="button"
@@ -846,9 +939,17 @@ ${recoveryCodes.join("\n")}
                               )
                             }
                             className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700"
-                            title={showSecurityQuestionAnswers[index] ? "Ocultar respuesta" : "Ver respuesta"}
+                            title={
+                              showSecurityQuestionAnswers[index]
+                                ? "Ocultar respuesta"
+                                : "Ver respuesta"
+                            }
                           >
-                            {showSecurityQuestionAnswers[index] ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                            {showSecurityQuestionAnswers[index] ? (
+                              <EyeOff className="w-5 h-5" />
+                            ) : (
+                              <Eye className="w-5 h-5" />
+                            )}
                           </button>
                         </div>
                       </div>
@@ -863,7 +964,9 @@ ${recoveryCodes.join("\n")}
                       <input
                         type="password"
                         value={securityQuestionsPassword}
-                        onChange={(event) => setSecurityQuestionsPassword(event.target.value)}
+                        onChange={(event) =>
+                          setSecurityQuestionsPassword(event.target.value)
+                        }
                         className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
                         autoComplete="current-password"
                       />
@@ -874,7 +977,9 @@ ${recoveryCodes.join("\n")}
                       className="inline-flex items-center justify-center gap-2 bg-slate-800 text-white px-5 py-3 rounded-xl font-semibold hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Save className="w-4 h-4" />
-                      {savingSecurityQuestions ? "Guardando..." : "Guardar preguntas"}
+                      {savingSecurityQuestions
+                        ? "Guardando..."
+                        : "Guardar preguntas"}
                     </button>
                   </div>
                 </form>
@@ -884,16 +989,22 @@ ${recoveryCodes.join("\n")}
             <div className="bg-white rounded-2xl p-6 shadow">
               <h2 className="text-xl font-bold mb-4">Cambiar contraseña</h2>
 
-              <form onSubmit={changePassword} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <form
+                onSubmit={changePassword}
+                className="grid grid-cols-1 lg:grid-cols-3 gap-4"
+              >
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700">
-                    Contrasena actual
+                    Contraseña actual
                   </label>
                   <input
                     type="password"
                     value={passwordForm.current_password}
                     onChange={(event) =>
-                      handlePasswordFormChange("current_password", event.target.value)
+                      handlePasswordFormChange(
+                        "current_password",
+                        event.target.value,
+                      )
                     }
                     className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
                     autoComplete="current-password"
@@ -902,7 +1013,7 @@ ${recoveryCodes.join("\n")}
 
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700">
-                    Nueva contrasena
+                    Nueva contraseña
                   </label>
                   <div className="relative">
                     <input
@@ -919,23 +1030,34 @@ ${recoveryCodes.join("\n")}
                       type="button"
                       onClick={() => setShowNewPassword((current) => !current)}
                       className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700"
-                      title={showNewPassword ? "Ocultar contrasena" : "Ver contrasena"}
+                      title={
+                        showNewPassword
+                          ? "Ocultar contrasena"
+                          : "Ver contrasena"
+                      }
                     >
-                      {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      {showNewPassword ? (
+                        <EyeOff className="w-5 h-5" />
+                      ) : (
+                        <Eye className="w-5 h-5" />
+                      )}
                     </button>
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700">
-                    Confirmar nueva contrasena
+                    Confirmar nueva contraseña
                   </label>
                   <div className="relative">
                     <input
                       type={showConfirmPassword ? "text" : "password"}
                       value={passwordForm.password_confirmation}
                       onChange={(event) =>
-                        handlePasswordFormChange("password_confirmation", event.target.value)
+                        handlePasswordFormChange(
+                          "password_confirmation",
+                          event.target.value,
+                        )
                       }
                       className="w-full px-4 py-3 pr-12 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
                       autoComplete="new-password"
@@ -943,11 +1065,21 @@ ${recoveryCodes.join("\n")}
                     />
                     <button
                       type="button"
-                      onClick={() => setShowConfirmPassword((current) => !current)}
+                      onClick={() =>
+                        setShowConfirmPassword((current) => !current)
+                      }
                       className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700"
-                      title={showConfirmPassword ? "Ocultar contrasena" : "Ver contrasena"}
+                      title={
+                        showConfirmPassword
+                          ? "Ocultar contraseña"
+                          : "Ver contraseña"
+                      }
                     >
-                      {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      {showConfirmPassword ? (
+                        <EyeOff className="w-5 h-5" />
+                      ) : (
+                        <Eye className="w-5 h-5" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -959,7 +1091,9 @@ ${recoveryCodes.join("\n")}
                     className="inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Save className="w-4 h-4" />
-                    {changingPassword ? "Guardando..." : "Guardar nueva contrasena"}
+                    {changingPassword
+                      ? "Guardando..."
+                      : "Guardar nueva contrasena"}
                   </button>
                 </div>
               </form>
@@ -1041,7 +1175,6 @@ ${recoveryCodes.join("\n")}
                   </button>
                 </div>
               )}
-
             </div>
           </div>
         );
@@ -1050,7 +1183,8 @@ ${recoveryCodes.join("\n")}
           {
             key: "system_enabled" as const,
             title: "Dentro del sistema",
-            description: "Muestra avisos en la campana y contadores del sidebar.",
+            description:
+              "Muestra avisos en la campana y contadores del sidebar.",
             icon: BellRing,
           },
           {
@@ -1061,7 +1195,7 @@ ${recoveryCodes.join("\n")}
           },
           {
             key: "browser_enabled" as const,
-            title: "Notificacion del navegador",
+            title: "Notificación del navegador",
             description: "Muestra avisos del navegador si diste permiso.",
             icon: Monitor,
           },
@@ -1074,7 +1208,7 @@ ${recoveryCodes.join("\n")}
         ];
         const allowedModules = notificationPreferences.allowed_modules || [];
         const visibleModules = NOTIFICATION_SECTION_ORDER.filter((module) =>
-          allowedModules.includes(module)
+          allowedModules.includes(module),
         );
 
         return (
@@ -1082,7 +1216,8 @@ ${recoveryCodes.join("\n")}
             <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-900">
               <p className="font-semibold">Preferencias personales</p>
               <p className="mt-1 text-blue-800">
-                Solo puedes configurar los modulos disponibles para tu rol. Los cambios afectan tu campana, contadores y avisos en este usuario.
+                Solo puedes configurar los modulos disponibles para tu rol. Los
+                cambios afectan tu campana, contadores y avisos en este usuario.
               </p>
             </div>
 
@@ -1093,11 +1228,15 @@ ${recoveryCodes.join("\n")}
             ) : (
               <>
                 <section className="space-y-3">
-                  <h3 className="text-lg font-semibold text-gray-800">Canales</h3>
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    Canales
+                  </h3>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     {channelOptions.map((option) => {
                       const Icon = option.icon;
-                      const checked = Boolean(notificationPreferences[option.key]);
+                      const checked = Boolean(
+                        notificationPreferences[option.key],
+                      );
 
                       return (
                         <label
@@ -1111,15 +1250,24 @@ ${recoveryCodes.join("\n")}
                           <input
                             type="checkbox"
                             checked={checked}
-                            onChange={(event) => updateNotificationChannel(option.key, event.target.checked)}
+                            onChange={(event) =>
+                              updateNotificationChannel(
+                                option.key,
+                                event.target.checked,
+                              )
+                            }
                             className="mt-1 h-5 w-5 rounded border-gray-300 text-blue-600"
                           />
                           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-700 shadow-sm">
                             <Icon size={20} />
                           </span>
                           <span>
-                            <span className="block text-sm font-bold text-gray-900">{option.title}</span>
-                            <span className="mt-1 block text-sm text-gray-600">{option.description}</span>
+                            <span className="block text-sm font-bold text-gray-900">
+                              {option.title}
+                            </span>
+                            <span className="mt-1 block text-sm text-gray-600">
+                              {option.description}
+                            </span>
                           </span>
                         </label>
                       );
@@ -1128,14 +1276,19 @@ ${recoveryCodes.join("\n")}
                 </section>
 
                 <section className="space-y-3">
-                  <h3 className="text-lg font-semibold text-gray-800">Modulos</h3>
-                  <p className="text-sm text-gray-500">Activa solo los avisos que quieres ver en tu cuenta.</p>
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    Modulos
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    Activa solo los avisos que quieres ver en tu cuenta.
+                  </p>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     {visibleModules.map((module) => {
                       const meta = NOTIFICATION_SECTION_META[module];
                       const Icon = meta.icon;
-                      const checked = notificationPreferences.modules[module] !== false;
+                      const checked =
+                        notificationPreferences.modules[module] !== false;
 
                       return (
                         <label
@@ -1149,16 +1302,27 @@ ${recoveryCodes.join("\n")}
                           <input
                             type="checkbox"
                             checked={checked}
-                            onChange={(event) => updateNotificationModule(module, event.target.checked)}
+                            onChange={(event) =>
+                              updateNotificationModule(
+                                module,
+                                event.target.checked,
+                              )
+                            }
                             disabled={!notificationPreferences.system_enabled}
                             className="mt-1 h-5 w-5 rounded border-gray-300 text-blue-600 disabled:opacity-50"
                           />
-                          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${meta.accent}`}>
+                          <span
+                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${meta.accent}`}
+                          >
                             <Icon size={20} />
                           </span>
                           <span>
-                            <span className="block text-sm font-bold text-gray-900">{meta.label}</span>
-                            <span className="mt-1 block text-sm text-gray-600">{meta.description}</span>
+                            <span className="block text-sm font-bold text-gray-900">
+                              {meta.label}
+                            </span>
+                            <span className="mt-1 block text-sm text-gray-600">
+                              {meta.description}
+                            </span>
                           </span>
                         </label>
                       );
@@ -1169,9 +1333,12 @@ ${recoveryCodes.join("\n")}
                 <section className="rounded-2xl border border-gray-200 bg-white p-5">
                   <div className="flex flex-col gap-5">
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-800">Tono personalizado</h3>
+                      <h3 className="text-lg font-semibold text-gray-800">
+                        Tono personalizado
+                      </h3>
                       <p className="mt-1 text-sm text-gray-500">
-                        Sube un MP3 para usarlo como tono cuando lleguen nuevas notificaciones.
+                        Sube un MP3 para usarlo como tono cuando lleguen nuevas
+                        notificaciones.
                       </p>
                     </div>
 
@@ -1179,15 +1346,21 @@ ${recoveryCodes.join("\n")}
                       <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/60 px-5 py-6 text-center transition hover:bg-blue-50">
                         <UploadCloud className="mb-2 text-blue-700" size={28} />
                         <span className="text-sm font-bold text-blue-800">
-                          {uploadingNotificationSound ? "Subiendo tono..." : "Seleccionar MP3"}
+                          {uploadingNotificationSound
+                            ? "Subiendo tono..."
+                            : "Seleccionar MP3"}
                         </span>
-                        <span className="mt-1 text-xs text-blue-700">Formato .mp3, maximo 5 MB</span>
+                        <span className="mt-1 text-xs text-blue-700">
+                          Formato .mp3, maximo 5 MB
+                        </span>
                         <input
                           type="file"
                           accept=".mp3,audio/mpeg"
                           disabled={uploadingNotificationSound}
                           onChange={(event) => {
-                            void uploadNotificationSound(event.target.files?.[0]);
+                            void uploadNotificationSound(
+                              event.target.files?.[0],
+                            );
                             event.currentTarget.value = "";
                           }}
                           className="hidden"
@@ -1197,7 +1370,10 @@ ${recoveryCodes.join("\n")}
                       <button
                         type="button"
                         onClick={() => void playNotificationPreview()}
-                        disabled={!notificationPreferences.sound_enabled || uploadingNotificationSound}
+                        disabled={
+                          !notificationPreferences.sound_enabled ||
+                          uploadingNotificationSound
+                        }
                         className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Volume2 size={16} />
@@ -1208,8 +1384,16 @@ ${recoveryCodes.join("\n")}
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-800">Tono seleccionado</p>
-                          <p className="mt-1 truncate text-sm text-gray-600" title={notificationPreferences.custom_sound_url || undefined}>
+                          <p className="text-sm font-semibold text-gray-800">
+                            Tono seleccionado
+                          </p>
+                          <p
+                            className="mt-1 truncate text-sm text-gray-600"
+                            title={
+                              notificationPreferences.custom_sound_url ||
+                              undefined
+                            }
+                          >
                             {getNotificationSoundLabel()}
                           </p>
                         </div>
@@ -1217,7 +1401,10 @@ ${recoveryCodes.join("\n")}
                           <button
                             type="button"
                             onClick={() => void resetNotificationSound()}
-                            disabled={savingNotificationPreferences || uploadingNotificationSound}
+                            disabled={
+                              savingNotificationPreferences ||
+                              uploadingNotificationSound
+                            }
                             className="inline-flex items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Usar predeterminado
@@ -1225,7 +1412,8 @@ ${recoveryCodes.join("\n")}
                         )}
                       </div>
                       <p className="mt-3 text-xs text-gray-500">
-                        Al subir un MP3 se guarda y queda seleccionado automaticamente para tu usuario.
+                        Al subir un MP3 se guarda y queda seleccionado
+                        automaticamente para tu usuario.
                       </p>
                     </div>
                   </div>
@@ -1252,7 +1440,8 @@ ${recoveryCodes.join("\n")}
           </p>
         </div>
 
-        {((canManageSystemSettings && activeTab === "empresa") || activeTab === "notificaciones") && (
+        {((canManageSystemSettings && activeTab === "empresa") ||
+          activeTab === "notificaciones") && (
           <button
             type="button"
             onClick={handleSaveChanges}
@@ -1260,7 +1449,9 @@ ${recoveryCodes.join("\n")}
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
           >
             <Save size={20} />
-            {savingEmpresaConfig || savingNotificationPreferences ? "Guardando..." : "Guardar Cambios"}
+            {savingEmpresaConfig || savingNotificationPreferences
+              ? "Guardando..."
+              : "Guardar Cambios"}
           </button>
         )}
       </div>

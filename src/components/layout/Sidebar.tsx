@@ -51,7 +51,6 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const [servicesOpen, setServicesOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [administrationOpen, setAdministrationOpen] = useState(false);
-  const [seguimientoOpen, setSeguimientoOpen] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [notificationCounts, setNotificationCounts] = useState<
@@ -215,7 +214,9 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   return (
     <>
       <aside className="flex h-full w-[min(74vw,248px)] flex-col justify-between border-r border-gray-800 bg-gray-950 p-3 text-white sm:p-4 lg:w-[248px] [&_nav_a]:px-3 [&_nav_a]:py-2.5 [&_nav_button]:px-3 [&_nav_button]:py-2.5">
+        {/* TOP */}
         <div className="flex min-h-0 flex-col">
+          {/* MOBILE CLOSE */}
           {mobile && (
             <div className="mb-3 flex justify-end lg:hidden">
               <button
@@ -229,6 +230,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             </div>
           )}
 
+          {/* LOGO */}
           <div className="mb-6 flex justify-center">
             <img
               src="/logoWILLATEC-white.png"
@@ -237,7 +239,9 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             />
           </div>
 
+          {/* MENU */}
           <nav className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
+            {/* DASHBOARD */}
             {user?.role === "SUPERADMIN" && (
               <Link to="/" onClick={closeMobile} className={itemClass("/")}>
                 <Home size={20} />
@@ -257,7 +261,9 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </Link>
             )}
 
+            {/* ✅ SUPERADMIN Y ADMIN */}
             {showCommercialGroup && (
+              // CARPETA COMERCIAL
               <div className="mt-2">
                 <button
                   type="button"
@@ -282,8 +288,10 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                   </div>
                 </button>
 
+                {/* SUBMENU */}
                 {commercialOpen && (
                   <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
+                    {/* COTIZACIONES */}
                     {hasPermission("cotizaciones") && (
                       <Link
                         to="/cotizaciones"
@@ -296,17 +304,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       </Link>
                     )}
 
-                    {/* {hasPermission("servicios") && (
-                      <Link
-                        to="/servicios/licencias"
-                        onClick={closeMobile}
-                        className={subItemClass("/servicios/licencias")}
-                      >
-                        <ShieldCheck size={16} />
-                        Licencias
-                      </Link>
-                    )} */}
-
+                    {/* ORDENES */}
                     {hasPermission("ordenes_compra") && (
                       <Link
                         to="/ordenes-compra"
@@ -319,6 +317,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       </Link>
                     )}
 
+                    {/* PRODUCTOS */}
                     {hasPermission("productos") && (
                       <Link
                         to="/productos"
@@ -331,6 +330,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       </Link>
                     )}
 
+                    {/* WOOCOMMERCE PEDIDOS */}
                     <Link
                       to="/woocommerce/pedidos"
                       onClick={closeMobile}
@@ -341,6 +341,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       <NotificationBadge count={notificationCount("ordenes")} />
                     </Link>
 
+                    {/* CLIENTES */}
                     {hasPermission("clientes") && (
                       <Link
                         to="/clientes"
@@ -357,6 +358,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </div>
             )}
 
+            {/* ✅ VENTAS NORMAL */}
             {user?.role === "VENTAS" && (
               <>
                 <Link
@@ -621,6 +623,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </div>
             )}
 
+            {/* USUARIOS */}
             {hasPermission("usuarios") && (
               <Link
                 to="/usuarios"
@@ -633,6 +636,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </Link>
             )}
 
+            {/* AUDITORIA */}
             {hasPermission("auditoria") && (
               <Link
                 to="/auditoria"
@@ -659,10 +663,12 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
           </nav>
         </div>
 
+        {/* BOTTOM */}
         <div
           className="sticky bottom-0 space-y-3 bg-gray-950 pt-6"
           onMouseLeave={handleMouseLeave}
         >
+          {/* USER */}
           <div
             onMouseEnter={handleMouseEnter}
             className="relative z-10 w-full rounded-2xl bg-gray-900 p-3 transition hover:bg-gray-800"
@@ -684,6 +690,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </div>
             </button>
 
+            {/* DROPDOWN SUPERADMIN */}
             {user?.role === "SUPERADMIN" && dropdownOpen && (
               <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl">
                 <Link
@@ -707,6 +714,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             )}
           </div>
 
+          {/* OTROS ROLES */}
           {user?.role !== "SUPERADMIN" && (
             <Link
               to="/configuracion"
@@ -729,9 +737,11 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
         </div>
       </aside>
 
+      {/* MODAL PERFIL */}
       {profileModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl border border-white/50 bg-gradient-to-br from-white to-gray-50 p-6 shadow-2xl sm:p-8">
+          {/* HEADER */}
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-xl font-bold text-gray-800 sm:text-2xl">
                 Mi Perfil
@@ -746,6 +756,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </button>
             </div>
 
+            {/* INFO */}
             <div className="mb-8 flex flex-col items-center border-b border-gray-200 pb-8">
               <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-blue-600 text-3xl font-bold text-white">
                 {user?.name?.charAt(0).toUpperCase() || "M"}
@@ -757,13 +768,14 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
 
               <p className="mt-1 text-center text-sm font-semibold text-blue-600">
                 {user?.role === "SUPERADMIN"
-                  ? "Superadministrador"
+                  ? "👑 Superadministrador"
                   : user?.role === "ADMIN"
                   ? "Administracion"
                   : user?.role || "Usuario"}
               </p>
             </div>
 
+            {/* DATOS */}
             <div className="mb-8 space-y-4">
               <div className="flex items-center gap-3 rounded-2xl bg-gray-100 p-3">
                 <Mail size={18} className="shrink-0 text-blue-600" />

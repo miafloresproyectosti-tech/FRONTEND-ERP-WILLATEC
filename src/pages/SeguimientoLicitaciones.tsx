@@ -11,7 +11,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import jsPDF from "jspdf";
+// import jsPDF from "jspdf";
 import "jspdf-autotable";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -24,7 +24,6 @@ import PageSizeSelect from "../components/ui/PageSizeSelect";
 import {
   CATEGORIAS_OPORTUNIDAD,
   ESTADOS_CIERRE,
-  FORMAS_PAGO,
   MOTIVOS_NO_CONTINUAR,
   MOTIVOS_PERDIDA,
   MOTIVOS_VENCIMIENTO,
@@ -63,7 +62,7 @@ import type {
 } from "../types/licitaciones";
 import { exportExcelFile } from "../utils/exportExcel";
 import { getPaginationItems } from "../utils/pagination";
-import { normalizeRole } from "../utils/permissions";
+import { normalizeRole, rolePermissions } from "../utils/permissions";
 import {
   createId,
   fileToOpportunityFile,
@@ -216,7 +215,7 @@ export default function SeguimientoLicitaciones() {
   const [deletingOpportunityFileId, setDeletingOpportunityFileId] = useState<string | null>(null);
   const [unlinkingQuoteId, setUnlinkingQuoteId] = useState<string | null>(null);
   const [assigningOpportunityId, setAssigningOpportunityId] = useState<string | null>(null);
-  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [changingEstadoId, setChangingEstadoId] = useState<string | null>(null);
   const loadRequestRef = useRef(0);
   const showToastRef = useRef(showToast);
 
@@ -226,19 +225,12 @@ export default function SeguimientoLicitaciones() {
 
   const userName = user?.name || "Usuario";
   const currentRole = normalizeRole(user?.role);
-  const roleLabel =
-    currentRole === "SUPERADMIN"
-      ? "Superadmin"
-      : currentRole === "ADMIN"
-        ? "Admin"
-        : currentRole === "LICITACIONES"
-          ? "Licitaciones"
-          : currentRole === "VENTAS"
-            ? "Ventas"
-            : currentRole;
   const isManager = currentRole === "SUPERADMIN" || currentRole === "ADMIN" || currentRole === "LICITACIONES";
   const isSalesRole = currentRole === "VENTAS";
   const canCreateOpportunity = currentRole === "LICITACIONES" || currentRole === "VENTAS";
+  const canOpenCotizaciones =
+    rolePermissions[currentRole]?.includes("*") ||
+    rolePermissions[currentRole]?.includes("cotizaciones");
   const [activeBandeja, setActiveBandeja] = useState<string>(
     currentRole === "VENTAS" ? "disponibles" : currentRole === "SUPERADMIN" ? "disponibles" : "todas"
   );
@@ -676,7 +668,7 @@ export default function SeguimientoLicitaciones() {
   };
 
   const changeEstado = async (item: Oportunidad, estado: OportunidadEstado) => {
-    if (isClosedOpportunity(item.estado)) return;
+    if (isClosedOpportunity(item.estado) || changingEstadoId) return;
 
     if (estado === "perdida") {
       setLossTarget(item);
@@ -694,27 +686,47 @@ export default function SeguimientoLicitaciones() {
       return;
     }
 
-    const now = new Date().toISOString();
-    const updated = await saveOportunidad({
-      ...item,
-      estado,
-      motivoCierre: ESTADOS_CIERRE.includes(estado) ? motivo : item.motivoCierre,
-      comentarioCierre: estado === "no_se_realizara" ? motivo : item.comentarioCierre,
-      modificadoEn: now,
-      modificadoPor: userName,
-      historial: [
-        {
-          id: createId("hist"),
-          fecha: now,
-          usuario: userName,
-          tipo: ESTADOS_CIERRE.includes(estado) ? "cierre" : "estado",
-          descripcion: `Estado cambiado a ${OPORTUNIDAD_ESTADOS[estado]}${motivo ? `: ${motivo}` : ""}.`,
-        },
-        ...item.historial,
-      ],
-    });
-    syncSelectedOpportunity(updated);
-    void refreshSelectedOpportunity(item.id, updated);
+    setChangingEstadoId(item.id);
+    try {
+      const now = new Date().toISOString();
+      const updated = await saveOportunidad({
+        ...item,
+        estado,
+        motivoCierre: ESTADOS_CIERRE.includes(estado) ? motivo : item.motivoCierre,
+        comentarioCierre: estado === "no_se_realizara" ? motivo : item.comentarioCierre,
+        modificadoEn: now,
+        modificadoPor: userName,
+        historial: [
+          {
+            id: createId("hist"),
+            fecha: now,
+            usuario: userName,
+            tipo: ESTADOS_CIERRE.includes(estado) ? "cierre" : "estado",
+            descripcion: `Estado cambiado a ${OPORTUNIDAD_ESTADOS[estado]}${motivo ? `: ${motivo}` : ""}.`,
+          },
+          ...item.historial,
+        ],
+      });
+      syncSelectedOpportunity(updated);
+      void refreshSelectedOpportunity(item.id, updated);
+      showToast({
+        title: "Estado actualizado",
+        description: `La oportunidad quedo como ${OPORTUNIDAD_ESTADOS[estado]}.`,
+        type: "success",
+      });
+    } catch (error) {
+      const response = error as { response?: { data?: { message?: string } }; message?: string };
+      showToast({
+        title: "No se pudo actualizar el estado",
+        description:
+          response.response?.data?.message ||
+          response.message ||
+          "No se pudo guardar el cambio. Intenta nuevamente.",
+        type: "error",
+      });
+    } finally {
+      setChangingEstadoId(null);
+    }
   };
 
   const submitLoss = async () => {
@@ -1208,82 +1220,82 @@ export default function SeguimientoLicitaciones() {
     });
   };
 
-  const handleExportPdf = () => {
-    const doc = new jsPDF({ orientation: "landscape" });
-    doc.text("Seguimiento de Licitaciones", 14, 16);
-    (doc as unknown as { autoTable: (options: object) => void }).autoTable({
-      startY: 22,
-      head: [["Tipo", "Empresa", "Requerimiento", "Ejecutivo", "Categoria", "Estado", "Vigencia", "Tiempo"]],
-      body: exportRows.map((row) => [
-        row.tipo,
-        row.empresa,
-        row.requerimiento,
-        row.ejecutivo,
-        row.categoria,
-        row.estado,
-        row.vigencia,
-        row.tiempo_restante,
-      ]),
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [37, 99, 235] },
-    });
-    doc.save("seguimiento-licitaciones.pdf");
-  };
+  // const handleExportPdf = () => {
+  //   const doc = new jsPDF({ orientation: "landscape" });
+  //   doc.text("Seguimiento de Licitaciones", 14, 16);
+  //   (doc as unknown as { autoTable: (options: object) => void }).autoTable({
+  //     startY: 22,
+  //     head: [["Tipo", "Empresa", "Requerimiento", "Ejecutivo", "Categoria", "Estado", "Vigencia", "Tiempo"]],
+  //     body: exportRows.map((row) => [
+  //       row.tipo,
+  //       row.empresa,
+  //       row.requerimiento,
+  //       row.ejecutivo,
+  //       row.categoria,
+  //       row.estado,
+  //       row.vigencia,
+  //       row.tiempo_restante,
+  //     ]),
+  //     styles: { fontSize: 8 },
+  //     headStyles: { fillColor: [37, 99, 235] },
+  //   });
+  //   doc.save("seguimiento-licitaciones.pdf");
+  // };
 
-  const handleImportExcel = async (file?: File) => {
-    if (!file) return;
-    const ExcelJS = await import("exceljs");
-    const workbook = new ExcelJS.Workbook();
-    const buffer = await file.arrayBuffer();
-    await workbook.xlsx.load(buffer);
-    const sheet = workbook.worksheets[0];
-    const now = new Date().toISOString();
-    const imported: Oportunidad[] = [];
+  // const handleImportExcel = async (file?: File) => {
+  //   if (!file) return;
+  //   const ExcelJS = await import("exceljs");
+  //   const workbook = new ExcelJS.Workbook();
+  //   const buffer = await file.arrayBuffer();
+  //   await workbook.xlsx.load(buffer);
+  //   const sheet = workbook.worksheets[0];
+  //   const now = new Date().toISOString();
+  //   const imported: Oportunidad[] = [];
 
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return;
-      const empresa = String(row.getCell(1).value || "").trim();
-      const requerimiento = String(row.getCell(2).value || "").trim();
-      if (!empresa || !requerimiento) return;
+  //   sheet.eachRow((row, rowNumber) => {
+  //     if (rowNumber === 1) return;
+  //     const empresa = String(row.getCell(1).value || "").trim();
+  //     const requerimiento = String(row.getCell(2).value || "").trim();
+  //     if (!empresa || !requerimiento) return;
 
-      imported.push({
-        id: createId("imp"),
-        tipo: "privado",
-        empresa,
-        requerimiento,
-        vigencia: toDatetimeLocalValue(new Date(row.getCell(3).value?.toString() || Date.now() + 2 * 24 * 60 * 60 * 1000)),
-        ejecutivo: { id: 0, nombre: "Sin ejecutivo" },
-        asignadoA: null,
-        asignadoEn: null,
-        asignadoPor: null,
-        esNueva: true,
-        categoria: String(row.getCell(4).value || CATEGORIAS_OPORTUNIDAD[0]),
-        estado: "sin_atender",
-        observacion: "Importado desde Excel.",
-        creadoEn: now,
-        creadoPor: userName,
-        formaPago: "credito_30",
-        comentarios: [],
-        archivos: [],
-        cotizaciones: [],
-        historial: [{
-          id: createId("hist"),
-          fecha: now,
-          usuario: userName,
-          tipo: "creacion",
-          descripcion: "Oportunidad importada desde Excel.",
-        }],
-      });
-    });
+  //     imported.push({
+  //       id: createId("imp"),
+  //       tipo: "privado",
+  //       empresa,
+  //       requerimiento,
+  //       vigencia: toDatetimeLocalValue(new Date(row.getCell(3).value?.toString() || Date.now() + 2 * 24 * 60 * 60 * 1000)),
+  //       ejecutivo: { id: 0, nombre: "Sin ejecutivo" },
+  //       asignadoA: null,
+  //       asignadoEn: null,
+  //       asignadoPor: null,
+  //       esNueva: true,
+  //       categoria: String(row.getCell(4).value || CATEGORIAS_OPORTUNIDAD[0]),
+  //       estado: "sin_atender",
+  //       observacion: "Importado desde Excel.",
+  //       creadoEn: now,
+  //       creadoPor: userName,
+  //       formaPago: "credito_30",
+  //       comentarios: [],
+  //       archivos: [],
+  //       cotizaciones: [],
+  //       historial: [{
+  //         id: createId("hist"),
+  //         fecha: now,
+  //         usuario: userName,
+  //         tipo: "creacion",
+  //         descripcion: "Oportunidad importada desde Excel.",
+  //       }],
+  //     });
+  //   });
 
-    for (const item of imported) {
-      await saveOportunidad(item);
-    }
+  //   for (const item of imported) {
+  //     await saveOportunidad(item);
+  //   }
 
-    await loadData();
-    showToast({ title: "Importacion completada", description: `${imported.length} registros importados.`, type: "success" });
-    if (importInputRef.current) importInputRef.current.value = "";
-  };
+  //   await loadData();
+  //   showToast({ title: "Importacion completada", description: `${imported.length} registros importados.`, type: "success" });
+  //   if (importInputRef.current) importInputRef.current.value = "";
+  // };
 
   const bandejas = currentRole === "VENTAS"
     ? SALES_BANDEJAS
@@ -1792,12 +1804,15 @@ export default function SeguimientoLicitaciones() {
         onFinalizeOpportunity={(estado) => {
           if (selected) void changeEstado(selected, estado);
         }}
+        finalizingOpportunity={Boolean(selected && changingEstadoId === selected.id)}
         canMarkProposalPresented={Boolean(selected && canMarkProposalPresented(selected))}
         presentingProposal={Boolean(selected && presentingProposalId === selected.id)}
         onMarkProposalPresented={(file) => void handleMarkProposalPresented(file)}
         canDownloadQuotePdf={currentRole === "LICITACIONES" || currentRole === "SUPERADMIN"}
         downloadingQuoteId={downloadingQuoteId}
         onDownloadQuotePdf={(cotizacionId) => void handleDownloadQuotePdf(cotizacionId)}
+        canOpenQuote={canOpenCotizaciones}
+        onOpenQuote={(cotizacionId) => navigate(`/cotizaciones/${cotizacionId}/view`)}
         loadingDetails={selectedLoading}
         canUploadFile={Boolean(selected && !isClosedOpportunity(selected.estado) && (
           isOpportunityCreator(selected) ||

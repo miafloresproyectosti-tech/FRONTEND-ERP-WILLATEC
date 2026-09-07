@@ -123,10 +123,10 @@ export function ProductModal({
                     }`}
                   >
                     {stockDisponible <= 0
-                      ? "Sin disponible"
+                      ? "Sin stock"
                       : stockDisponible > 10
                         ? "Disponible"
-                        : "Disponible bajo"}
+                        : "Baja Disponibilidad"}
                   </span>
                 </div>
               );

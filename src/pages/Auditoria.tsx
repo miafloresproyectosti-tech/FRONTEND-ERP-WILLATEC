@@ -239,8 +239,7 @@ export default function Auditoria() {
             </h1>
           </div>
           <p className="mt-1 text-slate-500">
-            Acciones registradas por el backend en cotizaciones, OC, Kardex,
-            productos, proveedores, documentos y cambios relevantes.
+            Acciones registradas de los usuarios en los módulos y cambios relevantes.
           </p>
         </div>
 
@@ -316,18 +315,6 @@ export default function Auditoria() {
         </div>
 
         <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <input
-            value={filters.subject_id ?? ""}
-            onChange={(event) => updateFilter("subject_id", event.target.value)}
-            placeholder="ID de entidad"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none"
-          />
-          <input
-            value={filters.causer_id ?? ""}
-            onChange={(event) => updateFilter("causer_id", event.target.value)}
-            placeholder="ID de usuario"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none"
-          />
           <input
             type="date"
             value={filters.date_from ?? ""}

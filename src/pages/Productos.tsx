@@ -19,7 +19,29 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-import { getProductos, getProductosPaginated, getExternalItems, getProductoExternoHistorialCotizaciones, createProducto, updateProducto, deleteProducto, updateCotizacionItem, convertirProductoExternoAInterno, mapearProductoWooCommercePorSku, sincronizarProductoWooCommerce, sincronizarProductosWooCommerceActivos, previewProductoSkuNormalization, applyProductoSkuNormalization, type Producto, type ProductoPayload, type CotizacionItem, type ProductoSerie, type ProductoExternoHistorialResponse, type ProductoExternoHistorialItem, type ProductoSkuPreviewResponse } from "../services/producto.service";
+import {
+  getProductos,
+  getProductosPaginated,
+  getExternalItems,
+  getProductoExternoHistorialCotizaciones,
+  createProducto,
+  updateProducto,
+  deleteProducto,
+  updateCotizacionItem,
+  convertirProductoExternoAInterno,
+  mapearProductoWooCommercePorSku,
+  sincronizarProductoWooCommerce,
+  sincronizarProductosWooCommerceActivos,
+  previewProductoSkuNormalization,
+  applyProductoSkuNormalization,
+  type Producto,
+  type ProductoPayload,
+  type CotizacionItem,
+  type ProductoSerie,
+  type ProductoExternoHistorialResponse,
+  type ProductoExternoHistorialItem,
+  type ProductoSkuPreviewResponse,
+} from "../services/producto.service";
 import {
   getCotizacion,
   getCotizacionesPaginated,
@@ -28,27 +50,16 @@ import {
 } from "../services/cotizacion.service";
 import { useNotifications } from "../NotificationContext";
 import { useAuth } from "../AuthContext";
-import { normalizeStorageImageUrl, resolveItemImageUrl } from "../utils/storageImage";
+import {
+  normalizeStorageImageUrl,
+  resolveItemImageUrl,
+} from "../utils/storageImage";
 import { getPaginationItems } from "../utils/pagination";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import PageSizeSelect from "../components/ui/PageSizeSelect";
 import { formatMoney } from "../utils/formatNumber";
 import { normalizeRole } from "../utils/permissions";
-// import { Plus as PlusIcon } from "lucide-react";
 
-/*
-const categoriaOptions = [
-  { id: 1, label: "Tecnologia" },
-  { id: 2, label: "Hogar" },
-  { id: 3, label: "Deportes" },
-  { id: 4, label: "Salud" },
-  { id: 5, label: "Alimentos y Bebidas" },
-  { id: 6, label: "Estanterías/Racks" },
-  { id: 7, label: "Repuestos impresoras" },
-  { id: 8, label: "Otros" },
-];
-
-*/
 const unidadMedidaOptions = [
   { value: "unidad", label: "Unidad" },
   { value: "kg", label: "Kg" },
@@ -117,13 +128,21 @@ type ProductoUI = ProductoForm & {
 type ExternalItem = CotizacionItem;
 
 const getProductoCategoriaLabel = (producto: Producto) => {
-  const optionLabel = productoCategoriaOptions.find((option) => option.id === Number(producto.categoria_id))?.label;
+  const optionLabel = productoCategoriaOptions.find(
+    (option) => option.id === Number(producto.categoria_id),
+  )?.label;
 
-  return producto.categoria?.nombre || optionLabel || String(producto.categoria_id || "-");
+  return (
+    producto.categoria?.nombre ||
+    optionLabel ||
+    String(producto.categoria_id || "-")
+  );
 };
 
 const isEditableStockSerie = (serie: ProductoSerie) =>
-  ["disponible", "reservado"].includes(String(serie.estado || "disponible").toLowerCase());
+  ["disponible", "reservado"].includes(
+    String(serie.estado || "disponible").toLowerCase(),
+  );
 
 const getEditableSeriesText = (producto: Producto | ProductoUI) => {
   const series = producto.series ?? [];
@@ -137,7 +156,6 @@ const getEditableSeriesText = (producto: Producto | ProductoUI) => {
 };
 
 const mapProducto = (producto: Producto): ProductoUI => ({
-
   id: producto.id,
   sku: producto.sku ?? null,
   codigo: producto.codigo || producto.sku || "",
@@ -158,13 +176,17 @@ const mapProducto = (producto: Producto): ProductoUI => ({
   moneda_id: String(producto.moneda_id || 2),
   moneda: producto.moneda ?? null,
   descripcion: producto.descripcion ?? "",
-  imagen: normalizeStorageImageUrl(producto.imagen_url || producto.imagen || producto.imagen_path),
+  imagen: normalizeStorageImageUrl(
+    producto.imagen_url || producto.imagen || producto.imagen_path,
+  ),
   activo: producto.activo ? "true" : "false",
   estado: producto.estado ?? "nuevo",
   unidad_medida: producto.unidad_medida ?? "unidad",
   series: producto.series ?? [],
-  woocommerce_producto: producto.woocommerce_producto ?? producto.woocommerceProducto ?? null,
-  woocommerceProducto: producto.woocommerceProducto ?? producto.woocommerce_producto ?? null,
+  woocommerce_producto:
+    producto.woocommerce_producto ?? producto.woocommerceProducto ?? null,
+  woocommerceProducto:
+    producto.woocommerceProducto ?? producto.woocommerce_producto ?? null,
 });
 
 const getWooCommerceMapping = (producto: ProductoUI | Producto) =>
@@ -173,9 +195,11 @@ const getWooCommerceMapping = (producto: ProductoUI | Producto) =>
 const getWooCommerceStatusBadge = (status?: string | null) => {
   const normalized = String(status || "").toLowerCase();
 
-  if (normalized === "exitoso") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (normalized === "exitoso")
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (normalized === "error") return "border-red-200 bg-red-50 text-red-700";
-  if (normalized === "pendiente") return "border-amber-200 bg-amber-50 text-amber-700";
+  if (normalized === "pendiente")
+    return "border-amber-200 bg-amber-50 text-amber-700";
 
   return "border-slate-200 bg-slate-50 text-slate-600";
 };
@@ -221,12 +245,13 @@ const getProductoCurrencySymbol = (item: ProductoUI | Producto) => {
 
 const formatProductoMoney = (
   item: ProductoUI | Producto,
-  value: number | string | null | undefined
+  value: number | string | null | undefined,
 ) => formatMoney(value, getProductoCurrencySymbol(item));
 
 const getApiErrorMessage = (error: unknown, fallback: string) => {
   if (error && typeof error === "object" && "response" in error) {
-    const response = (error as { response?: { data?: { message?: string } } }).response;
+    const response = (error as { response?: { data?: { message?: string } } })
+      .response;
     if (response?.data?.message) return response.data.message;
   }
 
@@ -236,13 +261,24 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
 const getSerieEstadoBadge = (estado?: string | null) => {
   const normalized = String(estado || "sin_estado").toLowerCase();
 
-  if (normalized === "disponible") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (["vendido", "entregado"].includes(normalized)) return "border-blue-200 bg-blue-50 text-blue-700";
-  if (["reservado", "en_reserva"].includes(normalized)) return "border-amber-200 bg-amber-50 text-amber-700";
-  if (["en_uso", "prestado"].includes(normalized)) return "border-indigo-200 bg-indigo-50 text-indigo-700";
-  if (["garantia", "en_garantia"].includes(normalized)) return "border-purple-200 bg-purple-50 text-purple-700";
-  if (["devuelto", "devolucion"].includes(normalized)) return "border-cyan-200 bg-cyan-50 text-cyan-700";
-  if (["baja", "merma", "danado", "dañado", "no_disponible", "otro"].includes(normalized)) return "border-red-200 bg-red-50 text-red-700";
+  if (normalized === "disponible")
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (["vendido", "entregado"].includes(normalized))
+    return "border-blue-200 bg-blue-50 text-blue-700";
+  if (["reservado", "en_reserva"].includes(normalized))
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  if (["en_uso", "prestado"].includes(normalized))
+    return "border-indigo-200 bg-indigo-50 text-indigo-700";
+  if (["garantia", "en_garantia"].includes(normalized))
+    return "border-purple-200 bg-purple-50 text-purple-700";
+  if (["devuelto", "devolucion"].includes(normalized))
+    return "border-cyan-200 bg-cyan-50 text-cyan-700";
+  if (
+    ["baja", "merma", "danado", "dañado", "no_disponible", "otro"].includes(
+      normalized,
+    )
+  )
+    return "border-red-200 bg-red-50 text-red-700";
 
   return "border-gray-200 bg-gray-50 text-gray-700";
 };
@@ -251,7 +287,8 @@ const getSerieEstadoLabel = (estado?: string | null) => {
   const normalized = String(estado || "").toLowerCase();
 
   if (normalized === "en_uso") return "En uso";
-  if (normalized === "no_disponible" || normalized === "otro") return "No disponible";
+  if (normalized === "no_disponible" || normalized === "otro")
+    return "No disponible";
 
   return String(estado || "Sin estado")
     .replace(/_/g, " ")
@@ -271,19 +308,24 @@ const getSerieSalidaMotivoLabel = (estado?: string | null) => {
 };
 
 const getExternalItemPricingSuffix = (item: ExternalItem) =>
-  Number(item.moneda_id || 1) === 1 && item.precio_incluye_igv ? " incl. IGV" : "";
+  Number(item.moneda_id || 1) === 1 && item.precio_incluye_igv
+    ? " incl. IGV"
+    : "";
 
 const formatExternalItemMoney = (
   item: ExternalItem,
-  value: number | string | null | undefined
-) => `${getExternalItemCurrencySymbol(item)} ${Number(value || 0).toLocaleString()}${getExternalItemPricingSuffix(item)}`;
+  value: number | string | null | undefined,
+) =>
+  `${getExternalItemCurrencySymbol(item)} ${Number(value || 0).toLocaleString()}${getExternalItemPricingSuffix(item)}`;
 
 const formatHistoryMoney = (
   row: ProductoExternoHistorialItem,
   fallbackItem: ExternalItem | null,
-  value: number | string | null | undefined
+  value: number | string | null | undefined,
 ) => {
-  const symbol = row.cotizacion?.simbolo_moneda || (fallbackItem ? getExternalItemCurrencySymbol(fallbackItem) : "S/.");
+  const symbol =
+    row.cotizacion?.simbolo_moneda ||
+    (fallbackItem ? getExternalItemCurrencySymbol(fallbackItem) : "S/.");
   return `${symbol} ${Number(value || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
@@ -306,7 +348,7 @@ const convertExternalItemValue = (
   value: number | string | null | undefined,
   item: ExternalItem,
   targetMonedaId?: number | null,
-  targetIncluyeIgv?: boolean
+  targetIncluyeIgv?: boolean,
 ) => {
   const sourceValue = Number(value || 0);
   const sourceMonedaId = Number(item.moneda_id || targetMonedaId || 1);
@@ -318,7 +360,9 @@ const convertExternalItemValue = (
       return roundMoney(sourceValue);
     }
 
-    return roundMoney(sourceIncluyeIgv ? sourceValue / 1.18 : sourceValue * 1.18);
+    return roundMoney(
+      sourceIncluyeIgv ? sourceValue / 1.18 : sourceValue * 1.18,
+    );
   }
 
   const solesSinIgv =
@@ -367,11 +411,16 @@ export default function Productos() {
     total: 0,
     per_page: 10,
   });
-  const [showAddToCotizacionModal, setShowAddToCotizacionModal] = useState(false);
-  const [selectedExternalItem, setSelectedExternalItem] = useState<ExternalItem | null>(null);
-  const [conversionExternalItem, setConversionExternalItem] = useState<ExternalItem | null>(null);
-  const [externalHistoryItem, setExternalHistoryItem] = useState<ExternalItem | null>(null);
-  const [externalHistory, setExternalHistory] = useState<ProductoExternoHistorialResponse | null>(null);
+  const [showAddToCotizacionModal, setShowAddToCotizacionModal] =
+    useState(false);
+  const [selectedExternalItem, setSelectedExternalItem] =
+    useState<ExternalItem | null>(null);
+  const [conversionExternalItem, setConversionExternalItem] =
+    useState<ExternalItem | null>(null);
+  const [externalHistoryItem, setExternalHistoryItem] =
+    useState<ExternalItem | null>(null);
+  const [externalHistory, setExternalHistory] =
+    useState<ProductoExternoHistorialResponse | null>(null);
   const [externalHistoryLoading, setExternalHistoryLoading] = useState(false);
   const [conversionFactura, setConversionFactura] = useState<File | null>(null);
   const [convertingExternal, setConvertingExternal] = useState(false);
@@ -409,16 +458,18 @@ export default function Productos() {
       moneda_id: "2",
     });
 
-  const [productoAEliminar, setProductoAEliminar] =
+  const [productoAEliminar, setProductoAEliminar] = useState<ProductoUI | null>(
+    null,
+  );
+  const [productoSeriesModal, setProductoSeriesModal] =
     useState<ProductoUI | null>(null);
-  const [productoSeriesModal, setProductoSeriesModal] = useState<ProductoUI | null>(null);
-  const [productoDetalleModal, setProductoDetalleModal] = useState<ProductoUI | null>(null);
+  const [productoDetalleModal, setProductoDetalleModal] =
+    useState<ProductoUI | null>(null);
 
   // Estados para editar items externos
   const [editingExternalItem, setEditingExternalItem] =
     useState<ExternalItem | null>(null);
-  const [showExternalEditModal, setShowExternalEditModal] =
-    useState(false);
+  const [showExternalEditModal, setShowExternalEditModal] = useState(false);
   const [externalItemForm, setExternalItemForm] = useState({
     descripcion: "",
     cantidad: "",
@@ -441,18 +492,29 @@ export default function Productos() {
   });
   const [savingExternal, setSavingExternal] = useState(false);
   const [exportingProductos, setExportingProductos] = useState(false);
-  const [syncingWooProductId, setSyncingWooProductId] = useState<number | null>(null);
+  const [syncingWooProductId, setSyncingWooProductId] = useState<number | null>(
+    null,
+  );
   const [syncingWooAll, setSyncingWooAll] = useState(false);
-  const [skuPreview, setSkuPreview] = useState<ProductoSkuPreviewResponse | null>(null);
+  const [skuPreview, setSkuPreview] =
+    useState<ProductoSkuPreviewResponse | null>(null);
   const [skuPreviewLoading, setSkuPreviewLoading] = useState(false);
   const [skuApplyLoading, setSkuApplyLoading] = useState(false);
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
   const userRole = normalizeRole(user?.role);
-  const canUseExternalProducts = userRole !== "SOPORTE" && userRole !== "LOGISTICA";
+  const canUseExternalProducts =
+    userRole !== "SOPORTE" && userRole !== "LOGISTICA";
   const canManageInternalProducts = userRole !== "VENTAS";
-  const canManageWooCommerce = userRole === "SUPERADMIN" || userRole === "ADMIN" || userRole === "LOGISTICA";
-  const canPreviewSkuNormalization = userRole === "SUPERADMIN" || userRole === "ADMIN" || userRole === "LOGISTICA";
-  const canApplySkuNormalization = userRole === "SUPERADMIN" || userRole === "LOGISTICA";
+  const canManageWooCommerce =
+    userRole === "SUPERADMIN" ||
+    userRole === "ADMIN" ||
+    userRole === "LOGISTICA";
+  const canPreviewSkuNormalization =
+    userRole === "SUPERADMIN" ||
+    userRole === "ADMIN" ||
+    userRole === "LOGISTICA";
+  const canApplySkuNormalization =
+    userRole === "SUPERADMIN" || userRole === "LOGISTICA";
 
   const isStockTab = activeTab === "stock";
   const cotizacionesFiltradas = cotizaciones.filter((cotizacion) => {
@@ -464,7 +526,11 @@ export default function Productos() {
       cotizacion.titulo,
       cotizacion.cliente_nombre,
       cotizacion.cliente?.nombre,
-    ].some((value) => String(value || "").toLowerCase().includes(search));
+    ].some((value) =>
+      String(value || "")
+        .toLowerCase()
+        .includes(search),
+    );
   });
   const externalItemsFiltrados = externalItems.filter((item) => {
     const search = searchTerm.trim().toLowerCase();
@@ -476,25 +542,36 @@ export default function Productos() {
       item.marca,
       item.proveedor,
       item.link_proveedor,
-    ].some((value) => String(value || "").toLowerCase().includes(search));
+    ].some((value) =>
+      String(value || "")
+        .toLowerCase()
+        .includes(search),
+    );
   });
   const tableItems = isStockTab ? productos : externalItemsFiltrados;
-  const totalItems = isStockTab
-    ? productosMeta.total
-    : externalMeta.total;
-  const pageNumber = isStockTab ? productosMeta.current_page : externalMeta.current_page;
-  const pageCount = isStockTab ? productosMeta.last_page : externalMeta.last_page;
+  const totalItems = isStockTab ? productosMeta.total : externalMeta.total;
+  const pageNumber = isStockTab
+    ? productosMeta.current_page
+    : externalMeta.current_page;
+  const pageCount = isStockTab
+    ? productosMeta.last_page
+    : externalMeta.last_page;
   const paginationItems = getPaginationItems(pageNumber, pageCount);
-  const showingFrom = totalItems === 0
-    ? 0
-    : isStockTab
-    ? productosMeta.from
-    : (externalMeta.current_page - 1) * externalMeta.per_page + 1;
-  const showingTo = totalItems === 0
-    ? 0
-    : isStockTab
-    ? productosMeta.to
-    : Math.min(externalMeta.current_page * externalMeta.per_page, totalItems);
+  const showingFrom =
+    totalItems === 0
+      ? 0
+      : isStockTab
+        ? productosMeta.from
+        : (externalMeta.current_page - 1) * externalMeta.per_page + 1;
+  const showingTo =
+    totalItems === 0
+      ? 0
+      : isStockTab
+        ? productosMeta.to
+        : Math.min(
+            externalMeta.current_page * externalMeta.per_page,
+            totalItems,
+          );
 
   // RESETEAR PAGINA EN BUSQUEDA
   useEffect(() => {
@@ -504,36 +581,39 @@ export default function Productos() {
     }
   }, [searchTerm, activeTab]);
 
-  const fetchProductos = useCallback(async (page = currentPage, search = debouncedSearchTerm) => {
-    try {
-      setLoading(true);
-      const response = await getProductosPaginated({
-        page,
-        search,
-        perPage: itemsPerPage,
-      });
-      setProductos(response.data.map(mapProducto));
-      setProductosMeta({
-        current_page: response.current_page,
-        last_page: response.last_page,
-        total: response.total,
-        per_page: response.per_page,
-        from: response.from,
-        to: response.to,
-      });
-    } catch (error) {
-      console.error(error);
-      addNotification({
-        title: "Error al cargar productos",
-        description: "No se pudo obtener la lista de productos.",
-        type: "warning",
-        icon: "MessageCircle",
-        route: "/productos",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [addNotification, currentPage, debouncedSearchTerm, itemsPerPage]);
+  const fetchProductos = useCallback(
+    async (page = currentPage, search = debouncedSearchTerm) => {
+      try {
+        setLoading(true);
+        const response = await getProductosPaginated({
+          page,
+          search,
+          perPage: itemsPerPage,
+        });
+        setProductos(response.data.map(mapProducto));
+        setProductosMeta({
+          current_page: response.current_page,
+          last_page: response.last_page,
+          total: response.total,
+          per_page: response.per_page,
+          from: response.from,
+          to: response.to,
+        });
+      } catch (error) {
+        console.error(error);
+        addNotification({
+          title: "Error al cargar productos",
+          description: "No se pudo obtener la lista de productos.",
+          type: "warning",
+          icon: "MessageCircle",
+          route: "/productos",
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [addNotification, currentPage, debouncedSearchTerm, itemsPerPage],
+  );
 
   useEffect(() => {
     if (activeTab === "stock") {
@@ -541,32 +621,45 @@ export default function Productos() {
     }
   }, [activeTab, currentPage, debouncedSearchTerm, fetchProductos]);
 
-  const fetchExternalItems = useCallback(async (page = 1, search = searchTerm, perPage = externalPerPage) => {
-    try {
-      setExternalLoading(true);
-      const response = await getExternalItems(page, search, perPage);
-      setExternalItems(response.data.map((item) => item));
-      setExternalMeta(response.meta);
-    } catch (error) {
-      console.error(error);
-      addNotification({
-        title: "Error al cargar productos externos",
-        description:
-          "No se pudo obtener la lista de productos externos.",
-        type: "warning",
-        icon: "MessageCircle",
-        route: "/productos",
-      });
-    } finally {
-      setExternalLoading(false);
-    }
-  }, [addNotification, externalPerPage, searchTerm]);
+  const fetchExternalItems = useCallback(
+    async (page = 1, search = searchTerm, perPage = externalPerPage) => {
+      try {
+        setExternalLoading(true);
+        const response = await getExternalItems(page, search, perPage);
+        setExternalItems(response.data.map((item) => item));
+        setExternalMeta(response.meta);
+      } catch (error) {
+        console.error(error);
+        addNotification({
+          title: "Error al cargar productos externos",
+          description: "No se pudo obtener la lista de productos externos.",
+          type: "warning",
+          icon: "MessageCircle",
+          route: "/productos",
+        });
+      } finally {
+        setExternalLoading(false);
+      }
+    },
+    [addNotification, externalPerPage, searchTerm],
+  );
 
   useEffect(() => {
     if (activeTab === "externos" && canUseExternalProducts) {
-      void fetchExternalItems(externalPage, debouncedSearchTerm, externalPerPage);
+      void fetchExternalItems(
+        externalPage,
+        debouncedSearchTerm,
+        externalPerPage,
+      );
     }
-  }, [activeTab, externalPage, debouncedSearchTerm, canUseExternalProducts, externalPerPage, fetchExternalItems]);
+  }, [
+    activeTab,
+    externalPage,
+    debouncedSearchTerm,
+    canUseExternalProducts,
+    externalPerPage,
+    fetchExternalItems,
+  ]);
 
   const handleTabChange = (tab: "stock" | "externos") => {
     if (tab === "externos" && !canUseExternalProducts) return;
@@ -623,11 +716,11 @@ export default function Productos() {
         "Moneda",
         "Precio",
         "Stock actual",
-      "Stock reservado",
-      "Stock disponible",
-      "Ubicacion",
-      "Series",
-      "Factura numero",
+        "Stock reservado",
+        "Stock disponible",
+        "Ubicacion",
+        "Series",
+        "Factura numero",
         "Descripcion",
         "Activo",
       ];
@@ -642,46 +735,49 @@ export default function Productos() {
         }
       };
 
-      const exportRows = rows.map((producto) => {
-        const productoUI = mapProducto(producto);
-        const moneda = producto.moneda?.simbolo || producto.moneda?.codigo || "";
-        const series = (producto.series ?? [])
-          .map((serie) => serie.serie)
-          .filter(Boolean)
-          .join(" | ");
+      const exportRows = rows
+        .map((producto) => {
+          const productoUI = mapProducto(producto);
+          const moneda =
+            producto.moneda?.simbolo || producto.moneda?.codigo || "";
+          const series = (producto.series ?? [])
+            .map((serie) => serie.serie)
+            .filter(Boolean)
+            .join(" | ");
 
-        return {
-          categoria: productoUI.categoria_label,
-          nombre: productoUI.nombre,
-          codigo: productoUI.codigo,
-          values: [
-            productoUI.codigo,
-            productoUI.sku || "",
-            productoUI.nombre,
-            productoUI.marca,
-            productoUI.modelo,
-            productoUI.categoria_label,
-            productoUI.estado === "usado" ? "Usado" : "Nuevo",
-            productoUI.unidad_medida,
-            moneda,
-            productoUI.precio_referencial,
-            productoUI.stock_actual ?? productoUI.stock,
-            productoUI.stock_reservado ?? 0,
-            productoUI.stock_disponible ?? productoUI.stock,
-            productoUI.ubicacion_almacen || "",
-            series || productoUI.serie,
-            productoUI.factura_numero,
-            productoUI.descripcion,
-            productoUI.activo === "true" ? "Activo" : "Inactivo",
-          ],
-        };
-      }).sort((a, b) => {
-        return (
-          a.categoria.localeCompare(b.categoria, "es") ||
-          a.nombre.localeCompare(b.nombre, "es") ||
-          a.codigo.localeCompare(b.codigo, "es")
-        );
-      });
+          return {
+            categoria: productoUI.categoria_label,
+            nombre: productoUI.nombre,
+            codigo: productoUI.codigo,
+            values: [
+              productoUI.codigo,
+              productoUI.sku || "",
+              productoUI.nombre,
+              productoUI.marca,
+              productoUI.modelo,
+              productoUI.categoria_label,
+              productoUI.estado === "usado" ? "Usado" : "Nuevo",
+              productoUI.unidad_medida,
+              moneda,
+              productoUI.precio_referencial,
+              productoUI.stock_actual ?? productoUI.stock,
+              productoUI.stock_reservado ?? 0,
+              productoUI.stock_disponible ?? productoUI.stock,
+              productoUI.ubicacion_almacen || "",
+              series || productoUI.serie,
+              productoUI.factura_numero,
+              productoUI.descripcion,
+              productoUI.activo === "true" ? "Activo" : "Inactivo",
+            ],
+          };
+        })
+        .sort((a, b) => {
+          return (
+            a.categoria.localeCompare(b.categoria, "es") ||
+            a.nombre.localeCompare(b.nombre, "es") ||
+            a.codigo.localeCompare(b.codigo, "es")
+          );
+        });
 
       const today = new Date().toLocaleDateString("es-PE");
       const workbook = new ExcelJS.Workbook();
@@ -716,7 +812,8 @@ export default function Productos() {
       worksheet.getCell("A4").alignment = { horizontal: "center" };
 
       worksheet.mergeCells("A5:R5");
-      worksheet.getCell("A5").value = `Inventario interno de productos | Exportado: ${today} | Total: ${exportRows.length}`;
+      worksheet.getCell("A5").value =
+        `Inventario interno de productos | Exportado: ${today} | Total: ${exportRows.length}`;
       worksheet.getCell("A5").font = { size: 10, color: { argb: "FF64748B" } };
       worksheet.getCell("A5").alignment = { horizontal: "center" };
 
@@ -814,7 +911,7 @@ export default function Productos() {
       stock: String(producto.stock_actual ?? producto.stock ?? ""),
       precio_referencial: String(producto.precio_referencial || ""),
       descripcion: producto.descripcion || "",
-      imagen: producto.imagen || "", 
+      imagen: producto.imagen || "",
       activo: producto.activo ? "true" : "false",
       estado: producto.estado || "nuevo",
       marca: producto.marca || "",
@@ -847,14 +944,19 @@ export default function Productos() {
       await fetchProductos(currentPage, debouncedSearchTerm);
       showToast({
         title: "WooCommerce listo",
-        description: response.message || "El producto fue conectado o creado en WooCommerce y el stock fue sincronizado.",
+        description:
+          response.message ||
+          "El producto fue conectado o creado en WooCommerce y el stock fue sincronizado.",
         type: "success",
       });
     } catch (error) {
       console.error(error);
       showToast({
         title: "No se pudo conectar WooCommerce",
-        description: getApiErrorMessage(error, "Verifica que el SKU/codigo exista igual en WooCommerce y que las credenciales esten configuradas."),
+        description: getApiErrorMessage(
+          error,
+          "Verifica que el SKU/codigo exista igual en WooCommerce y que las credenciales esten configuradas.",
+        ),
         type: "warning",
       });
     } finally {
@@ -871,14 +973,19 @@ export default function Productos() {
       await fetchProductos(currentPage, debouncedSearchTerm);
       showToast({
         title: "Stock sincronizado",
-        description: response.message || "WooCommerce recibio el stock disponible del ERP.",
+        description:
+          response.message ||
+          "WooCommerce recibio el stock disponible del ERP.",
         type: "success",
       });
     } catch (error) {
       console.error(error);
       showToast({
         title: "No se pudo sincronizar",
-        description: getApiErrorMessage(error, "Revisa el mapeo del producto y las credenciales WooCommerce."),
+        description: getApiErrorMessage(
+          error,
+          "Revisa el mapeo del producto y las credenciales WooCommerce.",
+        ),
         type: "warning",
       });
     } finally {
@@ -895,14 +1002,18 @@ export default function Productos() {
       await fetchProductos(currentPage, debouncedSearchTerm);
       showToast({
         title: "Sincronizacion WooCommerce",
-        description: response.message || "Los productos activos fueron procesados.",
+        description:
+          response.message || "Los productos activos fueron procesados.",
         type: response.resumen?.errores ? "warning" : "success",
       });
     } catch (error) {
       console.error(error);
       showToast({
         title: "No se pudo sincronizar el lote",
-        description: getApiErrorMessage(error, "Revisa las credenciales WooCommerce o intenta con menos productos."),
+        description: getApiErrorMessage(
+          error,
+          "Revisa las credenciales WooCommerce o intenta con menos productos.",
+        ),
         type: "warning",
       });
     } finally {
@@ -926,7 +1037,10 @@ export default function Productos() {
       console.error(error);
       showToast({
         title: "No se pudo previsualizar",
-        description: getApiErrorMessage(error, "Intenta nuevamente o revisa permisos."),
+        description: getApiErrorMessage(
+          error,
+          "Intenta nuevamente o revisa permisos.",
+        ),
         type: "warning",
       });
     } finally {
@@ -974,7 +1088,9 @@ export default function Productos() {
       await fetchProductos(currentPage, debouncedSearchTerm);
       addNotification({
         title: response?.producto ? "Producto retirado" : "Producto eliminado",
-        description: response?.message || `El producto ${productoAEliminar.nombre} se eliminó correctamente.`,
+        description:
+          response?.message ||
+          `El producto ${productoAEliminar.nombre} se eliminó correctamente.`,
         type: "success",
         icon: "CheckCircle",
         route: "/productos",
@@ -983,7 +1099,10 @@ export default function Productos() {
       console.error(error);
       addNotification({
         title: "Error al eliminar producto",
-        description: getApiErrorMessage(error, "No se pudo eliminar el producto."),
+        description: getApiErrorMessage(
+          error,
+          "No se pudo eliminar el producto.",
+        ),
         type: "warning",
         icon: "MessageCircle",
         route: "/productos",
@@ -1023,9 +1142,11 @@ export default function Productos() {
     }
   };
 
-  const handleProductPaste = (event: React.ClipboardEvent<HTMLLabelElement>) => {
-    const imageItem = Array.from(event.clipboardData.items).find(
-      (item) => item.type.startsWith("image/")
+  const handleProductPaste = (
+    event: React.ClipboardEvent<HTMLLabelElement>,
+  ) => {
+    const imageItem = Array.from(event.clipboardData.items).find((item) =>
+      item.type.startsWith("image/"),
     );
     if (imageItem) {
       const file = imageItem.getAsFile();
@@ -1043,10 +1164,15 @@ export default function Productos() {
       .map((serie) => serie.trim())
       .filter(Boolean);
 
-    if (series.length > 0 && !Number.isNaN(stockNum) && series.length > stockNum) {
+    if (
+      series.length > 0 &&
+      !Number.isNaN(stockNum) &&
+      series.length > stockNum
+    ) {
       addNotification({
         title: "Revisa las series",
-        description: "No puedes registrar mas series que la cantidad del producto.",
+        description:
+          "No puedes registrar mas series que la cantidad del producto.",
         type: "warning",
         icon: "MessageCircle",
         route: "/productos",
@@ -1067,8 +1193,7 @@ export default function Productos() {
       imagen: productoSeleccionado.imagen || undefined,
       precio_referencial: isNaN(precioNum) ? 0 : precioNum,
       moneda_id: Number(productoSeleccionado.moneda_id || 2),
-      unidad_medida:
-        productoSeleccionado.unidad_medida || "unidad",
+      unidad_medida: productoSeleccionado.unidad_medida || "unidad",
       activo: productoSeleccionado.activo === "true",
       estado: productoSeleccionado.estado,
       tipo_producto: "stock",
@@ -1088,10 +1213,7 @@ export default function Productos() {
       setSaving(true);
 
       if (modoEdicion && productoSeleccionado.id) {
-        const updated = await updateProducto(
-          productoSeleccionado.id,
-          payload
-        );
+        const updated = await updateProducto(productoSeleccionado.id, payload);
         await fetchProductos(currentPage, debouncedSearchTerm);
         addNotification({
           title: "Producto actualizado",
@@ -1120,8 +1242,7 @@ export default function Productos() {
         title: modoEdicion
           ? "Error al actualizar producto"
           : "Error al crear producto",
-        description:
-          "Hubo un problema al guardar el producto.",
+        description: "Hubo un problema al guardar el producto.",
         type: "warning",
         icon: "MessageCircle",
         route: "/productos",
@@ -1140,37 +1261,47 @@ export default function Productos() {
   };
 
   // BUSQUEDA
-  const handleSearch = (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
   };
 
   // AGREGAR ITEM EXTERNO A COTIZACIÓN
   const buildExternalItemForCotizacion = (
     externalItem: ExternalItem,
-    targetCotizacion?: Pick<Cotizacion, "moneda_id" | "plantilla_id">
+    targetCotizacion?: Pick<Cotizacion, "moneda_id" | "plantilla_id">,
   ) => {
-    const targetMonedaId = targetCotizacion?.moneda_id ?? externalItem.moneda_id;
+    const targetMonedaId =
+      targetCotizacion?.moneda_id ?? externalItem.moneda_id;
     const targetIncluyeIgv = targetCotizacion
       ? plantillaIncluyeIgv(targetCotizacion.plantilla_id)
-      : externalItem.precio_incluye_igv ?? false;
+      : (externalItem.precio_incluye_igv ?? false);
     const costoBase = convertExternalItemValue(
-      externalItem.costo_base_referencial || externalItem.costo_base || externalItem.costo_unitario || 0,
+      externalItem.costo_base_referencial ||
+        externalItem.costo_base ||
+        externalItem.costo_unitario ||
+        0,
       externalItem,
       targetMonedaId,
-      targetIncluyeIgv
+      targetIncluyeIgv,
     );
     const proveedores = externalItem.proveedores?.map((proveedor) => ({
       ...proveedor,
-      precio: proveedor.precio === null || proveedor.precio === undefined
-        ? null
-        : convertExternalItemValue(proveedor.precio, externalItem, targetMonedaId, targetIncluyeIgv),
+      precio:
+        proveedor.precio === null || proveedor.precio === undefined
+          ? null
+          : convertExternalItemValue(
+              proveedor.precio,
+              externalItem,
+              targetMonedaId,
+              targetIncluyeIgv,
+            ),
     }));
 
     return {
       tipo: externalItem.producto_id ? "catalogo" : "externo",
-      producto_externo_id: externalItem.producto_id ? undefined : externalItem.producto_externo_id || externalItem.id,
+      producto_externo_id: externalItem.producto_id
+        ? undefined
+        : externalItem.producto_externo_id || externalItem.id,
       producto_id: externalItem.producto_id || undefined,
       descripcion: externalItem.descripcion,
       cantidad: 1,
@@ -1227,14 +1358,15 @@ export default function Productos() {
         draftCotizaciones.filter(
           (cotizacion) =>
             Number(cotizacion.estado_cotizacion_id) === 1 &&
-            Number(cotizacion.user_id) === Number(user.id)
-        )
+            Number(cotizacion.user_id) === Number(user.id),
+        ),
       );
     } catch (error) {
       console.error(error);
       addNotification({
         title: "Error al cargar cotizaciones",
-        description: "No se pudo obtener la lista de tus cotizaciones en borrador.",
+        description:
+          "No se pudo obtener la lista de tus cotizaciones en borrador.",
         type: "warning",
         icon: "MessageCircle",
         route: "/productos",
@@ -1264,7 +1396,8 @@ export default function Productos() {
     if (externalItem.producto_id) {
       addNotification({
         title: "Producto ya convertido",
-        description: "Este producto externo ya esta asociado a un producto interno.",
+        description:
+          "Este producto externo ya esta asociado a un producto interno.",
         type: "info",
         icon: "MessageCircle",
         route: "/productos",
@@ -1275,8 +1408,17 @@ export default function Productos() {
     setConversionExternalItem(externalItem);
     setConversionFactura(null);
     setConversionForm({
-      cantidad: String(externalItem.stock && Number(externalItem.stock) > 0 ? externalItem.stock : 1),
-      costo_unitario: String(externalItem.costo_base_referencial || externalItem.costo_base || externalItem.costo_unitario || 0),
+      cantidad: String(
+        externalItem.stock && Number(externalItem.stock) > 0
+          ? externalItem.stock
+          : 1,
+      ),
+      costo_unitario: String(
+        externalItem.costo_base_referencial ||
+          externalItem.costo_base ||
+          externalItem.costo_unitario ||
+          0,
+      ),
       moneda_id: String(externalItem.moneda_id || 1),
       documento_numero: "",
       categoria_id: 1,
@@ -1295,7 +1437,8 @@ export default function Productos() {
     if (!conversionExternalItem) {
       showToast({
         title: "Producto no seleccionado",
-        description: "Vuelve a seleccionar el producto externo que deseas convertir.",
+        description:
+          "Vuelve a seleccionar el producto externo que deseas convertir.",
         type: "warning",
       });
       return;
@@ -1324,20 +1467,28 @@ export default function Productos() {
 
     try {
       setConvertingExternal(true);
-      const response = await convertirProductoExternoAInterno(Number(conversionExternalItem.producto_externo_id || conversionExternalItem.id), {
-        cantidad,
-        costo_unitario: costoUnitario,
-        moneda_id: Number(conversionForm.moneda_id || 1),
-        documento_numero: conversionForm.documento_numero,
-        factura,
-        categoria_id: conversionForm.categoria_id,
-        estado: conversionForm.estado,
-        observacion: conversionForm.observacion,
-      });
+      const response = await convertirProductoExternoAInterno(
+        Number(
+          conversionExternalItem.producto_externo_id ||
+            conversionExternalItem.id,
+        ),
+        {
+          cantidad,
+          costo_unitario: costoUnitario,
+          moneda_id: Number(conversionForm.moneda_id || 1),
+          documento_numero: conversionForm.documento_numero,
+          factura,
+          categoria_id: conversionForm.categoria_id,
+          estado: conversionForm.estado,
+          observacion: conversionForm.observacion,
+        },
+      );
 
       addNotification({
         title: "Producto convertido",
-        description: response.message || "El producto externo ya esta asociado al inventario interno.",
+        description:
+          response.message ||
+          "El producto externo ya esta asociado al inventario interno.",
         type: "success",
         icon: "CheckCircle",
         route: "/productos",
@@ -1350,7 +1501,9 @@ export default function Productos() {
       console.error(error);
       addNotification({
         title: "Error al convertir producto",
-        description: error?.response?.data?.message || "No se pudo convertir el producto externo.",
+        description:
+          error?.response?.data?.message ||
+          "No se pudo convertir el producto externo.",
         type: "warning",
         icon: "MessageCircle",
         route: "/productos",
@@ -1366,7 +1519,7 @@ export default function Productos() {
     const itemData = buildExternalItemForCotizacion(selectedExternalItem);
 
     localStorage.setItem("itemToAdd", JSON.stringify(itemData));
-    
+
     addNotification({
       title: "Item preparado",
       description: `Item "${selectedExternalItem.descripcion}" listo para agregar a cotización.`,
@@ -1384,7 +1537,10 @@ export default function Productos() {
     try {
       setAddingToCotizacion(true);
       const cotizacion = await getCotizacion(cotizacionId);
-      const itemData = buildExternalItemForCotizacion(selectedExternalItem, cotizacion);
+      const itemData = buildExternalItemForCotizacion(
+        selectedExternalItem,
+        cotizacion,
+      );
       const items = [
         ...(cotizacion.items || []),
         {
@@ -1401,8 +1557,14 @@ export default function Productos() {
         moneda_id: cotizacion.moneda_id,
         estado_cotizacion_id: cotizacion.estado_cotizacion_id,
         items,
-        costos: cotizacion.costosAdicionales || (cotizacion as any).costos_adicionales || [],
-        costos_adicionales: cotizacion.costosAdicionales || (cotizacion as any).costos_adicionales || [],
+        costos:
+          cotizacion.costosAdicionales ||
+          (cotizacion as any).costos_adicionales ||
+          [],
+        costos_adicionales:
+          cotizacion.costosAdicionales ||
+          (cotizacion as any).costos_adicionales ||
+          [],
       });
 
       addNotification({
@@ -1418,7 +1580,9 @@ export default function Productos() {
       console.error(error);
       addNotification({
         title: "Error al agregar item",
-        description: error?.response?.data?.message || "No se pudo agregar el item a la cotización seleccionada.",
+        description:
+          error?.response?.data?.message ||
+          "No se pudo agregar el item a la cotización seleccionada.",
         type: "warning",
         icon: "MessageCircle",
         route: "/productos",
@@ -1457,12 +1621,17 @@ export default function Productos() {
     setExternalHistoryLoading(true);
 
     try {
-      const response = await getProductoExternoHistorialCotizaciones(item.producto_externo_id || item.id);
+      const response = await getProductoExternoHistorialCotizaciones(
+        item.producto_externo_id || item.id,
+      );
       setExternalHistory(response);
     } catch (error) {
       addNotification({
         title: "Historial no disponible",
-        description: getApiErrorMessage(error, "No se pudo cargar el historial de cotizaciones del producto externo."),
+        description: getApiErrorMessage(
+          error,
+          "No se pudo cargar el historial de cotizaciones del producto externo.",
+        ),
         type: "error",
         icon: "MessageCircle",
         route: "/productos",
@@ -1634,10 +1803,7 @@ export default function Productos() {
       {(isStockTab || activeTab === "externos") && (
         <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:rounded-3xl sm:p-5">
           <div className="flex w-full min-w-0 items-center gap-3 rounded-2xl bg-gray-100 px-4 py-3 md:w-96">
-            <Search
-              size={18}
-              className="text-gray-500 flex-shrink-0"
-            />
+            <Search size={18} className="text-gray-500 flex-shrink-0" />
 
             <input
               type="text"
@@ -1660,10 +1826,14 @@ export default function Productos() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="text-blue-700" size={18} />
-                <h2 className="text-sm font-bold text-slate-800">Administracion SKU</h2>
+                <h2 className="text-sm font-bold text-slate-800">
+                  Administracion SKU
+                </h2>
               </div>
               <p className="mt-1 max-w-3xl text-xs text-slate-500">
-                Separa el codigo interno del SKU comercial. Primero previsualiza; Superadmin y Logistica pueden aplicar lotes de 25 productos.
+                Separa el codigo interno del SKU comercial. Primero
+                previsualiza; Superadmin y Logistica pueden aplicar lotes de 25
+                productos.
               </p>
             </div>
 
@@ -1674,7 +1844,11 @@ export default function Productos() {
                 disabled={skuPreviewLoading}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
               >
-                {skuPreviewLoading ? <Loader2 className="animate-spin" size={15} /> : <Eye size={15} />}
+                {skuPreviewLoading ? (
+                  <Loader2 className="animate-spin" size={15} />
+                ) : (
+                  <Eye size={15} />
+                )}
                 Previsualizar
               </button>
               {canApplySkuNormalization && (
@@ -1684,7 +1858,11 @@ export default function Productos() {
                   disabled={skuApplyLoading || !skuPreview}
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
                 >
-                  {skuApplyLoading ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
+                  {skuApplyLoading ? (
+                    <Loader2 className="animate-spin" size={15} />
+                  ) : (
+                    <RefreshCw size={15} />
+                  )}
                   Aplicar lote
                 </button>
               )}
@@ -1695,13 +1873,21 @@ export default function Productos() {
             <div className="mt-4 space-y-3">
               <div className="flex flex-wrap gap-2 text-xs">
                 <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-700">
-                  Legacy: {skuPreview.total_legacy ?? skuPreview.total_legacy_restante ?? 0}
+                  Legacy:{" "}
+                  {skuPreview.total_legacy ??
+                    skuPreview.total_legacy_restante ??
+                    0}
                 </span>
-                {Object.entries(skuPreview.resumen || {}).map(([key, value]) => (
-                  <span key={key} className="rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-700">
-                    {key}: {value}
-                  </span>
-                ))}
+                {Object.entries(skuPreview.resumen || {}).map(
+                  ([key, value]) => (
+                    <span
+                      key={key}
+                      className="rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-700"
+                    >
+                      {key}: {value}
+                    </span>
+                  ),
+                )}
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-slate-100">
@@ -1719,23 +1905,41 @@ export default function Productos() {
                   <tbody className="divide-y divide-slate-100">
                     {skuPreview.items.map((item) => (
                       <tr key={item.id} className="bg-white">
-                        <td className="px-3 py-2 font-semibold text-slate-700">{item.codigo || "-"}</td>
-                        <td className="px-3 py-2 text-slate-600">{item.sku_actual || "-"}</td>
-                        <td className="px-3 py-2 font-semibold text-blue-700">{item.sku_nuevo || "-"}</td>
-                        <td className="px-3 py-2 text-slate-700">
-                          <span className="line-clamp-1" title={item.producto || ""}>{item.producto || "-"}</span>
+                        <td className="px-3 py-2 font-semibold text-slate-700">
+                          {item.codigo || "-"}
                         </td>
                         <td className="px-3 py-2 text-slate-600">
-                          {item.vinculado_woocommerce ? `SI #${item.woo_variation_id || item.woo_product_id || "-"}` : "NO"}
+                          {item.sku_actual || "-"}
+                        </td>
+                        <td className="px-3 py-2 font-semibold text-blue-700">
+                          {item.sku_nuevo || "-"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          <span
+                            className="line-clamp-1"
+                            title={item.producto || ""}
+                          >
+                            {item.producto || "-"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">
+                          {item.vinculado_woocommerce
+                            ? `SI #${item.woo_variation_id || item.woo_product_id || "-"}`
+                            : "NO"}
                         </td>
                         <td className="px-3 py-2">
-                          <span className={`rounded-full px-2 py-1 font-semibold ${
-                            item.estado === "APLICADO" || item.estado === "PENDIENTE"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : item.estado.includes("CONFLICTO") || item.estado.includes("ERROR")
-                                ? "bg-red-50 text-red-700"
-                                : "bg-slate-100 text-slate-700"
-                          }`} title={item.mensaje || ""}>
+                          <span
+                            className={`rounded-full px-2 py-1 font-semibold ${
+                              item.estado === "APLICADO" ||
+                              item.estado === "PENDIENTE"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : item.estado.includes("CONFLICTO") ||
+                                    item.estado.includes("ERROR")
+                                  ? "bg-red-50 text-red-700"
+                                  : "bg-slate-100 text-slate-700"
+                            }`}
+                            title={item.mensaje || ""}
+                          >
                             {item.estado}
                           </span>
                         </td>
@@ -1759,10 +1963,16 @@ export default function Productos() {
         ) : tableItems.length > 0 ? (
           <div className="grid min-w-0 gap-3 p-3 sm:p-4 xl:hidden">
             {tableItems.map((item: any) => {
-              const itemImage = resolveItemImageUrl(item.imagen_url, item.imagen);
+              const itemImage = resolveItemImageUrl(
+                item.imagen_url,
+                item.imagen,
+              );
 
               return (
-                <div key={item.id ?? item.codigo ?? JSON.stringify(item)} className="min-w-0 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+                <div
+                  key={item.id ?? item.codigo ?? JSON.stringify(item)}
+                  className="min-w-0 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4"
+                >
                   <div className="flex items-start gap-3">
                     {itemImage && (
                       <img
@@ -1773,30 +1983,52 @@ export default function Productos() {
                       />
                     )}
                     <div className="min-w-0 flex-1">
-                      <h3 className="truncate font-bold text-gray-900">{isStockTab ? item.nombre : item.descripcion}</h3>
-                      <p className="truncate text-sm text-gray-500">Codigo interno: {item.codigo || "Sin codigo"}</p>
-                      <p className="truncate text-xs font-semibold text-blue-700">SKU: {item.sku || getWooCommerceMapping(item)?.woo_sku || "-"}</p>
+                      <h3 className="truncate font-bold text-gray-900">
+                        {isStockTab ? item.nombre : item.descripcion}
+                      </h3>
+                      <p className="truncate text-sm text-gray-500">
+                        Codigo interno: {item.codigo || "Sin codigo"}
+                      </p>
+                      <p className="truncate text-xs font-semibold text-blue-700">
+                        SKU:{" "}
+                        {item.sku ||
+                          getWooCommerceMapping(item)?.woo_sku ||
+                          "-"}
+                      </p>
                       {isStockTab ? (
                         (item.marca || item.modelo) && (
-                          <p className="truncate text-xs text-gray-500">{[item.marca, item.modelo].filter(Boolean).join(" / ")}</p>
+                          <p className="truncate text-xs text-gray-500">
+                            {[item.marca, item.modelo]
+                              .filter(Boolean)
+                              .join(" / ")}
+                          </p>
                         )
                       ) : (
                         <>
-                          {item.marca && <p className="truncate text-xs text-gray-500">{item.marca}</p>}
-                          {(item.plantilla_ultimo_uso_nombre || item.plantilla_origen_nombre) && (
+                          {item.marca && (
+                            <p className="truncate text-xs text-gray-500">
+                              {item.marca}
+                            </p>
+                          )}
+                          {(item.plantilla_ultimo_uso_nombre ||
+                            item.plantilla_origen_nombre) && (
                             <p className="truncate text-[11px] font-semibold text-blue-700">
-                              Ultima plantilla: {item.plantilla_ultimo_uso_nombre || item.plantilla_origen_nombre}
+                              Ultima plantilla:{" "}
+                              {item.plantilla_ultimo_uso_nombre ||
+                                item.plantilla_origen_nombre}
                             </p>
                           )}
                         </>
                       )}
                     </div>
                     {isStockTab && (
-                      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                        item.estado === "usado"
-                          ? "border-amber-200 bg-amber-100 text-amber-700"
-                          : "border-green-200 bg-green-100 text-green-700"
-                      }`}>
+                      <span
+                        className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                          item.estado === "usado"
+                            ? "border-amber-200 bg-amber-100 text-amber-700"
+                            : "border-green-200 bg-green-100 text-green-700"
+                        }`}
+                      >
                         {item.estado === "usado" ? "Usado" : "Nuevo"}
                       </span>
                     )}
@@ -1806,31 +2038,64 @@ export default function Productos() {
                     {isStockTab ? (
                       <>
                         <div>
-                          <p className="text-xs font-semibold uppercase text-gray-400">Categoria</p>
-                          <p className="mt-1 font-medium text-gray-700">{item.categoria_label}</p>
+                          <p className="text-xs font-semibold uppercase text-gray-400">
+                            Categoria
+                          </p>
+                          <p className="mt-1 font-medium text-gray-700">
+                            {item.categoria_label}
+                          </p>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold uppercase text-gray-400">Precio</p>
-                          <p className="mt-1 font-bold text-gray-900">{formatProductoMoney(item, item.precio_referencial || "0")}</p>
+                          <p className="text-xs font-semibold uppercase text-gray-400">
+                            Precio
+                          </p>
+                          <p className="mt-1 font-bold text-gray-900">
+                            {formatProductoMoney(
+                              item,
+                              item.precio_referencial || "0",
+                            )}
+                          </p>
                         </div>
                         <div className="col-span-2">
-                          <p className="text-xs font-semibold uppercase text-gray-400">Ubicacion</p>
-                          <p className="mt-1 truncate font-medium text-gray-700">{item.ubicacion_almacen || "Sin ubicacion"}</p>
+                          <p className="text-xs font-semibold uppercase text-gray-400">
+                            Ubicacion
+                          </p>
+                          <p className="mt-1 truncate font-medium text-gray-700">
+                            {item.ubicacion_almacen || "Sin ubicacion"}
+                          </p>
                         </div>
                         <div className="col-span-2 min-w-0 rounded-xl bg-gray-50 p-3">
-                          <p className="mb-2 text-xs font-semibold uppercase text-gray-400">Stock real</p>
+                          <p className="mb-2 text-xs font-semibold uppercase text-gray-400">
+                            Stock real
+                          </p>
                           <div className="grid grid-cols-3 gap-2 text-center text-xs">
                             <div className="min-w-0">
                               <p className="text-gray-500">Actual</p>
-                              <p className="font-bold text-gray-900">{Number(item.stock_actual ?? item.stock ?? 0).toLocaleString()}</p>
+                              <p className="font-bold text-gray-900">
+                                {Number(
+                                  item.stock_actual ?? item.stock ?? 0,
+                                ).toLocaleString()}
+                              </p>
                             </div>
                             <div className="min-w-0">
-                              <p className="truncate text-gray-500">Reservado</p>
-                              <p className="font-bold text-amber-700">{Number(item.stock_reservado ?? 0).toLocaleString()}</p>
+                              <p className="truncate text-gray-500">
+                                Reservado
+                              </p>
+                              <p className="font-bold text-amber-700">
+                                {Number(
+                                  item.stock_reservado ?? 0,
+                                ).toLocaleString()}
+                              </p>
                             </div>
                             <div className="min-w-0">
-                              <p className="truncate text-gray-500">Disponible</p>
-                              <p className="font-bold text-emerald-700">{Number(item.stock_disponible ?? item.stock ?? 0).toLocaleString()}</p>
+                              <p className="truncate text-gray-500">
+                                Disponible
+                              </p>
+                              <p className="font-bold text-emerald-700">
+                                {Number(
+                                  item.stock_disponible ?? item.stock ?? 0,
+                                ).toLocaleString()}
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -1838,15 +2103,30 @@ export default function Productos() {
                     ) : (
                       <>
                         <div>
-                          <p className="text-xs font-semibold uppercase text-gray-400">Costo unit.</p>
+                          <p className="text-xs font-semibold uppercase text-gray-400">
+                            Costo unit.
+                          </p>
                           <p className="mt-1 font-bold text-gray-900">
-                            {formatExternalItemMoney(item, item.costo_base_referencial || item.costo_base || item.costo_unitario || "0")}
+                            {formatExternalItemMoney(
+                              item,
+                              item.costo_base_referencial ||
+                                item.costo_base ||
+                                item.costo_unitario ||
+                                "0",
+                            )}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold uppercase text-gray-400">Precio venta</p>
+                          <p className="text-xs font-semibold uppercase text-gray-400">
+                            Precio venta
+                          </p>
                           <p className="mt-1 font-bold text-gray-900">
-                            {formatExternalItemMoney(item, item.ultimo_precio_venta || item.precio_venta || "0")}
+                            {formatExternalItemMoney(
+                              item,
+                              item.ultimo_precio_venta ||
+                                item.precio_venta ||
+                                "0",
+                            )}
                           </p>
                         </div>
                         <div className="col-span-2 min-w-0 rounded-xl bg-gray-50 p-3 text-xs">
@@ -1854,19 +2134,33 @@ export default function Productos() {
                             <div className="grid grid-cols-3 gap-2 text-center">
                               <div>
                                 <p className="text-gray-500">Actual</p>
-                                <p className="font-bold text-gray-900">{Number(item.producto?.stock_actual ?? 0).toLocaleString()}</p>
+                                <p className="font-bold text-gray-900">
+                                  {Number(
+                                    item.producto?.stock_actual ?? 0,
+                                  ).toLocaleString()}
+                                </p>
                               </div>
                               <div>
                                 <p className="text-gray-500">Reservado</p>
-                                <p className="font-bold text-amber-700">{Number(item.producto?.stock_reservado ?? 0).toLocaleString()}</p>
+                                <p className="font-bold text-amber-700">
+                                  {Number(
+                                    item.producto?.stock_reservado ?? 0,
+                                  ).toLocaleString()}
+                                </p>
                               </div>
                               <div>
                                 <p className="text-gray-500">Disponible</p>
-                                <p className="font-bold text-emerald-700">{Number(item.producto?.stock_disponible ?? 0).toLocaleString()}</p>
+                                <p className="font-bold text-emerald-700">
+                                  {Number(
+                                    item.producto?.stock_disponible ?? 0,
+                                  ).toLocaleString()}
+                                </p>
                               </div>
                             </div>
                           ) : (
-                            <p className="font-medium text-gray-700">Stock: {Number(item.stock || 0).toLocaleString()}</p>
+                            <p className="font-medium text-gray-700">
+                              Stock: {Number(item.stock || 0).toLocaleString()}
+                            </p>
                           )}
                         </div>
                       </>
@@ -1884,59 +2178,80 @@ export default function Productos() {
                     </button>
                   )}
 
-                  {isStockTab && canManageWooCommerce && (() => {
-                    const wooMapping = getWooCommerceMapping(item);
-                    const isSyncing = syncingWooProductId === item.id;
+                  {isStockTab &&
+                    canManageWooCommerce &&
+                    (() => {
+                      const wooMapping = getWooCommerceMapping(item);
+                      const isSyncing = syncingWooProductId === item.id;
 
-                    return (
-                      <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="font-semibold text-slate-700">
-                              WooCommerce
-                            </p>
-                            {wooMapping ? (
-                              <p className="mt-1 truncate text-slate-500">
-                                SKU {wooMapping.woo_sku || item.codigo} · Stock enviado {wooMapping.last_stock_sent ?? "-"}
+                      return (
+                        <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-700">
+                                WooCommerce
                               </p>
-                            ) : (
-                              <p className="mt-1 text-slate-500">Sin conectar por SKU</p>
-                            )}
+                              {wooMapping ? (
+                                <p className="mt-1 truncate text-slate-500">
+                                  SKU {wooMapping.woo_sku || item.codigo} ·
+                                  Stock enviado{" "}
+                                  {wooMapping.last_stock_sent ?? "-"}
+                                </p>
+                              ) : (
+                                <p className="mt-1 text-slate-500">
+                                  Sin conectar por SKU
+                                </p>
+                              )}
+                            </div>
+                            <span
+                              className={`shrink-0 rounded-full border px-2 py-0.5 font-semibold ${getWooCommerceStatusBadge(wooMapping?.last_sync_status)}`}
+                            >
+                              {wooMapping?.last_sync_status || "No conectado"}
+                            </span>
                           </div>
-                          <span className={`shrink-0 rounded-full border px-2 py-0.5 font-semibold ${getWooCommerceStatusBadge(wooMapping?.last_sync_status)}`}>
-                            {wooMapping?.last_sync_status || "No conectado"}
-                          </span>
+                          {wooMapping?.last_sync_error && (
+                            <p
+                              className="mt-2 line-clamp-2 text-red-600"
+                              title={wooMapping.last_sync_error}
+                            >
+                              {wooMapping.last_sync_error}
+                            </p>
+                          )}
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              disabled={isSyncing}
+                              onClick={() => void handleMapearWooCommerce(item)}
+                              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white text-xs font-semibold text-blue-700 ring-1 ring-blue-100 hover:bg-blue-50 disabled:opacity-60"
+                              title="Buscar por SKU/codigo en WooCommerce; si no existe, crearlo y conectarlo"
+                            >
+                              {isSyncing ? (
+                                <Loader2 className="animate-spin" size={14} />
+                              ) : (
+                                <Link2 size={14} />
+                              )}
+                              Conectar/crear
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isSyncing || !wooMapping}
+                              onClick={() =>
+                                void handleSincronizarWooCommerce(item)
+                              }
+                              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-50 disabled:opacity-60"
+                              title="Enviar el stock disponible del ERP a WooCommerce"
+                            >
+                              {isSyncing ? (
+                                <Loader2 className="animate-spin" size={14} />
+                              ) : (
+                                <RefreshCw size={14} />
+                              )}
+                              Sync
+                            </button>
+                          </div>
                         </div>
-                        {wooMapping?.last_sync_error && (
-                          <p className="mt-2 line-clamp-2 text-red-600" title={wooMapping.last_sync_error}>
-                            {wooMapping.last_sync_error}
-                          </p>
-                        )}
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            disabled={isSyncing}
-                            onClick={() => void handleMapearWooCommerce(item)}
-                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white text-xs font-semibold text-blue-700 ring-1 ring-blue-100 hover:bg-blue-50 disabled:opacity-60"
-                            title="Buscar por SKU/codigo en WooCommerce; si no existe, crearlo y conectarlo"
-                          >
-                            {isSyncing ? <Loader2 className="animate-spin" size={14} /> : <Link2 size={14} />}
-                            Conectar/crear
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isSyncing || !wooMapping}
-                            onClick={() => void handleSincronizarWooCommerce(item)}
-                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-50 disabled:opacity-60"
-                            title="Enviar el stock disponible del ERP a WooCommerce"
-                          >
-                            {isSyncing ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
-                            Sync
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                      );
+                    })()}
 
                   <div className="mt-4 border-t border-gray-100 pt-3">
                     {isStockTab ? (
@@ -1973,7 +2288,9 @@ export default function Productos() {
                     ) : (
                       <div className="grid grid-cols-3 gap-2">
                         <button
-                          onClick={() => void handleOpenExternalHistoryModal(item)}
+                          onClick={() =>
+                            void handleOpenExternalHistoryModal(item)
+                          }
                           className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-100 text-blue-700 hover:bg-blue-200"
                           title="Ver historial de cotizaciones"
                         >
@@ -1994,7 +2311,11 @@ export default function Productos() {
                               ? "cursor-not-allowed bg-gray-100 text-gray-400"
                               : "bg-amber-100 text-amber-700 hover:bg-amber-200"
                           }`}
-                          title={item.producto_id ? "Ya convertido a producto interno" : "Convertir a producto interno"}
+                          title={
+                            item.producto_id
+                              ? "Ya convertido a producto interno"
+                              : "Convertir a producto interno"
+                          }
                         >
                           <PackageCheck size={16} />
                         </button>
@@ -2016,399 +2337,502 @@ export default function Productos() {
         )}
 
         <div className="hidden overflow-x-auto xl:block">
-        <table className="w-full min-w-[1160px] table-fixed">
-          <colgroup>
-            {isStockTab ? (
-              <>
-                <col className="w-[20%]" />
-                <col className="w-[10%]" />
-                <col className="w-[14%]" />
-                <col className="w-[8%]" />
-                <col className="w-[12%]" />
-                <col className="w-[14%]" />
-                <col className="w-[8%]" />
-                <col className="w-[14%]" />
-              </>
-            ) : (
-              <>
-                <col className="w-[30%]" />
-                <col className="w-[10%]" />
-                <col className="w-[11%]" />
-                <col className="w-[10%]" />
-                <col className="w-[13%]" />
-                <col className="w-[12%]" />
-                <col className="w-[14%]" />
-              </>
-            )}
-          </colgroup>
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
+          <table className="w-full min-w-[1160px] table-fixed">
+            <colgroup>
               {isStockTab ? (
                 <>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Producto
-                  </th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Categoría
-                  </th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Stock real
-                  </th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Precio (Sin IGV)
-                  </th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Ubicacion
-                  </th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Descripción
-                  </th>
-                  <th className="text-left px-4 py-4 text-sm font-semibold text-gray-600">
-                    Estado
-                  </th>
-                  <th className="bg-gray-50 text-center px-3 py-4 text-sm font-semibold text-gray-600">
-                    Acciones
-                  </th>
+                  <col className="w-[20%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[14%]" />
                 </>
               ) : (
                 <>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Descripción
-                  </th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Marca
-                  </th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Código
-                  </th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Stock interno
-                  </th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Costo Unit.
-                  </th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Precio Venta
-                  </th>
-                  <th className="bg-gray-50 text-center px-3 py-4 text-sm font-semibold text-gray-600">
-                    Acciones
-                  </th>
+                  <col className="w-[30%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[14%]" />
                 </>
               )}
-            </tr>
-          </thead>
-
-          <tbody>
-            {(isStockTab ? loading : externalLoading) ? (
+            </colgroup>
+            <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <td colSpan={isStockTab ? 8 : 7} className="px-6 py-12 text-center text-gray-500">
-                  <div className="flex items-center justify-center gap-3">
-                    <Loader2 className="animate-spin" size={18} />
-                    Cargando productos...
-                  </div>
-                </td>
+                {isStockTab ? (
+                  <>
+                    <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                      Producto
+                    </th>
+                    <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                      Categoría
+                    </th>
+                    <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                      Stock real
+                    </th>
+                    <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                      Precio (Sin IGV)
+                    </th>
+                    <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                      Ubicacion
+                    </th>
+                    <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                      Descripción
+                    </th>
+                    <th className="text-left px-4 py-4 text-sm font-semibold text-gray-600">
+                      Estado
+                    </th>
+                    <th className="bg-gray-50 text-center px-3 py-4 text-sm font-semibold text-gray-600">
+                      Acciones
+                    </th>
+                  </>
+                ) : (
+                  <>
+                    <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                      Descripción
+                    </th>
+                    <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                      Marca
+                    </th>
+                    <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                      Código
+                    </th>
+                    <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                      Stock interno
+                    </th>
+                    <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                      Costo Unit.
+                    </th>
+                    <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                      Precio Venta
+                    </th>
+                    <th className="bg-gray-50 text-center px-3 py-4 text-sm font-semibold text-gray-600">
+                      Acciones
+                    </th>
+                  </>
+                )}
               </tr>
-            ) : tableItems.length > 0 ? (
-              tableItems.map((item: any) => {
-                const itemImage = resolveItemImageUrl(item.imagen_url, item.imagen);
+            </thead>
 
-                return (
-                  <tr
-                    key={item.id ?? item.codigo ?? JSON.stringify(item)}
-                    className="border-b border-gray-100 hover:bg-gray-50 transition-all duration-200"
+            <tbody>
+              {(isStockTab ? loading : externalLoading) ? (
+                <tr>
+                  <td
+                    colSpan={isStockTab ? 8 : 7}
+                    className="px-6 py-12 text-center text-gray-500"
                   >
-                  {isStockTab ? (
-                    <>
-                      <td className="px-6 py-5 overflow-hidden">
-                        <div className="flex items-center gap-2 min-w-0">
-                          {itemImage && (
-                            <img
-                              src={itemImage}
-                              alt=""
-                              className="w-8 h-8 rounded border border-gray-200 object-contain bg-white flex-shrink-0"
-                              loading="lazy"
-                            />
-                          )}
-                          <div className="min-w-0">
-                            <h3 className="font-semibold text-gray-800 truncate">
-                              {item.nombre}
-                            </h3>
-                            <p className="text-sm text-gray-500 truncate">
-                              Codigo interno: {item.codigo}
-                            </p>
-                            <p className="truncate text-xs font-semibold text-blue-700">
-                              SKU: {item.sku || getWooCommerceMapping(item)?.woo_sku || "-"}
-                            </p>
-                            {(item.marca || item.modelo) && (
-                              <p className="text-xs text-gray-500 truncate">
-                                {[item.marca, item.modelo].filter(Boolean).join(" / ")}
-                              </p>
-                            )}
-                            {(item.series?.length || item.serie) && (
-                              <button
-                                type="button"
-                                onClick={() => setProductoSeriesModal(item)}
-                                className="mt-1 inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
-                              >
-                                <List size={12} />
-                                Series {item.series?.length || 1}
-                              </button>
-                            )}
-                            {canManageWooCommerce && (() => {
-                              const wooMapping = getWooCommerceMapping(item);
+                    <div className="flex items-center justify-center gap-3">
+                      <Loader2 className="animate-spin" size={18} />
+                      Cargando productos...
+                    </div>
+                  </td>
+                </tr>
+              ) : tableItems.length > 0 ? (
+                tableItems.map((item: any) => {
+                  const itemImage = resolveItemImageUrl(
+                    item.imagen_url,
+                    item.imagen,
+                  );
 
-                              return (
-                                <div className="mt-1 flex min-w-0 items-center gap-1.5">
-                                  <span className={`inline-flex max-w-full rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getWooCommerceStatusBadge(wooMapping?.last_sync_status)}`}>
-                                    <span className="truncate">
-                                      Woo: {wooMapping ? wooMapping.last_sync_status || "conectado" : "sin conectar"}
-                                    </span>
+                  return (
+                    <tr
+                      key={item.id ?? item.codigo ?? JSON.stringify(item)}
+                      className="border-b border-gray-100 hover:bg-gray-50 transition-all duration-200"
+                    >
+                      {isStockTab ? (
+                        <>
+                          <td className="px-6 py-5 overflow-hidden">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {itemImage && (
+                                <img
+                                  src={itemImage}
+                                  alt=""
+                                  className="w-8 h-8 rounded border border-gray-200 object-contain bg-white flex-shrink-0"
+                                  loading="lazy"
+                                />
+                              )}
+                              <div className="min-w-0">
+                                <h3 className="font-semibold text-gray-800 truncate">
+                                  {item.nombre}
+                                </h3>
+                                <p className="text-sm text-gray-500 truncate">
+                                  Codigo interno: {item.codigo}
+                                </p>
+                                <p className="truncate text-xs font-semibold text-blue-700">
+                                  SKU:{" "}
+                                  {item.sku ||
+                                    getWooCommerceMapping(item)?.woo_sku ||
+                                    "-"}
+                                </p>
+                                {(item.marca || item.modelo) && (
+                                  <p className="text-xs text-gray-500 truncate">
+                                    {[item.marca, item.modelo]
+                                      .filter(Boolean)
+                                      .join(" / ")}
+                                  </p>
+                                )}
+                                {(item.series?.length || item.serie) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setProductoSeriesModal(item)}
+                                    className="mt-1 inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+                                  >
+                                    <List size={12} />
+                                    Series {item.series?.length || 1}
+                                  </button>
+                                )}
+                                {canManageWooCommerce &&
+                                  (() => {
+                                    const wooMapping =
+                                      getWooCommerceMapping(item);
+
+                                    return (
+                                      <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                                        <span
+                                          className={`inline-flex max-w-full rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getWooCommerceStatusBadge(wooMapping?.last_sync_status)}`}
+                                        >
+                                          <span className="truncate">
+                                            Woo:{" "}
+                                            {wooMapping
+                                              ? wooMapping.last_sync_status ||
+                                                "conectado"
+                                              : "sin conectar"}
+                                          </span>
+                                        </span>
+                                        {wooMapping?.last_synced_at && (
+                                          <span className="truncate text-[10px] text-slate-400">
+                                            {formatWooCommerceDate(
+                                              wooMapping.last_synced_at,
+                                            )}
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-5 text-gray-600">
+                            {item.categoria_label}
+                          </td>
+                          <td className="px-6 py-5 text-gray-600">
+                            <div className="space-y-1 text-xs">
+                              <div className="flex justify-between gap-2">
+                                <span className="text-gray-500">Actual</span>
+                                <span className="font-semibold text-gray-900">
+                                  {Number(
+                                    item.stock_actual ?? item.stock ?? 0,
+                                  ).toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="flex justify-between gap-2">
+                                <span className="text-gray-500">Reservado</span>
+                                <span className="font-semibold text-amber-700">
+                                  {Number(
+                                    item.stock_reservado ?? 0,
+                                  ).toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="flex justify-between gap-2">
+                                <span className="text-gray-500">
+                                  Disponible
+                                </span>
+                                <span className="font-semibold text-emerald-700">
+                                  {Number(
+                                    item.stock_disponible ?? item.stock ?? 0,
+                                  ).toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-5 font-semibold text-gray-800">
+                            {formatProductoMoney(
+                              item,
+                              item.precio_referencial || "0",
+                            )}
+                          </td>
+                          <td className="px-6 py-5 text-gray-600">
+                            <span
+                              className="line-clamp-2"
+                              title={item.ubicacion_almacen || ""}
+                            >
+                              {item.ubicacion_almacen || "-"}
+                            </span>
+                          </td>
+                          <td className="px-6 py-5 text-gray-600">
+                            {item.descripcion || "Sin descripción"}
+                          </td>
+                          <td className="px-4 py-5">
+                            <span
+                              className={`inline-flex whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium ${
+                                item.estado === "usado"
+                                  ? "bg-amber-100 text-amber-700 border border-amber-200"
+                                  : "bg-green-100 text-green-700 border border-green-200"
+                              }`}
+                            >
+                              {item.estado === "usado" ? "Usado" : "Nuevo"}
+                            </span>
+                          </td>
+                          <td className="bg-white px-3 py-5">
+                            {canManageInternalProducts ? (
+                              <div className="flex items-center justify-center gap-1.5">
+                                {canManageWooCommerce &&
+                                  (() => {
+                                    const wooMapping =
+                                      getWooCommerceMapping(item);
+                                    const isSyncing =
+                                      syncingWooProductId === item.id;
+
+                                    return (
+                                      <>
+                                        <button
+                                          type="button"
+                                          disabled={isSyncing}
+                                          onClick={() =>
+                                            void handleMapearWooCommerce(item)
+                                          }
+                                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 shadow-sm transition hover:bg-slate-200 hover:scale-105 disabled:opacity-60"
+                                          title="Conectar o crear en WooCommerce por SKU/codigo"
+                                        >
+                                          {isSyncing ? (
+                                            <Loader2
+                                              className="animate-spin"
+                                              size={16}
+                                            />
+                                          ) : (
+                                            <Link2 size={17} />
+                                          )}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={isSyncing || !wooMapping}
+                                          onClick={() =>
+                                            void handleSincronizarWooCommerce(
+                                              item,
+                                            )
+                                          }
+                                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 shadow-sm transition hover:bg-emerald-200 hover:scale-105 disabled:opacity-60"
+                                          title="Sincronizar stock disponible con WooCommerce"
+                                        >
+                                          {isSyncing ? (
+                                            <Loader2
+                                              className="animate-spin"
+                                              size={16}
+                                            />
+                                          ) : (
+                                            <RefreshCw size={17} />
+                                          )}
+                                        </button>
+                                      </>
+                                    );
+                                  })()}
+                                <button
+                                  onClick={() => handleEditar(item)}
+                                  className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                                  title="Editar producto"
+                                >
+                                  <Pencil size={18} />
+                                </button>
+                                <button
+                                  onClick={() => handleEliminar(item)}
+                                  className="w-9 h-9 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                                  title="Eliminar o retirar producto"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center">
+                                <button
+                                  type="button"
+                                  onClick={() => setProductoDetalleModal(item)}
+                                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 shadow-sm transition hover:bg-slate-200 hover:scale-105"
+                                  title="Ver detalle del producto"
+                                >
+                                  <Eye size={18} />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-6 py-5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {itemImage && (
+                                <img
+                                  src={itemImage}
+                                  alt=""
+                                  className="w-8 h-8 rounded border border-gray-200 object-contain bg-white flex-shrink-0"
+                                  loading="lazy"
+                                />
+                              )}
+                              <div className="min-w-0">
+                                <h3
+                                  className="truncate font-semibold text-gray-800"
+                                  title={item.descripcion}
+                                >
+                                  {item.descripcion}
+                                </h3>
+                                {(item.plantilla_ultimo_uso_nombre ||
+                                  item.plantilla_origen_nombre) && (
+                                  <p className="truncate text-[11px] font-semibold text-blue-700">
+                                    Ultima plantilla:{" "}
+                                    {item.plantilla_ultimo_uso_nombre ||
+                                      item.plantilla_origen_nombre}
+                                  </p>
+                                )}
+                                {item.codigo && (
+                                  <p className="truncate text-[11px] font-semibold text-emerald-700">
+                                    Asociado a inventario #{item.codigo}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-5 text-gray-600">
+                            <span
+                              className="block truncate"
+                              title={item.marca || "N/A"}
+                            >
+                              {item.marca || "N/A"}
+                            </span>
+                          </td>
+                          <td className="px-6 py-5 text-gray-600">
+                            <span
+                              className="block truncate"
+                              title={item.codigo}
+                            >
+                              {item.codigo}
+                            </span>
+                          </td>
+                          <td className="px-6 py-5 text-gray-600">
+                            {item.producto_id ? (
+                              <div className="space-y-1 text-xs">
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-gray-500">Actual</span>
+                                  <span className="font-semibold text-gray-900">
+                                    {Number(
+                                      item.producto?.stock_actual ?? 0,
+                                    ).toLocaleString()}
                                   </span>
-                                  {wooMapping?.last_synced_at && (
-                                    <span className="truncate text-[10px] text-slate-400">
-                                      {formatWooCommerceDate(wooMapping.last_synced_at)}
-                                    </span>
-                                  )}
                                 </div>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 text-gray-600">
-                        {item.categoria_label}
-                      </td>
-                      <td className="px-6 py-5 text-gray-600">
-                        <div className="space-y-1 text-xs">
-                          <div className="flex justify-between gap-2">
-                            <span className="text-gray-500">Actual</span>
-                            <span className="font-semibold text-gray-900">{Number(item.stock_actual ?? item.stock ?? 0).toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-gray-500">Reservado</span>
-                            <span className="font-semibold text-amber-700">{Number(item.stock_reservado ?? 0).toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-gray-500">Disponible</span>
-                            <span className="font-semibold text-emerald-700">{Number(item.stock_disponible ?? item.stock ?? 0).toLocaleString()}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 font-semibold text-gray-800">
-                        {formatProductoMoney(item, item.precio_referencial || "0")}
-                      </td>
-                      <td className="px-6 py-5 text-gray-600">
-                        <span className="line-clamp-2" title={item.ubicacion_almacen || ""}>
-                          {item.ubicacion_almacen || "-"}
-                        </span>
-                      </td>
-                      <td className="px-6 py-5 text-gray-600">
-                        {item.descripcion || "Sin descripción"}
-                      </td>
-                      <td className="px-4 py-5">
-                        <span
-                          className={`inline-flex whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium ${
-                            item.estado === "usado"
-                              ? "bg-amber-100 text-amber-700 border border-amber-200"
-                              : "bg-green-100 text-green-700 border border-green-200"
-                          }`}
-                        >
-                          {item.estado === "usado" ? "Usado" : "Nuevo"}
-                        </span>
-                      </td>
-                      <td className="bg-white px-3 py-5">
-                        {canManageInternalProducts ? (
-                          <div className="flex items-center justify-center gap-1.5">
-                            {canManageWooCommerce && (() => {
-                              const wooMapping = getWooCommerceMapping(item);
-                              const isSyncing = syncingWooProductId === item.id;
-
-                              return (
-                                <>
-                                  <button
-                                    type="button"
-                                    disabled={isSyncing}
-                                    onClick={() => void handleMapearWooCommerce(item)}
-                                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 shadow-sm transition hover:bg-slate-200 hover:scale-105 disabled:opacity-60"
-                                    title="Conectar o crear en WooCommerce por SKU/codigo"
-                                  >
-                                    {isSyncing ? <Loader2 className="animate-spin" size={16} /> : <Link2 size={17} />}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={isSyncing || !wooMapping}
-                                    onClick={() => void handleSincronizarWooCommerce(item)}
-                                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 shadow-sm transition hover:bg-emerald-200 hover:scale-105 disabled:opacity-60"
-                                    title="Sincronizar stock disponible con WooCommerce"
-                                  >
-                                    {isSyncing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={17} />}
-                                  </button>
-                                </>
-                              );
-                            })()}
-                            <button
-                              onClick={() =>
-                                handleEditar(item)
-                              }
-                              className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
-                              title="Editar producto"
-                            >
-                              <Pencil size={18} />
-                            </button>
-                            <button
-                              onClick={() =>
-                                handleEliminar(item)
-                              }
-                              className="w-9 h-9 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
-                              title="Eliminar o retirar producto"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center">
-                            <button
-                              type="button"
-                              onClick={() => setProductoDetalleModal(item)}
-                              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 shadow-sm transition hover:bg-slate-200 hover:scale-105"
-                              title="Ver detalle del producto"
-                            >
-                              <Eye size={18} />
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td className="px-6 py-5">
-                        <div className="flex items-center gap-2 min-w-0">
-                          {itemImage && (
-                            <img
-                              src={itemImage}
-                              alt=""
-                              className="w-8 h-8 rounded border border-gray-200 object-contain bg-white flex-shrink-0"
-                              loading="lazy"
-                            />
-                          )}
-                          <div className="min-w-0">
-                            <h3 className="truncate font-semibold text-gray-800" title={item.descripcion}>
-                              {item.descripcion}
-                            </h3>
-                            {(item.plantilla_ultimo_uso_nombre || item.plantilla_origen_nombre) && (
-                              <p className="truncate text-[11px] font-semibold text-blue-700">
-                                Ultima plantilla: {item.plantilla_ultimo_uso_nombre || item.plantilla_origen_nombre}
-                              </p>
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-gray-500">
+                                    Reservado
+                                  </span>
+                                  <span className="font-semibold text-amber-700">
+                                    {Number(
+                                      item.producto?.stock_reservado ?? 0,
+                                    ).toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-gray-500">
+                                    Disponible
+                                  </span>
+                                  <span className="font-semibold text-emerald-700">
+                                    {Number(
+                                      item.producto?.stock_disponible ?? 0,
+                                    ).toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="font-medium">
+                                {Number(item.stock || 0).toLocaleString()}
+                              </span>
                             )}
-                            {item.producto_id && (
-                              <p className="truncate text-[11px] font-semibold text-emerald-700">
-                                Asociado a inventario #{item.producto_id}
-                              </p>
+                          </td>
+                          <td className="px-6 py-5 font-semibold text-gray-800">
+                            {formatExternalItemMoney(
+                              item,
+                              item.costo_base_referencial ||
+                                item.costo_base ||
+                                item.costo_unitario ||
+                                "0",
                             )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 text-gray-600">
-                        <span className="block truncate" title={item.marca || "N/A"}>
-                          {item.marca || "N/A"}
-                        </span>
-                      </td>
-                      <td className="px-6 py-5 text-gray-600">
-                        <span className="block truncate" title={item.codigo}>
-                          {item.codigo}
-                        </span>
-                      </td>
-                      <td className="px-6 py-5 text-gray-600">
-                        {item.producto_id ? (
-                          <div className="space-y-1 text-xs">
-                            <div className="flex justify-between gap-2">
-                              <span className="text-gray-500">Actual</span>
-                              <span className="font-semibold text-gray-900">
-                                {Number(item.producto?.stock_actual ?? 0).toLocaleString()}
-                              </span>
+                          </td>
+                          <td className="px-6 py-5 font-semibold text-gray-800">
+                            <span
+                              className="block truncate"
+                              title={formatExternalItemMoney(
+                                item,
+                                item.ultimo_precio_venta ||
+                                  item.precio_venta ||
+                                  "0",
+                              )}
+                            >
+                              {formatExternalItemMoney(
+                                item,
+                                item.ultimo_precio_venta ||
+                                  item.precio_venta ||
+                                  "0",
+                              )}
+                            </span>
+                          </td>
+                          <td className="bg-white px-3 py-5">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() =>
+                                  void handleOpenExternalHistoryModal(item)
+                                }
+                                className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                                title="Ver historial de cotizaciones"
+                              >
+                                <Eye size={18} />
+                              </button>
+                              <button
+                                onClick={() => handleAddExternalItem(item)}
+                                className="w-9 h-9 rounded-xl bg-gray-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                                title="Agregar item a cotización"
+                              >
+                                <Plus size={18} />
+                              </button>
+                              <button
+                                onClick={() => handleOpenConvertExternal(item)}
+                                disabled={Boolean(item.producto_id)}
+                                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-sm ${
+                                  item.producto_id
+                                    ? "cursor-not-allowed bg-gray-100 text-gray-400 hover:scale-100"
+                                    : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                                }`}
+                                title={
+                                  item.producto_id
+                                    ? "Ya convertido a producto interno"
+                                    : "Convertir a producto interno"
+                                }
+                              >
+                                <PackageCheck size={18} />
+                              </button>
                             </div>
-                            <div className="flex justify-between gap-2">
-                              <span className="text-gray-500">Reservado</span>
-                              <span className="font-semibold text-amber-700">
-                                {Number(item.producto?.stock_reservado ?? 0).toLocaleString()}
-                              </span>
-                            </div>
-                            <div className="flex justify-between gap-2">
-                              <span className="text-gray-500">Disponible</span>
-                              <span className="font-semibold text-emerald-700">
-                                {Number(item.producto?.stock_disponible ?? 0).toLocaleString()}
-                              </span>
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="font-medium">{Number(item.stock || 0).toLocaleString()}</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-5 font-semibold text-gray-800">
-                        {formatExternalItemMoney(
-                          item,
-                          item.costo_base_referencial || item.costo_base || item.costo_unitario || "0"
-                        )}
-                      </td>
-                      <td className="px-6 py-5 font-semibold text-gray-800">
-                        <span className="block truncate" title={formatExternalItemMoney(item, item.ultimo_precio_venta || item.precio_venta || "0")}>
-                          {formatExternalItemMoney(
-                            item,
-                            item.ultimo_precio_venta || item.precio_venta || "0"
-                          )}
-                        </span>
-                      </td>
-                      <td className="bg-white px-3 py-5">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => void handleOpenExternalHistoryModal(item)}
-                            className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
-                            title="Ver historial de cotizaciones"
-                          >
-                            <Eye size={18} />
-                          </button>
-                          <button
-                            onClick={() => handleAddExternalItem(item)}
-                            className="w-9 h-9 rounded-xl bg-gray-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
-                            title="Agregar item a cotización"
-                          >
-                            <Plus size={18} />
-                          </button>
-                          <button
-                            onClick={() => handleOpenConvertExternal(item)}
-                            disabled={Boolean(item.producto_id)}
-                            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-sm ${
-                              item.producto_id
-                                ? "cursor-not-allowed bg-gray-100 text-gray-400 hover:scale-100"
-                                : "bg-amber-100 text-amber-700 hover:bg-amber-200"
-                            }`}
-                            title={item.producto_id ? "Ya convertido a producto interno" : "Convertir a producto interno"}
-                          >
-                            <PackageCheck size={18} />
-                          </button>
-                        </div>
-                      </td>
-                    </>
-                  )}
-                  </tr>
-                );
-              })
-            ) : (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="px-6 py-12 text-center text-gray-500"
-                >
-                  {isStockTab
-                    ? searchTerm
-                      ? "No se encontraron productos"
-                      : "No hay productos"
-                    : "No hay productos externos"}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="px-6 py-12 text-center text-gray-500"
+                  >
+                    {isStockTab
+                      ? searchTerm
+                        ? "No se encontraron productos"
+                        : "No hay productos"
+                      : "No hay productos externos"}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
         {/* PAGINACION */}
@@ -2416,7 +2840,10 @@ export default function Productos() {
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-col gap-2 text-sm text-gray-600 sm:flex-row sm:items-center sm:gap-4">
-                <span>Mostrando {showingFrom} a {showingTo} de {totalItems} productos</span>
+                <span>
+                  Mostrando {showingFrom} a {showingTo} de {totalItems}{" "}
+                  productos
+                </span>
                 <PageSizeSelect
                   value={isStockTab ? itemsPerPage : externalPerPage}
                   onChange={(value) => {
@@ -2431,58 +2858,64 @@ export default function Productos() {
                 />
               </div>
 
-              {pageCount > 1 && <div className="flex flex-wrap items-center gap-1">
-                <button
-                  onClick={() =>
-                    isStockTab
-                      ? setCurrentPage((prev) => Math.max(prev - 1, 1))
-                      : setExternalPage((prev) => Math.max(prev - 1, 1))
-                  }
-                  disabled={pageNumber === 1}
-                  className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-200 disabled:opacity-50"
-                >
-                  <ChevronLeft size={18} />
-                </button>
+              {pageCount > 1 && (
+                <div className="flex flex-wrap items-center gap-1">
+                  <button
+                    onClick={() =>
+                      isStockTab
+                        ? setCurrentPage((prev) => Math.max(prev - 1, 1))
+                        : setExternalPage((prev) => Math.max(prev - 1, 1))
+                    }
+                    disabled={pageNumber === 1}
+                    className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-200 disabled:opacity-50"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
 
-                {paginationItems.map((item) =>
-                  typeof item === "number" ? (
-                    <button
-                      key={item}
-                      onClick={() =>
-                        isStockTab
-                          ? setCurrentPage(item)
-                          : setExternalPage(item)
-                      }
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center font-medium ${
-                        pageNumber === item
-                          ? "bg-blue-600 text-white"
-                          : "text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      {item}
-                    </button>
-                  ) : (
-                    <span
-                      key={item}
-                      className="w-10 h-10 flex items-center justify-center text-gray-400 select-none"
-                    >
-                      ...
-                    </span>
-                  )
-                )}
+                  {paginationItems.map((item) =>
+                    typeof item === "number" ? (
+                      <button
+                        key={item}
+                        onClick={() =>
+                          isStockTab
+                            ? setCurrentPage(item)
+                            : setExternalPage(item)
+                        }
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-medium ${
+                          pageNumber === item
+                            ? "bg-blue-600 text-white"
+                            : "text-gray-600 hover:bg-gray-200"
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    ) : (
+                      <span
+                        key={item}
+                        className="w-10 h-10 flex items-center justify-center text-gray-400 select-none"
+                      >
+                        ...
+                      </span>
+                    ),
+                  )}
 
-                <button
-                  onClick={() =>
-                    isStockTab
-                      ? setCurrentPage((prev) => Math.min(prev + 1, pageCount))
-                      : setExternalPage((prev) => Math.min(prev + 1, pageCount))
-                  }
-                  disabled={pageNumber === pageCount}
-                  className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-200 disabled:opacity-50"
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>}
+                  <button
+                    onClick={() =>
+                      isStockTab
+                        ? setCurrentPage((prev) =>
+                            Math.min(prev + 1, pageCount),
+                          )
+                        : setExternalPage((prev) =>
+                            Math.min(prev + 1, pageCount),
+                          )
+                    }
+                    disabled={pageNumber === pageCount}
+                    className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-200 disabled:opacity-50"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2494,10 +2927,7 @@ export default function Productos() {
           <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl border border-gray-200">
             <div className="text-center mb-6">
               <div className="w-20 h-20 bg-red-100 rounded-3xl flex items-center justify-center mx-auto mb-4">
-                <Trash2
-                  size={32}
-                  className="text-red-600"
-                />
+                <Trash2 size={32} className="text-red-600" />
               </div>
 
               <h3 className="text-xl font-bold text-gray-800 mb-2">
@@ -2505,22 +2935,17 @@ export default function Productos() {
               </h3>
 
               <p className="text-gray-600">
-                ¿Deseas eliminar{" "}
-                <strong>
-                  "{productoAEliminar.nombre}"
-                </strong>
-                ?
+                ¿Deseas eliminar <strong>"{productoAEliminar.nombre}"</strong>?
               </p>
               <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-                Si tiene Kardex, series o cotizaciones, se retirará del listado activo para conservar el historial.
+                Si tiene Kardex, series o cotizaciones, se retirará del listado
+                activo para conservar el historial.
               </p>
             </div>
 
             <div className="flex gap-3 pt-6 border-t border-gray-200">
               <button
-                onClick={() =>
-                  setProductoAEliminar(null)
-                }
+                onClick={() => setProductoAEliminar(null)}
                 className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 px-6 rounded-2xl"
               >
                 Cancelar
@@ -2542,9 +2967,12 @@ export default function Productos() {
           <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
             <div className="flex items-start justify-between px-6 py-5 border-b border-gray-100">
               <div className="min-w-0">
-                <h2 className="text-lg font-bold text-gray-900">Detalle del producto</h2>
+                <h2 className="text-lg font-bold text-gray-900">
+                  Detalle del producto
+                </h2>
                 <p className="truncate text-sm text-gray-500">
-                  {productoDetalleModal.nombre} #{productoDetalleModal.codigo || productoDetalleModal.id}
+                  {productoDetalleModal.nombre} #
+                  {productoDetalleModal.codigo || productoDetalleModal.id}
                 </p>
               </div>
               <button
@@ -2577,60 +3005,117 @@ export default function Productos() {
                         : "border-green-200 bg-green-100 text-green-700"
                     }`}
                   >
-                    {productoDetalleModal.estado === "usado" ? "Usado" : "Nuevo"}
+                    {productoDetalleModal.estado === "usado"
+                      ? "Usado"
+                      : "Nuevo"}
                   </span>
                 </div>
 
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div className="rounded-xl bg-gray-50 p-3">
-                      <p className="text-xs font-semibold uppercase text-gray-400">Stock actual</p>
-                      <p className="mt-1 text-lg font-bold text-gray-900">{Number(productoDetalleModal.stock_actual ?? productoDetalleModal.stock ?? 0).toLocaleString()}</p>
+                      <p className="text-xs font-semibold uppercase text-gray-400">
+                        Stock actual
+                      </p>
+                      <p className="mt-1 text-lg font-bold text-gray-900">
+                        {Number(
+                          productoDetalleModal.stock_actual ??
+                            productoDetalleModal.stock ??
+                            0,
+                        ).toLocaleString()}
+                      </p>
                     </div>
                     <div className="rounded-xl bg-amber-50 p-3">
-                      <p className="text-xs font-semibold uppercase text-amber-700">Reservado</p>
-                      <p className="mt-1 text-lg font-bold text-amber-800">{Number(productoDetalleModal.stock_reservado ?? 0).toLocaleString()}</p>
+                      <p className="text-xs font-semibold uppercase text-amber-700">
+                        Reservado
+                      </p>
+                      <p className="mt-1 text-lg font-bold text-amber-800">
+                        {Number(
+                          productoDetalleModal.stock_reservado ?? 0,
+                        ).toLocaleString()}
+                      </p>
                     </div>
                     <div className="rounded-xl bg-emerald-50 p-3">
-                      <p className="text-xs font-semibold uppercase text-emerald-700">Disponible</p>
-                      <p className="mt-1 text-lg font-bold text-emerald-800">{Number(productoDetalleModal.stock_disponible ?? productoDetalleModal.stock ?? 0).toLocaleString()}</p>
+                      <p className="text-xs font-semibold uppercase text-emerald-700">
+                        Disponible
+                      </p>
+                      <p className="mt-1 text-lg font-bold text-emerald-800">
+                        {Number(
+                          productoDetalleModal.stock_disponible ??
+                            productoDetalleModal.stock ??
+                            0,
+                        ).toLocaleString()}
+                      </p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="rounded-xl border border-gray-100 p-3">
-                      <p className="text-xs font-semibold uppercase text-gray-400">Categoria</p>
-                      <p className="mt-1 font-semibold text-gray-800">{productoDetalleModal.categoria_label || "-"}</p>
-                    </div>
-                    <div className="rounded-xl border border-gray-100 p-3">
-                      <p className="text-xs font-semibold uppercase text-gray-400">Precio</p>
+                      <p className="text-xs font-semibold uppercase text-gray-400">
+                        Categoria
+                      </p>
                       <p className="mt-1 font-semibold text-gray-800">
-                        {formatProductoMoney(productoDetalleModal, productoDetalleModal.precio_referencial || "0")}
+                        {productoDetalleModal.categoria_label || "-"}
                       </p>
                     </div>
                     <div className="rounded-xl border border-gray-100 p-3">
-                      <p className="text-xs font-semibold uppercase text-gray-400">Marca / Modelo</p>
-                      <p className="mt-1 font-semibold text-gray-800">{[productoDetalleModal.marca, productoDetalleModal.modelo].filter(Boolean).join(" / ") || "-"}</p>
+                      <p className="text-xs font-semibold uppercase text-gray-400">
+                        Precio
+                      </p>
+                      <p className="mt-1 font-semibold text-gray-800">
+                        {formatProductoMoney(
+                          productoDetalleModal,
+                          productoDetalleModal.precio_referencial || "0",
+                        )}
+                      </p>
                     </div>
                     <div className="rounded-xl border border-gray-100 p-3">
-                      <p className="text-xs font-semibold uppercase text-gray-400">Factura</p>
-                      <p className="mt-1 font-semibold text-gray-800">{productoDetalleModal.factura_numero || "-"}</p>
+                      <p className="text-xs font-semibold uppercase text-gray-400">
+                        Marca / Modelo
+                      </p>
+                      <p className="mt-1 font-semibold text-gray-800">
+                        {[
+                          productoDetalleModal.marca,
+                          productoDetalleModal.modelo,
+                        ]
+                          .filter(Boolean)
+                          .join(" / ") || "-"}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 p-3">
+                      <p className="text-xs font-semibold uppercase text-gray-400">
+                        Factura
+                      </p>
+                      <p className="mt-1 font-semibold text-gray-800">
+                        {productoDetalleModal.factura_numero || "-"}
+                      </p>
                     </div>
                     <div className="rounded-xl border border-gray-100 p-3 sm:col-span-2">
-                      <p className="text-xs font-semibold uppercase text-gray-400">Ubicacion en almacen</p>
-                      <p className="mt-1 font-semibold text-gray-800">{productoDetalleModal.ubicacion_almacen || "-"}</p>
+                      <p className="text-xs font-semibold uppercase text-gray-400">
+                        Ubicacion en almacen
+                      </p>
+                      <p className="mt-1 font-semibold text-gray-800">
+                        {productoDetalleModal.ubicacion_almacen || "-"}
+                      </p>
                     </div>
                   </div>
 
                   <div className="rounded-xl border border-gray-100 p-3">
-                    <p className="text-xs font-semibold uppercase text-gray-400">Descripcion</p>
-                    <p className="mt-1 text-sm text-gray-700">{productoDetalleModal.descripcion || "Sin descripcion"}</p>
+                    <p className="text-xs font-semibold uppercase text-gray-400">
+                      Descripcion
+                    </p>
+                    <p className="mt-1 text-sm text-gray-700">
+                      {productoDetalleModal.descripcion || "Sin descripcion"}
+                    </p>
                   </div>
 
                   <div className="rounded-xl border border-gray-100 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-semibold uppercase text-gray-400">Series</p>
-                      {(productoDetalleModal.series?.length || productoDetalleModal.serie) && (
+                      <p className="text-xs font-semibold uppercase text-gray-400">
+                        Series
+                      </p>
+                      {(productoDetalleModal.series?.length ||
+                        productoDetalleModal.serie) && (
                         <button
                           type="button"
                           onClick={() => {
@@ -2644,28 +3129,46 @@ export default function Productos() {
                         </button>
                       )}
                     </div>
-                    {(productoDetalleModal.series?.length || productoDetalleModal.serie) ? (
+                    {productoDetalleModal.series?.length ||
+                    productoDetalleModal.serie ? (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {(productoDetalleModal.series?.length
                           ? productoDetalleModal.series
-                          : [{ id: productoDetalleModal.id, serie: productoDetalleModal.serie, estado: productoDetalleModal.estado }]
-                        ).slice(0, 6).map((serie) => (
-                          <span
-                            key={serie.id}
-                            className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold ${getSerieEstadoBadge(serie.estado)}`}
-                          >
-                            <span className="max-w-[160px] truncate">{serie.serie || `Serie #${serie.id}`}</span>
-                            <span className="text-[10px] opacity-80">{getSerieEstadoLabel(serie.estado)}</span>
-                          </span>
-                        ))}
-                        {Number(productoDetalleModal.series?.length || 0) > 6 && (
+                          : [
+                              {
+                                id: productoDetalleModal.id,
+                                serie: productoDetalleModal.serie,
+                                estado: productoDetalleModal.estado,
+                              },
+                            ]
+                        )
+                          .slice(0, 6)
+                          .map((serie) => (
+                            <span
+                              key={serie.id}
+                              className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold ${getSerieEstadoBadge(serie.estado)}`}
+                            >
+                              <span className="max-w-[160px] truncate">
+                                {serie.serie || `Serie #${serie.id}`}
+                              </span>
+                              <span className="text-[10px] opacity-80">
+                                {getSerieEstadoLabel(serie.estado)}
+                              </span>
+                            </span>
+                          ))}
+                        {Number(productoDetalleModal.series?.length || 0) >
+                          6 && (
                           <span className="rounded-full bg-gray-50 px-2 py-1 text-xs font-semibold text-gray-500">
-                            +{Number(productoDetalleModal.series?.length || 0) - 6}
+                            +
+                            {Number(productoDetalleModal.series?.length || 0) -
+                              6}
                           </span>
                         )}
                       </div>
                     ) : (
-                      <p className="mt-1 text-sm text-gray-500">Sin series registradas</p>
+                      <p className="mt-1 text-sm text-gray-500">
+                        Sin series registradas
+                      </p>
                     )}
                   </div>
                 </div>
@@ -2696,7 +3199,9 @@ export default function Productos() {
           <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex flex-shrink-0 items-start justify-between gap-4 border-b border-gray-100 px-6 py-5">
               <div className="min-w-0">
-                <h2 className="text-lg font-bold text-gray-900">Series del producto</h2>
+                <h2 className="text-lg font-bold text-gray-900">
+                  Series del producto
+                </h2>
                 <p className="truncate text-sm text-gray-500">
                   {productoSeriesModal.nombre} #{productoSeriesModal.codigo}
                 </p>
@@ -2711,7 +3216,8 @@ export default function Productos() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-hidden p-4 sm:p-6">
-              {(productoSeriesModal.series?.length || productoSeriesModal.serie) ? (
+              {productoSeriesModal.series?.length ||
+              productoSeriesModal.serie ? (
                 <div className="max-h-[calc(88vh-132px)] overflow-auto rounded-2xl border border-gray-200">
                   <table className="min-w-[860px] divide-y divide-gray-200 text-sm">
                     <thead className="sticky top-0 z-10 bg-gray-50 text-left text-xs uppercase text-gray-500 shadow-sm">
@@ -2727,29 +3233,41 @@ export default function Productos() {
                     <tbody className="divide-y divide-gray-100">
                       {(productoSeriesModal.series?.length
                         ? productoSeriesModal.series
-                        : [{
-                          id: productoSeriesModal.id,
-                          serie: productoSeriesModal.serie,
-                          factura_numero: productoSeriesModal.factura_numero,
-                          documento_path: null,
-                          estado: productoSeriesModal.estado,
-                          fecha_ingreso: null,
-                          fecha_salida: null,
-                          oc_recibida_id: null,
-                          cotizacion_item_id: null,
-                        }]
+                        : [
+                            {
+                              id: productoSeriesModal.id,
+                              serie: productoSeriesModal.serie,
+                              factura_numero:
+                                productoSeriesModal.factura_numero,
+                              documento_path: null,
+                              estado: productoSeriesModal.estado,
+                              fecha_ingreso: null,
+                              fecha_salida: null,
+                              oc_recibida_id: null,
+                              cotizacion_item_id: null,
+                            },
+                          ]
                       ).map((serie) => (
                         <tr key={serie.id} className="hover:bg-gray-50">
                           <td className="max-w-[220px] px-4 py-3 font-semibold text-gray-900">
-                            <span className="block truncate" title={serie.serie || "Sin serie"}>
+                            <span
+                              className="block truncate"
+                              title={serie.serie || "Sin serie"}
+                            >
                               {serie.serie || "Sin serie"}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-gray-700">{serie.factura_numero || "-"}</td>
+                          <td className="px-4 py-3 text-gray-700">
+                            {serie.factura_numero || "-"}
+                          </td>
                           <td className="px-4 py-3">
                             {normalizeStorageImageUrl(serie.documento_path) ? (
                               <a
-                                href={normalizeStorageImageUrl(serie.documento_path) || undefined}
+                                href={
+                                  normalizeStorageImageUrl(
+                                    serie.documento_path,
+                                  ) || undefined
+                                }
                                 target="_blank"
                                 rel="noreferrer"
                                 className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
@@ -2762,22 +3280,38 @@ export default function Productos() {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${getSerieEstadoBadge(serie.estado)}`}>
-                              {getSerieEstadoLabel(serie.estado || "disponible")}
+                            <span
+                              className={`rounded-full border px-2 py-1 text-xs font-semibold ${getSerieEstadoBadge(serie.estado)}`}
+                            >
+                              {getSerieEstadoLabel(
+                                serie.estado || "disponible",
+                              )}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-gray-700">{serie.fecha_ingreso || "-"}</td>
+                          <td className="px-4 py-3 text-gray-700">
+                            {serie.fecha_ingreso || "-"}
+                          </td>
                           <td className="px-4 py-3 text-gray-700">
                             <div>{serie.fecha_salida || "-"}</div>
-                            {(serie.oc_recibida_id || serie.cotizacion_item_id) ? (
+                            {serie.oc_recibida_id ||
+                            serie.cotizacion_item_id ? (
                               <div className="text-xs text-gray-500">
-                                {[serie.oc_recibida_id ? `OC #${serie.oc_recibida_id}` : null, serie.cotizacion_item_id ? `Item #${serie.cotizacion_item_id}` : null]
+                                {[
+                                  serie.oc_recibida_id
+                                    ? `OC #${serie.oc_recibida_id}`
+                                    : null,
+                                  serie.cotizacion_item_id
+                                    ? `Item #${serie.cotizacion_item_id}`
+                                    : null,
+                                ]
                                   .filter(Boolean)
                                   .join(" / ")}
                               </div>
-                            ) : serie.fecha_salida && getSerieSalidaMotivoLabel(serie.estado) ? (
+                            ) : serie.fecha_salida &&
+                              getSerieSalidaMotivoLabel(serie.estado) ? (
                               <div className="text-xs text-gray-500">
-                                Salida manual: {getSerieSalidaMotivoLabel(serie.estado)}
+                                Salida manual:{" "}
+                                {getSerieSalidaMotivoLabel(serie.estado)}
                               </div>
                             ) : null}
                           </td>
@@ -2801,8 +3335,13 @@ export default function Productos() {
           <div className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-4">
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-gray-900">Historial de cotizaciones</h2>
-                <p className="mt-1 truncate text-sm text-gray-500" title={externalHistoryItem.descripcion}>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Historial de cotizaciones
+                </h2>
+                <p
+                  className="mt-1 truncate text-sm text-gray-500"
+                  title={externalHistoryItem.descripcion}
+                >
                   {externalHistoryItem.descripcion}
                 </p>
               </div>
@@ -2828,17 +3367,25 @@ export default function Productos() {
               ) : externalHistory?.historial.length ? (
                 <div className="space-y-3">
                   {externalHistory.historial.map((row) => (
-                    <article key={row.id} className="rounded-2xl border border-gray-200 p-4">
+                    <article
+                      key={row.id}
+                      className="rounded-2xl border border-gray-200 p-4"
+                    >
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div className="min-w-0">
                           <p className="text-sm font-bold text-gray-900">
                             COT. {row.cotizacion?.numero || "-"}
                           </p>
                           <p className="mt-1 text-sm text-gray-600">
-                            {row.cotizacion?.cliente_nombre || "Cliente no registrado"}
+                            {row.cotizacion?.cliente_nombre ||
+                              "Cliente no registrado"}
                           </p>
                           <p className="mt-1 text-xs text-gray-500">
-                            Ejecutivo: {row.cotizacion?.ejecutivo || "-"} · Fecha: {formatShortDate(row.cotizacion?.fecha || row.created_at)}
+                            Ejecutivo: {row.cotizacion?.ejecutivo || "-"} ·
+                            Fecha:{" "}
+                            {formatShortDate(
+                              row.cotizacion?.fecha || row.created_at,
+                            )}
                           </p>
                         </div>
                         <span className="inline-flex w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -2848,34 +3395,77 @@ export default function Productos() {
 
                       <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
                         <div className="rounded-xl bg-gray-50 p-3">
-                          <p className="text-xs font-semibold uppercase text-gray-400">Cantidad</p>
-                          <p className="mt-1 font-bold text-gray-900">{Number(row.cantidad || 0).toLocaleString("es-PE")}</p>
+                          <p className="text-xs font-semibold uppercase text-gray-400">
+                            Cantidad
+                          </p>
+                          <p className="mt-1 font-bold text-gray-900">
+                            {Number(row.cantidad || 0).toLocaleString("es-PE")}
+                          </p>
                         </div>
                         <div className="rounded-xl bg-gray-50 p-3">
-                          <p className="text-xs font-semibold uppercase text-gray-400">Costo base</p>
-                          <p className="mt-1 font-bold text-gray-900">{formatHistoryMoney(row, externalHistoryItem, row.costo_base || row.costo_unitario)}</p>
+                          <p className="text-xs font-semibold uppercase text-gray-400">
+                            Costo base
+                          </p>
+                          <p className="mt-1 font-bold text-gray-900">
+                            {formatHistoryMoney(
+                              row,
+                              externalHistoryItem,
+                              row.costo_base || row.costo_unitario,
+                            )}
+                          </p>
                         </div>
                         <div className="rounded-xl bg-gray-50 p-3">
-                          <p className="text-xs font-semibold uppercase text-gray-400">Precio venta</p>
-                          <p className="mt-1 font-bold text-gray-900">{formatHistoryMoney(row, externalHistoryItem, row.precio_venta)}</p>
+                          <p className="text-xs font-semibold uppercase text-gray-400">
+                            Precio venta
+                          </p>
+                          <p className="mt-1 font-bold text-gray-900">
+                            {formatHistoryMoney(
+                              row,
+                              externalHistoryItem,
+                              row.precio_venta,
+                            )}
+                          </p>
                         </div>
                         <div className="rounded-xl bg-gray-50 p-3">
-                          <p className="text-xs font-semibold uppercase text-gray-400">Subtotal</p>
-                          <p className="mt-1 font-bold text-gray-900">{formatHistoryMoney(row, externalHistoryItem, row.subtotal)}</p>
+                          <p className="text-xs font-semibold uppercase text-gray-400">
+                            Subtotal
+                          </p>
+                          <p className="mt-1 font-bold text-gray-900">
+                            {formatHistoryMoney(
+                              row,
+                              externalHistoryItem,
+                              row.subtotal,
+                            )}
+                          </p>
                         </div>
                         <div className="rounded-xl bg-gray-50 p-3">
-                          <p className="text-xs font-semibold uppercase text-gray-400">Margen</p>
-                          <p className="mt-1 font-bold text-gray-900">{Number(row.margen || 0).toLocaleString("es-PE", { maximumFractionDigits: 2 })}%</p>
+                          <p className="text-xs font-semibold uppercase text-gray-400">
+                            Margen
+                          </p>
+                          <p className="mt-1 font-bold text-gray-900">
+                            {Number(row.margen || 0).toLocaleString("es-PE", {
+                              maximumFractionDigits: 2,
+                            })}
+                            %
+                          </p>
                         </div>
                       </div>
 
                       {row.proveedores?.length ? (
                         <div className="mt-4 rounded-xl border border-gray-100 bg-white p-3">
-                          <p className="text-xs font-semibold uppercase text-gray-400">Proveedores usados</p>
+                          <p className="text-xs font-semibold uppercase text-gray-400">
+                            Proveedores usados
+                          </p>
                           <div className="mt-2 flex flex-wrap gap-2">
                             {row.proveedores.map((proveedor, index) => (
-                              <span key={`${row.id}-${proveedor.id || index}`} className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                                {proveedor.nombre || "Proveedor"}{proveedor.precio ? ` · ${formatHistoryMoney(row, externalHistoryItem, proveedor.precio)}` : ""}
+                              <span
+                                key={`${row.id}-${proveedor.id || index}`}
+                                className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"
+                              >
+                                {proveedor.nombre || "Proveedor"}
+                                {proveedor.precio
+                                  ? ` · ${formatHistoryMoney(row, externalHistoryItem, proveedor.precio)}`
+                                  : ""}
                               </span>
                             ))}
                           </div>
@@ -2886,7 +3476,8 @@ export default function Productos() {
                 </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-gray-200 p-10 text-center text-sm text-gray-500">
-                  Este producto externo todavia no tiene historial de cotizaciones.
+                  Este producto externo todavia no tiene historial de
+                  cotizaciones.
                 </div>
               )}
             </div>
@@ -2944,23 +3535,31 @@ export default function Productos() {
                   cotizacionesFiltradas.map((cotizacion) => (
                     <button
                       key={cotizacion.id}
-                      onClick={() => handleAddExternalItemToCotizacion(cotizacion.id)}
+                      onClick={() =>
+                        handleAddExternalItemToCotizacion(cotizacion.id)
+                      }
                       disabled={addingToCotizacion}
                       className="w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-blue-50 disabled:opacity-60"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-gray-800">
-                            {cotizacion.numero || `Cotización #${cotizacion.id}`}
+                            {cotizacion.numero ||
+                              `Cotización #${cotizacion.id}`}
                           </p>
                           <p className="truncate text-xs text-gray-500">
-                            {[cotizacion.cliente_nombre || cotizacion.cliente?.nombre, cotizacion.titulo]
+                            {[
+                              cotizacion.cliente_nombre ||
+                                cotizacion.cliente?.nombre,
+                              cotizacion.titulo,
+                            ]
                               .filter(Boolean)
                               .join(" · ")}
                           </p>
                         </div>
                         <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-medium text-gray-600">
-                          {(cotizacion as any).estado_cotizacion?.nombre || `Estado ${cotizacion.estado_cotizacion_id}`}
+                          {(cotizacion as any).estado_cotizacion?.nombre ||
+                            `Estado ${cotizacion.estado_cotizacion_id}`}
                         </span>
                       </div>
                     </button>
@@ -2982,7 +3581,9 @@ export default function Productos() {
             <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">
-                  {conversionExternalItem.producto_id ? "Registrar entrada de inventario" : "Convertir a producto interno"}
+                  {conversionExternalItem.producto_id
+                    ? "Registrar entrada de inventario"
+                    : "Convertir a producto interno"}
                 </h2>
                 <p className="text-xs text-gray-500 mt-1">
                   {conversionExternalItem.descripcion}
@@ -2998,14 +3599,20 @@ export default function Productos() {
 
             <div className="grid grid-cols-1 gap-4 p-6 md:grid-cols-2">
               <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-sm text-blue-800">
-                El codigo interno se generara automaticamente con la secuencia de productos stock.
+                El codigo interno se generara automaticamente con la secuencia
+                de productos stock.
               </div>
 
               <label className="text-xs font-semibold uppercase text-gray-500">
                 Categoria
                 <select
                   value={conversionForm.categoria_id}
-                  onChange={(event) => setConversionForm((current) => ({ ...current, categoria_id: Number(event.target.value) }))}
+                  onChange={(event) =>
+                    setConversionForm((current) => ({
+                      ...current,
+                      categoria_id: Number(event.target.value),
+                    }))
+                  }
                   disabled={Boolean(conversionExternalItem.producto_id)}
                   className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 disabled:bg-gray-100"
                 >
@@ -3024,7 +3631,12 @@ export default function Productos() {
                   min="0"
                   step="0.01"
                   value={conversionForm.cantidad}
-                  onChange={(event) => setConversionForm((current) => ({ ...current, cantidad: event.target.value }))}
+                  onChange={(event) =>
+                    setConversionForm((current) => ({
+                      ...current,
+                      cantidad: event.target.value,
+                    }))
+                  }
                   className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800"
                 />
               </label>
@@ -3036,7 +3648,12 @@ export default function Productos() {
                   min="0"
                   step="0.01"
                   value={conversionForm.costo_unitario}
-                  onChange={(event) => setConversionForm((current) => ({ ...current, costo_unitario: event.target.value }))}
+                  onChange={(event) =>
+                    setConversionForm((current) => ({
+                      ...current,
+                      costo_unitario: event.target.value,
+                    }))
+                  }
                   className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800"
                 />
               </label>
@@ -3045,7 +3662,12 @@ export default function Productos() {
                 Moneda de compra
                 <select
                   value={conversionForm.moneda_id}
-                  onChange={(event) => setConversionForm((current) => ({ ...current, moneda_id: event.target.value }))}
+                  onChange={(event) =>
+                    setConversionForm((current) => ({
+                      ...current,
+                      moneda_id: event.target.value,
+                    }))
+                  }
                   className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800"
                 >
                   {monedaOptions.map((option) => (
@@ -3060,7 +3682,12 @@ export default function Productos() {
                 Numero de factura
                 <input
                   value={conversionForm.documento_numero}
-                  onChange={(event) => setConversionForm((current) => ({ ...current, documento_numero: event.target.value }))}
+                  onChange={(event) =>
+                    setConversionForm((current) => ({
+                      ...current,
+                      documento_numero: event.target.value,
+                    }))
+                  }
                   className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800"
                 />
               </label>
@@ -3069,7 +3696,12 @@ export default function Productos() {
                 Estado
                 <select
                   value={conversionForm.estado}
-                  onChange={(event) => setConversionForm((current) => ({ ...current, estado: event.target.value as "nuevo" | "usado" }))}
+                  onChange={(event) =>
+                    setConversionForm((current) => ({
+                      ...current,
+                      estado: event.target.value as "nuevo" | "usado",
+                    }))
+                  }
                   disabled={Boolean(conversionExternalItem.producto_id)}
                   className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 disabled:bg-gray-100"
                 >
@@ -3085,7 +3717,9 @@ export default function Productos() {
                   <input
                     type="file"
                     accept=".pdf,.xml,.doc,.docx,.jpg,.jpeg,.png"
-                    onChange={(event) => setConversionFactura(event.target.files?.[0] ?? null)}
+                    onChange={(event) =>
+                      setConversionFactura(event.target.files?.[0] ?? null)
+                    }
                     className="w-full text-sm"
                   />
                 </div>
@@ -3095,7 +3729,12 @@ export default function Productos() {
                 Observacion
                 <textarea
                   value={conversionForm.observacion}
-                  onChange={(event) => setConversionForm((current) => ({ ...current, observacion: event.target.value }))}
+                  onChange={(event) =>
+                    setConversionForm((current) => ({
+                      ...current,
+                      observacion: event.target.value,
+                    }))
+                  }
                   rows={3}
                   className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800"
                 />
@@ -3114,8 +3753,14 @@ export default function Productos() {
                 disabled={convertingExternal}
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
               >
-                {convertingExternal ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={16} />}
-                {conversionExternalItem.producto_id ? "Registrar entrada" : "Convertir y registrar entrada"}
+                {convertingExternal ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <PackageCheck size={16} />
+                )}
+                {conversionExternalItem.producto_id
+                  ? "Registrar entrada"
+                  : "Convertir y registrar entrada"}
               </button>
             </div>
           </div>
@@ -3146,7 +3791,9 @@ export default function Productos() {
             <div className="px-6 py-4 space-y-3 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Código</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">
+                    Código
+                  </label>
                   <input
                     value={productoSeleccionado.codigo || "Automático"}
                     disabled
@@ -3155,7 +3802,9 @@ export default function Productos() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Nombre del Producto</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">
+                    Nombre del Producto
+                  </label>
                   <input
                     value={productoSeleccionado.nombre}
                     onChange={(e) =>
@@ -3170,7 +3819,9 @@ export default function Productos() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Categoría</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">
+                    Categoría
+                  </label>
                   <select
                     value={productoSeleccionado.categoria_id}
                     onChange={(e) =>
@@ -3190,7 +3841,9 @@ export default function Productos() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Cantidad</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">
+                    Cantidad
+                  </label>
                   <input
                     type="number"
                     value={productoSeleccionado.stock}
@@ -3206,7 +3859,9 @@ export default function Productos() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Precio de compra</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">
+                    Precio de compra
+                  </label>
                   <input
                     type="number"
                     value={productoSeleccionado.precio_referencial}
@@ -3222,7 +3877,9 @@ export default function Productos() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Moneda</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">
+                    Moneda
+                  </label>
                   <select
                     value={productoSeleccionado.moneda_id}
                     onChange={(e) =>
@@ -3242,7 +3899,9 @@ export default function Productos() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Marca</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">
+                    Marca
+                  </label>
                   <input
                     value={productoSeleccionado.marca}
                     onChange={(e) =>
@@ -3257,7 +3916,9 @@ export default function Productos() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Modelo</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">
+                    Modelo
+                  </label>
                   <input
                     value={productoSeleccionado.modelo}
                     onChange={(e) =>
@@ -3272,17 +3933,20 @@ export default function Productos() {
                 </div>
 
                 <div className="space-y-1 md:col-span-2">
-                  <label className="block text-[11px] text-gray-500 uppercase">Series</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">
+                    Series
+                  </label>
                   <textarea
                     value={productoSeleccionado.series_text}
                     onChange={(e) =>
                       setProductoSeleccionado({
                         ...productoSeleccionado,
                         series_text: e.target.value,
-                        serie: e.target.value
-                          .split(/\r?\n/)
-                          .map((serie) => serie.trim())
-                          .filter(Boolean)[0] || "",
+                        serie:
+                          e.target.value
+                            .split(/\r?\n/)
+                            .map((serie) => serie.trim())
+                            .filter(Boolean)[0] || "",
                       })
                     }
                     rows={4}
@@ -3290,12 +3954,15 @@ export default function Productos() {
                     className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                   />
                   <p className="text-[11px] text-gray-500">
-                    Si compras varias unidades del mismo modelo, escribe una serie por linea. Puede quedar vacio.
+                    Si compras varias unidades del mismo modelo, escribe una
+                    serie por linea. Puede quedar vacio.
                   </p>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Numero de factura</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">
+                    Numero de factura
+                  </label>
                   <input
                     value={productoSeleccionado.factura_numero}
                     onChange={(e) =>
@@ -3310,7 +3977,9 @@ export default function Productos() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Ubicacion en almacen</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">
+                    Ubicacion en almacen
+                  </label>
                   <input
                     value={productoSeleccionado.ubicacion_almacen}
                     onChange={(e) =>
@@ -3325,7 +3994,9 @@ export default function Productos() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-gray-500 uppercase">Unidad medida</label>
+                  <label className="block text-[11px] text-gray-500 uppercase">
+                    Unidad medida
+                  </label>
                   <select
                     value={productoSeleccionado.unidad_medida}
                     onChange={(e) =>
@@ -3346,7 +4017,9 @@ export default function Productos() {
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[11px] text-gray-500 uppercase">Descripción</label>
+                <label className="block text-[11px] text-gray-500 uppercase">
+                  Descripción
+                </label>
                 <input
                   value={productoSeleccionado.descripcion}
                   onChange={(e) =>
@@ -3361,60 +4034,72 @@ export default function Productos() {
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[11px] text-gray-500 uppercase mb-1">Imagen</label>
+                <label className="block text-[11px] text-gray-500 uppercase mb-1">
+                  Imagen
+                </label>
                 <label
                   htmlFor="producto-imagen"
-                  onDragOver={(e: React.DragEvent<HTMLLabelElement>) => e.preventDefault()}
+                  onDragOver={(e: React.DragEvent<HTMLLabelElement>) =>
+                    e.preventDefault()
+                  }
                   onDrop={handleProductDrop}
                   onPaste={handleProductPaste}
                   className="group cursor-pointer border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 p-2.5 text-center transition-colors hover:border-blue-400 hover:bg-blue-50 block"
                 >
-                    <input
-                      id="producto-imagen"
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleProductImageFile(file);
-                      }}
-                    />
+                  <input
+                    id="producto-imagen"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleProductImageFile(file);
+                    }}
+                  />
 
-                    {productoSeleccionado.imagen ? (
-                      <div className="space-y-2">
-                        <img
-                          src={productoSeleccionado.imagen}
-                          alt="Vista previa"
-                          className="mx-auto h-24 w-auto object-contain rounded-lg border border-gray-200"
-                        />
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setProductoSeleccionado({
-                              ...productoSeleccionado,
-                              imagen: "",
-                            });
-                          }}
-                          className="text-xs text-red-600 hover:underline w-full"
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="space-y-1 text-xs text-gray-500">
-                        <p className="font-medium text-gray-700">Imagen del producto</p>
-                        <p className="text-gray-500">Arrastra, pega o haz clic para cargar</p>
-                      </div>
-                    )}
-                  </label>
-                </div>
+                  {productoSeleccionado.imagen ? (
+                    <div className="space-y-2">
+                      <img
+                        src={productoSeleccionado.imagen}
+                        alt="Vista previa"
+                        className="mx-auto h-24 w-auto object-contain rounded-lg border border-gray-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setProductoSeleccionado({
+                            ...productoSeleccionado,
+                            imagen: "",
+                          });
+                        }}
+                        className="text-xs text-red-600 hover:underline w-full"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-1 text-xs text-gray-500">
+                      <p className="font-medium text-gray-700">
+                        Imagen del producto
+                      </p>
+                      <p className="text-gray-500">
+                        Arrastra, pega o haz clic para cargar
+                      </p>
+                    </div>
+                  )}
+                </label>
+              </div>
 
               <div className="space-y-1">
-                <label className="block text-[11px] text-gray-500 uppercase">Estado</label>
+                <label className="block text-[11px] text-gray-500 uppercase">
+                  Estado
+                </label>
                 <select
                   value={productoSeleccionado.estado}
-                  onChange={(e) => handleEstadoChange(e.target.value as "nuevo" | "usado")}
+                  onChange={(e) =>
+                    handleEstadoChange(e.target.value as "nuevo" | "usado")
+                  }
                   className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                 >
                   <option value="nuevo">NUEVO</option>
@@ -3449,11 +4134,12 @@ export default function Productos() {
       {showExternalEditModal && (
         <div className="fixed inset-0 bg-black/45 flex items-center justify-center z-50 p-6">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl border border-gray-200/80 overflow-hidden">
-
             {/* Header */}
             <div className="flex items-start justify-between px-7 pt-6 pb-5 border-b border-gray-100">
               <div>
-                <h2 className="text-lg font-medium text-gray-900">Editar item externo</h2>
+                <h2 className="text-lg font-medium text-gray-900">
+                  Editar item externo
+                </h2>
                 <p className="text-xs text-gray-400 mt-0.5">
                   Actualiza los datos del item y guarda los cambios.
                 </p>
@@ -3468,7 +4154,6 @@ export default function Productos() {
 
             {/* Body */}
             <div className="px-7 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
-
               {/* Información general */}
               <div>
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">
@@ -3476,53 +4161,78 @@ export default function Productos() {
                 </p>
                 <div className="space-y-3">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500">Descripción</label>
+                    <label className="text-xs font-medium text-gray-500">
+                      Descripción
+                    </label>
                     <input
                       value={externalItemForm.descripcion}
                       onChange={(e) =>
-                        setExternalItemForm({ ...externalItemForm, descripcion: e.target.value })
+                        setExternalItemForm({
+                          ...externalItemForm,
+                          descripcion: e.target.value,
+                        })
                       }
                       className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-gray-500">Código</label>
+                      <label className="text-xs font-medium text-gray-500">
+                        Código
+                      </label>
                       <input
                         value={externalItemForm.codigo}
                         onChange={(e) =>
-                          setExternalItemForm({ ...externalItemForm, codigo: e.target.value })
+                          setExternalItemForm({
+                            ...externalItemForm,
+                            codigo: e.target.value,
+                          })
                         }
                         className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-gray-500">Marca</label>
+                      <label className="text-xs font-medium text-gray-500">
+                        Marca
+                      </label>
                       <input
                         value={externalItemForm.marca}
                         onChange={(e) =>
-                          setExternalItemForm({ ...externalItemForm, marca: e.target.value })
+                          setExternalItemForm({
+                            ...externalItemForm,
+                            marca: e.target.value,
+                          })
                         }
                         className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-gray-500">Unidad de medida</label>
+                      <label className="text-xs font-medium text-gray-500">
+                        Unidad de medida
+                      </label>
                       <input
                         value={externalItemForm.unidad_medida}
                         onChange={(e) =>
-                          setExternalItemForm({ ...externalItemForm, unidad_medida: e.target.value })
+                          setExternalItemForm({
+                            ...externalItemForm,
+                            unidad_medida: e.target.value,
+                          })
                         }
                         className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-gray-500">Cantidad</label>
+                      <label className="text-xs font-medium text-gray-500">
+                        Cantidad
+                      </label>
                       <input
                         type="number"
                         value={externalItemForm.cantidad}
                         onChange={(e) =>
-                          setExternalItemForm({ ...externalItemForm, cantidad: e.target.value })
+                          setExternalItemForm({
+                            ...externalItemForm,
+                            cantidad: e.target.value,
+                          })
                         }
                         className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                       />
@@ -3539,15 +4249,17 @@ export default function Productos() {
                 </p>
                 <label
                   htmlFor="external-item-imagen"
-                  onDragOver={(e: React.DragEvent<HTMLLabelElement>) => e.preventDefault()}
+                  onDragOver={(e: React.DragEvent<HTMLLabelElement>) =>
+                    e.preventDefault()
+                  }
                   onDrop={(e) => {
                     e.preventDefault();
                     const file = e.dataTransfer.files?.[0];
                     if (file) handleExternalItemImageFile(file);
                   }}
                   onPaste={(e) => {
-                    const imageItem = Array.from(e.clipboardData.items).find((item) =>
-                      item.type.startsWith("image/")
+                    const imageItem = Array.from(e.clipboardData.items).find(
+                      (item) => item.type.startsWith("image/"),
                     );
                     const file = imageItem?.getAsFile();
                     if (file) handleExternalItemImageFile(file);
@@ -3571,7 +4283,9 @@ export default function Productos() {
                         alt="Imagen del item externo"
                         className="mx-auto h-28 w-auto object-contain rounded-lg border border-gray-200 bg-white"
                       />
-                      <p className="text-xs text-gray-500">Haz clic, arrastra o pega para cambiar la imagen</p>
+                      <p className="text-xs text-gray-500">
+                        Haz clic, arrastra o pega para cambiar la imagen
+                      </p>
                     </div>
                   ) : (
                     <div className="py-5 text-xs text-gray-500">
@@ -3590,48 +4304,68 @@ export default function Productos() {
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500">Costo unitario</label>
+                    <label className="text-xs font-medium text-gray-500">
+                      Costo unitario
+                    </label>
                     <input
                       type="number"
                       step="0.01"
                       value={externalItemForm.costo_unitario}
                       onChange={(e) =>
-                        setExternalItemForm({ ...externalItemForm, costo_unitario: Number(e.target.value) })
+                        setExternalItemForm({
+                          ...externalItemForm,
+                          costo_unitario: Number(e.target.value),
+                        })
                       }
                       className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500">Margen %</label>
+                    <label className="text-xs font-medium text-gray-500">
+                      Margen %
+                    </label>
                     <input
                       type="number"
                       step="0.01"
                       value={externalItemForm.margen}
                       onChange={(e) =>
-                        setExternalItemForm({ ...externalItemForm, margen: Number(e.target.value) })
+                        setExternalItemForm({
+                          ...externalItemForm,
+                          margen: Number(e.target.value),
+                        })
                       }
                       className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500">Precio de venta</label>
+                    <label className="text-xs font-medium text-gray-500">
+                      Precio de venta
+                    </label>
                     <input
                       type="number"
                       step="0.01"
                       value={externalItemForm.precio_venta}
                       onChange={(e) =>
-                        setExternalItemForm({ ...externalItemForm, precio_venta: Number(e.target.value) })
+                        setExternalItemForm({
+                          ...externalItemForm,
+                          precio_venta: Number(e.target.value),
+                        })
                       }
                       className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500">Producto ID</label>
+                    <label className="text-xs font-medium text-gray-500">
+                      Producto ID
+                    </label>
                     <input
                       type="number"
                       value={externalItemForm.producto_id}
                       onChange={(e) =>
-                        setExternalItemForm({ ...externalItemForm, producto_id: e.target.value })
+                        setExternalItemForm({
+                          ...externalItemForm,
+                          producto_id: e.target.value,
+                        })
                       }
                       className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                     />
@@ -3648,11 +4382,16 @@ export default function Productos() {
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500">Disponibilidad</label>
+                    <label className="text-xs font-medium text-gray-500">
+                      Disponibilidad
+                    </label>
                     <select
                       value={externalItemForm.disponibilidad_tipo}
                       onChange={(e) =>
-                        setExternalItemForm({ ...externalItemForm, disponibilidad_tipo: e.target.value })
+                        setExternalItemForm({
+                          ...externalItemForm,
+                          disponibilidad_tipo: e.target.value,
+                        })
                       }
                       className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors bg-white"
                     >
@@ -3661,34 +4400,49 @@ export default function Productos() {
                     </select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500">Días de disponibilidad</label>
+                    <label className="text-xs font-medium text-gray-500">
+                      Días de disponibilidad
+                    </label>
                     <input
                       type="number"
                       value={externalItemForm.disponibilidad_dias}
                       onChange={(e) =>
-                        setExternalItemForm({ ...externalItemForm, disponibilidad_dias: e.target.value })
+                        setExternalItemForm({
+                          ...externalItemForm,
+                          disponibilidad_dias: e.target.value,
+                        })
                       }
                       className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500">Stock</label>
+                    <label className="text-xs font-medium text-gray-500">
+                      Stock
+                    </label>
                     <input
                       type="number"
                       value={externalItemForm.stock}
                       onChange={(e) =>
-                        setExternalItemForm({ ...externalItemForm, stock: e.target.value })
+                        setExternalItemForm({
+                          ...externalItemForm,
+                          stock: e.target.value,
+                        })
                       }
                       className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500">Garantía (meses)</label>
+                    <label className="text-xs font-medium text-gray-500">
+                      Garantía (meses)
+                    </label>
                     <input
                       type="number"
                       value={externalItemForm.garantia_meses}
                       onChange={(e) =>
-                        setExternalItemForm({ ...externalItemForm, garantia_meses: e.target.value })
+                        setExternalItemForm({
+                          ...externalItemForm,
+                          garantia_meses: e.target.value,
+                        })
                       }
                       className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                     />
@@ -3705,28 +4459,37 @@ export default function Productos() {
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500">Proveedor</label>
+                    <label className="text-xs font-medium text-gray-500">
+                      Proveedor
+                    </label>
                     <input
                       value={externalItemForm.proveedor}
                       onChange={(e) =>
-                        setExternalItemForm({ ...externalItemForm, proveedor: e.target.value })
+                        setExternalItemForm({
+                          ...externalItemForm,
+                          proveedor: e.target.value,
+                        })
                       }
                       className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-500">Link proveedor</label>
+                    <label className="text-xs font-medium text-gray-500">
+                      Link proveedor
+                    </label>
                     <input
                       value={externalItemForm.link_proveedor}
                       onChange={(e) =>
-                        setExternalItemForm({ ...externalItemForm, link_proveedor: e.target.value })
+                        setExternalItemForm({
+                          ...externalItemForm,
+                          link_proveedor: e.target.value,
+                        })
                       }
                       className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-blue-500/8 transition-colors"
                     />
                   </div>
                 </div>
               </div>
-
             </div>
 
             {/* Footer */}
@@ -3749,7 +4512,6 @@ export default function Productos() {
                 Guardar cambios
               </button>
             </div>
-
           </div>
         </div>
       )}
