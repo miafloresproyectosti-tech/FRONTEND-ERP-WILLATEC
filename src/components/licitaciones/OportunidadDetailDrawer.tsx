@@ -33,6 +33,7 @@ import {
   formatRemainingTime,
   getVigenciaAlert,
   isClosedOpportunity,
+  openFileInNewTab,
 } from "../../utils/licitaciones";
 import { EstadoBadge, TipoBadge, VigenciaBadge } from "./OportunidadBadges";
 
@@ -105,6 +106,8 @@ export function OportunidadDetailDrawer({
   const [previewFile, setPreviewFile] = useState<OportunidadArchivo | null>(
     null,
   );
+  const [expandedPreviewFile, setExpandedPreviewFile] =
+    useState<OportunidadArchivo | null>(null);
   const [presentationModalOpen, setPresentationModalOpen] = useState(false);
   const [presentationFile, setPresentationFile] = useState<File | null>(null);
   const [presentationError, setPresentationError] = useState("");
@@ -590,19 +593,47 @@ export function OportunidadDetailDrawer({
             )}
 
           <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="font-bold text-slate-900 dark:text-white">
                 {mainAttachmentLabel}
               </h3>
-              {visiblePreview && !locked && (
-                <button
-                  type="button"
-                  onClick={() => downloadFile(visiblePreview)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
-                >
-                  <FileDown size={16} />
-                  Descargar
-                </button>
+              {visiblePreview && (
+                <div className="flex flex-wrap gap-2">
+                  {canPreviewFile(visiblePreview) && (
+                    <button
+                      type="button"
+                      onClick={() => setExpandedPreviewFile(visiblePreview)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                    >
+                      <ExternalLink size={16} />
+                      Agrandar
+                    </button>
+                  )}
+                  {visiblePreview.dataUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!openFileInNewTab(visiblePreview)) {
+                          downloadFile(visiblePreview);
+                        }
+                      }}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+                    >
+                      <ExternalLink size={16} />
+                      Abrir en pestaña
+                    </button>
+                  )}
+                  {!locked && (
+                    <button
+                      type="button"
+                      onClick={() => downloadFile(visiblePreview)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+                    >
+                      <FileDown size={16} />
+                      Descargar
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -856,6 +887,60 @@ export function OportunidadDetailDrawer({
         </div>
       </aside>
 
+      {expandedPreviewFile && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-3">
+          <div className="flex h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-4 dark:border-slate-800">
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wide text-blue-600">
+                  Vista ampliada
+                </p>
+                <h3 className="truncate text-lg font-bold text-slate-900 dark:text-white">
+                  {expandedPreviewFile.nombre}
+                </h3>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                {expandedPreviewFile.dataUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!openFileInNewTab(expandedPreviewFile)) {
+                        downloadFile(expandedPreviewFile);
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                  >
+                    <ExternalLink size={16} />
+                    Pestaña
+                  </button>
+                )}
+                {!locked && (
+                  <button
+                    type="button"
+                    onClick={() => downloadFile(expandedPreviewFile)}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+                  >
+                    <FileDown size={16} />
+                    Descargar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setExpandedPreviewFile(null)}
+                  className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900"
+                  title="Cerrar"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto bg-slate-50 p-4 dark:bg-slate-900">
+              <FilePreview file={expandedPreviewFile} expanded />
+            </div>
+          </div>
+        </div>
+      )}
+
       {presentationModalOpen && onMarkProposalPresented && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div
@@ -1012,7 +1097,13 @@ function Info({
   );
 }
 
-function FilePreview({ file }: { file: OportunidadArchivo }) {
+function FilePreview({
+  file,
+  expanded = false,
+}: {
+  file: OportunidadArchivo;
+  expanded?: boolean;
+}) {
   if (!file.dataUrl) {
     return (
       <p className="text-sm text-slate-500">
@@ -1034,7 +1125,7 @@ function FilePreview({ file }: { file: OportunidadArchivo }) {
       <img
         src={file.dataUrl}
         alt={file.nombre}
-        className="max-h-[420px] w-full rounded-xl object-contain"
+        className={`${expanded ? "h-full max-h-[82vh]" : "max-h-[420px]"} w-full rounded-xl object-contain`}
       />
     );
   }
@@ -1044,7 +1135,7 @@ function FilePreview({ file }: { file: OportunidadArchivo }) {
       <iframe
         title={file.nombre}
         src={file.dataUrl}
-        className="h-[420px] w-full rounded-xl border border-slate-200"
+        className={`${expanded ? "h-[82vh]" : "h-[420px]"} w-full rounded-xl border border-slate-200 bg-white`}
       />
     );
   }

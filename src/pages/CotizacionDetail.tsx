@@ -51,7 +51,7 @@ import {
 } from '../services/cotizacion.service';
 import { addCotizacionRelacionada, getOportunidad, getOportunidadArchivo, getOportunidadByCotizacion } from '../services/licitaciones.service';
 import type { Oportunidad, OportunidadArchivo } from '../types/licitaciones';
-import { canPreviewFile, downloadFile } from '../utils/licitaciones';
+import { canPreviewFile, downloadFile, openFileInNewTab } from '../utils/licitaciones';
 import {
   ArrowLeft,
   Save,
@@ -1381,15 +1381,10 @@ export function CotizacionDetail() {
     await new Promise(r => setTimeout(r, 0)); // 🔥 fuerza un re-render antes del await pesado
     try {
       const data = await aprobarCotizacion(cotizacionId);
-      const historialApi = await getCotizacionHistorial(cotizacionId);
-
-      setEstadoCotizacionId(4);
-      setCotizacion(data);
-      setHistorial(historialApi);
-
       const approverName = user?.name || 'Superadministrador';
       const targetUserId = cotizacion?.user?.id || cotizacion?.user_id;
       const cotizacionNumero = data.numero || cotizacion?.numero || `#${cotizacionId}`;
+      const approverId = user?.id ? Number(user.id) : null;
 
       showToast({
         title: 'Cotización aprobada',
@@ -1399,7 +1394,7 @@ export function CotizacionDetail() {
         route: `/cotizaciones/${cotizacionId}/view`,
       } as any);
 
-      if (targetUserId) {
+      if (targetUserId && Number(targetUserId) !== approverId) {
         addNotification({
           title: 'Tu cotización fue aprobada',
           description: `La cotizacion ${cotizacionNumero} fue aprobada por ${approverName}`,
@@ -1411,8 +1406,15 @@ export function CotizacionDetail() {
       }
 
       if (shouldReturnToPendingReview) {
-        navigate(pendingReviewPath);
+        navigate(pendingReviewPath, { replace: true });
+        return;
       }
+
+      const historialApi = await getCotizacionHistorial(cotizacionId);
+
+      setEstadoCotizacionId(Number(data.estado_cotizacion_id || ESTADO_COTIZACION_APROBADA_ID));
+      setCotizacion(data);
+      setHistorial(historialApi);
     } catch (error: any) {
       showToast({
         title: 'Error al aprobar la cotización',
@@ -1455,17 +1457,14 @@ export function CotizacionDetail() {
     }
     try {
       const data = await rechazarCotizacion(cotizacionId, comentario);
-      const historialApi = await getCotizacionHistorial(cotizacionId);
 
-      setEstadoCotizacionId(5);
-      setCotizacion(data);
-      setHistorial(historialApi);
       setShowRechazoModal(false);
       setComentarioRechazo('');
 
       const approverName = user?.name || 'Superadministrador';
       const targetUserId = cotizacion?.user?.id || cotizacion?.user_id;
       const cotizacionNumero = data.numero || cotizacion?.numero || `#${cotizacionId}`;
+      const approverId = user?.id ? Number(user.id) : null;
 
       showToast({
         title: 'Cotización rechazada',
@@ -1475,7 +1474,7 @@ export function CotizacionDetail() {
         route: `/cotizaciones/${cotizacionId}/view`,
       } as any);
 
-      if (targetUserId) {
+      if (targetUserId && Number(targetUserId) !== approverId) {
         addNotification({
           title: 'Tu cotización fue rechazada',
           description: `La cotizacion ${cotizacionNumero} fue rechazada por ${approverName}`,
@@ -1487,8 +1486,15 @@ export function CotizacionDetail() {
       }
 
       if (shouldReturnToPendingReview) {
-        navigate(pendingReviewPath);
+        navigate(pendingReviewPath, { replace: true });
+        return;
       }
+
+      const historialApi = await getCotizacionHistorial(cotizacionId);
+
+      setEstadoCotizacionId(Number(data.estado_cotizacion_id || 5));
+      setCotizacion(data);
+      setHistorial(historialApi);
     } catch (error: any) {
       showToast({
         title: 'Error al rechazar la cotización',
@@ -3942,13 +3948,31 @@ export function CotizacionDetail() {
       {/* 5. Modal Exportación */}
       {previewOpportunityFile && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
               <div className="min-w-0">
                 <p className="text-xs font-bold uppercase text-slate-500">Archivo de oportunidad</p>
                 <h3 className="truncate text-lg font-bold text-slate-900">{previewOpportunityFile.nombre}</h3>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const opened = openFileInNewTab(previewOpportunityFile);
+                    if (!opened) {
+                      showToast({
+                        title: 'No se pudo abrir la pestaña',
+                        description: 'El navegador bloqueó la apertura. Usa Descargar para revisar el archivo.',
+                        type: 'warning',
+                        duration: 4000,
+                      } as any);
+                    }
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Abrir en pestaña
+                </button>
                 <button
                   type="button"
                   onClick={() => downloadFile(previewOpportunityFile)}
@@ -3967,7 +3991,7 @@ export function CotizacionDetail() {
                 </button>
               </div>
             </div>
-            <div className="overflow-auto bg-slate-50 p-4">
+            <div className="min-h-0 flex-1 overflow-auto bg-slate-50 p-4">
               <OpportunityFilePreview file={previewOpportunityFile} />
             </div>
           </div>
@@ -4003,11 +4027,11 @@ function OpportunityFilePreview({ file }: { file: OportunidadArchivo }) {
   }
 
   if ((file.tipo || '').includes('image')) {
-    return <img src={file.dataUrl} alt={file.nombre} className="mx-auto max-h-[70vh] w-full rounded-xl object-contain" />;
+    return <img src={file.dataUrl} alt={file.nombre} className="mx-auto h-full max-h-[82vh] w-full rounded-xl object-contain" />;
   }
 
   if ((file.tipo || '').includes('pdf')) {
-    return <iframe title={file.nombre} src={file.dataUrl} className="h-[70vh] w-full rounded-xl border border-slate-200 bg-white" />;
+    return <iframe title={file.nombre} src={file.dataUrl} className="h-[82vh] w-full rounded-xl border border-slate-200 bg-white" />;
   }
 
   return (
