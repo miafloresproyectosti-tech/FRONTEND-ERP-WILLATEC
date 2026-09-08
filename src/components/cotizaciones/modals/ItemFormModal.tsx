@@ -1,6 +1,6 @@
 import React from "react";
 import type { ImportacionCalculoTipo, ItemForm } from "../../../types/cotizaciones.type";
-import { Calculator, Copy, ExternalLink, Eye, History, Loader2, Plus, Trash2, X } from "lucide-react";
+import { Bold, Calculator, Copy, ExternalLink, Eye, History, Italic, Loader2, Plus, Trash2, Underline, X } from "lucide-react";
 import { formatMoney } from "../../../utils/formatNumber";
 import { resolveItemImageUrl } from "../../../utils/storageImage";
 import api from "../../../services/api";
@@ -10,6 +10,7 @@ import {
   type ProductoExternoHistorialItem,
   type ProductoExternoHistorialResponse,
 } from "../../../services/producto.service";
+import { sanitizeLimitedRichText } from "../../../utils/richText";
 
 interface Props {
   open: boolean;
@@ -61,6 +62,7 @@ export function ItemFormModal({
   const [historyError, setHistoryError] = React.useState("");
   const [productHistory, setProductHistory] = React.useState<ProductoExternoHistorialResponse | null>(null);
   const [loadedHistoryKey, setLoadedHistoryKey] = React.useState("");
+  const noteTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [importCalcType, setImportCalcType] = React.useState<'under200' | 'from201to1999' | 'from2000up'>('under200');
   const [importCalcForm, setImportCalcForm] = React.useState({
     precioProducto: itemForm.costo_base ? String(itemForm.costo_base) : '',
@@ -91,6 +93,7 @@ export function ItemFormModal({
       ? `interno:${itemForm.producto_id}`
       : "";
   const canViewProductHistory = Boolean(historyProductId);
+  const formattedNote = sanitizeLimitedRichText(itemForm.nota);
 
   const field = (label: string, children: React.ReactNode) => (
     <div>
@@ -451,6 +454,33 @@ export function ItemFormModal({
     });
   };
 
+  const applyNoteFormat = (tag: "strong" | "em" | "u") => {
+    if (readOnly) return;
+
+    const textarea = noteTextareaRef.current;
+    const currentValue = itemForm.nota || "";
+    const start = textarea?.selectionStart ?? currentValue.length;
+    const end = textarea?.selectionEnd ?? currentValue.length;
+    const selectedText = currentValue.slice(start, end) || "texto";
+    const before = currentValue.slice(0, start);
+    const after = currentValue.slice(end);
+    const openingTag = `<${tag}>`;
+    const closingTag = `</${tag}>`;
+    const nextValue = `${before}${openingTag}${selectedText}${closingTag}${after}`;
+
+    setItemForm({
+      ...itemForm,
+      nota: nextValue,
+    });
+
+    window.setTimeout(() => {
+      textarea?.focus();
+      const selectionStart = before.length + openingTag.length;
+      const selectionEnd = selectionStart + selectedText.length;
+      textarea?.setSelectionRange(selectionStart, selectionEnd);
+    }, 0);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -588,10 +618,56 @@ export function ItemFormModal({
                 </label>
               </div>
               {field('Nota',
-                <textarea className={`${inp} min-h-16 resize-y`} value={itemForm.nota || ''}
-                  disabled={readOnly}
-                  onChange={e => setItemForm({ ...itemForm, nota: e.target.value })}
-                  placeholder="Información adicional opcional para mostrar en la cotización" />
+                <div className="space-y-2">
+                  {!readOnly && (
+                    <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5">
+                      <button
+                        type="button"
+                        onClick={() => applyNoteFormat("strong")}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-600 hover:bg-white hover:text-gray-900"
+                        title="Negrita"
+                      >
+                        <Bold className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyNoteFormat("em")}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-600 hover:bg-white hover:text-gray-900"
+                        title="Cursiva"
+                      >
+                        <Italic className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyNoteFormat("u")}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-600 hover:bg-white hover:text-gray-900"
+                        title="Subrayado"
+                      >
+                        <Underline className="h-4 w-4" />
+                      </button>
+                      <span className="ml-2 text-[10px] text-gray-400">
+                        Selecciona texto y aplica formato
+                      </span>
+                    </div>
+                  )}
+                  <textarea
+                    ref={noteTextareaRef}
+                    className={`${inp} min-h-16 resize-y`}
+                    value={itemForm.nota || ''}
+                    disabled={readOnly}
+                    onChange={e => setItemForm({ ...itemForm, nota: e.target.value })}
+                    placeholder="Informacion adicional opcional para mostrar en la cotizacion"
+                  />
+                  {formattedNote && (
+                    <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                      <p className="mb-1 font-semibold text-gray-500">Vista previa</p>
+                      <div
+                        className="prose prose-sm max-w-none whitespace-pre-line text-gray-700"
+                        dangerouslySetInnerHTML={{ __html: formattedNote }}
+                      />
+                    </div>
+                  )}
+                </div>
               )}
               <div className="grid grid-cols-3 gap-2">
                 {field('Marca',

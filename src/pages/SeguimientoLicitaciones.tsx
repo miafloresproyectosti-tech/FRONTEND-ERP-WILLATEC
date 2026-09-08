@@ -227,7 +227,7 @@ export default function SeguimientoLicitaciones() {
   const currentRole = normalizeRole(user?.role);
   const isManager = currentRole === "SUPERADMIN" || currentRole === "ADMIN" || currentRole === "LICITACIONES";
   const isSalesRole = currentRole === "VENTAS";
-  const canCreateOpportunity = currentRole === "LICITACIONES" || currentRole === "VENTAS";
+  const canCreateOpportunity = currentRole === "LICITACIONES" || currentRole === "VENTAS" || currentRole === "SUPERADMIN";
   const canOpenCotizaciones =
     rolePermissions[currentRole]?.includes("*") ||
     rolePermissions[currentRole]?.includes("cotizaciones");
@@ -1018,23 +1018,32 @@ export default function SeguimientoLicitaciones() {
 
     const cotizacionData = cotizacion as any;
 
-    await addCotizacionRelacionada(selected.id, userName, {
-      cotizacion_id: Number(cotizacion.id),
-      numero: cotizacion.numero,
-      estado: cotizacionData.estadoCotizacion?.nombre || cotizacionData.estado_cotizacion?.nombre || "registrada",
-      monto: Number(cotizacion.total || 0),
-      moneda: cotizacionData.moneda?.codigo || cotizacionData.codigo_moneda,
-      origen: "vinculada",
-    });
+    try {
+      await addCotizacionRelacionada(selected.id, userName, {
+        cotizacion_id: Number(cotizacion.id),
+        numero: cotizacion.numero,
+        estado: cotizacionData.estadoCotizacion?.nombre || cotizacionData.estado_cotizacion?.nombre || "registrada",
+        monto: Number(cotizacion.total || 0),
+        moneda: cotizacionData.moneda?.codigo || cotizacionData.codigo_moneda,
+        origen: "vinculada",
+      });
 
-    setQuoteLinkModalOpen(false);
-    setQuoteLinkSelectedId(null);
-    await refreshSelectedOpportunity(selected.id);
-    showToast({
-      title: "Cotizacion vinculada",
-      description: `${cotizacion.numero || `#${cotizacion.id}`} quedo asociada a la oportunidad.`,
-      type: "success",
-    });
+      setQuoteLinkModalOpen(false);
+      setQuoteLinkSelectedId(null);
+      await refreshSelectedOpportunity(selected.id);
+      showToast({
+        title: "Cotizacion vinculada",
+        description: `${cotizacion.numero || `#${cotizacion.id}`} quedo asociada a la oportunidad.`,
+        type: "success",
+      });
+    } catch (error) {
+      const response = error as { response?: { data?: { message?: string } }; message?: string };
+      showToast({
+        title: "No se pudo vincular",
+        description: response.response?.data?.message || response.message || "La cotizacion no pudo vincularse a esta oportunidad.",
+        type: "error",
+      });
+    }
   };
 
   const handleDownloadQuotePdf = async (cotizacionId: string | number) => {
@@ -1827,7 +1836,11 @@ export default function SeguimientoLicitaciones() {
         unlinkingQuoteId={unlinkingQuoteId}
         canUnlinkQuote={(relacionId) => {
           const quote = selected?.cotizaciones.find((item) => item.id === relacionId);
-          return Boolean(quote && quote.origen === "vinculada" && isCreatedByCurrentUser(quote.creadoPor, quote.creadoPorId));
+          return Boolean(
+            quote &&
+              ["vinculada", "generada"].includes(quote.origen || "vinculada") &&
+              (currentRole === "SUPERADMIN" || isCreatedByCurrentUser(quote.creadoPor, quote.creadoPorId))
+          );
         }}
         onUnlinkQuote={(relacionId) => void handleUnlinkQuote(relacionId)}
         canAssignToMe={Boolean(selected && (isSalesRole || currentRole === "SUPERADMIN") && isAvailableOpportunity(selected))}

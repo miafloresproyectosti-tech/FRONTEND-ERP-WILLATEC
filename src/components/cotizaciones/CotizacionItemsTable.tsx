@@ -2,6 +2,7 @@ import type { CotizacionItem, } from "../../types/cotizaciones.type";
 import { CheckCircle, Trash2, Plus, Pencil, Eye, GripVertical } from "lucide-react";
 import { formatMoney } from "../../utils/formatNumber";
 import { resolveItemImageUrl } from "../../utils/storageImage";
+import { sanitizeLimitedRichText } from "../../utils/richText";
 interface Props{
   items: CotizacionItem[];
   modoDistribucion: "POR_ITEM" | "POR_CANTIDAD";
@@ -143,9 +144,7 @@ return (
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="font-bold text-gray-900">{item.descripcion}</p>
-                  {item.nota && (
-                    <p className="mt-1 line-clamp-2 text-xs text-gray-500">Nota: {item.nota}</p>
-                  )}
+                  {item.nota && <RichTextNote value={item.nota} compact />}
                 </div>
                 <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${
                   item.tipo === 'catalogo' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'
@@ -356,14 +355,7 @@ return (
                       )}
                       <span className="truncate">{item.descripcion}</span>
                     </div>
-                    {item.nota && (
-                      <div
-                        className="mt-1 text-[10px] leading-snug font-normal text-gray-500 break-words"
-                        style={{ whiteSpace: 'pre-line' }}
-                      >
-                        Nota: {item.nota}
-                      </div>
-                    )}
+                    {item.nota && <RichTextNote value={item.nota} />}
                   </td>
                   <td className="py-2.5 px-2 text-center text-gray-700">{item.cantidad}</td>
                   <td className="py-2.5 px-2 text-center">
@@ -492,4 +484,32 @@ return (
     </div>
   </div>
 );
+}
+
+function RichTextNote({
+  value,
+  compact = false,
+}: {
+  value: string;
+  compact?: boolean;
+}) {
+  const html = sanitizeLimitedRichText(value);
+
+  if (!html) return null;
+
+  return (
+    <div
+      className={
+        compact
+          ? "mt-1 line-clamp-2 text-xs font-normal text-gray-500"
+          : "mt-1 break-words text-[10px] font-normal leading-snug text-gray-500"
+      }
+    >
+      <span>Nota: </span>
+      <span
+        className="whitespace-pre-line"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </div>
+  );
 }
