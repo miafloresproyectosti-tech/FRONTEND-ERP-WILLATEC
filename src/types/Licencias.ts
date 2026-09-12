@@ -7,6 +7,7 @@ export interface Licencia {
   suscripcion: "ANUAL";
   fechaCompra: string;
   fechaRenovacion: string;
+  renovacionProgramada?: boolean;
   estado: "VIGENTE" | "POR VENCER" | "VENCIDO";
 }
 
@@ -19,6 +20,7 @@ export interface Hosting {
   suscripcion: "ANUAL" | "MENSUAL";
   fechaInicio: string;
   fechaRenovacion: string;
+  renovacionProgramada?: boolean;
   contacto: string;
   cliente: string;
   estado: "VIGENTE" | "POR VENCER" | "VENCIDO";

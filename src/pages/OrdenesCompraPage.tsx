@@ -728,6 +728,7 @@ export default function OrdenesCompraPage() {
   const canEditOc = useCallback(
     (oc: OcEmitida | OcRecibida) => {
       if (!user) return false;
+      if (String(oc.estado) === "cancelado") return false;
       if (user.role === "SUPERADMIN") return true;
 
       return Number(oc.user_id) === Number(user.id);
@@ -737,6 +738,7 @@ export default function OrdenesCompraPage() {
   const canUploadOcDocuments = useCallback(
     (oc: OcEmitida | OcRecibida) => {
       if (!user) return false;
+      if (String(oc.estado) === "cancelado") return false;
       if (["SUPERADMIN", "ADMIN", "CONTABILIDAD"].includes(user.role))
         return true;
 
@@ -755,6 +757,7 @@ export default function OrdenesCompraPage() {
   const canDeleteOcDocument = useCallback(
     (oc: OcEmitida | OcRecibida, document: DocumentLink) => {
       if (!user) return false;
+      if (String(oc.estado) === "cancelado") return false;
       if (["ADMIN", "CONTABILIDAD"].includes(user.role)) {
         return (
           Boolean(document.uploadedBy) &&
@@ -831,6 +834,28 @@ export default function OrdenesCompraPage() {
       a.value.localeCompare(b.value),
     );
   }, [preview, proveedoresCatalog]);
+
+  const proveedorCards = useMemo(() => {
+    const detailMap = new Map<
+      string,
+      { value: string; label: string; ruc?: string }
+    >();
+
+    proveedorOptions.forEach((option) => {
+      const key = normalizeProveedorKey(option.value);
+      if (!key) return;
+      const catalog = findProveedorCatalog(option.value);
+      detailMap.set(key, {
+        value: option.value,
+        label: option.label,
+        ruc: catalog?.ruc || undefined,
+      });
+    });
+
+    return Array.from(detailMap.values()).sort((a, b) =>
+      a.value.localeCompare(b.value),
+    );
+  }, [proveedorOptions, proveedoresCatalog]);
 
   const selectedModalProviderRuc = findProveedorCatalog(proveedor)?.ruc || "";
   const selectedProveedorCatalog = findProveedorCatalog(proveedor);
@@ -1610,6 +1635,14 @@ export default function OrdenesCompraPage() {
   const handleUploadDocuments = async () => {
     if (!documentTarget) return;
     const isEmitida = "proveedor" in documentTarget;
+    if (!isEmitida && String(documentTarget.estado) === "cancelado") {
+      showToast({
+        title: "OC cancelada",
+        description: "No se pueden subir documentos a una OC cancelada.",
+        type: "warning",
+      });
+      return;
+    }
 
     try {
       setSaving(true);
@@ -1658,13 +1691,20 @@ export default function OrdenesCompraPage() {
     additionalId?: number | string,
   ) => {
     if (!documentTarget) return;
+    const isEmitida = "proveedor" in documentTarget;
+    if (!isEmitida && String(documentTarget.estado) === "cancelado") {
+      showToast({
+        title: "OC cancelada",
+        description: "No se pueden eliminar documentos de una OC cancelada.",
+        type: "warning",
+      });
+      return;
+    }
 
     const confirmed = window.confirm(
       "Se eliminara el documento seleccionado. Deseas continuar?",
     );
     if (!confirmed) return;
-
-    const isEmitida = "proveedor" in documentTarget;
 
     try {
       setSaving(true);
@@ -2311,7 +2351,7 @@ export default function OrdenesCompraPage() {
 
       {modalMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-[30px] bg-white shadow-2xl dark:bg-slate-950">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[30px] bg-white shadow-2xl dark:bg-slate-950">
             <ModalHeader
               title={
                 modalMode === "emitir"
@@ -2402,12 +2442,11 @@ export default function OrdenesCompraPage() {
                     </span>
                     <div className="grid gap-2 md:grid-cols-[1fr_auto]">
                       <input
-                        list="proveedor-list"
                         value={proveedor}
                         onChange={(event) =>
                           void handleProveedorChange(event.target.value)
                         }
-                        placeholder="Escribe o selecciona proveedor"
+                        placeholder="Buscar proveedor por nombre o RUC"
                         className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                       />
                       <button
@@ -2422,13 +2461,49 @@ export default function OrdenesCompraPage() {
                           : "Nuevo proveedor"}
                       </button>
                     </div>
-                    <datalist id="proveedor-list">
-                      {proveedorOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.value}
-                        </option>
-                      ))}
-                    </datalist>
+                    {proveedorCards.length > 0 ? (
+                      <div className="grid max-h-64 gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-950 sm:grid-cols-2">
+                        {proveedorCards.map((option) => {
+                          const active =
+                            normalizeProveedorKey(option.value) ===
+                            normalizeProveedorKey(proveedor);
+
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() =>
+                                void handleProveedorChange(option.value)
+                              }
+                              className={`min-h-[76px] rounded-xl border px-3 py-2 text-left transition ${
+                                active
+                                  ? "border-blue-500 bg-blue-50 shadow-sm ring-2 ring-blue-100 dark:bg-blue-950/30 dark:ring-blue-900/40"
+                                  : "border-slate-200 bg-slate-50 hover:border-blue-200 hover:bg-blue-50/60 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
+                              }`}
+                            >
+                              <span className="block text-sm font-semibold text-slate-900 dark:text-white">
+                                {option.value}
+                              </span>
+                              <span className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                {option.ruc ? (
+                                  <span className="rounded-full bg-white px-2 py-1 text-slate-700 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-200 dark:ring-slate-700">
+                                    RUC {option.ruc}
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-800">
+                                    RUC pendiente
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-5 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                        Carga una cotizacion para ver proveedores sugeridos.
+                      </div>
+                    )}
                   </div>
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
@@ -3468,7 +3543,7 @@ function EmitidasTable({
                   type="button"
                   onClick={() => onDownloadPdf(oc)}
                   className="inline-flex h-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100"
-                  title="Descargar PDF"
+                  title="Regenerar y descargar PDF"
                 >
                   <Download size={17} />
                 </button>
@@ -3561,7 +3636,7 @@ function EmitidasTable({
                         type="button"
                         onClick={() => onDownloadPdf(oc)}
                         className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100"
-                        title="Descargar PDF"
+                        title="Regenerar y descargar PDF"
                       >
                         <Download size={17} />
                       </button>

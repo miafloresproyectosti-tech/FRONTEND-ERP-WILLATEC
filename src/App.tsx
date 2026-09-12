@@ -54,6 +54,7 @@ function App() {
             suscripcion: "ANUAL",
             fechaCompra: licencia.fecha_inicio,
             fechaRenovacion: licencia.fecha_renovacion,
+            renovacionProgramada: Boolean(licencia.renovacion_programada),
             estado: "VIGENTE",
           }))
         );
@@ -67,6 +68,7 @@ function App() {
             suscripcion: hosting.suscripcion,
             fechaInicio: hosting.fecha_inicio,
             fechaRenovacion: hosting.fecha_renovacion,
+            renovacionProgramada: Boolean(hosting.renovacion_programada),
             contacto: hosting.contacto || "",
             cliente: hosting.cliente || hosting.cliente_relacionado?.nombre || "",
             estado: "VIGENTE",
