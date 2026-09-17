@@ -278,6 +278,7 @@ export function CotizacionGeneralForm({
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="AL CONTADO">AL CONTADO</option>
+                  <option value="CRÉDITO A 7 DÍAS">CRÉDITO A 7 DÍAS</option>
                   {isAlquilerPlantilla && (
                     <option value="CRÉDITO A 5 DÍAS">CRÉDITO A 5 DÍAS</option>
                   )}

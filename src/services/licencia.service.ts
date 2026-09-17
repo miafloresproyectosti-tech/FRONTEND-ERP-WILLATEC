@@ -22,6 +22,7 @@ export interface LicenciaApi {
   renovacion_meses?: number | null;
   renovacion_programada_para?: string | null;
   documentos?: LicenciaDocumentoApi[];
+  cotizaciones?: LicenciaCotizacionApi[];
   alertas_enviadas_count?: number;
   alertas_enviadas_max_sent_at?: string | null;
   alertas_enviadas?: LicenciaAlertaEnviadaApi[];
@@ -31,6 +32,27 @@ export interface LicenciaApi {
     ruc?: string | null;
     correo?: string | null;
   } | null;
+}
+
+export interface LicenciaCotizacionApi {
+  id: number;
+  numero: string;
+  fecha?: string | null;
+  titulo?: string | null;
+  cliente_nombre?: string | null;
+  moneda_id?: number | null;
+  subtotal?: number | string | null;
+  igv?: number | string | null;
+  total?: number | string | null;
+  moneda?: {
+    id: number;
+    codigo?: string | null;
+    simbolo?: string | null;
+  } | null;
+  pivot?: {
+    created_at?: string | null;
+    created_by?: number | null;
+  };
 }
 
 export interface LicenciaAlertaEnviadaApi {
@@ -64,6 +86,7 @@ export interface LicenciaPayload {
   suscripcion_meses: number;
   correo_licencia?: string | null;
   fecha_inicio: string;
+  cotizacion_numero?: string | null;
 }
 
 export interface RenovacionPayload {
@@ -192,6 +215,25 @@ export const deleteLicenciaDocumento = async (
   documentoId: number
 ): Promise<LicenciaApi> => {
   const response = await api.delete(`/licencias/${licenciaId}/documentos/${documentoId}`);
+  return response.data.licencia;
+};
+
+export const linkLicenciaCotizacion = async (
+  id: number,
+  cotizacionNumero: string
+): Promise<LicenciaApi> => {
+  const response = await api.post(`/licencias/${id}/cotizaciones`, {
+    cotizacion_numero: cotizacionNumero,
+  });
+
+  return response.data.licencia;
+};
+
+export const unlinkLicenciaCotizacion = async (
+  licenciaId: number,
+  cotizacionId: number
+): Promise<LicenciaApi> => {
+  const response = await api.delete(`/licencias/${licenciaId}/cotizaciones/${cotizacionId}`);
   return response.data.licencia;
 };
 

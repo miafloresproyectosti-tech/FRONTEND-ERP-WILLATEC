@@ -12,6 +12,8 @@ import {
   FileText,
   Upload,
   RefreshCw,
+  Link2,
+  ExternalLink,
 } from "lucide-react";
 
 import {
@@ -28,12 +30,16 @@ import {
   renovarLicencia,
   updateLicencia,
   uploadLicenciaDocumentos,
+  linkLicenciaCotizacion,
+  unlinkLicenciaCotizacion,
   type LicenciaApi,
+  type LicenciaCotizacionApi,
   type LicenciaDocumentoApi,
   type LicenciaImportPreview,
   type LicenciaImportRow,
   type LicenciaPayload,
 } from "../../services/licencia.service";
+import { exportarCotizacionPdf } from "../../services/cotizacion.service";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { exportExcelFile } from "../../utils/exportExcel";
 
@@ -59,6 +65,7 @@ interface Licencia {
   alertasCount: number;
   ultimaAlerta: string | null;
   documentos: LicenciaDocumentoApi[];
+  cotizaciones: LicenciaCotizacionApi[];
   alertas: {
     id: number;
     diasAntes: number;
@@ -94,6 +101,9 @@ export default function Licencias() {
   const [renewMode, setRenewMode] = useState<"ANUAL" | "MENSUAL">("ANUAL");
   const [renewMonths, setRenewMonths] = useState("1");
   const [renewing, setRenewing] = useState(false);
+  const [cotizacionNumero, setCotizacionNumero] = useState("");
+  const [linkingCotizacion, setLinkingCotizacion] = useState(false);
+  const [viewingPdfCotizacionId, setViewingPdfCotizacionId] = useState<number | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clientesLoading, setClientesLoading] = useState(false);
   const [clienteSearch, setClienteSearch] = useState("");
@@ -111,6 +121,7 @@ export default function Licencias() {
     correoLicencia: "",
     fechaInicio: "",
     fechaRenovacion: "",
+    cotizacionNumero: "",
   });
 
   const mapLicencia = (licencia: LicenciaApi): Licencia => ({
@@ -137,6 +148,7 @@ export default function Licencias() {
     alertasCount: Number(licencia.alertas_enviadas_count || 0),
     ultimaAlerta: licencia.alertas_enviadas_max_sent_at || null,
     documentos: licencia.documentos || [],
+    cotizaciones: licencia.cotizaciones || [],
     alertas: (licencia.alertas_enviadas || []).map((alerta) => ({
       id: alerta.id,
       diasAntes: Number(alerta.dias_antes),
@@ -284,6 +296,21 @@ export default function Licencias() {
     })}`;
   };
 
+  const formatCotizacionTotal = (cotizacion: LicenciaCotizacionApi) => {
+    const total = cotizacion.total === null || cotizacion.total === undefined
+      ? null
+      : Number(cotizacion.total);
+
+    if (total === null || Number.isNaN(total)) return "-";
+
+    const symbol = cotizacion.moneda?.simbolo || (Number(cotizacion.moneda_id) === 2 ? "$" : "S/");
+
+    return `${symbol} ${total.toLocaleString("es-PE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
   const alertDaysFor = (suscripcionMeses: number) =>
     suscripcionMeses >= 12 ? [90, 60, 30, 15, 3, 2, 1, 0] : [7, 4, 3, 2, 1, 0];
 
@@ -346,6 +373,7 @@ export default function Licencias() {
       suscripcion_meses: Number(form.suscripcionMeses),
       correo_licencia: form.correoLicencia.trim() || null,
       fecha_inicio: form.fechaInicio,
+      cotizacion_numero: form.cotizacionNumero.trim() || null,
     };
 
     try {
@@ -388,6 +416,7 @@ export default function Licencias() {
       correoLicencia: licencia.correoLicencia,
       fechaInicio: licencia.fechaInicio,
       fechaRenovacion: licencia.fechaRenovacion,
+      cotizacionNumero: "",
     });
     setClienteSearch(licencia.empresa);
     setEditingId(licencia.id);
@@ -416,6 +445,7 @@ export default function Licencias() {
       correoLicencia: "",
       fechaInicio: "",
       fechaRenovacion: "",
+      cotizacionNumero: "",
     });
     setClienteSearch("");
     setShowClienteDropdown(false);
@@ -496,6 +526,49 @@ export default function Licencias() {
       alert("No se pudo eliminar el PDF.");
     } finally {
       setDeletingDocumentId(null);
+    }
+  };
+
+  const handleLinkCotizacion = async () => {
+    if (!viewModal || !cotizacionNumero.trim()) return;
+
+    try {
+      setLinkingCotizacion(true);
+      const updated = await linkLicenciaCotizacion(viewModal.id, cotizacionNumero.trim());
+      updateLicenciaEnLista(updated);
+      setCotizacionNumero("");
+    } catch (error) {
+      console.error("Error al enlazar cotizacion:", error);
+      alert("No se pudo enlazar la cotización. Verifica que el número exista.");
+    } finally {
+      setLinkingCotizacion(false);
+    }
+  };
+
+  const handleUnlinkCotizacion = async (cotizacionId: number) => {
+    if (!viewModal) return;
+
+    try {
+      const updated = await unlinkLicenciaCotizacion(viewModal.id, cotizacionId);
+      updateLicenciaEnLista(updated);
+    } catch (error) {
+      console.error("Error al desenlazar cotizacion:", error);
+      alert("No se pudo desenlazar la cotización.");
+    }
+  };
+
+  const handleViewCotizacionPdf = async (cotizacion: LicenciaCotizacionApi) => {
+    try {
+      setViewingPdfCotizacionId(cotizacion.id);
+      const { blob } = await exportarCotizacionPdf(cotizacion.id);
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      console.error("Error al abrir PDF de cotizacion:", error);
+      alert("No se pudo abrir el PDF de la cotización.");
+    } finally {
+      setViewingPdfCotizacionId(null);
     }
   };
 
@@ -1031,6 +1104,7 @@ export default function Licencias() {
               <th className="p-3 text-left font-semibold">Fecha inicio</th>
               <th className="p-3 text-left font-semibold">Fecha renovación</th>
               <th className="p-3 text-left font-semibold">Estado</th>
+              <th className="p-3 text-left font-semibold">Cotizaciones</th>
               <th className="p-3 text-left font-semibold">Alertas</th>
               <th className="sticky right-0 z-10 bg-gray-100 p-3 text-left font-semibold shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">Acciones</th>
             </tr>
@@ -1039,13 +1113,13 @@ export default function Licencias() {
           <tbody>
             {loadingLicencias ? (
               <tr>
-                <td colSpan={11} className="p-8 text-center text-gray-500">
+                <td colSpan={12} className="p-8 text-center text-gray-500">
                   Cargando licencias...
                 </td>
               </tr>
             ) : filtradas.length === 0 ? (
               <tr>
-                <td colSpan={11} className="p-8 text-center text-gray-500">
+                <td colSpan={12} className="p-8 text-center text-gray-500">
                   No hay licencias que mostrar
                 </td>
               </tr>
@@ -1095,6 +1169,16 @@ export default function Licencias() {
                   </td>
 
                   <td className="p-3">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      l.cotizaciones.length > 0
+                        ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
+                        : "bg-gray-50 text-gray-500 border border-gray-100"
+                    }`}>
+                      {l.cotizaciones.length} enlazada{l.cotizaciones.length === 1 ? "" : "s"}
+                    </span>
+                  </td>
+
+                  <td className="p-3">
                     <div className="min-w-[120px] space-y-1">
                       <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
                         l.alertasCount > 0
@@ -1115,7 +1199,10 @@ export default function Licencias() {
                   <td className="p-3">
                     <div className="flex gap-1 whitespace-nowrap">
                     <button
-                      onClick={() => setViewModal(l)}
+                      onClick={() => {
+                        setCotizacionNumero("");
+                        setViewModal(l);
+                      }}
                       className="bg-gray-100 p-2 rounded hover:bg-gray-200 transition-colors"
                       title="Ver detalle"
                     >
@@ -1296,6 +1383,25 @@ export default function Licencias() {
                   </p>
                 </div>
 
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">
+                    Número de cotización asociada
+                  </label>
+                  <div className="flex items-center gap-2 rounded-lg border border-gray-300 p-3 focus-within:border-transparent focus-within:ring-2 focus-within:ring-blue-500">
+                    <Link2 size={16} className="text-gray-400" />
+                    <input
+                      name="cotizacionNumero"
+                      placeholder="Ej. COT-000123"
+                      className="w-full outline-none"
+                      value={form.cotizacionNumero}
+                      onChange={handleChange}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Opcional. Se busca y enlaza por número de cotización, no por ID.
+                  </p>
+                </div>
+
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-gray-700">
                     Suscripción en meses
@@ -1430,7 +1536,7 @@ export default function Licencias() {
                   </tr>
 
                   <tr className="border-b">
-                    <td className="p-3 font-semibold bg-gray-50">Cotizaciones referenciales</td>
+                    <td className="p-3 font-semibold bg-gray-50">PDFs referenciales subidos</td>
                     <td className="p-3">
                       {viewModal.documentos.length > 0 ? (
                         <div className="space-y-2">
@@ -1507,6 +1613,98 @@ export default function Licencias() {
                   </tr>
                 </tbody>
               </table>
+
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <h3 className="font-semibold text-indigo-950">Cotizaciones enlazadas</h3>
+                    <p className="text-xs text-indigo-700">
+                      Historial de cotizaciones que derivaron en venta o renovación de esta licencia.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={cotizacionNumero}
+                      onChange={(event) => setCotizacionNumero(event.target.value)}
+                      placeholder="Número de cotización"
+                      className="min-w-[220px] rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleLinkCotizacion()}
+                      disabled={linkingCotizacion || !cotizacionNumero.trim()}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:bg-gray-400"
+                    >
+                      <Link2 size={15} />
+                      {linkingCotizacion ? "Enlazando..." : "Enlazar"}
+                    </button>
+                  </div>
+                </div>
+
+                {viewModal.cotizaciones.length > 0 ? (
+                  <div className="overflow-hidden rounded-xl border border-indigo-100 bg-white">
+                    <table className="w-full min-w-[720px] text-sm">
+                      <thead className="bg-indigo-50 text-indigo-900">
+                        <tr>
+                          <th className="p-3 text-left font-semibold">Número</th>
+                          <th className="p-3 text-left font-semibold">Fecha</th>
+                          <th className="p-3 text-left font-semibold">Cliente</th>
+                          <th className="p-3 text-left font-semibold">Total</th>
+                          <th className="p-3 text-left font-semibold">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewModal.cotizaciones.map((cotizacion) => (
+                          <tr key={cotizacion.id} className="border-t border-indigo-50">
+                            <td className="p-3">
+                              <button
+                                type="button"
+                                onClick={() => window.open(`/cotizaciones/${cotizacion.id}/view`, "_blank", "noopener,noreferrer")}
+                                className="inline-flex items-center gap-1 font-bold text-blue-700 hover:text-blue-900"
+                                title={cotizacion.titulo || cotizacion.numero}
+                              >
+                                {cotizacion.numero}
+                                <ExternalLink size={13} />
+                              </button>
+                            </td>
+                            <td className="p-3 text-gray-600">{cotizacion.fecha || "-"}</td>
+                            <td className="p-3 text-gray-700">{cotizacion.cliente_nombre || "-"}</td>
+                            <td className="p-3 font-semibold text-gray-800">{formatCotizacionTotal(cotizacion)}</td>
+                            <td className="p-3">
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleViewCotizacionPdf(cotizacion)}
+                                  disabled={viewingPdfCotizacionId === cotizacion.id}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                                >
+                                  <FileText size={14} />
+                                  {viewingPdfCotizacionId === cotizacion.id ? "Abriendo..." : "VER PDF COTIZACIÓN"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm("¿Desenlazar esta cotización de la licencia?")) {
+                                      void handleUnlinkCotizacion(cotizacion.id);
+                                    }
+                                  }}
+                                  className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
+                                >
+                                  Desenlazar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-indigo-200 bg-white px-4 py-5 text-sm text-gray-500">
+                    Todavía no hay cotizaciones enlazadas para esta licencia.
+                  </div>
+                )}
+              </div>
 
               {(() => {
                 const nextAlert = getNextAlert(viewModal);
