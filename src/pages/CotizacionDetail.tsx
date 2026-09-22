@@ -347,6 +347,7 @@ export function CotizacionDetail() {
   const [formaPago, setFormaPago] = useState('AL CONTADO');
   const [entregaProvincia, setEntregaProvincia] = useState(false);
   const [entregaDestino, setEntregaDestino] = useState('');
+  const [entregaMultidestino, setEntregaMultidestino] = useState(false);
   const [clienteContacto, setClienteContacto] = useState('');
   const selectedPlantilla = plantillas.find((plantilla) => Number(plantilla.id) === Number(plantillaId));
   const isAlquilerPlantilla = isPlantillaAlquiler(selectedPlantilla);
@@ -375,10 +376,30 @@ export function CotizacionDetail() {
   const [productosTotal, setProductosTotal] = useState(0);
   const [usuarios, setUsuarios] = useState<ApiUser[]>([]);
   const [externalItemSuggestions, setExternalItemSuggestions] = useState<ItemForm[]>([]);
+  const multidestinoMissingDestinoWarnedRef = useRef(false);
 
   useEffect(() => {
     selectedClienteIdRef.current = clienteId;
   }, [clienteId]);
+
+  useEffect(() => {
+    if (!entregaMultidestino) {
+      multidestinoMissingDestinoWarnedRef.current = false;
+      return;
+    }
+
+    const hasMissingDestino = items.some((item) => !item.destino_entrega?.trim());
+
+    if (!hasMissingDestino || multidestinoMissingDestinoWarnedRef.current) return;
+
+    multidestinoMissingDestinoWarnedRef.current = true;
+    showToast({
+      title: 'Destino pendiente',
+      description: 'Hay items sin destino asignado. Se asumiran como Lima Metropolitana; asigna su destino y costo adicional si corresponde.',
+      type: 'warning',
+      duration: 5000,
+    } as any);
+  }, [entregaMultidestino, items, showToast]);
 
   const searchActiveClientes = useCallback(async (search = "") => {
     try {
@@ -752,6 +773,7 @@ export function CotizacionDetail() {
         disponibilidad_dias: Number(item.disponibilidad_dias || 4),
         orden: Number(item.orden || index + 1),
         aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
+        destino_entrega: item.destino_entrega || '',
         tipo: item.tipo || (item.producto_id ? 'catalogo' : 'externo'),
         imagen: imageForPreview || rawImage,
         imagen_url: imageForPreview || null,
@@ -768,6 +790,7 @@ export function CotizacionDetail() {
       tipo: costo.tipo || 'viaje',
       monto: Number(costo.monto || 0),
       descripcion: costo.descripcion || '',
+      destino_entrega: costo.destino_entrega || '',
     }));
 
   const applyEditablePayload = (payload: any, baseCotizacion?: Cotizacion | null) => {
@@ -784,6 +807,7 @@ export function CotizacionDetail() {
     setFormaPago(source.forma_pago ?? baseCotizacion?.forma_pago ?? 'AL CONTADO');
     setEntregaProvincia(Boolean(source.entrega_provincia ?? baseCotizacion?.entrega_provincia ?? false));
     setEntregaDestino(source.entrega_destino ?? baseCotizacion?.entrega_destino ?? '');
+    setEntregaMultidestino(Boolean(source.entrega_multidestino ?? baseCotizacion?.entrega_multidestino ?? false));
     setClienteContacto(source.cliente_contacto ?? baseCotizacion?.cliente_contacto ?? baseCotizacion?.cliente?.contacto ?? '');
     setDelegadoId(source.delegado_id ?? baseCotizacion?.delegado_id ?? null);
     setDelegadoCotizacionId(
@@ -910,6 +934,7 @@ export function CotizacionDetail() {
     producto_externo_id: undefined,
     estado_cotizacion_item_id: undefined,
     aplica_costos_adicionales: true,
+    destino_entrega: '',
     tipo: 'externo' as 'catalogo' | 'externo',
     margen: 20,
     nota: '',
@@ -927,49 +952,58 @@ export function CotizacionDetail() {
 
   useEffect(() => {
     const cantidad = Number(itemForm.cantidad || 0);
-    const costoBase = Number(itemForm.costo_base || 0);
-    const margen = Number(itemForm.margen || 0);
-    const costosTotal = costos.reduce((acc, costo) => acc + Number(costo.monto || 0), 0);
     const previewItems = showItemFormModal
       ? editingItemId
         ? items.map(item =>
-          item.id === editingItemId ? { ...item, cantidad, aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true } : item
+          item.id === editingItemId
+            ? {
+                ...item,
+                cantidad,
+                costo_base: Number(itemForm.costo_base || 0),
+                margen: Number(itemForm.margen || 0),
+                garantia_meses: Number(itemForm.garantia_meses || 0),
+                aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true,
+                destino_entrega: itemForm.destino_entrega || '',
+              }
+            : item
         )
-        : [...items, { cantidad, aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true } as CotizacionItem]
+        : [
+            ...items,
+            {
+              ...itemForm,
+              id: -1,
+              cantidad,
+              costo_base: Number(itemForm.costo_base || 0),
+              margen: Number(itemForm.margen || 0),
+              garantia_meses: Number(itemForm.garantia_meses || 0),
+              aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true,
+              destino_entrega: itemForm.destino_entrega || '',
+            } as CotizacionItem,
+          ]
       : items;
-    const totalCantidad = previewItems.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
-    const itemsConCostos =
-      modoDistribucion === 'POR_CANTIDAD'
-        ? previewItems
-        : previewItems.filter((item) => item.aplica_costos_adicionales !== false);
-    const itemsSeleccionados = itemsConCostos.length > 0 ? itemsConCostos : previewItems;
-    const totalCantidadSeleccionada = itemsSeleccionados.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
-    const divisor =
-      modoDistribucion === 'POR_CANTIDAD'
-        ? totalCantidad > 0 ? totalCantidad : 1
-        : totalCantidadSeleccionada > 0 ? totalCantidadSeleccionada : 1;
-    const costoExtraUnitario = costosTotal / divisor;
-    const itemAplicaCostos =
-      modoDistribucion === 'POR_CANTIDAD'
-        ? true
-        : itemForm.aplica_costos_adicionales !== false;
-    const aplicaCostoExtra = itemAplicaCostos;
-    const costoUnitario = costoBase + (aplicaCostoExtra ? costoExtraUnitario : 0);
-    const periodoMeses = Math.max(0, Number(itemForm.garantia_meses || 0));
-    const precioVentaBase = margen < 100 ? costoUnitario / (1 - margen / 100) : costoUnitario;
-    const precioVenta = precioVentaBase;
-    const subtotal = precioVenta * cantidad * (isAlquilerPlantilla ? periodoMeses : 1);
-    const costoTotal = costoUnitario * cantidad;
-    const gananciaItem = subtotal - costoTotal;
-    const ganancia = currentIncludeIgv ? gananciaItem / 1.18 : gananciaItem;
+    const { items: previewCalculados } = recalcularItems(
+      previewItems,
+      costos,
+      modoDistribucion,
+      currentIncludeIgv,
+      {
+        tipoCalculo: isAlquilerPlantilla ? "ALQUILER" : "VENTA",
+        entregaMultidestino,
+      }
+    );
+    const itemCalculado = editingItemId
+      ? previewCalculados.find((item) => item.id === editingItemId)
+      : previewCalculados.find((item) => item.id === -1);
+
+    if (!itemCalculado) return;
 
     setItemForm(prev => ({
       ...prev,
-      costo_unitario: Number(costoUnitario.toFixed(2)),
-      costo_total: Number(costoTotal.toFixed(2)),
-      precio_venta: Number(precioVenta.toFixed(2)),
-      subtotal: Number(subtotal.toFixed(2)),
-      ganancia: Number(ganancia.toFixed(2)),
+      costo_unitario: Number(itemCalculado.costo_unitario || 0),
+      costo_total: Number(itemCalculado.costo_total || 0),
+      precio_venta: Number(itemCalculado.precio_venta || 0),
+      subtotal: Number(itemCalculado.subtotal || 0),
+      ganancia: Number(itemCalculado.ganancia || 0),
     }));
   }, [
     itemForm.costo_base,
@@ -977,6 +1011,7 @@ export function CotizacionDetail() {
     itemForm.cantidad,
     itemForm.garantia_meses,
     itemForm.aplica_costos_adicionales,
+    itemForm.destino_entrega,
     costos,
     items,
     editingItemId,
@@ -984,6 +1019,7 @@ export function CotizacionDetail() {
     modoDistribucion,
     currentIncludeIgv,
     isAlquilerPlantilla,
+    entregaMultidestino,
   ]);
 
   const [costoForm, setCostoForm] = useState({
@@ -992,6 +1028,7 @@ export function CotizacionDetail() {
     tipo: 'viaje',
     monto: 0,
     descripcion: '',
+    destino_entrega: '',
   });
 
   const handleOpenNewItem = () => {
@@ -1231,6 +1268,7 @@ export function CotizacionDetail() {
       setFormaPago(data.forma_pago || 'AL CONTADO');
       setEntregaProvincia(Boolean(data.entrega_provincia));
       setEntregaDestino(data.entrega_destino || '');
+      setEntregaMultidestino(Boolean(data.entrega_multidestino));
       setClienteContacto(data.cliente_contacto || data.cliente?.contacto || '');
       setDelegadoId(data.delegado_id || null);
       setDelegadoCotizacionId(data.delegado_cotizacion_id ?? (data as any).delegadoCotizacionId ?? null);
@@ -1327,6 +1365,37 @@ export function CotizacionDetail() {
         duration: 4000,
       } as any);
       return;
+    }
+
+    if (costos.length === 0) {
+      const continuar = window.confirm('La cotizacion no tiene costos adicionales. Revisa si corresponde agregar costos antes de enviarla a aprobacion. Deseas continuar de todos modos?');
+
+      if (!continuar) return;
+    }
+
+    if (entregaMultidestino) {
+      const hayItemsSinDestino = items.some((item) => !item.destino_entrega?.trim());
+      const destinosItems = new Set(items.map((item) => item.destino_entrega?.trim() || 'Lima Metropolitana'));
+      const destinosConCostos = new Set(costos.map((costo) => costo.destino_entrega?.trim() || 'Lima Metropolitana'));
+      const destinosSinCostos = Array.from(destinosItems).filter((destino) => !destinosConCostos.has(destino));
+
+      if (hayItemsSinDestino) {
+        showToast({
+          title: 'Destino asumido',
+          description: 'Hay items sin destino asignado. Se asumiran como Lima Metropolitana; asigna su destino y costo adicional si corresponde.',
+          type: 'warning',
+          duration: 5000,
+        } as any);
+      }
+
+      if (destinosSinCostos.length > 0) {
+        showToast({
+          title: 'Costos por destino',
+          description: `Hay destinos sin costos adicionales: ${destinosSinCostos.join(', ')}.`,
+          type: 'warning',
+          duration: 5000,
+        } as any);
+      }
     }
 
     setIsSendingReview(true);
@@ -1812,6 +1881,7 @@ export function CotizacionDetail() {
         ...item,
         ...primaryProveedor,
         proveedores,
+        destino_entrega: item.destino_entrega || '',
         costo_unitario: toMoneyValue(item.costo_unitario),
         precio_venta: toMoneyValue(item.precio_venta),
         costo_total: toMoneyValue(item.costo_total),
@@ -1834,6 +1904,7 @@ export function CotizacionDetail() {
       forma_pago: formaPago,
       entrega_provincia: entregaProvincia,
       entrega_destino: entregaProvincia ? entregaDestino.trim() : '',
+      entrega_multidestino: entregaMultidestino,
       cliente_contacto: clienteContactoValue,
       tipo_cambio_soles_a_usd: tipoCambioSolesADolar,
       tipo_cambio_usd_a_soles: tipoCambioDolarASoles,
@@ -2270,6 +2341,7 @@ export function CotizacionDetail() {
                 tipo: costoForm.tipo,
                 monto: Number(costoForm.monto),
                 descripcion: costoForm.descripcion || '',
+                destino_entrega: entregaMultidestino ? costoForm.destino_entrega || '' : '',
               }
             : costo
         )
@@ -2291,6 +2363,8 @@ export function CotizacionDetail() {
         monto: Number(costoForm.monto),
 
         descripcion: costoForm.descripcion || '',
+
+        destino_entrega: entregaMultidestino ? costoForm.destino_entrega || '' : '',
       };
 
       setCostos((prev) => [...prev, nuevoCosto]);
@@ -2308,6 +2382,7 @@ export function CotizacionDetail() {
       tipo: 'viaje',
       monto: 0,
       descripcion: '',
+      destino_entrega: '',
     });
   };
 
@@ -2333,6 +2408,7 @@ export function CotizacionDetail() {
       tipo: costo.tipo,
       monto: Number(costo.monto || 0),
       descripcion: costo.descripcion || '',
+      destino_entrega: costo.destino_entrega || '',
     });
   };
 
@@ -2343,6 +2419,7 @@ export function CotizacionDetail() {
       tipo: 'viaje',
       monto: 0,
       descripcion: '',
+      destino_entrega: '',
     });
   };
 
@@ -2376,6 +2453,7 @@ export function CotizacionDetail() {
       producto_externo_id: undefined,
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
+      destino_entrega: '',
       tipo: 'externo',
       margen: 20,
       nota: '',
@@ -2428,6 +2506,7 @@ export function CotizacionDetail() {
       precio_incluye_igv: currentIncludeIgv,
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
+      destino_entrega: '',
       tipo: 'catalogo',
       margen: 0,
       nota: '',
@@ -2504,6 +2583,7 @@ export function CotizacionDetail() {
       imagen_path: suggestion.imagen_path || image || null,
       tipo: 'externo',
       aplica_costos_adicionales: suggestion.aplica_costos_adicionales ?? true,
+      destino_entrega: suggestion.destino_entrega || prev.destino_entrega || '',
       importacion_calculo: null,
     }));
   };
@@ -2641,12 +2721,40 @@ export function CotizacionDetail() {
       producto_externo_id: undefined,
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
+      destino_entrega: '',
       tipo: 'externo' as 'catalogo' | 'externo',
       proveedor: '',
       link_proveedor: '',
       proveedores: [{ nombre: '', link: '', precio: null, notas: '' }],
       importacion_calculo: null,
     });
+  };
+
+  const destinosCotizacion = useMemo(() => {
+    const destinos = new Set<string>();
+
+    items.forEach((item) => {
+      if (item.destino_entrega?.trim()) destinos.add(item.destino_entrega.trim());
+    });
+    costos.forEach((costo) => {
+      if (costo.destino_entrega?.trim()) destinos.add(costo.destino_entrega.trim());
+    });
+
+    destinos.add('Lima Metropolitana');
+
+    return Array.from(destinos).sort((a, b) => a.localeCompare(b));
+  }, [items, costos]);
+
+  const handleChangeItemDestino = (itemId: number, destino: string) => {
+    if (isCotizacionReadOnly) return;
+
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? { ...item, destino_entrega: destino }
+          : item
+      )
+    );
   };
 
   //RECALCULO DE ITEMS
@@ -2659,9 +2767,12 @@ export function CotizacionDetail() {
       costos,
       modoDistribucion,
       currentIncludeIgv,
-      { tipoCalculo: isAlquilerPlantilla ? "ALQUILER" : "VENTA" }
+      {
+        tipoCalculo: isAlquilerPlantilla ? "ALQUILER" : "VENTA",
+        entregaMultidestino,
+      }
     );
-  }, [items, costos, modoDistribucion, currentIncludeIgv, isAlquilerPlantilla]);
+  }, [items, costos, modoDistribucion, currentIncludeIgv, isAlquilerPlantilla, entregaMultidestino]);
 
   const buildDraftSnapshot = useCallback(() => {
     if (isCotizacionReadOnly) return '';
@@ -2691,6 +2802,7 @@ export function CotizacionDetail() {
     formaPago,
     entregaProvincia,
     entregaDestino,
+    entregaMultidestino,
     tipoCambioSolesADolar,
     tipoCambioDolarASoles,
     validezDias,
@@ -3206,6 +3318,8 @@ export function CotizacionDetail() {
             setEntregaProvincia={setEntregaProvincia}
             entregaDestino={entregaDestino}
             setEntregaDestino={setEntregaDestino}
+            entregaMultidestino={entregaMultidestino}
+            setEntregaMultidestino={setEntregaMultidestino}
             clienteContacto={clienteContacto}
             setClienteContacto={setClienteContacto}
 
@@ -3242,6 +3356,9 @@ export function CotizacionDetail() {
             onOpenEdit={handleOpenEditItem}
             onReorderItems={handleReorderItems}
             onToggleAplicaCostosAdicionales={handleToggleAplicaCostosAdicionales}
+            entregaMultidestino={entregaMultidestino}
+            destinos={destinosCotizacion}
+            onDestinoChange={handleChangeItemDestino}
             todosItemsAprobados={todosItemsAprobados}
             onApproveAll={() => setEstadoCotizacionId(4)}
 
@@ -3779,6 +3896,8 @@ export function CotizacionDetail() {
         onSelectExternalSuggestion={handleExternalSuggestionSelection}
         isAlquiler={isAlquilerPlantilla}
         costoSinIgv={!currentIncludeIgv}
+        entregaMultidestino={entregaMultidestino}
+        destinos={destinosCotizacion}
       />
 
       {/* 4. Modal Costos Adicionales */}
@@ -3794,6 +3913,8 @@ export function CotizacionDetail() {
         onCancelEditCosto={handleCancelEditCosto}
         readOnly={isCotizacionReadOnly}
         simboloMoneda={simboloMoneda}
+        entregaMultidestino={entregaMultidestino}
+        destinos={destinosCotizacion}
       />
 
       {showRechazoModal && (

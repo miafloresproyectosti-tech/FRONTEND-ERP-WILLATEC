@@ -35,6 +35,8 @@ interface Props {
   onSelectExternalSuggestion?: (item: ItemForm) => void;
   isAlquiler?: boolean;
   costoSinIgv?: boolean;
+  entregaMultidestino?: boolean;
+  destinos?: string[];
 }
 
 export function ItemFormModal({
@@ -54,7 +56,9 @@ export function ItemFormModal({
   externalItemSuggestions = [],
   onSelectExternalSuggestion,
   isAlquiler = false,
-  costoSinIgv = false
+  costoSinIgv = false,
+  entregaMultidestino = false,
+  destinos = [],
 }: Props) {
   const [importCalcOpen, setImportCalcOpen] = React.useState(false);
   const [historyOpen, setHistoryOpen] = React.useState(false);
@@ -69,6 +73,15 @@ export function ItemFormModal({
     unidades: itemForm.cantidad ? String(itemForm.cantidad) : '1',
     pesoTotal: '',
   });
+  const destinosDisponibles = React.useMemo(() => {
+    const values = new Set<string>(['Lima Metropolitana']);
+    destinos.forEach((destino) => {
+      const value = destino?.trim();
+      if (value) values.add(value);
+    });
+
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [destinos]);
 
   if (!open) return null;
 
@@ -710,6 +723,28 @@ export function ItemFormModal({
           {/* Precios */}
           <div>
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Precios</p>
+            {entregaMultidestino && (
+              <div className="mb-2">
+                {field('Destino entrega',
+                  <>
+                    <input
+                      className={inp}
+                      type="text"
+                      list="item-destinos-entrega"
+                      disabled={readOnly}
+                      value={itemForm.destino_entrega || ''}
+                      onChange={e => setItemForm({ ...itemForm, destino_entrega: e.target.value })}
+                      placeholder="Lima Metropolitana"
+                    />
+                    <datalist id="item-destinos-entrega">
+                      {destinosDisponibles.map((destino) => (
+                        <option key={destino} value={destino} />
+                      ))}
+                    </datalist>
+                  </>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-2 mb-2">
               {field('Cantidad',
                 <input className={inp} type="number" min={1}

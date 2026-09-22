@@ -52,7 +52,11 @@ export interface OcPreview {
     estado?: string;
     estado_nombre?: string;
     estado_cotizacion_id?: number | string;
-    moneda?: string | null;
+    moneda?: string | {
+      id?: number | string;
+      codigo?: string | null;
+      simbolo?: string | null;
+    } | null;
   };
   items: OcPreviewItem[];
   proveedores?: string[];

@@ -19,6 +19,9 @@ interface Props{
   onOpenEdit: (item: CotizacionItem) => void;
   onReorderItems?: (items: CotizacionItem[]) => void;
   onToggleAplicaCostosAdicionales?: (id: number, checked: boolean) => void;
+  entregaMultidestino?: boolean;
+  destinos?: string[];
+  onDestinoChange?: (id: number, destino: string) => void;
 
   onApproveAll?: () => void;
   todosItemsAprobados?: boolean;
@@ -39,6 +42,9 @@ export function CotizacionItemsTable ({
   onOpenEdit, 
   onReorderItems,
   onToggleAplicaCostosAdicionales,
+  entregaMultidestino = false,
+  destinos = [],
+  onDestinoChange,
   onApproveAll,
   todosItemsAprobados,
   onAddItem,
@@ -50,6 +56,7 @@ const showCostosAdicionalesToggle = modoDistribucion !== "POR_CANTIDAD";
 const canReorder = !readOnly && Boolean(onReorderItems) && items.length > 1;
 const emptyColSpan =
   5 +
+  (entregaMultidestino ? 1 : 0) +
   (showCostosAdicionalesToggle ? 1 : 0) +
   (estadoCotizacionId === 3 ? 2 : 0) +
   (isOwnCotizacion ? 4 : 3) +
@@ -87,6 +94,14 @@ return (
       </button>
       )}
     </div>
+
+    {entregaMultidestino && (
+      <datalist id="cotizacion-destinos">
+        {destinos.map((destino) => (
+          <option key={destino} value={destino} />
+        ))}
+      </datalist>
+    )}
 
     <div className="grid gap-3 xl:hidden">
       {items.length === 0 ? (
@@ -211,6 +226,20 @@ return (
                 </label>
               )}
 
+              {entregaMultidestino && (
+                <label className="mt-3 block rounded-xl bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
+                  Destino
+                  <input
+                    list="cotizacion-destinos"
+                    value={item.destino_entrega || ""}
+                    disabled={readOnly}
+                    onChange={(event) => onDestinoChange?.(item.id, event.target.value)}
+                    placeholder="Lima Metropolitana"
+                    className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                  />
+                </label>
+              )}
+
               <div className="mt-4 border-t border-gray-100 pt-3">
                 {readOnly ? (
                   <button
@@ -250,6 +279,7 @@ return (
         <colgroup>
           {canReorder && <col style={{ width: '34px' }} />}
           <col style={{ width: '140px' }} />
+          {entregaMultidestino && <col style={{ width: '118px' }} />}
           <col style={{ width: '44px' }} />
           <col style={{ width: '52px' }} />
           <col style={{ width: '50px' }} />
@@ -268,6 +298,9 @@ return (
           <tr className="bg-gray-50 border-b border-gray-100">
             {canReorder && <th className="py-2.5 px-1 text-center font-medium text-gray-500"></th>}
             <th className="py-2.5 px-3 text-left font-medium text-gray-500">Descripción</th>
+            {entregaMultidestino && (
+              <th className="py-2.5 px-2 text-center font-medium text-gray-500">Destino</th>
+            )}
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Cant.</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Tipo</th>
             <th className="py-2.5 px-2 text-center font-medium text-gray-500">Días</th>
@@ -357,6 +390,19 @@ return (
                     </div>
                     {item.nota && <RichTextNote value={item.nota} />}
                   </td>
+                  {entregaMultidestino && (
+                    <td className="py-2.5 px-2 text-center">
+                      <input
+                        list="cotizacion-destinos"
+                        value={item.destino_entrega || ""}
+                        disabled={readOnly}
+                        onChange={(event) => onDestinoChange?.(item.id, event.target.value)}
+                        placeholder="Lima Metropolitana"
+                        className="w-full rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-800 outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+                        title={item.destino_entrega || "Lima Metropolitana"}
+                      />
+                    </td>
+                  )}
                   <td className="py-2.5 px-2 text-center text-gray-700">{item.cantidad}</td>
                   <td className="py-2.5 px-2 text-center">
                     <span className={`inline-block px-1.5 py-0.5 rounded-full text-[10px] font-medium ${

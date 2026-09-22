@@ -14,6 +14,7 @@ interface Props{
     tipo: string
     monto: number
     descripcion: string
+    destino_entrega?: string
   }
 
   setCostoForm: (data: any) => void;
@@ -24,6 +25,8 @@ interface Props{
   onCancelEditCosto: () => void;
   readOnly?: boolean;
   simboloMoneda?: string;
+  entregaMultidestino?: boolean;
+  destinos?: string[];
 }
 
 export function CostosModal({ 
@@ -38,8 +41,25 @@ export function CostosModal({
   onCancelEditCosto,
   readOnly = false,
   simboloMoneda = "S/",
+  entregaMultidestino = false,
+  destinos = [],
 }: Props) {
   if (!open) return null;
+
+  const normalizeDestino = (destino?: string | null) => {
+    const value = destino?.trim();
+
+    return value || "Lima Metropolitana";
+  };
+  const totalCostos = costos.reduce((acc, costo) => acc + Number(costo.monto || 0), 0);
+  const costosPorDestino = Array.from(
+    costos.reduce((map, costo) => {
+      const destino = normalizeDestino(costo.destino_entrega);
+      map.set(destino, (map.get(destino) || 0) + Number(costo.monto || 0));
+
+      return map;
+    }, new Map<string, number>())
+  ).sort(([a], [b]) => a.localeCompare(b));
 
   return (
   <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -81,6 +101,11 @@ export function CostosModal({
                   {costo.descripcion}
                 </p>
               )}
+              {entregaMultidestino && (
+                <p className="mt-1 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                  {costo.destino_entrega || "Lima Metropolitana"}
+                </p>
+              )}
             </div>
 
             {!readOnly && (
@@ -104,6 +129,25 @@ export function CostosModal({
           </div>
         ))}
       </div>
+
+      {costos.length > 0 && (
+        <div className="mb-4 rounded-lg border border-purple-100 bg-purple-50 px-3 py-2">
+          <div className="flex items-center justify-between text-xs font-semibold text-purple-900">
+            <span>{entregaMultidestino ? "Total por destino" : "Total costos adicionales"}</span>
+            {!entregaMultidestino && <span>{formatMoney(totalCostos, simboloMoneda)}</span>}
+          </div>
+          {entregaMultidestino && (
+            <div className="mt-2 space-y-1">
+              {costosPorDestino.map(([destino, total]) => (
+                <div key={destino} className="flex items-center justify-between gap-3 text-xs text-purple-800">
+                  <span className="truncate">{destino}</span>
+                  <span className="font-semibold">{formatMoney(total, simboloMoneda)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* FORMULARIO */}
       <div className="space-y-3 border-t pt-4">
@@ -166,6 +210,29 @@ export function CostosModal({
           className="w-full p-2 border rounded-lg"
           placeholder="Descripción"
         />
+
+        {entregaMultidestino && (
+          <>
+            <input
+              list="costos-destinos"
+              type="text"
+              value={costoForm.destino_entrega || ''}
+              onChange={(e) =>
+                setCostoForm({
+                  ...costoForm,
+                  destino_entrega: e.target.value
+                })
+              }
+              className="w-full p-2 border rounded-lg"
+              placeholder="Destino del costo (ej. Lima Metropolitana)"
+            />
+            <datalist id="costos-destinos">
+              {destinos.map((destino) => (
+                <option key={destino} value={destino} />
+              ))}
+            </datalist>
+          </>
+        )}
 
         <button
           onClick={onAddCosto}

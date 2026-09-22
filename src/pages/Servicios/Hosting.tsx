@@ -12,6 +12,8 @@ import {
   FileText,
   Upload,
   RefreshCw,
+  Link2,
+  ExternalLink,
 } from "lucide-react";
 
 import {
@@ -24,13 +26,17 @@ import {
   renovarHosting,
   updateHosting,
   uploadHostingDocumentos,
+  linkHostingCotizacion,
+  unlinkHostingCotizacion,
   type HostingAlertaEnviadaApi,
   type HostingApi,
+  type HostingCotizacionApi,
   type HostingDocumentoApi,
   type HostingImportPreview,
   type HostingImportRow,
   type HostingPayload,
 } from "../../services/hosting.service";
+import { exportarCotizacionPdf, getCotizacionesPaginated, type Cotizacion } from "../../services/cotizacion.service";
 import {
   getActiveClientesSearchCached,
   type Cliente,
@@ -60,6 +66,7 @@ interface Hosting {
   cliente: string;
   correoHosting: string;
   documentos: HostingDocumentoApi[];
+  cotizaciones: HostingCotizacionApi[];
   estado: "VIGENTE" | "POR VENCER" | "VENCIDO";
   alertasCount: number;
   ultimaAlerta: string | null;
@@ -98,11 +105,19 @@ export default function Hosting() {
   const [renewMode, setRenewMode] = useState<"ANUAL" | "MENSUAL">("ANUAL");
   const [renewMonths, setRenewMonths] = useState("1");
   const [renewing, setRenewing] = useState(false);
+  const [cotizacionNumero, setCotizacionNumero] = useState("");
+  const [linkingCotizacion, setLinkingCotizacion] = useState(false);
+  const [cotizacionSearch, setCotizacionSearch] = useState("");
+  const [cotizacionesEncontradas, setCotizacionesEncontradas] = useState<Cotizacion[]>([]);
+  const [cotizacionesLoading, setCotizacionesLoading] = useState(false);
+  const [showCotizacionDropdown, setShowCotizacionDropdown] = useState(false);
+  const [viewingPdfCotizacionId, setViewingPdfCotizacionId] = useState<number | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clientesLoading, setClientesLoading] = useState(false);
   const [clienteSearch, setClienteSearch] = useState("");
   const [showClienteDropdown, setShowClienteDropdown] = useState(false);
   const debouncedClienteSearch = useDebouncedValue(clienteSearch, 300);
+  const debouncedCotizacionSearch = useDebouncedValue(cotizacionSearch, 300);
 
   const [form, setForm] = useState({
     cliente_id: "",
@@ -118,6 +133,7 @@ export default function Hosting() {
     contacto: "",
     cliente: "",
     correoHosting: "",
+    cotizacionNumero: "",
   });
 
   const mapHosting = (hosting: HostingApi): Hosting => ({
@@ -144,6 +160,7 @@ export default function Hosting() {
     cliente: hosting.cliente || hosting.cliente_relacionado?.nombre || "",
     correoHosting: hosting.correo_hosting || hosting.cliente_relacionado?.correo || "",
     documentos: hosting.documentos || [],
+    cotizaciones: hosting.cotizaciones || [],
     estado: getEstado(hosting.fecha_renovacion),
     alertasCount: Number(hosting.alertas_enviadas_count || 0),
     ultimaAlerta: hosting.alertas_enviadas_max_sent_at || null,
@@ -232,6 +249,53 @@ export default function Hosting() {
     };
   }, [debouncedClienteSearch, openModal, showClienteDropdown]);
 
+  useEffect(() => {
+  if (!showCotizacionDropdown) {
+    return;
+  }
+
+  let cancelled = false;
+
+  const buscarCotizacionesAprobadas = async () => {
+    try {
+      setCotizacionesLoading(true);
+
+      const response = await getCotizacionesPaginated({
+        search: debouncedCotizacionSearch,
+        estadoCotizacionId: 4, // aprobada
+        page: 1,
+        perPage: 10,
+      });
+
+      if (!cancelled) {
+        setCotizacionesEncontradas(response.data || []);
+      }
+    } catch (error) {
+      console.error("Error al buscar cotizaciones aprobadas:", error);
+
+      if (!cancelled) {
+        setCotizacionesEncontradas([]);
+      }
+    } finally {
+      if (!cancelled) {
+        setCotizacionesLoading(false);
+      }
+    }
+  };
+
+  void buscarCotizacionesAprobadas();
+
+  return () => {
+    cancelled = true;
+  };
+}, [debouncedCotizacionSearch, showCotizacionDropdown]);
+
+const handleCotizacionSelect = (cotizacion: Cotizacion) => {
+  setCotizacionNumero(cotizacion.numero);
+  setCotizacionSearch(cotizacion.numero);
+  setShowCotizacionDropdown(false);
+};
+
   const handleClienteSelect = (cliente: Cliente) => {
     setForm((currentForm) => ({
       ...currentForm,
@@ -299,6 +363,21 @@ export default function Hosting() {
     })}`;
   };
 
+  const formatCotizacionTotal = (cotizacion: HostingCotizacionApi) => {
+    const total = cotizacion.total === null || cotizacion.total === undefined
+      ? null
+      : Number(cotizacion.total);
+
+    if (total === null || Number.isNaN(total)) return "-";
+
+    const symbol = cotizacion.moneda?.simbolo || (Number(cotizacion.moneda_id) === 2 ? "$" : "S/");
+
+    return `${symbol} ${total.toLocaleString("es-PE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
   const alertDaysFor = (suscripcion: Hosting["suscripcion"]) =>
     suscripcion === "ANUAL" ? [90, 60, 30, 15, 3, 2, 1, 0] : [7, 4, 3, 2, 1, 0];
 
@@ -308,6 +387,10 @@ export default function Hosting() {
       : "Periodo mensual: se enviará faltando 7, 4, 3, 2, 1 día y el mismo día del vencimiento.";
 
   const getNextAlert = (hosting: Hosting) => {
+    if (hosting.renovacionProgramada) {
+      return null;
+    }
+
     const vencimiento = parseDateOnly(hosting.fechaRenovacion);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -374,6 +457,7 @@ export default function Hosting() {
       contacto: form.contacto.trim() || null,
       cliente: form.cliente.trim() || null,
       correo_hosting: form.correoHosting.trim() || null,
+      cotizacion_numero: form.cotizacionNumero.trim() || null,
     };
 
     try {
@@ -419,6 +503,7 @@ export default function Hosting() {
       contacto: hosting.contacto,
       cliente: hosting.cliente,
       correoHosting: hosting.correoHosting,
+      cotizacionNumero: "",
     });
     setClienteSearch(hosting.cliente || hosting.empresa);
     setEditingId(hosting.id);
@@ -505,6 +590,52 @@ export default function Hosting() {
     }
   };
 
+  const handleLinkCotizacion = async () => {
+    if (!viewModal || !cotizacionNumero.trim()) return;
+
+    try {
+      setLinkingCotizacion(true);
+      const updated = await linkHostingCotizacion(viewModal.id, cotizacionNumero.trim());
+      updateHostingEnLista(updated);
+      setCotizacionNumero("");
+      setCotizacionSearch("");
+      setCotizacionesEncontradas([]);
+      setShowCotizacionDropdown(false);
+    } catch (error) {
+      console.error("Error al enlazar cotizacion:", error);
+      alert("No se pudo enlazar la cotización. Verifica que el número exista.");
+    } finally {
+      setLinkingCotizacion(false);
+    }
+  };
+
+  const handleUnlinkCotizacion = async (cotizacionId: number) => {
+    if (!viewModal) return;
+
+    try {
+      const updated = await unlinkHostingCotizacion(viewModal.id, cotizacionId);
+      updateHostingEnLista(updated);
+    } catch (error) {
+      console.error("Error al desenlazar cotizacion:", error);
+      alert("No se pudo desenlazar la cotización.");
+    }
+  };
+
+  const handleViewCotizacionPdf = async (cotizacion: HostingCotizacionApi) => {
+    try {
+      setViewingPdfCotizacionId(cotizacion.id);
+      const { blob } = await exportarCotizacionPdf(cotizacion.id);
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      console.error("Error al abrir PDF de cotizacion:", error);
+      alert("No se pudo abrir el PDF de la cotización.");
+    } finally {
+      setViewingPdfCotizacionId(null);
+    }
+  };
+
   const resetForm = () => {
     setForm({
       cliente_id: "",
@@ -520,6 +651,7 @@ export default function Hosting() {
       contacto: "",
       cliente: "",
       correoHosting: "",
+      cotizacionNumero: "",
     });
     setClienteSearch("");
     setShowClienteDropdown(false);
@@ -1044,7 +1176,7 @@ export default function Hosting() {
       {/* TABLE */}
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-        <table className="min-w-[1440px] w-full text-sm">
+        <table className="min-w-[1540px] w-full text-sm">
 
           <thead className="bg-gray-100">
             <tr>
@@ -1058,6 +1190,7 @@ export default function Hosting() {
               <th className="p-3 text-left font-semibold">F. Inicio</th>
               <th className="p-3 text-left font-semibold">F. Renovación</th>
               <th className="p-3 text-left font-semibold">Estado</th>
+              <th className="p-3 text-left font-semibold">Cotizaciones</th>
               <th className="p-3 text-left font-semibold">Alertas</th>
               <th className="sticky right-0 z-10 bg-gray-100 p-3 text-left font-semibold shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">Acciones</th>
             </tr>
@@ -1066,13 +1199,13 @@ export default function Hosting() {
           <tbody>
             {loadingHostings ? (
               <tr>
-                <td colSpan={12} className="p-8 text-center text-gray-500">
+                <td colSpan={13} className="p-8 text-center text-gray-500">
                   Cargando hostings...
                 </td>
               </tr>
             ) : filtrados.length === 0 ? (
               <tr>
-                <td colSpan={12} className="p-8 text-center text-gray-500">
+                <td colSpan={13} className="p-8 text-center text-gray-500">
                   No hay hostings que mostrar
                 </td>
               </tr>
@@ -1119,7 +1252,22 @@ export default function Hosting() {
                           : 'Vencido'
                         }
                       </span>
+                      {h.renovacionProgramada && (
+                        <span className="block rounded bg-emerald-50 px-1.5 py-1 text-center text-[10px] font-semibold text-emerald-700">
+                          Renovación programada
+                        </span>
+                      )}
                     </div>
+                  </td>
+
+                  <td className="p-3">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      h.cotizaciones.length > 0
+                        ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
+                        : "bg-gray-50 text-gray-500 border border-gray-100"
+                    }`}>
+                      {h.cotizaciones.length} enlazada{h.cotizaciones.length === 1 ? "" : "s"}
+                    </span>
                   </td>
 
                   <td className="p-3">
@@ -1134,8 +1282,10 @@ export default function Hosting() {
                       <p className="text-xs text-gray-500">
                         Ultima: {formatDateTime(h.ultimaAlerta)}
                       </p>
-                      <p className="text-xs font-medium text-blue-700">
-                        Proxima: {nextAlert ? formatDateOnly(nextAlert.date) : "Sin pendiente"}
+                      <p className={`text-xs font-medium ${h.renovacionProgramada ? "text-emerald-700" : "text-blue-700"}`}>
+                        {h.renovacionProgramada
+                          ? "Avisos pausados por renovación"
+                          : `Proxima: ${nextAlert ? formatDateOnly(nextAlert.date) : "Sin pendiente"}`}
                       </p>
                     </div>
                   </td>
@@ -1143,7 +1293,13 @@ export default function Hosting() {
                   <td className="sticky right-0 z-10 bg-white p-3 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">
                     <div className="flex gap-1 whitespace-nowrap">
                     <button
-                      onClick={() => setViewModal(h)}
+                      onClick={() => {
+                        setCotizacionNumero("");
+                        setCotizacionSearch("");
+                        setCotizacionesEncontradas([]);
+                        setShowCotizacionDropdown(false);
+                        setViewModal(h);
+                      }}
                       className="bg-gray-100 p-2 rounded hover:bg-gray-200 transition-colors"
                       title="Ver detalle"
                     >
@@ -1343,6 +1499,25 @@ export default function Hosting() {
                   </div>
                   <p className="mt-1 text-xs text-gray-500">
                     Dato referencial. No altera renovaciones ni alertas.
+                  </p>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">
+                    Número de cotización asociada
+                  </label>
+                  <div className="flex items-center gap-2 rounded-lg border border-gray-300 p-3 focus-within:border-transparent focus-within:ring-2 focus-within:ring-blue-500">
+                    <Link2 size={16} className="text-gray-400" />
+                    <input
+                      name="cotizacionNumero"
+                      placeholder="Ej. COT-000123"
+                      className="w-full outline-none"
+                      value={form.cotizacionNumero}
+                      onChange={handleChange}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Opcional. Se busca y enlaza por número de cotización, no por ID.
                   </p>
                 </div>
 
@@ -1587,6 +1762,300 @@ export default function Hosting() {
                 </tbody>
               </table>
 
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+              {/* CABECERA + BUSCADOR */}
+              <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(380px,520px)] lg:items-start">
+                <div className="self-center">
+                  <h3 className="font-semibold text-indigo-950">
+                    Cotizaciones enlazadas
+                  </h3>
+
+                  <p className="mt-1 max-w-md text-xs leading-relaxed text-indigo-700">
+                    Historial de cotizaciones que derivaron en venta o renovación de este hosting.
+                  </p>
+                </div>
+
+                <div className="w-full">
+                  <label className="mb-1 block text-xs font-semibold text-gray-600">
+                    Buscar cotización aprobada
+                  </label>
+
+                  <div className="flex items-start gap-2">
+                    {/* BUSCADOR */}
+                    <div className="relative min-w-0 flex-1">
+                      <div className="flex h-11 items-center gap-2 rounded-lg border border-indigo-200 bg-white px-3 focus-within:border-transparent focus-within:ring-2 focus-within:ring-indigo-500">
+                        <Search size={16} className="shrink-0 text-gray-400" />
+
+                        <input
+                          value={cotizacionSearch}
+                          onChange={(event) => {
+                            setCotizacionSearch(event.target.value);
+
+                            // Al escribir nuevamente, quitamos la selección anterior.
+                            setCotizacionNumero("");
+
+                            setShowCotizacionDropdown(true);
+                          }}
+                          onFocus={() => setShowCotizacionDropdown(true)}
+                          placeholder="Buscar por número, cliente o título..."
+                          className="min-w-0 flex-1 bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
+                        />
+
+                        {cotizacionSearch && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCotizacionSearch("");
+                              setCotizacionNumero("");
+                              setCotizacionesEncontradas([]);
+                              setShowCotizacionDropdown(true);
+                            }}
+                            className="shrink-0 rounded p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                            title="Limpiar búsqueda"
+                          >
+                            <XCircle size={15} />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* COTIZACIÓN SELECCIONADA */}
+                      {cotizacionNumero && !showCotizacionDropdown && (
+                        <div className="mt-2 flex items-center gap-2 text-xs text-emerald-700">
+                          <CheckCircle2 size={14} className="shrink-0" />
+                          <span>Cotización seleccionada:</span>
+                          <span className="font-semibold">
+                            {cotizacionNumero}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* DROPDOWN */}
+                      {showCotizacionDropdown && (
+                        <div className="absolute right-0 z-40 mt-2 w-full min-w-[520px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+                          {cotizacionesLoading ? (
+                            <div className="flex items-center justify-center gap-2 px-4 py-6 text-sm text-gray-500">
+                              <RefreshCw size={16} className="animate-spin" />
+                              Buscando cotizaciones...
+                            </div>
+                          ) : cotizacionesEncontradas.length > 0 ? (
+                            <div className="max-h-80 overflow-y-auto">
+                              {cotizacionesEncontradas.map((cotizacion) => {
+                                const total = Number(cotizacion.total ?? 0);
+
+                                const simbolo =
+                                  cotizacion.moneda?.simbolo ||
+                                  (Number(cotizacion.moneda_id) === 2 ? "$" : "S/");
+
+                                const cliente =
+                                  cotizacion.cliente?.nombre ||
+                                  cotizacion.cliente_nombre ||
+                                  "Cliente no disponible";
+
+                                return (
+                                  <button
+                                    key={cotizacion.id}
+                                    type="button"
+                                    onClick={() => handleCotizacionSelect(cotizacion)}
+                                    className="block w-full border-b border-gray-100 px-4 py-3 text-left transition last:border-b-0 hover:bg-indigo-50"
+                                  >
+                                    {/* FILA SUPERIOR */}
+                                    <div className="flex items-center justify-between gap-4">
+                                      <div className="flex min-w-0 items-center gap-2">
+                                        <span className="whitespace-nowrap font-bold text-gray-900">
+                                          {cotizacion.numero}
+                                        </span>
+
+                                        <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                          Aprobada
+                                        </span>
+                                      </div>
+
+                                      <span className="shrink-0 font-bold text-gray-900">
+                                        {simbolo}{" "}
+                                        {total.toLocaleString("es-PE", {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}
+                                      </span>
+                                    </div>
+
+                                    {/* CLIENTE + FECHA */}
+                                    <div className="mt-1.5 flex items-center justify-between gap-4 text-xs">
+                                      <span className="min-w-0 truncate font-medium text-gray-600">
+                                        {cliente}
+                                      </span>
+
+                                      <span className="shrink-0 text-gray-400">
+                                        {cotizacion.fecha || "Sin fecha"}
+                                      </span>
+                                    </div>
+
+                                    {/* TÍTULO */}
+                                    <p
+                                      className="mt-1 truncate text-xs text-gray-400"
+                                      title={cotizacion.titulo || ""}
+                                    >
+                                      {cotizacion.titulo || "Sin título"}
+                                    </p>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="px-4 py-6 text-center">
+                              <Search
+                                size={22}
+                                className="mx-auto mb-2 text-gray-300"
+                              />
+
+                              <p className="text-sm font-medium text-gray-600">
+                                No se encontraron cotizaciones aprobadas
+                              </p>
+
+                              <p className="mt-1 text-xs text-gray-400">
+                                Intenta buscar por número, cliente o título.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* BOTÓN ENLAZAR */}
+                    <button
+                      type="button"
+                      onClick={() => void handleLinkCotizacion()}
+                      disabled={linkingCotizacion || !cotizacionNumero.trim()}
+                      className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                    >
+                      {linkingCotizacion ? (
+                        <>
+                          <RefreshCw size={15} className="animate-spin" />
+                          Enlazando...
+                        </>
+                      ) : (
+                        <>
+                          <Link2 size={15} />
+                          Enlazar
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* COTIZACIONES YA ENLAZADAS */}
+              {viewModal.cotizaciones.length > 0 ? (
+                <div className="overflow-x-auto rounded-xl border border-indigo-100 bg-white">
+                  <table className="w-full min-w-[720px] text-sm">
+                    <thead className="bg-indigo-50 text-indigo-900">
+                      <tr>
+                        <th className="p-3 text-left font-semibold">
+                          Número
+                        </th>
+
+                        <th className="p-3 text-left font-semibold">
+                          Fecha
+                        </th>
+
+                        <th className="p-3 text-left font-semibold">
+                          Cliente
+                        </th>
+
+                        <th className="p-3 text-left font-semibold">
+                          Total
+                        </th>
+
+                        <th className="p-3 text-left font-semibold">
+                          Acciones
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {viewModal.cotizaciones.map((cotizacion) => (
+                        <tr
+                          key={cotizacion.id}
+                          className="border-t border-indigo-50"
+                        >
+                          <td className="p-3">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                window.open(
+                                  `/cotizaciones/${cotizacion.id}/view`,
+                                  "_blank",
+                                  "noopener,noreferrer"
+                                )
+                              }
+                              className="inline-flex items-center gap-1 font-bold text-blue-700 transition hover:text-blue-900"
+                              title={cotizacion.titulo || cotizacion.numero}
+                            >
+                              {cotizacion.numero}
+                              <ExternalLink size={13} />
+                            </button>
+                          </td>
+
+                          <td className="p-3 text-gray-600">
+                            {cotizacion.fecha || "-"}
+                          </td>
+
+                          <td className="p-3 text-gray-700">
+                            {cotizacion.cliente_nombre || "-"}
+                          </td>
+
+                          <td className="p-3 font-semibold text-gray-800">
+                            {formatCotizacionTotal(cotizacion)}
+                          </td>
+
+                          <td className="p-3">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleViewCotizacionPdf(cotizacion)
+                                }
+                                disabled={
+                                  viewingPdfCotizacionId === cotizacion.id
+                                }
+                                className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:opacity-60"
+                              >
+                                <FileText size={14} />
+
+                                {viewingPdfCotizacionId === cotizacion.id
+                                  ? "Abriendo..."
+                                  : "VER PDF COTIZACIÓN"}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (
+                                    confirm(
+                                      "¿Desenlazar esta cotización del hosting?"
+                                    )
+                                  ) {
+                                    void handleUnlinkCotizacion(cotizacion.id);
+                                  }
+                                }}
+                                className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+                              >
+                                Desenlazar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-indigo-200 bg-white px-4 py-5 text-sm text-gray-500">
+                  Todavía no hay cotizaciones enlazadas para este hosting.
+                </div>
+              )}
+            </div>
+
               {(() => {
                 const nextAlert = getNextAlert(viewModal);
 
@@ -1601,7 +2070,14 @@ export default function Hosting() {
                       </div>
                       <div className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm shadow-sm sm:min-w-[210px]">
                         <p className="text-xs font-semibold uppercase text-amber-700">Próxima alerta</p>
-                        {nextAlert ? (
+                        {viewModal.renovacionProgramada ? (
+                          <>
+                            <p className="mt-1 font-bold text-emerald-700">Avisos pausados</p>
+                            <p className="text-xs text-emerald-700">
+                              No se enviarán correos de vencimiento porque la renovación está programada.
+                            </p>
+                          </>
+                        ) : nextAlert ? (
                           <>
                             <p className="mt-1 font-bold text-amber-950">{formatDateOnly(nextAlert.date)}</p>
                             <p className="text-xs text-amber-700">

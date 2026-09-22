@@ -51,6 +51,8 @@ interface Props {
   setEntregaProvincia: (v: boolean) => void;
   entregaDestino: string;
   setEntregaDestino: (v: string) => void;
+  entregaMultidestino: boolean;
+  setEntregaMultidestino: (v: boolean) => void;
 
   clienteContacto: string;
   setClienteContacto: (v: string) => void;
@@ -98,6 +100,8 @@ export function CotizacionGeneralForm({
   setEntregaProvincia,
   entregaDestino,
   setEntregaDestino,
+  entregaMultidestino,
+  setEntregaMultidestino,
   clienteContacto,
   setClienteContacto,
   disabled,
@@ -302,6 +306,23 @@ export function CotizacionGeneralForm({
                   />
                   ¿La entrega es en provincia?
                 </label>
+
+                <label className="mt-3 flex items-center gap-3 text-sm font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    disabled={disabled}
+                    checked={entregaMultidestino}
+                    onChange={(e) => setEntregaMultidestino(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  Cotización multidestino
+                </label>
+
+                {entregaMultidestino && (
+                  <p className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
+                    Cada item puede tener un destino y los costos adicionales se calculan por destino.
+                  </p>
+                )}
 
                 {entregaProvincia && (
                   <div className="mt-3">

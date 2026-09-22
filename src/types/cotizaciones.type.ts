@@ -9,6 +9,7 @@ export interface Cotizacion {
     forma_pago?: string;
     entrega_provincia?: boolean;
     entrega_destino?: string | null;
+    entrega_multidestino?: boolean;
     subtotal: number;
     igv: number;
     total: number;
@@ -106,6 +107,7 @@ export type CotizacionItem ={
     plantilla_ultimo_uso_nombre?: string | null;
     estado_cotizacion_item_id?: number;
     aplica_costos_adicionales?: boolean;
+    destino_entrega?: string | null;
     created_at?: string;
     updated_at?: string;
     tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados
@@ -127,6 +129,7 @@ export interface CotizacionCostosAdicional {
     tipo: string;
     monto: number;
     descripcion: string;
+    destino_entrega?: string | null;
     created_at?: string;
     updated_at?: string;
 }
@@ -193,6 +196,7 @@ export interface ItemForm {
     plantilla_ultimo_uso_nombre?: string | null;
     estado_cotizacion_item_id?: number;
     aplica_costos_adicionales?: boolean;
+    destino_entrega?: string | null;
     created_at?: string;
     updated_at?: string;
     tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados
