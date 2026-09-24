@@ -1,6 +1,22 @@
 import React from "react";
-import type { ImportacionCalculoTipo, ItemForm } from "../../../types/cotizaciones.type";
-import { Bold, Calculator, Copy, ExternalLink, Eye, History, Italic, Loader2, Plus, Trash2, Underline, X } from "lucide-react";
+import type {
+  ImportacionCalculoTipo,
+  ItemForm,
+} from "../../../types/cotizaciones.type";
+import {
+  Bold,
+  Calculator,
+  Copy,
+  ExternalLink,
+  Eye,
+  History,
+  Italic,
+  Loader2,
+  Plus,
+  Trash2,
+  Underline,
+  X,
+} from "lucide-react";
 import { formatMoney } from "../../../utils/formatNumber";
 import { resolveItemImageUrl } from "../../../utils/storageImage";
 import api from "../../../services/api";
@@ -37,6 +53,7 @@ interface Props {
   costoSinIgv?: boolean;
   entregaMultidestino?: boolean;
   destinos?: string[];
+  onApplyDestinoMarginToAll?: (destinoEntrega: string, margen: number, sourceItemId?: number) => void;
 }
 
 export function ItemFormModal({
@@ -59,22 +76,26 @@ export function ItemFormModal({
   costoSinIgv = false,
   entregaMultidestino = false,
   destinos = [],
+  onApplyDestinoMarginToAll,
 }: Props) {
   const [importCalcOpen, setImportCalcOpen] = React.useState(false);
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [historyLoading, setHistoryLoading] = React.useState(false);
   const [historyError, setHistoryError] = React.useState("");
-  const [productHistory, setProductHistory] = React.useState<ProductoExternoHistorialResponse | null>(null);
+  const [productHistory, setProductHistory] =
+    React.useState<ProductoExternoHistorialResponse | null>(null);
   const [loadedHistoryKey, setLoadedHistoryKey] = React.useState("");
   const noteTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const [importCalcType, setImportCalcType] = React.useState<'under200' | 'from201to1999' | 'from2000up'>('under200');
+  const [importCalcType, setImportCalcType] = React.useState<
+    "under200" | "from201to1999" | "from2000up"
+  >("under200");
   const [importCalcForm, setImportCalcForm] = React.useState({
-    precioProducto: itemForm.costo_base ? String(itemForm.costo_base) : '',
-    unidades: itemForm.cantidad ? String(itemForm.cantidad) : '1',
-    pesoTotal: '',
+    precioProducto: itemForm.costo_base ? String(itemForm.costo_base) : "",
+    unidades: itemForm.cantidad ? String(itemForm.cantidad) : "1",
+    pesoTotal: "",
   });
   const destinosDisponibles = React.useMemo(() => {
-    const values = new Set<string>(['Lima Metropolitana']);
+    const values = new Set<string>(["Lima Metropolitana"]);
     destinos.forEach((destino) => {
       const value = destino?.trim();
       if (value) values.add(value);
@@ -87,19 +108,27 @@ export function ItemFormModal({
 
   const importCalc = itemForm.importacion_calculo ?? null;
   const hasImportCalc = Boolean(importCalc);
-  const showImportCalcControls = itemForm.disponibilidad_tipo === 'importacion';
+  const showImportCalcControls = itemForm.disponibilidad_tipo === "importacion";
   const isImportCalcReadOnly = readOnly && hasImportCalc;
 
   const periodoMeses = Math.max(0, Number(itemForm.garantia_meses || 0));
   const costoBaseUnitario = Number(itemForm.costo_base || 0);
-  const costoUnitarioCalculado = Number(itemForm.costo_unitario ?? itemForm.costo_base ?? 0);
-  const costoAdicionalUnitario = Math.max(0, Number((costoUnitarioCalculado - costoBaseUnitario).toFixed(2)));
+  const costoUnitarioCalculado = Number(
+    itemForm.costo_unitario ?? itemForm.costo_base ?? 0,
+  );
+  const costoAdicionalUnitario = Math.max(
+    0,
+    Number((costoUnitarioCalculado - costoBaseUnitario).toFixed(2)),
+  );
   const muestraCostoConAdicionales = costoAdicionalUnitario > 0.009;
   const precioUnitMensual = Number(itemForm.precio_venta || 0);
-  const precioCantidadMensual = Number((precioUnitMensual * Number(itemForm.cantidad || 0)).toFixed(2));
+  const precioCantidadMensual = Number(
+    (precioUnitMensual * Number(itemForm.cantidad || 0)).toFixed(2),
+  );
   const precioTotalMeses = Number(itemForm.subtotal || 0);
-  const costoLabel = `Costo${costoSinIgv ? ' (SIN IGV)' : ''} (${monedaId === 1 ? 'S/.' : '$'})`;
-  const historyProductId = itemForm.producto_externo_id || itemForm.producto_id || null;
+  const costoLabel = `Costo${costoSinIgv ? " (SIN IGV)" : ""} (${monedaId === 1 ? "S/." : "$"})`;
+  const historyProductId =
+    itemForm.producto_externo_id || itemForm.producto_id || null;
   const historyKey = itemForm.producto_externo_id
     ? `externo:${itemForm.producto_externo_id}`
     : itemForm.producto_id
@@ -129,7 +158,7 @@ export function ItemFormModal({
   const handleImageFile = async (file: File) => {
     // Preview local inmediato
     readImageFile(file, (dataUrl) => {
-      setItemForm(prev => ({ ...prev, imagen: dataUrl }));
+      setItemForm((prev) => ({ ...prev, imagen: dataUrl }));
     });
 
     // Subir al servidor en segundo plano
@@ -140,7 +169,7 @@ export function ItemFormModal({
         headers: { "Content-Type": "multipart/form-data" },
       });
       // Reemplazar base64 con la URL del servidor
-      setItemForm(prev => ({ ...prev, imagen: res.data.url }));
+      setItemForm((prev) => ({ ...prev, imagen: res.data.url }));
     } catch (error) {
       console.error("Error al subir imagen", error);
       // Si falla, se queda con el base64 como fallback
@@ -155,9 +184,11 @@ export function ItemFormModal({
     }
   };
 
-  const handlePaste: React.ClipboardEventHandler<HTMLLabelElement> = (event) => {
+  const handlePaste: React.ClipboardEventHandler<HTMLLabelElement> = (
+    event,
+  ) => {
     const imageItem = Array.from(event.clipboardData.items).find((item) =>
-      item.type.startsWith("image/")
+      item.type.startsWith("image/"),
     );
     if (imageItem) {
       const file = imageItem.getAsFile();
@@ -167,23 +198,25 @@ export function ItemFormModal({
     }
   };
 
-  const inp = "w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-1 focus:ring-blue-400 outline-none bg-white";
-  const calcNumber = (value: string | number | null | undefined) => Number(value || 0);
+  const inp =
+    "w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-1 focus:ring-blue-400 outline-none bg-white";
+  const calcNumber = (value: string | number | null | undefined) =>
+    Number(value || 0);
   const calcConfig = {
     under200: {
-      label: 'IMPORTACIÓN MENOS DE $200',
+      label: "IMPORTACIÓN MENOS DE $200",
       desaduanaje: 25,
       agenteAduanero: 0,
       impuestoRate: 0,
     },
     from201to1999: {
-      label: 'IMPORTACIÓN VALOR DE $201 A $1999',
+      label: "IMPORTACIÓN VALOR DE $201 A $1999",
       desaduanaje: 30,
       agenteAduanero: 0,
       impuestoRate: 0.25,
     },
     from2000up: {
-      label: 'IMPORTACIÓN VALOR DE $2000 A +',
+      label: "IMPORTACIÓN VALOR DE $2000 A +",
       desaduanaje: 40,
       agenteAduanero: 300,
       impuestoRate: 0.25,
@@ -201,9 +234,10 @@ export function ItemFormModal({
     const impuesto = subTotal * calcConfig.impuestoRate;
     const total = subTotal + impuesto;
     const precioUnitario = unidades > 0 ? total / unidades : 0;
-    const costoAplicable = monedaId === 1
-      ? precioUnitario * (tipoCambioDolarASoles || 3.5)
-      : precioUnitario;
+    const costoAplicable =
+      monedaId === 1
+        ? precioUnitario * (tipoCambioDolarASoles || 3.5)
+        : precioUnitario;
 
     return {
       precioProducto,
@@ -221,7 +255,7 @@ export function ItemFormModal({
     };
   })();
   const formatUsd = (value: number) =>
-    `$ ${value.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    `$ ${value.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const formatDate = (value?: string | null) => {
     if (!value) return "Sin fecha";
     const date = new Date(value);
@@ -239,7 +273,14 @@ export function ItemFormModal({
     fallbackSymbol = simboloMoneda,
   ) => formatMoney(Number(value || 0), fallbackSymbol);
   const getCostoAdicionalUnitario = (item: ProductoExternoHistorialItem) =>
-    Math.max(0, Number((Number(item.costo_unitario || 0) - Number(item.costo_base || 0)).toFixed(2)));
+    Math.max(
+      0,
+      Number(
+        (
+          Number(item.costo_unitario || 0) - Number(item.costo_base || 0)
+        ).toFixed(2),
+      ),
+    );
   const handleOpenProductHistory = async () => {
     if (!historyProductId) return;
 
@@ -250,13 +291,20 @@ export function ItemFormModal({
     setHistoryError("");
     try {
       const data = itemForm.producto_externo_id
-        ? await getProductoExternoHistorialCotizaciones(itemForm.producto_externo_id)
+        ? await getProductoExternoHistorialCotizaciones(
+            itemForm.producto_externo_id,
+          )
         : await getProductoHistorialCotizaciones(historyProductId);
       setProductHistory(data);
       setLoadedHistoryKey(historyKey);
     } catch (error) {
-      console.error("No se pudo cargar el historial del producto externo", error);
-      setHistoryError("No se pudo cargar el historial de cotizaciones de este producto.");
+      console.error(
+        "No se pudo cargar el historial del producto externo",
+        error,
+      );
+      setHistoryError(
+        "No se pudo cargar el historial de cotizaciones de este producto.",
+      );
     } finally {
       setHistoryLoading(false);
     }
@@ -265,15 +313,15 @@ export function ItemFormModal({
     if (importCalc) {
       setImportCalcType(importCalc.tipo as ImportacionCalculoTipo);
       setImportCalcForm({
-        precioProducto: String(importCalc.precio_producto ?? ''),
+        precioProducto: String(importCalc.precio_producto ?? ""),
         unidades: String(importCalc.unidades ?? itemForm.cantidad ?? 1),
-        pesoTotal: String(importCalc.peso_total ?? ''),
+        pesoTotal: String(importCalc.peso_total ?? ""),
       });
     } else {
       setImportCalcForm({
-        precioProducto: itemForm.costo_base ? String(itemForm.costo_base) : '',
-        unidades: itemForm.cantidad ? String(itemForm.cantidad) : '1',
-        pesoTotal: '',
+        precioProducto: itemForm.costo_base ? String(itemForm.costo_base) : "",
+        unidades: itemForm.cantidad ? String(itemForm.cantidad) : "1",
+        pesoTotal: "",
       });
     }
 
@@ -307,35 +355,61 @@ export function ItemFormModal({
     setItemForm({
       ...itemForm,
       costo_base: Number(importCalcValues.costoAplicable.toFixed(2)),
-      cantidad: importCalcValues.unidades > 0 ? importCalcValues.unidades : itemForm.cantidad,
-      disponibilidad_tipo: 'importacion',
+      cantidad:
+        importCalcValues.unidades > 0
+          ? importCalcValues.unidades
+          : itemForm.cantidad,
+      disponibilidad_tipo: "importacion",
       disponibilidad_dias: itemForm.disponibilidad_dias || 25,
       importacion_calculo: importacionCalculo,
     });
     setImportCalcOpen(false);
   };
-  const filteredExternalSuggestions = !readOnly && itemForm.tipo === "externo" && itemForm.descripcion.trim()
-    ? externalItemSuggestions
-      .filter((suggestion) => {
-        const search = itemForm.descripcion.trim().toLowerCase();
-        return [
-          suggestion.descripcion,
-          suggestion.codigo,
-          suggestion.marca,
-          suggestion.proveedor,
-        ].some((value) => String(value || "").toLowerCase().includes(search));
-      })
-      .slice(0, 5)
-    : [];
+  const filteredExternalSuggestions =
+    !readOnly && itemForm.tipo === "externo" && itemForm.descripcion.trim()
+      ? externalItemSuggestions
+          .filter((suggestion) => {
+            const search = itemForm.descripcion.trim().toLowerCase();
+            return [
+              suggestion.descripcion,
+              suggestion.codigo,
+              suggestion.marca,
+              suggestion.proveedor,
+            ].some((value) =>
+              String(value || "")
+                .toLowerCase()
+                .includes(search),
+            );
+          })
+          .slice(0, 5)
+      : [];
   const proveedores = itemForm.proveedores?.length
     ? itemForm.proveedores
-    : [{ nombre: itemForm.proveedor || "", link: itemForm.link_proveedor || "", precio: null, notas: "" }];
+    : [
+        {
+          nombre: itemForm.proveedor || "",
+          link: itemForm.link_proveedor || "",
+          precio: null,
+          notas: "",
+        },
+      ];
+  const destinosItem = itemForm.destinos_entrega?.length
+    ? itemForm.destinos_entrega
+    : [];
+  const cantidadAsignadaDestinos = destinosItem.reduce(
+    (acc, destino) => acc + Number(destino.cantidad || 0),
+    0,
+  );
+  const cantidadPendienteDestinos =
+    Number(itemForm.cantidad || 0) - cantidadAsignadaDestinos;
   const selectedExternalPlantilla =
     itemForm.plantilla_ultimo_uso_nombre ||
     itemForm.plantilla_origen_nombre ||
     null;
   const solesEquivalent = (value: number) =>
-    monedaId === 2 ? Number((Number(value || 0) * (tipoCambioSolesADolar || 1)).toFixed(2)) : null;
+    monedaId === 2
+      ? Number((Number(value || 0) * (tipoCambioSolesADolar || 1)).toFixed(2))
+      : null;
   const moneyValue = (
     value: number,
     primaryClass = "text-xs font-semibold text-gray-800",
@@ -347,9 +421,7 @@ export function ItemFormModal({
       <>
         <p className={primaryClass}>{formatMoney(value, simboloMoneda)}</p>
         {secondary !== null && (
-          <p className={secondaryClass}>
-            {formatMoney(secondary, "S/")}
-          </p>
+          <p className={secondaryClass}>{formatMoney(secondary, "S/")}</p>
         )}
       </>
     );
@@ -361,44 +433,70 @@ export function ItemFormModal({
           <span className="font-semibold">Costo usado para margen:</span>{" "}
           {formatMoney(costoUnitarioCalculado, simboloMoneda)} por unidad
           {solesEquivalent(costoUnitarioCalculado) !== null && (
-            <span className="font-semibold text-emerald-700"> / {formatMoney(solesEquivalent(costoUnitarioCalculado)!, "S/")}</span>
+            <span className="font-semibold text-emerald-700">
+              {" "}
+              / {formatMoney(solesEquivalent(costoUnitarioCalculado)!, "S/")}
+            </span>
           )}
           <span className="text-amber-700">
-            {" "}({formatMoney(costoBaseUnitario, simboloMoneda)}
-            {solesEquivalent(costoBaseUnitario) !== null && ` / ${formatMoney(solesEquivalent(costoBaseUnitario)!, "S/")}`} base + {formatMoney(costoAdicionalUnitario, simboloMoneda)}
-            {solesEquivalent(costoAdicionalUnitario) !== null && ` / ${formatMoney(solesEquivalent(costoAdicionalUnitario)!, "S/")}`} adicionales)
+            {" "}
+            ({formatMoney(costoBaseUnitario, simboloMoneda)}
+            {solesEquivalent(costoBaseUnitario) !== null &&
+              ` / ${formatMoney(solesEquivalent(costoBaseUnitario)!, "S/")}`}{" "}
+            base + {formatMoney(costoAdicionalUnitario, simboloMoneda)}
+            {solesEquivalent(costoAdicionalUnitario) !== null &&
+              ` / ${formatMoney(solesEquivalent(costoAdicionalUnitario)!, "S/")}`}{" "}
+            adicionales)
           </span>
         </div>
       )}
       {isAlquiler ? (
-        <div className={`grid gap-2 ${canViewGanancia ? "grid-cols-2" : "grid-cols-1"}`}>
+        <div
+          className={`grid gap-2 ${canViewGanancia ? "grid-cols-2" : "grid-cols-1"}`}
+        >
           <div className="grid grid-cols-3 gap-2">
             <div className="bg-blue-50 rounded-lg p-2">
-              <p className="text-[9px] text-gray-500 mb-0.5">Precio Unit Mensual</p>
+              <p className="text-[9px] text-gray-500 mb-0.5">
+                Precio Unit Mensual
+              </p>
               {moneyValue(precioUnitMensual)}
             </div>
             <div className="bg-sky-50 rounded-lg p-2">
-              <p className="text-[9px] text-gray-500 mb-0.5">Precio Cantidad Mensual</p>
+              <p className="text-[9px] text-gray-500 mb-0.5">
+                Precio Cantidad Mensual
+              </p>
               {moneyValue(precioCantidadMensual)}
             </div>
             <div className="bg-gray-50 rounded-lg p-2">
-              <p className="text-[9px] text-gray-500 mb-0.5">Precio Total x Meses</p>
+              <p className="text-[9px] text-gray-500 mb-0.5">
+                Precio Total x Meses
+              </p>
               {moneyValue(precioTotalMeses)}
-              <p className="mt-0.5 text-[9px] text-gray-500">{periodoMeses || 0} meses</p>
+              <p className="mt-0.5 text-[9px] text-gray-500">
+                {periodoMeses || 0} meses
+              </p>
             </div>
           </div>
           {canViewGanancia && (
             <div className="bg-green-50 rounded-lg p-2">
               <p className="text-[9px] text-gray-500 mb-0.5">Ganancia</p>
-              {moneyValue(itemForm.ganancia || 0, "text-xs font-semibold text-green-700")}
+              {moneyValue(
+                itemForm.ganancia || 0,
+                "text-xs font-semibold text-green-700",
+              )}
             </div>
           )}
         </div>
       ) : (
-        <div className={`grid gap-2 ${canViewGanancia ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}>
+        <div
+          className={`grid gap-2 ${canViewGanancia ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}
+        >
           <div className="bg-amber-50 rounded-lg p-2">
             <p className="text-[9px] text-gray-500 mb-0.5">Costo unit.</p>
-            {moneyValue(costoUnitarioCalculado, "text-xs font-semibold text-amber-800")}
+            {moneyValue(
+              costoUnitarioCalculado,
+              "text-xs font-semibold text-amber-800",
+            )}
           </div>
           <div className="bg-blue-50 rounded-lg p-2">
             <p className="text-[9px] text-gray-500 mb-0.5">Precio venta</p>
@@ -407,7 +505,10 @@ export function ItemFormModal({
           {canViewGanancia && (
             <div className="bg-green-50 rounded-lg p-2">
               <p className="text-[9px] text-gray-500 mb-0.5">Ganancia</p>
-              {moneyValue(itemForm.ganancia || 0, "text-xs font-semibold text-green-700")}
+              {moneyValue(
+                itemForm.ganancia || 0,
+                "text-xs font-semibold text-green-700",
+              )}
             </div>
           )}
           <div className="bg-gray-50 rounded-lg p-2">
@@ -429,7 +530,7 @@ export function ItemFormModal({
     const nextProveedores = proveedores.map((proveedor, proveedorIndex) =>
       proveedorIndex === index
         ? { ...proveedor, [fieldName]: value }
-        : proveedor
+        : proveedor,
     );
     const firstProveedor = nextProveedores[0];
 
@@ -446,14 +547,19 @@ export function ItemFormModal({
 
     setItemForm({
       ...itemForm,
-      proveedores: [...proveedores, { nombre: "", link: "", precio: null, notas: "" }],
+      proveedores: [
+        ...proveedores,
+        { nombre: "", link: "", precio: null, notas: "" },
+      ],
     });
   };
 
   const removeProveedor = (index: number) => {
     if (readOnly) return;
 
-    const nextProveedores = proveedores.filter((_, proveedorIndex) => proveedorIndex !== index);
+    const nextProveedores = proveedores.filter(
+      (_, proveedorIndex) => proveedorIndex !== index,
+    );
     const normalizedProveedores = nextProveedores.length
       ? nextProveedores
       : [{ nombre: "", link: "", precio: null, notas: "" }];
@@ -464,6 +570,63 @@ export function ItemFormModal({
       proveedores: normalizedProveedores,
       proveedor: firstProveedor?.nombre || "",
       link_proveedor: firstProveedor?.link || "",
+    });
+  };
+
+  const updateDestinoItem = (
+    index: number,
+    fieldName: "destino_entrega" | "detalle_variante" | "cantidad" | "margen",
+    value: string | number | null,
+  ) => {
+    if (readOnly) return;
+
+    const nextDestinos = destinosItem.map((destino, destinoIndex) =>
+      destinoIndex === index ? { ...destino, [fieldName]: value } : destino,
+    );
+    const firstDestino = nextDestinos[0]?.destino_entrega || "";
+
+    setItemForm({
+      ...itemForm,
+      destino_entrega: firstDestino,
+      destinos_entrega: nextDestinos,
+    });
+
+    if (fieldName === "margen" && value !== null) {
+      const destinoEntrega = nextDestinos[index]?.destino_entrega?.trim();
+      const margen = Number(value);
+      if (destinoEntrega && Number.isFinite(margen) && window.confirm(`Aplicar ${margen}% a todos los items con destino "${destinoEntrega}"?`)) {
+        onApplyDestinoMarginToAll?.(destinoEntrega, margen, itemForm.id);
+      }
+    }
+  };
+
+  const addDestinoItem = () => {
+    if (readOnly) return;
+
+    const cantidad =
+      cantidadPendienteDestinos > 0 ? cantidadPendienteDestinos : 1;
+    const nextDestinos = [
+      ...destinosItem,
+      { destino_entrega: "", detalle_variante: "", cantidad, margen: null },
+    ];
+
+    setItemForm({
+      ...itemForm,
+      destinos_entrega: nextDestinos,
+    });
+  };
+
+  const removeDestinoItem = (index: number) => {
+    if (readOnly) return;
+
+    const nextDestinos = destinosItem.filter(
+      (_, destinoIndex) => destinoIndex !== index,
+    );
+
+    setItemForm({
+      ...itemForm,
+      destino_entrega: nextDestinos[0]?.destino_entrega || "",
+      destinos_entrega: nextDestinos,
     });
   };
 
@@ -497,15 +660,18 @@ export function ItemFormModal({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-gray-800">
-              {readOnly ? 'Ver ítem' : editingItem ? 'Editar ítem' : 'Agregar ítem'}
+              {readOnly
+                ? "Ver ítem"
+                : editingItem
+                  ? "Editar ítem"
+                  : "Agregar ítem"}
             </span>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
-              {itemForm.tipo ?? 'Externo'}
+              {itemForm.tipo ?? "Externo"}
             </span>
           </div>
           <div className="flex items-center gap-1">
@@ -519,36 +685,52 @@ export function ItemFormModal({
                 <Eye className="h-4 w-4" />
               </button>
             )}
-            <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
+            <button
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"
+            >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         <div className="px-5 py-3 space-y-3 overflow-y-auto flex-1">
-
           {/* Producto */}
           <div>
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Producto</p>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+              Producto
+            </p>
             <div className="space-y-2">
-              {field('Descripción',
+              {field(
+                "Descripción",
                 <div className="space-y-1">
-                  <input className={inp} type="text" value={itemForm.descripcion}
+                  <input
+                    className={inp}
+                    type="text"
+                    value={itemForm.descripcion}
                     disabled={readOnly}
-                    onChange={e => setItemForm({ ...itemForm, descripcion: e.target.value })}
-                    placeholder="Nombre completo del producto" />
+                    onChange={(e) =>
+                      setItemForm({ ...itemForm, descripcion: e.target.value })
+                    }
+                    placeholder="Nombre completo del producto"
+                  />
                   {filteredExternalSuggestions.length > 0 && (
                     <div className="rounded-lg border border-blue-100 bg-blue-50/60 overflow-hidden">
                       {filteredExternalSuggestions.map((suggestion) => (
                         <button
                           key={`${suggestion.id}-${suggestion.descripcion}`}
                           type="button"
-                          onClick={() => onSelectExternalSuggestion?.(suggestion)}
+                          onClick={() =>
+                            onSelectExternalSuggestion?.(suggestion)
+                          }
                           className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-white transition-colors"
                         >
                           {(suggestion.imagen || suggestion.imagen_url) && (
                             <img
-                              src={resolveItemImageUrl(suggestion.imagen_url, suggestion.imagen)}
+                              src={resolveItemImageUrl(
+                                suggestion.imagen_url,
+                                suggestion.imagen,
+                              )}
                               alt=""
                               className="h-8 w-8 rounded border border-gray-200 object-contain bg-white flex-shrink-0"
                             />
@@ -558,11 +740,20 @@ export function ItemFormModal({
                               {suggestion.descripcion}
                             </span>
                             <span className="block text-[10px] text-gray-500 truncate">
-                              {[suggestion.marca, suggestion.codigo, suggestion.proveedor].filter(Boolean).join(' · ')}
+                              {[
+                                suggestion.marca,
+                                suggestion.codigo,
+                                suggestion.proveedor,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
                             </span>
-                            {(suggestion.plantilla_ultimo_uso_nombre || suggestion.plantilla_origen_nombre) && (
+                            {(suggestion.plantilla_ultimo_uso_nombre ||
+                              suggestion.plantilla_origen_nombre) && (
                               <span className="block text-[10px] font-semibold text-blue-700 truncate">
-                                Ultima plantilla: {suggestion.plantilla_ultimo_uso_nombre || suggestion.plantilla_origen_nombre}
+                                Ultima plantilla:{" "}
+                                {suggestion.plantilla_ultimo_uso_nombre ||
+                                  suggestion.plantilla_origen_nombre}
                               </span>
                             )}
                           </span>
@@ -570,7 +761,7 @@ export function ItemFormModal({
                       ))}
                     </div>
                   )}
-                </div>
+                </div>,
               )}
               {itemForm.tipo === "externo" && selectedExternalPlantilla && (
                 <div className="rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700">
@@ -579,13 +770,17 @@ export function ItemFormModal({
               )}
 
               <div className="space-y-1">
-                <label className="block text-[11px] text-gray-500 uppercase mb-1">Imagen</label>
+                <label className="block text-[11px] text-gray-500 uppercase mb-1">
+                  Imagen
+                </label>
                 <label
                   htmlFor="item-imagen"
-                  onDragOver={(e: React.DragEvent<HTMLLabelElement>) => e.preventDefault()}
+                  onDragOver={(e: React.DragEvent<HTMLLabelElement>) =>
+                    e.preventDefault()
+                  }
                   onDrop={readOnly ? undefined : handleDrop}
                   onPaste={readOnly ? undefined : handlePaste}
-                  className={`group border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 p-2.5 text-center transition-colors block ${readOnly ? 'cursor-default' : 'cursor-pointer hover:border-blue-400 hover:bg-blue-50'}`}
+                  className={`group border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 p-2.5 text-center transition-colors block ${readOnly ? "cursor-default" : "cursor-pointer hover:border-blue-400 hover:bg-blue-50"}`}
                 >
                   <input
                     id="item-imagen"
@@ -624,13 +819,18 @@ export function ItemFormModal({
                     </div>
                   ) : (
                     <div className="space-y-1 text-xs text-gray-500">
-                      <p className="font-medium text-gray-700">Imagen del ítem</p>
-                      <p className="text-gray-500">Arrastra, pega o haz clic para cargar</p>
+                      <p className="font-medium text-gray-700">
+                        Imagen del ítem
+                      </p>
+                      <p className="text-gray-500">
+                        Arrastra, pega o haz clic para cargar
+                      </p>
                     </div>
                   )}
                 </label>
               </div>
-              {field('Nota',
+              {field(
+                "Nota",
                 <div className="space-y-2">
                   {!readOnly && (
                     <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5">
@@ -666,39 +866,66 @@ export function ItemFormModal({
                   <textarea
                     ref={noteTextareaRef}
                     className={`${inp} min-h-16 resize-y`}
-                    value={itemForm.nota || ''}
+                    value={itemForm.nota || ""}
                     disabled={readOnly}
-                    onChange={e => setItemForm({ ...itemForm, nota: e.target.value })}
+                    onChange={(e) =>
+                      setItemForm({ ...itemForm, nota: e.target.value })
+                    }
                     placeholder="Informacion adicional opcional para mostrar en la cotizacion"
                   />
                   {formattedNote && (
                     <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                      <p className="mb-1 font-semibold text-gray-500">Vista previa</p>
+                      <p className="mb-1 font-semibold text-gray-500">
+                        Vista previa
+                      </p>
                       <div
                         className="prose prose-sm max-w-none whitespace-pre-line text-gray-700"
                         dangerouslySetInnerHTML={{ __html: formattedNote }}
                       />
                     </div>
                   )}
-                </div>
+                </div>,
               )}
               <div className="grid grid-cols-3 gap-2">
-                {field('Marca',
-                  <input className={inp} type="text" value={itemForm.marca || ''}
+                {field(
+                  "Marca",
+                  <input
+                    className={inp}
+                    type="text"
+                    value={itemForm.marca || ""}
                     disabled={readOnly}
-                    onChange={e => setItemForm({ ...itemForm, marca: e.target.value })}
-                    placeholder="Dell" />
+                    onChange={(e) =>
+                      setItemForm({ ...itemForm, marca: e.target.value })
+                    }
+                    placeholder="Dell"
+                  />,
                 )}
-                {field('Código',
-                  <input className={inp} type="text" value={itemForm.codigo || ''}
+                {field(
+                  "Código",
+                  <input
+                    className={inp}
+                    type="text"
+                    value={itemForm.codigo || ""}
                     disabled={readOnly}
-                    onChange={e => setItemForm({ ...itemForm, codigo: e.target.value })}
-                    placeholder="XPS-15" />
+                    onChange={(e) =>
+                      setItemForm({ ...itemForm, codigo: e.target.value })
+                    }
+                    placeholder="XPS-15"
+                  />,
                 )}
-                {field('Unidad',
-                  <select className={inp} value={itemForm.unidad_medida || 'UND'}
+                {field(
+                  "Unidad",
+                  <select
+                    className={inp}
+                    value={itemForm.unidad_medida || "UND"}
                     disabled={readOnly}
-                    onChange={e => setItemForm({ ...itemForm, unidad_medida: e.target.value })}>
+                    onChange={(e) =>
+                      setItemForm({
+                        ...itemForm,
+                        unidad_medida: e.target.value,
+                      })
+                    }
+                  >
                     <option value="UND">UND</option>
                     <option value="KIT">KIT</option>
                     <option value="PAR">PAR</option>
@@ -706,13 +933,13 @@ export function ItemFormModal({
                     <option value="PAQ">PAQ</option>
                     <option value="BOLSA">BOLSA</option>
                     <option value="ROLLO">ROLLO</option>
-                    <option value="MTS">MTS</option> 
+                    <option value="MTS">MTS</option>
                     <option value="KG">KG</option>
                     <option value="GR">GL</option>
                     <option value="LT">LT</option>
                     <option value="CIENTO">CIENTO</option>
                     <option value="MILES">MILES</option>
-                  </select>
+                  </select>,
                 )}
               </div>
             </div>
@@ -722,89 +949,316 @@ export function ItemFormModal({
 
           {/* Precios */}
           <div>
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Precios</p>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+              Precios
+            </p>
             {entregaMultidestino && (
-              <div className="mb-2">
-                {field('Destino entrega',
-                  <>
-                    <input
-                      className={inp}
-                      type="text"
-                      list="item-destinos-entrega"
-                      disabled={readOnly}
-                      value={itemForm.destino_entrega || ''}
-                      onChange={e => setItemForm({ ...itemForm, destino_entrega: e.target.value })}
-                      placeholder="Lima Metropolitana"
-                    />
-                    <datalist id="item-destinos-entrega">
-                      {destinosDisponibles.map((destino) => (
-                        <option key={destino} value={destino} />
-                      ))}
-                    </datalist>
-                  </>
+              <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50 p-2.5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[11px] font-semibold text-blue-900">
+                      Destinos de entrega
+                    </p>
+                    <p
+                      className={`text-[10px] ${cantidadPendienteDestinos === 0 ? "text-blue-600" : "text-amber-700"}`}
+                    >
+                      Asignado: {cantidadAsignadaDestinos} /{" "}
+                      {Number(itemForm.cantidad || 0)}
+                    </p>
+                  </div>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      onClick={addDestinoItem}
+                      className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Agregar
+                    </button>
+                  )}
+                </div>
+                <datalist id="item-destinos-entrega">
+                  {destinosDisponibles.map((destino) => (
+                    <option key={destino} value={destino} />
+                  ))}
+                </datalist>
+                <div className="max-h-[360px] space-y-2 overflow-y-auto overscroll-contain pr-1">
+                  {destinosItem.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-blue-200 bg-white px-3 py-2 text-[11px] text-blue-700">
+                      Sin destinos internos. Si no agregas destinos, se usara el
+                      destino general del item.
+                    </div>
+                  ) : (
+                    destinosItem.map((destino, index) => (
+                      <div
+                        key={index}
+                        className="rounded-lg border border-blue-100 bg-white p-2"
+                      >
+                        <div className="grid grid-cols-[1fr_68px_68px_28px] items-end gap-2">
+                          {field(
+                            "Destino",
+                            <input
+                              className={inp}
+                              type="text"
+                              list="item-destinos-entrega"
+                              disabled={readOnly}
+                              value={destino.destino_entrega || ""}
+                              onChange={(e) =>
+                                updateDestinoItem(
+                                  index,
+                                  "destino_entrega",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="Lima Metropolitana"
+                            />,
+                          )}
+                          {field(
+                            "Cant.",
+                            <input
+                              className={`${inp} text-center`}
+                              type="number"
+                              min={1}
+                              disabled={readOnly}
+                              value={destino.cantidad?.toString() ?? ""}
+                              onChange={(e) =>
+                                updateDestinoItem(
+                                  index,
+                                  "cantidad",
+                                  e.target.value
+                                    ? parseInt(e.target.value, 10)
+                                    : 0,
+                                )
+                              }
+                            />,
+                          )}
+                          {field(
+                            "Margen %",
+                            <input
+                              className={`${inp} text-center`}
+                              type="number"
+                              min={0}
+                              max={99.99}
+                              step="0.1"
+                              disabled={readOnly}
+                              value={destino.margen?.toString() ?? ""}
+                              onChange={(e) =>
+                                updateDestinoItem(
+                                  index,
+                                  "margen",
+                                  e.target.value === ""
+                                    ? null
+                                    : parseFloat(e.target.value),
+                                )
+                              }
+                              placeholder={String(itemForm.margen || 0)}
+                            />,
+                          )}
+                          {!readOnly ? (
+                            <button
+                              type="button"
+                              onClick={() => removeDestinoItem(index)}
+                              className="mb-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
+                              title="Quitar destino"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          ) : (
+                            <span />
+                          )}
+                        </div>
+                        <div className="mt-2">
+                          {field(
+                            "Detalle / variante",
+                            <input
+                              className={inp}
+                              type="text"
+                              disabled={readOnly}
+                              value={destino.detalle_variante || ""}
+                              onChange={(e) =>
+                                updateDestinoItem(
+                                  index,
+                                  "detalle_variante",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="Ej. Talla XL, color negro, manga larga..."
+                              maxLength={255}
+                            />,
+                          )}
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2 border-t border-blue-50 pt-2 sm:grid-cols-4">
+                          <div>
+                            <p className="text-[9px] font-semibold uppercase text-gray-400">
+                              Costo unit.
+                            </p>
+                            {moneyValue(
+                              Number(destino.costo_unitario || 0),
+                              "text-[11px] font-semibold text-amber-800",
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-semibold uppercase text-gray-400">
+                              {isAlquiler ? "Venta mensual" : "Venta"}
+                            </p>
+                            {moneyValue(
+                              Number(destino.precio_venta || 0),
+                              "text-[11px] font-semibold text-blue-800",
+                            )}
+                          </div>
+                          {canViewGanancia && (
+                            <div>
+                              <p className="text-[9px] font-semibold uppercase text-gray-400">
+                                Ganancia
+                              </p>
+                              {moneyValue(
+                                Number(destino.ganancia || 0),
+                                "text-[11px] font-semibold text-green-700",
+                              )}
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-[9px] font-semibold uppercase text-gray-400">
+                              Subtotal
+                            </p>
+                            {moneyValue(
+                              Number(destino.subtotal || 0),
+                              "text-[11px] font-semibold text-gray-800",
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {cantidadPendienteDestinos !== 0 && destinosItem.length > 0 && (
+                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                    {cantidadPendienteDestinos > 0
+                      ? `Faltan ${cantidadPendienteDestinos} unidades por asignar a un destino.`
+                      : `Hay ${Math.abs(cantidadPendienteDestinos)} unidades asignadas de más.`}
+                  </div>
                 )}
               </div>
             )}
             <div className="grid grid-cols-3 gap-2 mb-2">
-              {field('Cantidad',
-                <input className={inp} type="number" min={1}
+              {field(
+                "Cantidad",
+                <input
+                  className={inp}
+                  type="number"
+                  min={1}
                   disabled={readOnly}
-                  value={itemForm.cantidad?.toString() ?? ''}
-                  onChange={e => setItemForm({ ...itemForm, cantidad: e.target.value ? parseInt(e.target.value) : 0 })} />
+                  value={itemForm.cantidad?.toString() ?? ""}
+                  onChange={(e) =>
+                    setItemForm({
+                      ...itemForm,
+                      cantidad: e.target.value ? parseInt(e.target.value) : 0,
+                    })
+                  }
+                />,
               )}
-              {field(isAlquiler ? 'Periodo (meses)' : 'Garantía (meses)',
-                <input className={inp} type="number" min={0} max={255} step={1}
+              {field(
+                isAlquiler ? "Periodo (meses)" : "Garantía (meses)",
+                <input
+                  className={inp}
+                  type="number"
+                  min={0}
+                  max={255}
+                  step={1}
                   disabled={readOnly}
-                  value={itemForm.garantia_meses?.toString() ?? ''}
-                  onChange={e => setItemForm({
-                    ...itemForm,
-                    garantia_meses: e.target.value ? parseInt(e.target.value, 10) : 0
-                  })} />
+                  value={itemForm.garantia_meses?.toString() ?? ""}
+                  onChange={(e) =>
+                    setItemForm({
+                      ...itemForm,
+                      garantia_meses: e.target.value
+                        ? parseInt(e.target.value, 10)
+                        : 0,
+                    })
+                  }
+                />,
               )}
-              {field('Días entrega',
-                <input className={inp} type="number"
+              {field(
+                "Días entrega",
+                <input
+                  className={inp}
+                  type="number"
                   disabled={readOnly}
-                  value={itemForm.disponibilidad_dias?.toString() ?? ''}
-                  onChange={e => setItemForm({ ...itemForm, disponibilidad_dias: e.target.value ? parseInt(e.target.value) : 0 })} />
+                  value={itemForm.disponibilidad_dias?.toString() ?? ""}
+                  onChange={(e) =>
+                    setItemForm({
+                      ...itemForm,
+                      disponibilidad_dias: e.target.value
+                        ? parseInt(e.target.value)
+                        : 0,
+                    })
+                  }
+                />,
               )}
             </div>
             <div className="grid grid-cols-3 gap-2">
-              {field(costoLabel,
+              {field(
+                costoLabel,
                 <div className="flex gap-1">
-                  <input className={`${inp} flex-1`} type="number"
+                  <input
+                    className={`${inp} flex-1`}
+                    type="number"
                     disabled={readOnly}
-                    value={itemForm.costo_base?.toString() ?? ''}
-                    onChange={e => setItemForm({ ...itemForm, costo_base: e.target.value ? parseFloat(e.target.value) : 0 })} />
+                    value={itemForm.costo_base?.toString() ?? ""}
+                    onChange={(e) =>
+                      setItemForm({
+                        ...itemForm,
+                        costo_base: e.target.value
+                          ? parseFloat(e.target.value)
+                          : 0,
+                      })
+                    }
+                  />
                   {showImportCalcControls && (
                     <button
                       type="button"
                       onClick={handleOpenImportCalculation}
                       disabled={readOnly && !hasImportCalc}
-                      className={`px-1.5 border border-gray-200 rounded text-gray-500 ${hasImportCalc ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'hover:bg-gray-50'} disabled:cursor-not-allowed disabled:opacity-50`}
+                      className={`px-1.5 border border-gray-200 rounded text-gray-500 ${hasImportCalc ? "bg-amber-50 text-amber-700 hover:bg-amber-100" : "hover:bg-gray-50"} disabled:cursor-not-allowed disabled:opacity-50`}
                       title="Cálculo de importación"
                     >
                       <Calculator className="w-3 h-3" />
                     </button>
                   )}
-                </div>
+                </div>,
               )}
-              {field('Margen %',
-                <input className={inp} type="number" step="0.1"
+              {field(
+                "Margen %",
+                <input
+                  className={inp}
+                  type="number"
+                  step="0.1"
                   disabled={readOnly}
-                  value={itemForm.margen?.toString() ?? ''}
-                  onChange={e => setItemForm({ ...itemForm, margen: e.target.value ? parseFloat(e.target.value) : 0 })} />
+                  value={itemForm.margen?.toString() ?? ""}
+                  onChange={(e) =>
+                    setItemForm({
+                      ...itemForm,
+                      margen: e.target.value ? parseFloat(e.target.value) : 0,
+                    })
+                  }
+                />,
               )}
-              {field('Disponibilidad',
-                <select className={inp} value={itemForm.disponibilidad_tipo || 'stock'}
+              {field(
+                "Disponibilidad",
+                <select
+                  className={inp}
+                  value={itemForm.disponibilidad_tipo || "stock"}
                   disabled={readOnly}
-                  onChange={e => setItemForm({
-                    ...itemForm,
-                    disponibilidad_tipo: e.target.value as any,
-                    disponibilidad_dias: e.target.value === 'stock' ? 4 : 25,
-                  })}>
+                  onChange={(e) =>
+                    setItemForm({
+                      ...itemForm,
+                      disponibilidad_tipo: e.target.value as any,
+                      disponibilidad_dias: e.target.value === "stock" ? 4 : 25,
+                    })
+                  }
+                >
                   <option value="stock">Stock</option>
                   <option value="importacion">Importación</option>
-                </select>
+                </select>,
               )}
             </div>
             {showImportCalcControls && hasImportCalc && (
@@ -815,7 +1269,7 @@ export function ItemFormModal({
           </div>
 
           {/* Proveedores - solo si es personalizado */}
-          {itemForm.tipo === 'externo' && (
+          {itemForm.tipo === "externo" && (
             <>
               <hr className="border-gray-200 my-2" />
               <div>
@@ -826,7 +1280,8 @@ export function ItemFormModal({
                     </p>
                     {proveedores.length > 5 && (
                       <p className="mt-0.5 text-[11px] text-gray-500">
-                        Se guardan todas las filas; para emitir OC se agrupan por proveedor.
+                        Se guardan todas las filas; para emitir OC se agrupan
+                        por proveedor.
                       </p>
                     )}
                   </div>
@@ -845,9 +1300,14 @@ export function ItemFormModal({
 
                 <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
                   {proveedores.map((proveedor, index) => (
-                    <div key={index} className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
+                    <div
+                      key={index}
+                      className="bg-gray-50 rounded-lg p-2.5 border border-gray-100"
+                    >
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[11px] font-semibold text-gray-500">Proveedor {index + 1}</span>
+                        <span className="text-[11px] font-semibold text-gray-500">
+                          Proveedor {index + 1}
+                        </span>
                         {!readOnly && proveedores.length > 1 && (
                           <button
                             type="button"
@@ -861,59 +1321,81 @@ export function ItemFormModal({
                       </div>
 
                       <div className="grid grid-cols-2 gap-2">
-                        {field('Proveedor',
+                        {field(
+                          "Proveedor",
                           <input
                             className={inp}
                             type="text"
                             disabled={readOnly}
-                            value={proveedor.nombre || ''}
-                            onChange={e => updateProveedor(index, "nombre", e.target.value)}
-                          />
+                            value={proveedor.nombre || ""}
+                            onChange={(e) =>
+                              updateProveedor(index, "nombre", e.target.value)
+                            }
+                          />,
                         )}
-                        {field('Link',
+                        {field(
+                          "Link",
                           <div className="flex gap-1">
                             <input
                               className={`${inp} flex-1`}
                               type="text"
                               disabled={readOnly}
-                              value={proveedor.link || ''}
+                              value={proveedor.link || ""}
                               placeholder="https://..."
-                              onChange={e => updateProveedor(index, "link", e.target.value)}
+                              onChange={(e) =>
+                                updateProveedor(index, "link", e.target.value)
+                              }
                             />
                             {proveedor.link && (
                               <button
                                 type="button"
-                                onClick={() => void navigator.clipboard?.writeText(proveedor.link || '')}
+                                onClick={() =>
+                                  void navigator.clipboard?.writeText(
+                                    proveedor.link || "",
+                                  )
+                                }
                                 className="px-2 border border-gray-200 rounded-lg hover:bg-gray-100 text-gray-500"
                                 title="Copiar link"
                               >
                                 <Copy className="w-3.5 h-3.5" />
                               </button>
                             )}
-                          </div>
+                          </div>,
                         )}
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 mt-2">
-                        {field(`Precio (${monedaId === 1 ? 'S/.' : '$'})`,
+                        {field(
+                          `Precio (${monedaId === 1 ? "S/." : "$"})`,
                           <input
                             className={inp}
                             type="number"
                             step="0.01"
                             disabled={readOnly}
-                            value={proveedor.precio?.toString() ?? ''}
-                            onChange={e => updateProveedor(index, "precio", e.target.value ? parseFloat(e.target.value) : null)}
-                          />
+                            value={proveedor.precio?.toString() ?? ""}
+                            onChange={(e) =>
+                              updateProveedor(
+                                index,
+                                "precio",
+                                e.target.value
+                                  ? parseFloat(e.target.value)
+                                  : null,
+                              )
+                            }
+                          />,
                         )}
-                        {field('Notas',
+                        {field(
+                          "Notas",
                           <input
                             className={inp}
                             type="text"
                             disabled={readOnly}
-                            value={proveedor.notas || ''}
+                            value={proveedor.notas || ""}
                             placeholder="Entrega, stock, contacto..."
-                            onChange={e => updateProveedor(index, "notas", e.target.value)}
-                          />
+                            onChange={(e) =>
+                              updateProveedor(index, "notas", e.target.value)
+                            }
+                          />,
                         )}
                       </div>
                     </div>
@@ -922,21 +1404,24 @@ export function ItemFormModal({
               </div>
             </>
           )}
-
         </div>
 
         {summaryEstimado}
 
         {/* Footer */}
         <div className="flex gap-2 px-5 py-2.5 border-t border-gray-100 flex-shrink-0">
-          <button onClick={onClose}
-            className="flex-1 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">
-            {readOnly ? 'Cerrar' : 'Cancelar'}
+          <button
+            onClick={onClose}
+            className="flex-1 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50"
+          >
+            {readOnly ? "Cerrar" : "Cancelar"}
           </button>
           {!readOnly && (
-            <button onClick={editingItem ? onUpdate : onSave}
-              className="flex-1 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-              {editingItem ? 'Actualizar' : 'Agregar'}
+            <button
+              onClick={editingItem ? onUpdate : onSave}
+              className="flex-1 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              {editingItem ? "Actualizar" : "Agregar"}
             </button>
           )}
         </div>
@@ -947,9 +1432,13 @@ export function ItemFormModal({
           <div className="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
               <div>
-                <h3 className="text-sm font-bold text-gray-900">Cálculo de importación</h3>
+                <h3 className="text-sm font-bold text-gray-900">
+                  Cálculo de importación
+                </h3>
                 <p className="text-xs text-gray-500">
-                  {isImportCalcReadOnly ? 'Detalle del cálculo usado en este ítem.' : 'Calcula el costo unitario y aplícalo al ítem.'}
+                  {isImportCalcReadOnly
+                    ? "Detalle del cálculo usado en este ítem."
+                    : "Calcula el costo unitario y aplícalo al ítem."}
                 </p>
               </div>
               <button
@@ -966,13 +1455,21 @@ export function ItemFormModal({
                 Tipo de importación
                 <select
                   value={importCalcType}
-                  onChange={(event) => setImportCalcType(event.target.value as typeof importCalcType)}
+                  onChange={(event) =>
+                    setImportCalcType(
+                      event.target.value as typeof importCalcType,
+                    )
+                  }
                   disabled={isImportCalcReadOnly}
                   className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="under200">IMPORTACIÓN MENOS DE $200</option>
-                  <option value="from201to1999">IMPORTACIÓN VALOR DE $201 A $1999</option>
-                  <option value="from2000up">IMPORTACIÓN VALOR DE $2000 A +</option>
+                  <option value="from201to1999">
+                    IMPORTACIÓN VALOR DE $201 A $1999
+                  </option>
+                  <option value="from2000up">
+                    IMPORTACIÓN VALOR DE $2000 A +
+                  </option>
                 </select>
               </label>
 
@@ -994,7 +1491,9 @@ export function ItemFormModal({
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     <tr>
-                      <td className="px-3 py-2 font-semibold text-gray-700">Precio de producto</td>
+                      <td className="px-3 py-2 font-semibold text-gray-700">
+                        Precio de producto
+                      </td>
                       <td className="px-3 py-2">
                         <input
                           type="number"
@@ -1002,7 +1501,12 @@ export function ItemFormModal({
                           step="0.01"
                           value={importCalcForm.precioProducto}
                           disabled={isImportCalcReadOnly}
-                          onChange={(event) => setImportCalcForm((current) => ({ ...current, precioProducto: event.target.value }))}
+                          onChange={(event) =>
+                            setImportCalcForm((current) => ({
+                              ...current,
+                              precioProducto: event.target.value,
+                            }))
+                          }
                           className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-right text-sm outline-none focus:ring-1 focus:ring-blue-400"
                         />
                       </td>
@@ -1013,15 +1517,26 @@ export function ItemFormModal({
                           step="1"
                           value={importCalcForm.unidades}
                           disabled={isImportCalcReadOnly}
-                          onChange={(event) => setImportCalcForm((current) => ({ ...current, unidades: event.target.value }))}
+                          onChange={(event) =>
+                            setImportCalcForm((current) => ({
+                              ...current,
+                              unidades: event.target.value,
+                            }))
+                          }
                           className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-right text-sm outline-none focus:ring-1 focus:ring-blue-400"
                         />
                       </td>
-                      <td className="px-3 py-2 text-right font-semibold text-gray-900">{formatUsd(importCalcValues.totalProducto)}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                        {formatUsd(importCalcValues.totalProducto)}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-3 py-2 font-semibold text-gray-700">Peso x kilo</td>
-                      <td className="px-3 py-2 text-right text-gray-700">$ 10.00</td>
+                      <td className="px-3 py-2 font-semibold text-gray-700">
+                        Peso x kilo
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-700">
+                        $ 10.00
+                      </td>
                       <td className="px-3 py-2">
                         <input
                           type="number"
@@ -1029,50 +1544,107 @@ export function ItemFormModal({
                           step="0.01"
                           value={importCalcForm.pesoTotal}
                           disabled={isImportCalcReadOnly}
-                          onChange={(event) => setImportCalcForm((current) => ({ ...current, pesoTotal: event.target.value }))}
+                          onChange={(event) =>
+                            setImportCalcForm((current) => ({
+                              ...current,
+                              pesoTotal: event.target.value,
+                            }))
+                          }
                           className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-right text-sm outline-none focus:ring-1 focus:ring-blue-400"
                         />
                       </td>
-                      <td className="px-3 py-2 text-right font-semibold text-gray-900">{formatUsd(importCalcValues.totalPeso)}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                        {formatUsd(importCalcValues.totalPeso)}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-3 py-2 font-semibold text-gray-700">Desaduanaje</td>
-                      <td className="px-3 py-2 text-right text-gray-700">{formatUsd(calcConfig.desaduanaje)}</td>
+                      <td className="px-3 py-2 font-semibold text-gray-700">
+                        Desaduanaje
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-700">
+                        {formatUsd(calcConfig.desaduanaje)}
+                      </td>
                       <td className="px-3 py-2 text-right text-gray-700">1</td>
-                      <td className="px-3 py-2 text-right font-semibold text-gray-900">{formatUsd(importCalcValues.totalDesaduanaje)}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                        {formatUsd(importCalcValues.totalDesaduanaje)}
+                      </td>
                     </tr>
                     {calcConfig.agenteAduanero > 0 && (
                       <tr>
-                        <td className="px-3 py-2 font-semibold text-gray-700">Agente aduanero</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{formatUsd(calcConfig.agenteAduanero)}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">1</td>
-                        <td className="px-3 py-2 text-right font-semibold text-gray-900">{formatUsd(importCalcValues.totalAgente)}</td>
+                        <td className="px-3 py-2 font-semibold text-gray-700">
+                          Agente aduanero
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-700">
+                          {formatUsd(calcConfig.agenteAduanero)}
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-700">
+                          1
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                          {formatUsd(importCalcValues.totalAgente)}
+                        </td>
                       </tr>
                     )}
                     {calcConfig.impuestoRate > 0 && (
                       <>
                         <tr className="bg-gray-50">
-                          <td className="px-3 py-2 font-semibold text-gray-700" colSpan={3}>Sub total</td>
-                          <td className="px-3 py-2 text-right font-bold text-gray-900">{formatUsd(importCalcValues.subTotal)}</td>
+                          <td
+                            className="px-3 py-2 font-semibold text-gray-700"
+                            colSpan={3}
+                          >
+                            Sub total
+                          </td>
+                          <td className="px-3 py-2 text-right font-bold text-gray-900">
+                            {formatUsd(importCalcValues.subTotal)}
+                          </td>
                         </tr>
                         <tr>
-                          <td className="px-3 py-2 font-semibold text-gray-700" colSpan={3}>Impuestos 25%</td>
-                          <td className="px-3 py-2 text-right font-semibold text-gray-900">{formatUsd(importCalcValues.impuesto)}</td>
+                          <td
+                            className="px-3 py-2 font-semibold text-gray-700"
+                            colSpan={3}
+                          >
+                            Impuestos 25%
+                          </td>
+                          <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                            {formatUsd(importCalcValues.impuesto)}
+                          </td>
                         </tr>
                       </>
                     )}
                     <tr className="bg-blue-50">
-                      <td className="px-3 py-2 font-bold text-blue-900" colSpan={3}>Total importación</td>
-                      <td className="px-3 py-2 text-right font-bold text-blue-900">{formatUsd(importCalcValues.total)}</td>
+                      <td
+                        className="px-3 py-2 font-bold text-blue-900"
+                        colSpan={3}
+                      >
+                        Total importación
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold text-blue-900">
+                        {formatUsd(importCalcValues.total)}
+                      </td>
                     </tr>
                     <tr className="bg-emerald-50">
-                      <td className="px-3 py-2 font-bold text-emerald-900" colSpan={3}>Precio por unidad</td>
-                      <td className="px-3 py-2 text-right font-bold text-emerald-900">{formatUsd(importCalcValues.precioUnitario)}</td>
+                      <td
+                        className="px-3 py-2 font-bold text-emerald-900"
+                        colSpan={3}
+                      >
+                        Precio por unidad
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold text-emerald-900">
+                        {formatUsd(importCalcValues.precioUnitario)}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-3 py-2 font-bold text-gray-900" colSpan={3}>Costo a aplicar ({monedaId === 1 ? 'Soles' : 'Dólares'})</td>
+                      <td
+                        className="px-3 py-2 font-bold text-gray-900"
+                        colSpan={3}
+                      >
+                        Costo a aplicar ({monedaId === 1 ? "Soles" : "Dólares"})
+                      </td>
                       <td className="px-3 py-2 text-right font-bold text-gray-900">
-                        {formatMoney(importCalcValues.costoAplicable, simboloMoneda)}
+                        {formatMoney(
+                          importCalcValues.costoAplicable,
+                          simboloMoneda,
+                        )}
                       </td>
                     </tr>
                   </tbody>
@@ -1081,7 +1653,11 @@ export function ItemFormModal({
 
               <div className="flex flex-col gap-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-600 sm:flex-row sm:items-center sm:justify-between">
                 <span>{calcConfig.label}</span>
-                <span>{isImportCalcReadOnly ? 'Vista solo lectura.' : 'El resultado se aplicará al costo del ítem.'}</span>
+                <span>
+                  {isImportCalcReadOnly
+                    ? "Vista solo lectura."
+                    : "El resultado se aplicará al costo del ítem."}
+                </span>
               </div>
             </div>
 
@@ -1091,7 +1667,7 @@ export function ItemFormModal({
                 onClick={() => setImportCalcOpen(false)}
                 className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
               >
-                {isImportCalcReadOnly ? 'Cerrar' : 'Cancelar'}
+                {isImportCalcReadOnly ? "Cerrar" : "Cancelar"}
               </button>
               {!isImportCalcReadOnly && (
                 <button
@@ -1115,10 +1691,14 @@ export function ItemFormModal({
               <div>
                 <div className="flex items-center gap-2">
                   <History className="h-4 w-4 text-indigo-600" />
-                  <h3 className="text-sm font-bold text-gray-900">Historial del producto</h3>
+                  <h3 className="text-sm font-bold text-gray-900">
+                    Historial del producto
+                  </h3>
                 </div>
                 <p className="mt-1 text-xs text-gray-500">
-                  {productHistory?.producto?.descripcion || itemForm.descripcion || "Producto externo reutilizado"}
+                  {productHistory?.producto?.descripcion ||
+                    itemForm.descripcion ||
+                    "Producto externo reutilizado"}
                 </p>
               </div>
               <button
@@ -1144,23 +1724,37 @@ export function ItemFormModal({
               ) : productHistory?.historial?.length ? (
                 <div className="space-y-3">
                   {productHistory.historial.map((row) => {
-                    const symbol = row.cotizacion?.simbolo_moneda || simboloMoneda;
+                    const symbol =
+                      row.cotizacion?.simbolo_moneda || simboloMoneda;
                     const costoAdicional = getCostoAdicionalUnitario(row);
-                    const costoAdicionalTotal = Number((costoAdicional * Number(row.cantidad || 0)).toFixed(2));
+                    const costoAdicionalTotal = Number(
+                      (costoAdicional * Number(row.cantidad || 0)).toFixed(2),
+                    );
                     const cotizacionId = row.cotizacion?.id;
 
                     return (
-                      <div key={row.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                      <div
+                        key={row.id}
+                        className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+                      >
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0">
                             <p className="text-sm font-bold text-gray-900">
-                              {row.cotizacion?.cliente_nombre || "Cliente no registrado"}
+                              {row.cotizacion?.cliente_nombre ||
+                                "Cliente no registrado"}
                             </p>
                             <p className="mt-0.5 text-xs text-gray-500">
-                              Cot. {row.cotizacion?.numero || "-"} · {formatDate(row.cotizacion?.fecha || row.created_at)} · {row.cotizacion?.estado || "Sin estado"}
+                              Cot. {row.cotizacion?.numero || "-"} ·{" "}
+                              {formatDate(
+                                row.cotizacion?.fecha || row.created_at,
+                              )}{" "}
+                              · {row.cotizacion?.estado || "Sin estado"}
                             </p>
                             <p className="mt-1 text-xs text-gray-600">
-                              Ejecutivo: <span className="font-semibold text-gray-800">{row.cotizacion?.ejecutivo || "No definido"}</span>
+                              Ejecutivo:{" "}
+                              <span className="font-semibold text-gray-800">
+                                {row.cotizacion?.ejecutivo || "No definido"}
+                              </span>
                             </p>
                           </div>
                           {cotizacionId && (
@@ -1176,24 +1770,64 @@ export function ItemFormModal({
                         </div>
 
                         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-                          <HistoryMetric label="Costo base" value={formatHistoryMoney(row.costo_base, symbol)} />
-                          <HistoryMetric label="Costo usado" value={formatHistoryMoney(row.costo_unitario, symbol)} />
-                          <HistoryMetric label="Adicional unit." value={formatHistoryMoney(costoAdicional, symbol)} muted={costoAdicional <= 0} />
-                          <HistoryMetric label="Adicional total" value={formatHistoryMoney(costoAdicionalTotal, symbol)} muted={costoAdicionalTotal <= 0} />
-                          <HistoryMetric label="Vendido unit." value={formatHistoryMoney(row.precio_venta, symbol)} />
-                          <HistoryMetric label="Margen" value={`${Number(row.margen || 0).toFixed(2)}%`} />
+                          <HistoryMetric
+                            label="Costo base"
+                            value={formatHistoryMoney(row.costo_base, symbol)}
+                          />
+                          <HistoryMetric
+                            label="Costo usado"
+                            value={formatHistoryMoney(
+                              row.costo_unitario,
+                              symbol,
+                            )}
+                          />
+                          <HistoryMetric
+                            label="Adicional unit."
+                            value={formatHistoryMoney(costoAdicional, symbol)}
+                            muted={costoAdicional <= 0}
+                          />
+                          <HistoryMetric
+                            label="Adicional total"
+                            value={formatHistoryMoney(
+                              costoAdicionalTotal,
+                              symbol,
+                            )}
+                            muted={costoAdicionalTotal <= 0}
+                          />
+                          <HistoryMetric
+                            label="Vendido unit."
+                            value={formatHistoryMoney(row.precio_venta, symbol)}
+                          />
+                          <HistoryMetric
+                            label="Margen"
+                            value={`${Number(row.margen || 0).toFixed(2)}%`}
+                          />
                         </div>
 
                         {row.proveedores?.length ? (
                           <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
-                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Proveedores usados</p>
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                              Proveedores usados
+                            </p>
                             <div className="mt-2 space-y-1">
                               {row.proveedores.map((proveedor, index) => (
-                                <div key={`${proveedor.id || index}-${proveedor.nombre}`} className="flex flex-col gap-1 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
-                                  <span className="font-semibold text-slate-800">{proveedor.nombre || "Proveedor"}</span>
+                                <div
+                                  key={`${proveedor.id || index}-${proveedor.nombre}`}
+                                  className="flex flex-col gap-1 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                  <span className="font-semibold text-slate-800">
+                                    {proveedor.nombre || "Proveedor"}
+                                  </span>
                                   <span className="text-slate-500">
-                                    {proveedor.precio ? formatHistoryMoney(proveedor.precio, symbol) : "Sin precio"}
-                                    {proveedor.notas ? ` · ${proveedor.notas}` : ""}
+                                    {proveedor.precio
+                                      ? formatHistoryMoney(
+                                          proveedor.precio,
+                                          symbol,
+                                        )
+                                      : "Sin precio"}
+                                    {proveedor.notas
+                                      ? ` · ${proveedor.notas}`
+                                      : ""}
                                   </span>
                                 </div>
                               ))}
@@ -1228,8 +1862,14 @@ function HistoryMetric({
 }) {
   return (
     <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-      <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
-      <p className={`mt-1 text-xs font-bold ${muted ? "text-gray-400" : "text-gray-900"}`}>{value}</p>
+      <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">
+        {label}
+      </p>
+      <p
+        className={`mt-1 text-xs font-bold ${muted ? "text-gray-400" : "text-gray-900"}`}
+      >
+        {value}
+      </p>
     </div>
   );
 }

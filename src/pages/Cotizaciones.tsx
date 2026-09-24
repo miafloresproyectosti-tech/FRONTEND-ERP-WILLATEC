@@ -69,6 +69,11 @@ type CotizacionListItem = ApiCotizacion & {
   items_count?: number | null;
 };
 
+type TotalPorDestino = {
+  destino: string;
+  total: number;
+};
+
 type ApiErrorResponse = {
   response?: {
     data?: {
@@ -118,6 +123,89 @@ const EMPTY_TOTAL_POR_ESTADO: Record<EstadoResumenKey, number> = {
   aprobada: 0,
   rechazada: 0,
   oc_registrada: 0,
+};
+
+const getDestinoLabel = (destino?: string | null) => {
+  const value = String(destino || "").trim();
+
+  return value || "Lima Metropolitana";
+};
+
+const getTotalesPorDestino = (cotizacion: ApiCotizacion): TotalPorDestino[] => {
+  if (!cotizacion.entrega_multidestino || !cotizacion.items?.length) {
+    return [];
+  }
+
+  const totals = new Map<string, number>();
+
+  cotizacion.items.forEach((item) => {
+    const destinos = item.destinos_entrega || [];
+
+    if (destinos.length > 0) {
+      destinos.forEach((destino) => {
+        const destinoLabel = getDestinoLabel(destino.destino_entrega);
+        const subtotal = Number(destino.subtotal ?? 0);
+
+        totals.set(destinoLabel, (totals.get(destinoLabel) || 0) + subtotal);
+      });
+
+      return;
+    }
+
+    const destinoLabel = getDestinoLabel(item.destino_entrega);
+    totals.set(destinoLabel, (totals.get(destinoLabel) || 0) + Number(item.subtotal ?? 0));
+  });
+
+  return Array.from(totals, ([destino, total]) => ({ destino, total }))
+    .filter((item) => item.total > 0)
+    .sort((a, b) => a.destino.localeCompare(b.destino, "es"));
+};
+
+const TotalCotizacionCell = ({
+  cotizacion,
+  className = "",
+  compact = false,
+}: {
+  cotizacion: ApiCotizacion;
+  className?: string;
+  compact?: boolean;
+}) => {
+  const simbolo = Number(cotizacion.moneda_id) === 2 ? "$" : "S/";
+  const totalesPorDestino = getTotalesPorDestino(cotizacion);
+
+  if (totalesPorDestino.length === 0) {
+    return (
+      <div className={className}>
+        {formatMoney(cotizacion.total, simbolo)}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`space-y-2 ${className}`}>
+      <div className="space-y-1.5">
+        {totalesPorDestino.map((destino) => (
+          <div
+            key={destino.destino}
+            className="flex items-center justify-between gap-3 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs dark:bg-blue-950/40"
+          >
+            <span className="min-w-0 truncate font-medium text-blue-900 dark:text-blue-100" title={destino.destino}>
+              {destino.destino}
+            </span>
+            <span className="shrink-0 font-bold text-blue-700 dark:text-blue-200">
+              {formatMoney(destino.total, simbolo)}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className={`flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 ${compact ? "text-[11px]" : "text-xs"}`}>
+        <span>Total general</span>
+        <span className="font-semibold text-slate-700 dark:text-slate-200">
+          {formatMoney(cotizacion.total, simbolo)}
+        </span>
+      </div>
+    </div>
+  );
 };
 
 const getApiErrorMessage = (error: unknown, fallback: string) => {
@@ -821,9 +909,13 @@ export default function Cotizaciones() {
                             {formatCotizacionDate(cotizacion.fecha)}
                           </p>
                         </div>
-                        <div>
+                        <div className="col-span-2">
                           <p className="text-xs font-semibold uppercase text-slate-400">Total</p>
-                          <p className="mt-1 font-bold text-slate-900 dark:text-slate-100">{formatMoney(cotizacion.total, getSimboloMoneda(cotizacion))}</p>
+                          <TotalCotizacionCell
+                            cotizacion={cotizacion}
+                            className="mt-1 font-bold text-slate-900 dark:text-slate-100"
+                            compact
+                          />
                         </div>
                         <div>
                           <p className="text-xs font-semibold uppercase text-slate-400">Ejecutivo</p>
@@ -1018,8 +1110,8 @@ export default function Cotizaciones() {
                           {cotizacionListItem.items_count ?? 0}
                         </td>
 
-                        <td className="px-6 py-5 font-semibold text-slate-900 dark:text-slate-100">
-                          {formatMoney(cotizacion.total, getSimboloMoneda(cotizacion))}
+                        <td className="px-6 py-5 align-top font-semibold text-slate-900 dark:text-slate-100">
+                          <TotalCotizacionCell cotizacion={cotizacion} />
                         </td>
 
                         <td className="px-4 py-5">

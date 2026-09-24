@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { useState } from "react";
 import type { CotizacionItem, } from "../../types/cotizaciones.type";
 import { CheckCircle, Trash2, Plus, Pencil, Eye, GripVertical } from "lucide-react";
 import { formatMoney } from "../../utils/formatNumber";
@@ -16,6 +18,7 @@ interface Props{
   setEstadoCotizacionId: (id: number) => void;
 
   onDeleteItem: (id: number) => void;
+  onDeleteItems?: (ids: number[]) => void;
   onOpenEdit: (item: CotizacionItem) => void;
   onReorderItems?: (items: CotizacionItem[]) => void;
   onToggleAplicaCostosAdicionales?: (id: number, checked: boolean) => void;
@@ -38,7 +41,8 @@ export function CotizacionItemsTable ({
   tipoCambioSolesADolar,
   estadoCotizacionId, 
   setEstadoCotizacionId,
-  onDeleteItem, 
+  onDeleteItem,
+  onDeleteItems,
   onOpenEdit, 
   onReorderItems,
   onToggleAplicaCostosAdicionales,
@@ -54,6 +58,8 @@ export function CotizacionItemsTable ({
 }: Props){
 const showCostosAdicionalesToggle = modoDistribucion !== "POR_CANTIDAD";
 const canReorder = !readOnly && Boolean(onReorderItems) && items.length > 1;
+const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
+const selectedIdsSet = new Set(selectedItemIds);
 const emptyColSpan =
   5 +
   (entregaMultidestino ? 1 : 0) +
@@ -62,10 +68,39 @@ const emptyColSpan =
   (isOwnCotizacion ? 4 : 3) +
   (isOwnCotizacion ? 1 : 0) +
   2 +
+  (!readOnly ? 1 : 0) +
   (canReorder ? 1 : 0);
 const formatGananciaSoles = (ganancia: number) => {
   const tipoCambio = tipoCambioSolesADolar || 1;
   return formatMoney(Number((ganancia * tipoCambio).toFixed(2)), "S/");
+};
+const hasItemDestinos = (item: CotizacionItem) => Boolean(item.destinos_entrega?.length);
+const getItemDestinos = (item: CotizacionItem) => item.destinos_entrega || [];
+const getNumber = (value: unknown) => Number(value || 0);
+const renderDestinoStack = (
+  item: CotizacionItem,
+  renderValue: (destino: NonNullable<CotizacionItem["destinos_entrega"]>[number], index: number) => ReactNode,
+  fallback: ReactNode,
+  className = "text-gray-700"
+) => {
+  const itemDestinos = getItemDestinos(item);
+
+  if (itemDestinos.length === 0) {
+    return fallback;
+  }
+
+  return (
+    <div className={`space-y-1 text-[10px] leading-tight ${className}`}>
+      {itemDestinos.map((destino, destinoIndex) => (
+        <div
+          key={`${destino.destino_entrega}-${destinoIndex}`}
+          className="min-h-[18px] border-b border-gray-100 pb-1 last:border-b-0 last:pb-0"
+        >
+          {renderValue(destino, destinoIndex)}
+        </div>
+      ))}
+    </div>
+  );
 };
 const moveItem = (sourceIndex: number, targetIndex: number) => {
   if (!canReorder || sourceIndex === targetIndex) return;
@@ -77,6 +112,16 @@ const moveItem = (sourceIndex: number, targetIndex: number) => {
   nextItems.splice(targetIndex, 0, movedItem);
   onReorderItems?.(nextItems.map((item, index) => ({ ...item, orden: index + 1 })));
 };
+const toggleSelectedItem = (itemId: number, checked: boolean) => {
+  setSelectedItemIds((prev) =>
+    checked ? Array.from(new Set([...prev, itemId])) : prev.filter((id) => id !== itemId)
+  );
+};
+const deleteSelectedItems = () => {
+  if (selectedItemIds.length === 0) return;
+  onDeleteItems?.(selectedItemIds);
+  setSelectedItemIds([]);
+};
 
 // CotizacionItemsTable.tsx — reemplaza el return completo
 return (
@@ -85,6 +130,14 @@ return (
       <h2 className="text-base font-medium text-gray-800">
         Items <span className="text-gray-400 font-normal">({items.length})</span>
       </h2>
+      {!readOnly && selectedItemIds.length > 0 && (
+        <button
+          onClick={deleteSelectedItems}
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-100 sm:py-1.5"
+        >
+          <Trash2 className="w-3.5 h-3.5" /> Eliminar ({selectedItemIds.length})
+        </button>
+      )}
       {!readOnly && (
       <button
         onClick={onAddItem}
@@ -148,6 +201,15 @@ return (
                   >
                     <GripVertical className="h-4 w-4" />
                   </button>
+                )}
+                {!readOnly && (
+                  <input
+                    type="checkbox"
+                    checked={selectedIdsSet.has(item.id)}
+                    onChange={(event) => toggleSelectedItem(item.id, event.target.checked)}
+                    className="mt-3 h-4 w-4 shrink-0 rounded border-gray-300 text-blue-600"
+                    title="Seleccionar item"
+                  />
                 )}
                 {itemImage && (
                   <img
@@ -228,15 +290,33 @@ return (
 
               {entregaMultidestino && (
                 <label className="mt-3 block rounded-xl bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
-                  Destino
-                  <input
-                    list="cotizacion-destinos"
-                    value={item.destino_entrega || ""}
-                    disabled={readOnly}
-                    onChange={(event) => onDestinoChange?.(item.id, event.target.value)}
-                    placeholder="Lima Metropolitana"
-                    className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                  />
+                  Destinos
+                  {hasItemDestinos(item) ? (
+                    <div className="mt-1 space-y-1">
+                      {item.destinos_entrega!.map((destino, destinoIndex) => (
+                        <div key={`${destino.destino_entrega}-${destinoIndex}`} className="rounded-lg bg-white px-2 py-1 text-[11px] text-blue-900">
+                          <div className="flex justify-between gap-2">
+                            <span className="truncate">{destino.destino_entrega}</span>
+                            <span className="font-bold">x{destino.cantidad}</span>
+                          </div>
+                          {destino.detalle_variante && (
+                            <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500">
+                              {destino.detalle_variante}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <input
+                      list="cotizacion-destinos"
+                      value={item.destino_entrega || ""}
+                      disabled={readOnly}
+                      onChange={(event) => onDestinoChange?.(item.id, event.target.value)}
+                      placeholder="Lima Metropolitana"
+                      className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                    />
+                  )}
                 </label>
               )}
 
@@ -275,28 +355,30 @@ return (
     </div>
 
     <div className="hidden overflow-x-auto rounded-lg border border-gray-100 xl:block">
-      <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
+      <table className="min-w-[1320px] w-full text-xs" style={{ tableLayout: 'fixed' }}>
         <colgroup>
           {canReorder && <col style={{ width: '34px' }} />}
-          <col style={{ width: '140px' }} />
-          {entregaMultidestino && <col style={{ width: '118px' }} />}
+          {!readOnly && <col style={{ width: '34px' }} />}
+          <col style={{ width: '170px' }} />
+          {entregaMultidestino && <col style={{ width: '180px' }} />}
           <col style={{ width: '44px' }} />
           <col style={{ width: '52px' }} />
           <col style={{ width: '50px' }} />
           <col style={{ width: '74px' }} />
           {showCostosAdicionalesToggle && <col style={{ width: '76px' }} />}
           {estadoCotizacionId === 3 && <><col style={{ width: '60px' }} /><col style={{ width: '74px' }} /></>}
-          <col style={{ width: '76px' }} />
-          <col style={{ width: '76px' }} />
+          <col style={{ width: '90px' }} />
+          <col style={{ width: '90px' }} />
           {isOwnCotizacion && <col style={{ width: '60px' }} />}
-          <col style={{ width: '76px' }} />
-          {isOwnCotizacion && <col style={{ width: monedaId === 2 ? '98px' : '76px' }} />}
-          <col style={{ width: '84px' }} />
+          <col style={{ width: '90px' }} />
+          {isOwnCotizacion && <col style={{ width: monedaId === 2 ? '116px' : '90px' }} />}
+          <col style={{ width: '96px' }} />
           <col style={{ width: '64px' }} />
         </colgroup>
         <thead>
           <tr className="bg-gray-50 border-b border-gray-100">
             {canReorder && <th className="py-2.5 px-1 text-center font-medium text-gray-500"></th>}
+            {!readOnly && <th className="py-2.5 px-1 text-center font-medium text-gray-500"></th>}
             <th className="py-2.5 px-3 text-left font-medium text-gray-500">Descripción</th>
             {entregaMultidestino && (
               <th className="py-2.5 px-2 text-center font-medium text-gray-500">Destino</th>
@@ -372,6 +454,17 @@ return (
                       </button>
                     </td>
                   )}
+                  {!readOnly && (
+                    <td className="py-2.5 px-1 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedIdsSet.has(item.id)}
+                        onChange={(event) => toggleSelectedItem(item.id, event.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                        title="Seleccionar item"
+                      />
+                    </td>
+                  )}
                   <td
                     className="py-2.5 px-3 font-medium text-gray-800 overflow-hidden"
                     style={{ maxWidth: 140, textOverflow: 'ellipsis' }}
@@ -392,15 +485,36 @@ return (
                   </td>
                   {entregaMultidestino && (
                     <td className="py-2.5 px-2 text-center">
-                      <input
-                        list="cotizacion-destinos"
-                        value={item.destino_entrega || ""}
-                        disabled={readOnly}
-                        onChange={(event) => onDestinoChange?.(item.id, event.target.value)}
-                        placeholder="Lima Metropolitana"
-                        className="w-full rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-800 outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
-                        title={item.destino_entrega || "Lima Metropolitana"}
-                      />
+                      {hasItemDestinos(item) ? (
+                        <div className="space-y-1 text-left text-[10px] font-semibold text-blue-800">
+                          {item.destinos_entrega!.map((destino, destinoIndex) => (
+                            <div
+                              key={`${destino.destino_entrega}-${destinoIndex}`}
+                              className="flex min-h-[18px] items-center justify-between gap-2 rounded-md bg-blue-50 px-2 py-1 last:mb-0"
+                            >
+                              <span className="min-w-0">
+                                <span className="block truncate" title={destino.destino_entrega}>{destino.destino_entrega}</span>
+                                {destino.detalle_variante && (
+                                  <span className="block truncate text-[9px] font-medium text-slate-500" title={destino.detalle_variante}>
+                                    {destino.detalle_variante}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="shrink-0 text-blue-700">x{destino.cantidad}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <input
+                          list="cotizacion-destinos"
+                          value={item.destino_entrega || ""}
+                          disabled={readOnly}
+                          onChange={(event) => onDestinoChange?.(item.id, event.target.value)}
+                          placeholder="Lima Metropolitana"
+                          className="w-full rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-800 outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+                          title={item.destino_entrega || "Lima Metropolitana"}
+                        />
+                      )}
                     </td>
                   )}
                   <td className="py-2.5 px-2 text-center text-gray-700">{item.cantidad}</td>
@@ -476,20 +590,75 @@ return (
                     </>
                   )}
 
-                  <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{formatMoney(costoUnitario, simboloMoneda)}</td>
-                  <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{formatMoney(costoTotal, simboloMoneda)}</td>
-                  {isOwnCotizacion && <td className="py-3 px-2 font-medium text-xs">{(margen ?? 0).toFixed(1)} % </td>}
-                  <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">{formatMoney(precioVenta, simboloMoneda)}</td>
-                  {isOwnCotizacion && <td className={`py-2.5 px-2 text-center tabular-nums font-medium ${ganancia > 0 ? 'text-green-700' : 'text-red-700'}`}>
-                    <div>{formatMoney(ganancia, simboloMoneda)}</div>
-                    {monedaId === 2 && (
-                      <div className="mt-0.5 text-[10px] leading-none text-emerald-600">
-                        {formatGananciaSoles(ganancia)}
-                      </div>
+                  <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">
+                    {renderDestinoStack(
+                      item,
+                      (destino) => formatMoney(getNumber(destino.costo_unitario), simboloMoneda),
+                      formatMoney(costoUnitario, simboloMoneda)
                     )}
-                  </td>}
+                  </td>
+                  <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">
+                    {renderDestinoStack(
+                      item,
+                      (destino) => formatMoney(getNumber(destino.costo_total), simboloMoneda),
+                      formatMoney(costoTotal, simboloMoneda)
+                    )}
+                  </td>
+                  {isOwnCotizacion && (
+                    <td className="py-2.5 px-2 text-center tabular-nums font-medium text-gray-800">
+                      {renderDestinoStack(
+                        item,
+                        (destino) => `${getNumber(destino.margen ?? margen).toFixed(1)} %`,
+                        `${(margen ?? 0).toFixed(1)} %`
+                      )}
+                    </td>
+                  )}
+                  <td className="py-2.5 px-2 text-center tabular-nums text-gray-700">
+                    {renderDestinoStack(
+                      item,
+                      (destino) => formatMoney(getNumber(destino.precio_venta), simboloMoneda),
+                      formatMoney(precioVenta, simboloMoneda)
+                    )}
+                  </td>
+                  {isOwnCotizacion && (
+                    <td className="py-2.5 px-2 text-center tabular-nums font-medium">
+                      {hasItemDestinos(item) ? (
+                        renderDestinoStack(
+                          item,
+                          (destino) => {
+                            const gananciaDestino = getNumber(destino.ganancia);
+
+                            return (
+                              <div className={gananciaDestino > 0 ? "text-green-700" : "text-red-700"}>
+                                <div>{formatMoney(gananciaDestino, simboloMoneda)}</div>
+                                {monedaId === 2 && (
+                                  <div className="mt-0.5 text-[10px] leading-none text-emerald-600">
+                                    {formatGananciaSoles(gananciaDestino)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          },
+                          null
+                        )
+                      ) : (
+                        <div className={ganancia > 0 ? 'text-green-700' : 'text-red-700'}>
+                          <div>{formatMoney(ganancia, simboloMoneda)}</div>
+                          {monedaId === 2 && (
+                            <div className="mt-0.5 text-[10px] leading-none text-emerald-600">
+                              {formatGananciaSoles(ganancia)}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  )}
                   <td className="py-2.5 px-2 text-center tabular-nums font-medium text-gray-800">
-                    {formatMoney(subtotal, simboloMoneda)}
+                    {renderDestinoStack(
+                      item,
+                      (destino) => formatMoney(getNumber(destino.subtotal), simboloMoneda),
+                      formatMoney(subtotal, simboloMoneda)
+                    )}
                   </td>
                   <td className="sticky right-0 z-10 bg-white py-2.5 px-2 text-gray-900 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)] group-hover:bg-gray-50">
                     {readOnly ? (

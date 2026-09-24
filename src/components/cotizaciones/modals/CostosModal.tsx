@@ -137,7 +137,7 @@ export function CostosModal({
             {!entregaMultidestino && <span>{formatMoney(totalCostos, simboloMoneda)}</span>}
           </div>
           {entregaMultidestino && (
-            <div className="mt-2 space-y-1">
+            <div className="mt-2 max-h-32 space-y-1 overflow-y-auto pr-1">
               {costosPorDestino.map(([destino, total]) => (
                 <div key={destino} className="flex items-center justify-between gap-3 text-xs text-purple-800">
                   <span className="truncate">{destino}</span>

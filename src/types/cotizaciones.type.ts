@@ -108,6 +108,7 @@ export type CotizacionItem ={
     estado_cotizacion_item_id?: number;
     aplica_costos_adicionales?: boolean;
     destino_entrega?: string | null;
+    destinos_entrega?: CotizacionItemDestino[];
     created_at?: string;
     updated_at?: string;
     tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados
@@ -121,6 +122,20 @@ export type CotizacionItem ={
     ultima_fecha_cotizacion?: string | null;
     veces_cotizado?: number;
     activo?: boolean;
+}
+
+export interface CotizacionItemDestino {
+    id?: number;
+    cotizacion_item_id?: number;
+    destino_entrega: string;
+    detalle_variante?: string | null;
+    cantidad: number;
+    margen?: number | null;
+    costo_unitario?: number;
+    precio_venta?: number;
+    subtotal?: number;
+    costo_total?: number;
+    ganancia?: number;
 }
 
 export interface CotizacionCostosAdicional {
@@ -197,6 +212,7 @@ export interface ItemForm {
     estado_cotizacion_item_id?: number;
     aplica_costos_adicionales?: boolean;
     destino_entrega?: string | null;
+    destinos_entrega?: CotizacionItemDestino[];
     created_at?: string;
     updated_at?: string;
     tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados

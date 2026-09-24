@@ -388,7 +388,11 @@ export function CotizacionDetail() {
       return;
     }
 
-    const hasMissingDestino = items.some((item) => !item.destino_entrega?.trim());
+    const hasMissingDestino = items.some((item) =>
+      item.destinos_entrega?.length
+        ? item.destinos_entrega.some((destino) => !destino.destino_entrega?.trim())
+        : !item.destino_entrega?.trim()
+    );
 
     if (!hasMissingDestino || multidestinoMissingDestinoWarnedRef.current) return;
 
@@ -774,6 +778,7 @@ export function CotizacionDetail() {
         orden: Number(item.orden || index + 1),
         aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
         destino_entrega: item.destino_entrega || '',
+        destinos_entrega: Array.isArray(item.destinos_entrega) ? item.destinos_entrega : [],
         tipo: item.tipo || (item.producto_id ? 'catalogo' : 'externo'),
         imagen: imageForPreview || rawImage,
         imagen_url: imageForPreview || null,
@@ -935,6 +940,7 @@ export function CotizacionDetail() {
     estado_cotizacion_item_id: undefined,
     aplica_costos_adicionales: true,
     destino_entrega: '',
+    destinos_entrega: [],
     tipo: 'externo' as 'catalogo' | 'externo',
     margen: 20,
     nota: '',
@@ -964,6 +970,7 @@ export function CotizacionDetail() {
                 garantia_meses: Number(itemForm.garantia_meses || 0),
                 aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true,
                 destino_entrega: itemForm.destino_entrega || '',
+                destinos_entrega: itemForm.destinos_entrega || [],
               }
             : item
         )
@@ -978,6 +985,7 @@ export function CotizacionDetail() {
               garantia_meses: Number(itemForm.garantia_meses || 0),
               aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true,
               destino_entrega: itemForm.destino_entrega || '',
+              destinos_entrega: itemForm.destinos_entrega || [],
             } as CotizacionItem,
           ]
       : items;
@@ -997,14 +1005,31 @@ export function CotizacionDetail() {
 
     if (!itemCalculado) return;
 
-    setItemForm(prev => ({
-      ...prev,
-      costo_unitario: Number(itemCalculado.costo_unitario || 0),
-      costo_total: Number(itemCalculado.costo_total || 0),
-      precio_venta: Number(itemCalculado.precio_venta || 0),
-      subtotal: Number(itemCalculado.subtotal || 0),
-      ganancia: Number(itemCalculado.ganancia || 0),
-    }));
+    setItemForm(prev => {
+      const destinosCalculados = itemCalculado.destinos_entrega || prev.destinos_entrega || [];
+      const destinosChanged = JSON.stringify(prev.destinos_entrega || []) !== JSON.stringify(destinosCalculados);
+      const nextValues = {
+        costo_unitario: Number(itemCalculado.costo_unitario || 0),
+        costo_total: Number(itemCalculado.costo_total || 0),
+        precio_venta: Number(itemCalculado.precio_venta || 0),
+        subtotal: Number(itemCalculado.subtotal || 0),
+        ganancia: Number(itemCalculado.ganancia || 0),
+      };
+      const numbersChanged =
+        Number(prev.costo_unitario || 0) !== nextValues.costo_unitario ||
+        Number(prev.costo_total || 0) !== nextValues.costo_total ||
+        Number(prev.precio_venta || 0) !== nextValues.precio_venta ||
+        Number(prev.subtotal || 0) !== nextValues.subtotal ||
+        Number(prev.ganancia || 0) !== nextValues.ganancia;
+
+      if (!numbersChanged && !destinosChanged) return prev;
+
+      return {
+        ...prev,
+        ...nextValues,
+        ...(destinosChanged ? { destinos_entrega: destinosCalculados } : {}),
+      };
+    });
   }, [
     itemForm.costo_base,
     itemForm.margen,
@@ -1012,6 +1037,7 @@ export function CotizacionDetail() {
     itemForm.garantia_meses,
     itemForm.aplica_costos_adicionales,
     itemForm.destino_entrega,
+    itemForm.destinos_entrega,
     costos,
     items,
     editingItemId,
@@ -1059,6 +1085,7 @@ export function CotizacionDetail() {
       imagen_url: image || null,
       imagen_path: item.imagen_path || item.imagen || null,
       aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
+      destinos_entrega: item.destinos_entrega || [],
     });
 
     setShowItemFormModal(true);
@@ -1374,8 +1401,16 @@ export function CotizacionDetail() {
     }
 
     if (entregaMultidestino) {
-      const hayItemsSinDestino = items.some((item) => !item.destino_entrega?.trim());
-      const destinosItems = new Set(items.map((item) => item.destino_entrega?.trim() || 'Lima Metropolitana'));
+      const hayItemsSinDestino = items.some((item) =>
+        item.destinos_entrega?.length
+          ? item.destinos_entrega.some((destino) => !destino.destino_entrega?.trim())
+          : !item.destino_entrega?.trim()
+      );
+      const destinosItems = new Set(items.flatMap((item) =>
+        item.destinos_entrega?.length
+          ? item.destinos_entrega.map((destino) => destino.destino_entrega?.trim() || 'Lima Metropolitana')
+          : [item.destino_entrega?.trim() || 'Lima Metropolitana']
+      ));
       const destinosConCostos = new Set(costos.map((costo) => costo.destino_entrega?.trim() || 'Lima Metropolitana'));
       const destinosSinCostos = Array.from(destinosItems).filter((destino) => !destinosConCostos.has(destino));
 
@@ -2109,6 +2144,16 @@ export function CotizacionDetail() {
 
       return;
     }
+    const destinosItem = entregaMultidestino ? (itemForm.destinos_entrega || []).filter((destino) => destino.destino_entrega?.trim() && Number(destino.cantidad || 0) > 0) : [];
+    const cantidadDestinos = destinosItem.reduce((acc, destino) => acc + Number(destino.cantidad || 0), 0);
+    if (entregaMultidestino && destinosItem.length > 0 && cantidadDestinos !== Number(itemForm.cantidad || 0)) {
+      addNotification({
+        message: `La suma de cantidades por destino (${cantidadDestinos}) debe coincidir con la cantidad del item (${itemForm.cantidad}).`,
+        type: 'warning',
+        duration: 5000,
+      } as any);
+      return;
+    }
     const proveedores = itemForm.tipo === 'externo' ? normalizeItemProveedores(itemForm) : [];
     const primaryProveedor = getPrimaryProveedor(proveedores);
 
@@ -2146,6 +2191,8 @@ export function CotizacionDetail() {
 
       tipo: itemForm.tipo,
       aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true,
+      destino_entrega: itemForm.destino_entrega || '',
+      destinos_entrega: destinosItem,
 
       stock: 0,
 
@@ -2187,6 +2234,16 @@ export function CotizacionDetail() {
       } as any);
       return;
     }
+    const destinosItem = entregaMultidestino ? (itemForm.destinos_entrega || []).filter((destino) => destino.destino_entrega?.trim() && Number(destino.cantidad || 0) > 0) : [];
+    const cantidadDestinos = destinosItem.reduce((acc, destino) => acc + Number(destino.cantidad || 0), 0);
+    if (entregaMultidestino && destinosItem.length > 0 && cantidadDestinos !== Number(itemForm.cantidad || 0)) {
+      addNotification({
+        message: `La suma de cantidades por destino (${cantidadDestinos}) debe coincidir con la cantidad del item (${itemForm.cantidad}).`,
+        type: 'warning',
+        duration: 5000,
+      } as any);
+      return;
+    }
 
     const proveedores = itemForm.tipo === 'externo' ? normalizeItemProveedores(itemForm) : [];
     const primaryProveedor = getPrimaryProveedor(proveedores);
@@ -2212,6 +2269,8 @@ export function CotizacionDetail() {
             link_proveedor: primaryProveedor.link_proveedor,
             proveedores,
             aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true,
+            destino_entrega: itemForm.destino_entrega || '',
+            destinos_entrega: destinosItem,
             stock: 0,
             imagen: itemForm.imagen || "",
             imagen_url: itemForm.imagen_url,
@@ -2257,6 +2316,38 @@ export function CotizacionDetail() {
         duration: 4000,
       } as any);
     }
+  };
+
+  const handleDeleteItems = (itemIds: number[]) => {
+    if (isCotizacionReadOnly || itemIds.length === 0) return;
+    if (!confirm(`Eliminar ${itemIds.length} items?`)) return;
+
+    setItems((prev) => prev.filter((item) => !itemIds.includes(Number(item.id))));
+    addNotification({
+      message: `${itemIds.length} items eliminados`,
+      type: 'success',
+      duration: 4000,
+    } as any);
+  };
+
+  const handleApplyDestinoMarginToAll = (destinoEntrega: string, margen: number, sourceItemId?: number) => {
+    const destinoKey = destinoEntrega.trim().toLowerCase();
+    if (!destinoKey) return;
+
+    setItems((prev) =>
+      prev.map((item) => {
+        if (Number(item.id) === Number(sourceItemId) || !item.destinos_entrega?.length) return item;
+
+        let changed = false;
+        const destinosActualizados = item.destinos_entrega.map((destino) => {
+          if ((destino.destino_entrega || '').trim().toLowerCase() !== destinoKey) return destino;
+          changed = true;
+          return { ...destino, margen };
+        });
+
+        return changed ? { ...item, destinos_entrega: destinosActualizados } : item;
+      })
+    );
   };
 
   // 🆕 CONTROL DE EXPORTACIÓN
@@ -2454,6 +2545,7 @@ export function CotizacionDetail() {
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
       destino_entrega: '',
+      destinos_entrega: [],
       tipo: 'externo',
       margen: 20,
       nota: '',
@@ -2507,6 +2599,7 @@ export function CotizacionDetail() {
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
       destino_entrega: '',
+      destinos_entrega: [],
       tipo: 'catalogo',
       margen: 0,
       nota: '',
@@ -2584,6 +2677,7 @@ export function CotizacionDetail() {
       tipo: 'externo',
       aplica_costos_adicionales: suggestion.aplica_costos_adicionales ?? true,
       destino_entrega: suggestion.destino_entrega || prev.destino_entrega || '',
+      destinos_entrega: suggestion.destinos_entrega || prev.destinos_entrega || [],
       importacion_calculo: null,
     }));
   };
@@ -2722,6 +2816,7 @@ export function CotizacionDetail() {
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
       destino_entrega: '',
+      destinos_entrega: [],
       tipo: 'externo' as 'catalogo' | 'externo',
       proveedor: '',
       link_proveedor: '',
@@ -2735,6 +2830,9 @@ export function CotizacionDetail() {
 
     items.forEach((item) => {
       if (item.destino_entrega?.trim()) destinos.add(item.destino_entrega.trim());
+      item.destinos_entrega?.forEach((destino) => {
+        if (destino.destino_entrega?.trim()) destinos.add(destino.destino_entrega.trim());
+      });
     });
     costos.forEach((costo) => {
       if (costo.destino_entrega?.trim()) destinos.add(costo.destino_entrega.trim());
@@ -3353,6 +3451,7 @@ export function CotizacionDetail() {
             estadoCotizacionId={estadoCotizacionId}
             setEstadoCotizacionId={setEstadoCotizacionId}
             onDeleteItem={handleDeleteItem}
+            onDeleteItems={handleDeleteItems}
             onOpenEdit={handleOpenEditItem}
             onReorderItems={handleReorderItems}
             onToggleAplicaCostosAdicionales={handleToggleAplicaCostosAdicionales}
@@ -3898,6 +3997,7 @@ export function CotizacionDetail() {
         costoSinIgv={!currentIncludeIgv}
         entregaMultidestino={entregaMultidestino}
         destinos={destinosCotizacion}
+        onApplyDestinoMarginToAll={handleApplyDestinoMarginToAll}
       />
 
       {/* 4. Modal Costos Adicionales */}

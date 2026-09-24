@@ -7,6 +7,19 @@ interface CostoAdicional {
 
 type ModoDistribucion = "POR_ITEM" | "POR_CANTIDAD";
 type TipoCalculo = "VENTA" | "ALQUILER";
+type DestinoCalculo = {
+  destino_entrega: string;
+  detalle_variante?: string | null;
+  cantidad: number;
+  margen?: number;
+  id?: number;
+  cotizacion_item_id?: number;
+  costo_unitario?: number;
+  precio_venta?: number;
+  subtotal?: number;
+  costo_total?: number;
+  ganancia?: number;
+};
 
 export function recalcularItems(
   items: CotizacionItem[],
@@ -24,14 +37,34 @@ export function recalcularItems(
   };
   const getDestinoKey = (item: CotizacionItem) =>
     entregaMultidestino ? normalizeDestino(item.destino_entrega) : "__GLOBAL__";
+  const getItemDestinos = (item: CotizacionItem): DestinoCalculo[] => {
+    if (entregaMultidestino && item.destinos_entrega?.length) {
+      return item.destinos_entrega
+        .map((destino) => ({
+          ...destino,
+          destino_entrega: normalizeDestino(destino.destino_entrega),
+          detalle_variante: destino.detalle_variante,
+          cantidad: Number(destino.cantidad || 0),
+          margen: destino.margen === null || destino.margen === undefined ? undefined : Number(destino.margen),
+        }))
+        .filter((destino) => destino.cantidad > 0);
+    }
+
+    return [{
+      destino_entrega: getDestinoKey(item),
+      cantidad: Number(item.cantidad || 0),
+    }];
+  };
 
   const costosTotal = costos.reduce((acc, c) => acc + Number(c.monto || 0), 0);
-  const grupos = new Map<string, CotizacionItem[]>();
+  const grupos = new Map<string, Array<{ item: CotizacionItem; cantidad: number }>>();
   const costosPorDestino = new Map<string, number>();
 
   items.forEach((item) => {
-    const key = getDestinoKey(item);
-    grupos.set(key, [...(grupos.get(key) || []), item]);
+    getItemDestinos(item).forEach((destino) => {
+      const key = entregaMultidestino ? normalizeDestino(destino.destino_entrega) : "__GLOBAL__";
+      grupos.set(key, [...(grupos.get(key) || []), { item, cantidad: Number(destino.cantidad || 0) }]);
+    });
   });
 
   if (entregaMultidestino) {
@@ -45,22 +78,22 @@ export function recalcularItems(
 
   const distribucionPorDestino = new Map<string, {
     costoExtraUnitario: number;
-    itemsSeleccionados: Set<CotizacionItem>;
+    itemIdsSeleccionados: Set<number>;
   }>();
 
-  grupos.forEach((itemsDestino, key) => {
+  grupos.forEach((lineasDestino, key) => {
     const totalCostosDestino = costosPorDestino.get(key) || 0;
     const itemsConCostos =
       modoDistribucion === "POR_CANTIDAD"
-        ? itemsDestino
-        : itemsDestino.filter((item) => item.aplica_costos_adicionales !== false);
-    const itemsSeleccionados = itemsConCostos.length > 0 ? itemsConCostos : itemsDestino;
-    const totalCantidadDestino = itemsDestino.reduce(
-      (acc, item) => acc + Number(item.cantidad || 0),
+        ? lineasDestino
+        : lineasDestino.filter((linea) => linea.item.aplica_costos_adicionales !== false);
+    const itemsSeleccionados = itemsConCostos.length > 0 ? itemsConCostos : lineasDestino;
+    const totalCantidadDestino = lineasDestino.reduce(
+      (acc, linea) => acc + Number(linea.cantidad || 0),
       0,
     );
     const totalCantidadSeleccionada = itemsSeleccionados.reduce(
-      (acc, item) => acc + Number(item.cantidad || 0),
+      (acc, linea) => acc + Number(linea.cantidad || 0),
       0,
     );
     const divisor =
@@ -70,7 +103,7 @@ export function recalcularItems(
 
     distribucionPorDestino.set(key, {
       costoExtraUnitario: totalCostosDestino / divisor,
-      itemsSeleccionados: new Set(itemsSeleccionados),
+      itemIdsSeleccionados: new Set(itemsSeleccionados.map((linea) => linea.item.id)),
     });
   });
 
@@ -79,24 +112,58 @@ export function recalcularItems(
     const costoBase = Number(item.costo_base || 0);
     const margen = Number(item.margen || 0);
     const periodoMeses = Math.max(0, Number(item.garantia_meses || 0));
-    const distribucion = distribucionPorDestino.get(getDestinoKey(item));
-    const aplicaCostoExtra =
-      modoDistribucion === "POR_CANTIDAD" ||
-      Boolean(distribucion?.itemsSeleccionados.has(item));
-    const costoUnitario = costoBase + (aplicaCostoExtra ? distribucion?.costoExtraUnitario || 0 : 0);
-    const precioVentaBase =
-      margen < 100 ? costoUnitario / (1 - margen / 100) : costoUnitario;
-    const precioVentaRedondeado = Number(precioVentaBase.toFixed(2));
-    const subtotalItem = Number((
-      precioVentaRedondeado * cantidad * (tipoCalculo === "ALQUILER" ? periodoMeses : 1)
-    ).toFixed(2));
-    const costoTotal = Number((costoUnitario * cantidad).toFixed(2));
-    const gananciaItem = subtotalItem - costoTotal;
-    const ganancia = includeIgv ? gananciaItem / 1.18 : gananciaItem;
+    let subtotalItem = 0;
+    let costoTotal = 0;
+    let gananciaItemTotal = 0;
+    let precioVentaPonderado = 0;
+    let costoUnitarioPonderado = 0;
+    const destinosCalculados = getItemDestinos(item).map((destino) => {
+      const key = entregaMultidestino ? normalizeDestino(destino.destino_entrega) : "__GLOBAL__";
+      const cantidadDestino = Number(destino.cantidad || 0);
+      const distribucion = distribucionPorDestino.get(key);
+      const aplicaCostoExtra =
+        modoDistribucion === "POR_CANTIDAD" ||
+        Boolean(distribucion?.itemIdsSeleccionados.has(item.id));
+      const costoUnitario = costoBase + (aplicaCostoExtra ? distribucion?.costoExtraUnitario || 0 : 0);
+      const margenDestino = destino.margen === null || destino.margen === undefined
+        ? margen
+        : Number(destino.margen || 0);
+      const precioVentaBase =
+        margenDestino < 100 ? costoUnitario / (1 - margenDestino / 100) : costoUnitario;
+      const precioVentaRedondeado = Number(precioVentaBase.toFixed(2));
+      const subtotalDestino = Number((
+        precioVentaRedondeado * cantidadDestino * (tipoCalculo === "ALQUILER" ? periodoMeses : 1)
+      ).toFixed(2));
+      const costoTotalDestino = Number((costoUnitario * cantidadDestino).toFixed(2));
+      const gananciaDestino = includeIgv
+        ? (subtotalDestino - costoTotalDestino) / 1.18
+        : subtotalDestino - costoTotalDestino;
+
+      subtotalItem += subtotalDestino;
+      costoTotal += costoTotalDestino;
+      gananciaItemTotal += gananciaDestino;
+      precioVentaPonderado += precioVentaRedondeado * cantidadDestino;
+      costoUnitarioPonderado += costoUnitario * cantidadDestino;
+
+      return {
+        ...destino,
+        margen: margenDestino,
+        costo_unitario: Number(costoUnitario.toFixed(2)),
+        precio_venta: precioVentaRedondeado,
+        subtotal: subtotalDestino,
+        costo_total: costoTotalDestino,
+        ganancia: Number(gananciaDestino.toFixed(2)),
+      };
+    });
+    const divisorItem = cantidad > 0 ? cantidad : 1;
+    const precioVentaRedondeado = Number((precioVentaPonderado / divisorItem).toFixed(2));
+    const costoUnitario = Number((costoUnitarioPonderado / divisorItem).toFixed(2));
+    const ganancia = gananciaItemTotal;
 
     return {
       ...item,
-      costo_unitario: Number(costoUnitario.toFixed(2)),
+      destinos_entrega: item.destinos_entrega?.length ? destinosCalculados : item.destinos_entrega,
+      costo_unitario: costoUnitario,
       precio_venta: precioVentaRedondeado,
       costo_total: Number(costoTotal.toFixed(2)),
       subtotal: Number(subtotalItem.toFixed(2)),
