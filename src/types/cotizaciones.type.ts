@@ -7,6 +7,8 @@ export interface Cotizacion {
     tipo_cambio: number;
     titulo: string;
     forma_pago?: string;
+    adelanto?: boolean;
+    adelanto_porcentaje?: number | string | null;
     entrega_provincia?: boolean;
     entrega_destino?: string | null;
     entrega_multidestino?: boolean;

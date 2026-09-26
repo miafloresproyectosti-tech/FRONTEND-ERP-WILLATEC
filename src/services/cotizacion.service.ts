@@ -189,6 +189,8 @@ export interface Cotizacion {
   fecha: string;
   titulo: string;
   forma_pago?: string;
+  adelanto?: boolean;
+  adelanto_porcentaje?: number | string | null;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
   entrega_multidestino?: boolean;
@@ -314,6 +316,8 @@ export interface CreateCotizacionData {
   plataforma_id: number;
   titulo?: string;
   forma_pago?: string;
+  adelanto?: boolean;
+  adelanto_porcentaje?: number | null;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
   entrega_multidestino?: boolean;
@@ -336,6 +340,8 @@ export interface UpdateCotizacionData {
   validez_dias?: number;
   titulo?: string;
   forma_pago?: string;
+  adelanto?: boolean;
+  adelanto_porcentaje?: number | null;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
   entrega_multidestino?: boolean;

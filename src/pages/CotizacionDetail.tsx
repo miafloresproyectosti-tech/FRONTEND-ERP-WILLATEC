@@ -345,6 +345,8 @@ export function CotizacionDetail() {
   const [modoDistribucion, setModoDistribucion] = useState<'POR_ITEM' | 'POR_CANTIDAD'>('POR_ITEM');
   const [titulo, setTitulo] = useState('');
   const [formaPago, setFormaPago] = useState('AL CONTADO');
+  const [adelanto, setAdelanto] = useState(false);
+  const [adelantoPorcentaje, setAdelantoPorcentaje] = useState('');
   const [entregaProvincia, setEntregaProvincia] = useState(false);
   const [entregaDestino, setEntregaDestino] = useState('');
   const [entregaMultidestino, setEntregaMultidestino] = useState(false);
@@ -810,6 +812,9 @@ export function CotizacionDetail() {
     setModoDistribucion(source.modo_distribucion || baseCotizacion?.modo_distribucion || 'POR_ITEM');
     setTitulo(source.titulo ?? baseCotizacion?.titulo ?? '');
     setFormaPago(source.forma_pago ?? baseCotizacion?.forma_pago ?? 'AL CONTADO');
+    const porcentajeAdelanto = source.adelanto_porcentaje ?? baseCotizacion?.adelanto_porcentaje ?? null;
+    setAdelanto(Boolean(source.adelanto ?? baseCotizacion?.adelanto ?? false));
+    setAdelantoPorcentaje(porcentajeAdelanto ? String(porcentajeAdelanto) : '');
     setEntregaProvincia(Boolean(source.entrega_provincia ?? baseCotizacion?.entrega_provincia ?? false));
     setEntregaDestino(source.entrega_destino ?? baseCotizacion?.entrega_destino ?? '');
     setEntregaMultidestino(Boolean(source.entrega_multidestino ?? baseCotizacion?.entrega_multidestino ?? false));
@@ -1293,6 +1298,8 @@ export function CotizacionDetail() {
       setModoDistribucion(data.modo_distribucion);
       setTitulo(data.titulo);
       setFormaPago(data.forma_pago || 'AL CONTADO');
+      setAdelanto(Boolean(data.adelanto));
+      setAdelantoPorcentaje(data.adelanto_porcentaje ? String(data.adelanto_porcentaje) : '');
       setEntregaProvincia(Boolean(data.entrega_provincia));
       setEntregaDestino(data.entrega_destino || '');
       setEntregaMultidestino(Boolean(data.entrega_multidestino));
@@ -1926,6 +1933,16 @@ export function CotizacionDetail() {
       };
     });
     const clienteContactoValue = clienteContacto.trim();
+    const adelantoPorcentajeValue = Number(adelantoPorcentaje);
+
+    if (adelanto && (!Number.isFinite(adelantoPorcentajeValue) || adelantoPorcentajeValue <= 0 || adelantoPorcentajeValue >= 100)) {
+      showToast({
+        title: 'Porcentaje de adelanto inválido',
+        description: 'Ingresa un porcentaje mayor a 0 y menor a 100.',
+        type: 'warning',
+      });
+      return;
+    }
 
     const payload: any = {
       id: currentCotizacionId ?? modificacion?.cotizacion_id,
@@ -1937,6 +1954,8 @@ export function CotizacionDetail() {
       fecha: fecha || getLocalDateString(),
       titulo: titulo,
       forma_pago: formaPago,
+      adelanto: adelanto,
+      adelanto_porcentaje: adelanto ? adelantoPorcentajeValue : null,
       entrega_provincia: entregaProvincia,
       entrega_destino: entregaProvincia ? entregaDestino.trim() : '',
       entrega_multidestino: entregaMultidestino,
@@ -3412,6 +3431,10 @@ export function CotizacionDetail() {
 
             formaPago={formaPago}
             setFormaPago={setFormaPago}
+            adelanto={adelanto}
+            setAdelanto={setAdelanto}
+            adelantoPorcentaje={adelantoPorcentaje}
+            setAdelantoPorcentaje={setAdelantoPorcentaje}
             entregaProvincia={entregaProvincia}
             setEntregaProvincia={setEntregaProvincia}
             entregaDestino={entregaDestino}
