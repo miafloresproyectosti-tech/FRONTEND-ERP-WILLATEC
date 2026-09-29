@@ -135,7 +135,7 @@ export default function MainLayout() {
       </div>
 
       {/* MAIN */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
 
         {/* TOPBAR */}
         <Topbar
@@ -150,9 +150,9 @@ export default function MainLayout() {
         />
 
         {/* CONTENT */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-5">
+        <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:p-5">
 
-          <div className="bg-white rounded-2xl shadow-sm p-3 sm:p-4 lg:p-5 w-full">
+          <div className="min-w-0 w-full overflow-hidden rounded-2xl bg-white p-3 shadow-sm dark:bg-slate-950 sm:p-4 lg:p-5">
             <Outlet />
           </div>
 

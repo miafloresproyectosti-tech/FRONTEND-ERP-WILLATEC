@@ -1541,7 +1541,7 @@ export default function SeguimientoLicitaciones() {
             </span>
           )}
         </div>
-        <div className={`grid gap-3 p-3 ${viewMode === "cards" ? "md:grid-cols-2 2xl:grid-cols-3" : "xl:hidden"}`}>
+        <div className={`grid min-w-0 max-w-full gap-3 p-3 ${viewMode === "cards" ? "md:grid-cols-2 2xl:grid-cols-3" : "xl:hidden"}`}>
           {loading ? (
             Array.from({ length: 4 }).map((_, index) => (
               <div key={index} className="h-44 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
@@ -1552,9 +1552,9 @@ export default function SeguimientoLicitaciones() {
               const alert = getVigenciaAlert(item.vigencia, item.estado);
 
               return (
-                <article key={item.id} className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 ${alert.rowClass}`}>
+                <article key={item.id} className={`min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 ${alert.rowClass}`}>
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="min-w-0 max-w-full">
                       <div className="flex flex-wrap items-center gap-2">
                         <TipoBadge tipo={item.tipo} />
                         {item.esNueva && isAvailableOpportunity(item) && (
@@ -1563,7 +1563,7 @@ export default function SeguimientoLicitaciones() {
                           </span>
                         )}
                       </div>
-                      <h3 className="mt-2 line-clamp-2 text-sm font-bold text-slate-900 dark:text-white">
+                      <h3 className="mt-2 line-clamp-2 break-words text-sm font-bold text-slate-900 dark:text-white">
                         {item.requerimiento}
                       </h3>
                       <p className="mt-1 truncate text-sm text-slate-600 dark:text-slate-300" title={item.empresa}>
@@ -1573,7 +1573,7 @@ export default function SeguimientoLicitaciones() {
                     <EstadoBadge estado={item.estado} />
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-slate-500">
+                  <div className="mt-4 grid min-w-0 grid-cols-1 gap-3 text-xs text-slate-500 sm:grid-cols-2">
                     <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
                       <p className="font-semibold uppercase tracking-wide">Categoria</p>
                       <p className="mt-1 font-bold text-slate-800 dark:text-slate-100">{item.categoria}</p>

@@ -57,6 +57,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
     Partial<Record<NotificationSectionKey, number>>
   >({});
   const dropdownTimeoutRef = useRef<number | null>(null);
+  const logoClickRef = useRef({ count: 0, timer: 0 });
 
   const canSeeCommercialGroup =
     user?.role === "SUPERADMIN" || user?.role === "ADMIN";
@@ -71,6 +72,19 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const isActive = (path: string) => location.pathname === path;
   const closeMobile = () => {
     if (mobile) onClose?.();
+  };
+
+  const handleLogoClick = () => {
+    window.clearTimeout(logoClickRef.current.timer);
+    logoClickRef.current.count += 1;
+    logoClickRef.current.timer = window.setTimeout(() => {
+      logoClickRef.current.count = 0;
+    }, 1200);
+    if (logoClickRef.current.count >= 4) {
+      logoClickRef.current.count = 0;
+      closeMobile();
+      navigate("/willa-snake");
+    }
   };
 
   const itemClass = (path: string) =>
@@ -231,13 +245,18 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
           )}
 
           {/* LOGO */}
-          <div className="mb-6 flex justify-center">
+          <button
+            type="button"
+            onClick={handleLogoClick}
+            className="mb-6 flex w-full justify-center rounded-2xl outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Willatec"
+          >
             <img
               src="/logoWILLATEC-white.png"
               alt="Willatec"
               className="h-12 object-contain sm:h-14"
             />
-          </div>
+          </button>
 
           {/* MENU */}
           <nav className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">

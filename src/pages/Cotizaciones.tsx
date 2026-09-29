@@ -881,7 +881,7 @@ export default function Cotizaciones() {
             </div>
           ) : (
             <>
-            <div className={`grid gap-3 p-4 ${viewMode === "cards" ? "md:grid-cols-2 2xl:grid-cols-3" : "lg:hidden"}`}>
+            <div className={`grid min-w-0 max-w-full gap-3 p-3 sm:p-4 ${viewMode === "cards" ? "md:grid-cols-2 2xl:grid-cols-3" : "lg:hidden"}`}>
               {paginatedCotizaciones.length > 0 ? (
                 paginatedCotizaciones.map((cotizacion) => {
                   const cotizacionListItem = cotizacion as CotizacionListItem;
@@ -909,7 +909,7 @@ export default function Cotizaciones() {
                   const modificacionesPendientes = Number(cotizacion.modificaciones_pendientes_count || 0);
 
                   return (
-                    <div key={cotizacion.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                    <div key={cotizacion.id} className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate font-bold text-blue-600 dark:text-blue-300">{cotizacion.numero}</p>
@@ -961,7 +961,7 @@ export default function Cotizaciones() {
                       <div className="mt-4 grid grid-cols-2 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
                         <button
                           onClick={() => navigate(`/cotizaciones/${cotizacion.id}/view`)}
-                          className="relative inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                          className="relative inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-slate-100 px-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                           title={modificacionesPendientes > 0 ? `${modificacionesPendientes} modificacion pendiente` : "Ver detalle"}
                         >
                           <Eye size={16} />
@@ -976,7 +976,7 @@ export default function Cotizaciones() {
                         {puedeEditarDirecto && (
                           <button
                             onClick={() => navigate(`/cotizaciones/${cotizacion.id}/edit`)}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-100 text-sm font-semibold text-blue-700 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:hover:bg-blue-800"
+                            className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-blue-100 px-2 text-sm font-semibold text-blue-700 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:hover:bg-blue-800"
                           >
                             <Pencil size={16} />
                             Editar
@@ -990,7 +990,7 @@ export default function Cotizaciones() {
                               setDeleteConfirmationText("");
                             }}
                             disabled={deletingCotizacionId === Number(cotizacion.id)}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-100 text-sm font-semibold text-red-700 hover:bg-red-200 disabled:opacity-60"
+                            className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-red-100 px-2 text-sm font-semibold text-red-700 hover:bg-red-200 disabled:opacity-60"
                           >
                             {deletingCotizacionId === Number(cotizacion.id) ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                             Eliminar
@@ -1000,7 +1000,7 @@ export default function Cotizaciones() {
                         {puedeGenerarOc && (
                           <button
                             onClick={() => setCotizacionForOc(cotizacion)}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-green-100 text-sm font-semibold text-green-700 hover:bg-green-200"
+                            className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-green-100 px-2 text-sm font-semibold text-green-700 hover:bg-green-200"
                           >
                             <ShoppingCart size={16} />
                             Generar OC

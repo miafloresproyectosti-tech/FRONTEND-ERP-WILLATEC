@@ -11,15 +11,18 @@ import {
   FileText,
   Loader2,
   Menu,
+  Moon,
   Package,
   RefreshCcw,
   Server,
   ShoppingCart,
+  Sun,
   X,
   type LucideIcon,
 } from "lucide-react";
 
 import { useRefresh } from "../../RefreshContext";
+import { useTheme } from "../../ThemeContext";
 import {
   notificationService,
   type DatabaseNotification,
@@ -345,6 +348,7 @@ export default function Topbar({
   const lastNotificationsFetchRef = useRef(0);
   const notificationPreferencesRef = useRef<NotificationPreferences>(defaultNotificationPreferences);
   const { refreshing, refresh } = useRefresh();
+  const { theme, toggleTheme } = useTheme();
 
   const unreadCount = notifications.filter(
     (notification) => !notification.read_at
@@ -596,23 +600,32 @@ export default function Topbar({
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-3 sm:px-4 lg:px-5 h-16 flex items-center justify-between">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-950 sm:px-4 lg:px-5">
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
-          className="p-2.5 rounded-2xl bg-slate-100 border border-slate-200 hover:bg-slate-200 transition"
+          className="rounded-2xl border border-slate-200 bg-slate-100 p-2.5 transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
           aria-label="Toggle sidebar"
           title="Ocultar / mostrar sidebar"
         >
-          <Menu size={22} className="text-slate-700" />
+          <Menu size={22} className="text-slate-700 dark:text-slate-200" />
         </button>
       </div>
 
       <div className="flex items-center gap-3 sm:gap-4">
         <button
+          onClick={toggleTheme}
+          className="relative rounded-2xl border border-slate-200 bg-slate-100 p-2.5 text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+          title={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+          aria-label={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+        >
+          {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
+
+        <button
           onClick={refresh}
           disabled={refreshing}
-          className="relative p-2.5 rounded-2xl bg-slate-100 text-slate-700 border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+          className="relative rounded-2xl border border-slate-200 bg-slate-100 p-2.5 text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
           title="Actualizar ERP"
           aria-label="Actualizar ERP"
         >
