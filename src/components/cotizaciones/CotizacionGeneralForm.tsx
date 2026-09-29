@@ -46,6 +46,10 @@ interface Props {
 
   formaPago: string;
   setFormaPago: (v: string) => void;
+  adelanto: boolean;
+  setAdelanto: (v: boolean) => void;
+  adelantoPorcentaje: string;
+  setAdelantoPorcentaje: (v: string) => void;
 
   entregaProvincia: boolean;
   setEntregaProvincia: (v: boolean) => void;
@@ -96,6 +100,10 @@ export function CotizacionGeneralForm({
   setTitulo,
   formaPago,
   setFormaPago,
+  adelanto,
+  setAdelanto,
+  adelantoPorcentaje,
+  setAdelantoPorcentaje,
   entregaProvincia,
   setEntregaProvincia,
   entregaDestino,
@@ -289,6 +297,40 @@ export function CotizacionGeneralForm({
                   <option value="CRÉDITO 15 DÍAS">CRÉDITO 15 DÍAS</option>
                   <option value="CRÉDITO 30 DÍAS">CRÉDITO 30 DÍAS</option>
                 </select>
+                <label className="mt-3 flex items-center gap-3 text-sm font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    disabled={disabled}
+                    checked={adelanto}
+                    onChange={(e) => {
+                      setAdelanto(e.target.checked);
+                      if (!e.target.checked) {
+                        setAdelantoPorcentaje('');
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  Requiere adelanto
+                </label>
+                {adelanto && (
+                  <div className="mt-3">
+                    <label className="block text-sm mb-2 text-gray-700">Porcentaje de adelanto</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        disabled={disabled}
+                        type="number"
+                        min="0.01"
+                        max="99.99"
+                        step="0.01"
+                        value={adelantoPorcentaje}
+                        onChange={(e) => setAdelantoPorcentaje(e.target.value)}
+                        className="w-full px-4 py-2 border rounded-lg bg-white focus:ring-2 focus:ring-blue-500"
+                        placeholder="Ej: 50"
+                      />
+                      <span className="text-sm font-semibold text-gray-600">%</span>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
                 <label className="flex items-center gap-3 text-sm font-semibold text-gray-700">
