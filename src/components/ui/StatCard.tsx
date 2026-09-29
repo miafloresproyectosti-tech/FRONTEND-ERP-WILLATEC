@@ -19,8 +19,8 @@ export default function StatCard({
     <div
       className={`
         bg-gradient-to-br ${color}
-        rounded-3xl
-        p-6
+        rounded-2xl
+        p-4
         text-white
         shadow-lg
         hover:scale-[1.02]
@@ -28,13 +28,13 @@ export default function StatCard({
         duration-300
       `}
     >
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-4 flex items-center justify-between">
         
-        <div className="bg-white/20 p-3 rounded-2xl">
+        <div className="rounded-xl bg-white/20 p-2.5">
           {icon}
         </div>
 
-        <div className="w-10 h-10 rounded-2xl bg-white/10"></div>
+        <div className="h-9 w-9 rounded-xl bg-white/10"></div>
       </div>
 
       <div>
@@ -42,7 +42,7 @@ export default function StatCard({
           {title}
         </p>
 
-        <h2 className="text-3xl font-bold mb-2">
+        <h2 className="mb-1 text-2xl font-bold">
           {value}
         </h2>
 

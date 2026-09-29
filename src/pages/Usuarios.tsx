@@ -342,11 +342,11 @@ export default function Usuarios() {
   const canAddUser = user?.role === "SUPERADMIN";
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-4">
       {/* HEADER */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 sm:text-3xl">
+          <h1 className="text-2xl font-bold text-gray-800">
             Usuarios
           </h1>
           <p className="text-gray-500 mt-1">
@@ -357,7 +357,7 @@ export default function Usuarios() {
         {canAddUser && (
           <button
             onClick={handleNuevo}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl sm:h-auto sm:w-auto sm:gap-2 sm:px-5 sm:py-3"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 sm:w-auto sm:gap-2 sm:px-4"
             title="Nuevo Usuario"
           >
             <Plus size={20} />
@@ -367,9 +367,9 @@ export default function Usuarios() {
       </div>
 
       {/* BUSCADOR Y FILTRO */}
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-200">
-        <div className="flex flex-col gap-4 md:flex-row">
-          <div className="flex items-center gap-3 bg-gray-100 px-4 py-3 rounded-2xl flex-1">
+      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(260px,1fr)_180px] md:items-end">
+          <div className="flex h-11 items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 transition focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100">
             <Search size={18} className="text-gray-500 flex-shrink-0" />
             <input
               type="text"
@@ -379,14 +379,14 @@ export default function Usuarios() {
               className="bg-transparent outline-none w-full text-sm"
             />
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <label className="text-sm font-semibold text-gray-700">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
               Estado
             </label>
             <select
               value={filterEstado}
               onChange={(e) => setFilterEstado(e.target.value)}
-              className="w-full rounded-2xl border-2 border-gray-200 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 sm:w-44"
+              className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="">Todos</option>
               <option value="activo">Activo</option>
@@ -397,7 +397,7 @@ export default function Usuarios() {
       </div>
 
       {/* TABLA */}
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         {loading ? (
           <div className="flex items-center justify-center py-12 xl:hidden">
             <Loader2 size={32} className="animate-spin text-blue-600" />

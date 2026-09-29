@@ -1706,7 +1706,7 @@ export default function Productos() {
   };
 
   return (
-    <div className="min-w-0 space-y-4 p-3 sm:space-y-6 sm:p-6">
+    <div className="min-w-0 space-y-4">
       {/* HEADER */}
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
@@ -1736,7 +1736,7 @@ export default function Productos() {
             )}
           </div>
 
-          <h1 className="text-2xl font-bold text-gray-800 sm:text-3xl">
+          <h1 className="text-2xl font-bold text-gray-800">
             {isStockTab ? "Productos Stock" : "Productos Externos"}
           </h1>
 
@@ -1772,7 +1772,7 @@ export default function Productos() {
               type="button"
               onClick={handleExportProductosInternos}
               disabled={exportingProductos}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-700 shadow-sm transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 sm:h-auto sm:w-auto sm:gap-2 sm:px-5 sm:py-3"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-700 shadow-sm transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:gap-2 sm:px-4"
               title="Descargar productos internos"
             >
               {exportingProductos ? (
@@ -1788,7 +1788,7 @@ export default function Productos() {
             {canManageInternalProducts && (
               <button
                 onClick={handleNuevo}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl sm:h-auto sm:w-auto sm:gap-2 sm:px-5 sm:py-3"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 sm:w-auto sm:gap-2 sm:px-4"
                 title="Nuevo Producto"
               >
                 <Plus size={20} />
@@ -1801,8 +1801,8 @@ export default function Productos() {
 
       {/* BUSCADOR */}
       {(isStockTab || activeTab === "externos") && (
-        <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:rounded-3xl sm:p-5">
-          <div className="flex w-full min-w-0 items-center gap-3 rounded-2xl bg-gray-100 px-4 py-3 md:w-96">
+        <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+          <div className="flex h-11 w-full min-w-0 items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 transition focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 md:w-[420px]">
             <Search size={18} className="text-gray-500 flex-shrink-0" />
 
             <input
@@ -1821,7 +1821,7 @@ export default function Productos() {
       )}
 
       {isStockTab && canPreviewSkuNormalization && (
-        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+        <div className="rounded-2xl border border-blue-100 bg-white p-3 shadow-sm sm:p-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -1954,7 +1954,7 @@ export default function Productos() {
       )}
 
       {/* TABLA */}
-      <div className="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm sm:rounded-3xl">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         {(isStockTab ? loading : externalLoading) ? (
           <div className="flex items-center justify-center gap-3 px-6 py-12 text-gray-500 xl:hidden">
             <Loader2 className="animate-spin" size={18} />

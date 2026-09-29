@@ -150,9 +150,9 @@ export default function MainLayout() {
         />
 
         {/* CONTENT */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-5">
 
-          <div className="bg-white rounded-3xl shadow-sm p-4 sm:p-6 lg:p-8 w-full">
+          <div className="bg-white rounded-2xl shadow-sm p-3 sm:p-4 lg:p-5 w-full">
             <Outlet />
           </div>
 

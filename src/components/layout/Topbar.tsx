@@ -596,11 +596,11 @@ export default function Topbar({
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+    <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-3 sm:px-4 lg:px-5 h-16 flex items-center justify-between">
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
-          className="p-3 rounded-2xl bg-slate-100 border border-slate-200 hover:bg-slate-200 transition"
+          className="p-2.5 rounded-2xl bg-slate-100 border border-slate-200 hover:bg-slate-200 transition"
           aria-label="Toggle sidebar"
           title="Ocultar / mostrar sidebar"
         >
@@ -612,7 +612,7 @@ export default function Topbar({
         <button
           onClick={refresh}
           disabled={refreshing}
-          className="relative p-3 rounded-2xl bg-slate-100 text-slate-700 border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+          className="relative p-2.5 rounded-2xl bg-slate-100 text-slate-700 border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
           title="Actualizar ERP"
           aria-label="Actualizar ERP"
         >
@@ -637,7 +637,7 @@ export default function Topbar({
 
               setNotificationsOpen(nextOpen);
             }}
-            className="relative p-3 sm:p-4 bg-gradient-to-br from-orange-500 to-red-500 text-white rounded-2xl shadow-lg hover:shadow-xl hover:scale-[1.05] active:scale-[0.98] transition-all duration-300 border border-orange-400/50"
+            className="relative p-3 bg-gradient-to-br from-orange-500 to-red-500 text-white rounded-2xl shadow-lg hover:shadow-xl hover:scale-[1.05] active:scale-[0.98] transition-all duration-300 border border-orange-400/50"
             aria-label="Notificaciones"
             title="Ver notificaciones"
           >
@@ -651,7 +651,7 @@ export default function Topbar({
           </button>
 
           {notificationsOpen && (
-            <div className="absolute top-20 right-0 w-[95vw] sm:w-[430px] lg:w-[480px] bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden z-50 max-h-[80vh]">
+            <div className="absolute top-16 right-0 w-[95vw] sm:w-[430px] lg:w-[480px] bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden z-50 max-h-[80vh]">
               <div className="p-5 sm:p-6 border-b border-slate-200 bg-gradient-to-r from-orange-50 to-red-50/50">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-3">

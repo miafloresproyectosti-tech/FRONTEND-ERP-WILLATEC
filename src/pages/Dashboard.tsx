@@ -677,7 +677,7 @@ export default function Dashboard() {
     : "Nunca";
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
@@ -775,7 +775,7 @@ export default function Dashboard() {
           icon={Warehouse}
           tone="bg-cyan-50 text-cyan-700"
         />
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm lg:col-span-2">
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm lg:col-span-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Cotizaciones por estado</p>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {estadoResumen.map((estado) => (

@@ -215,12 +215,12 @@ export default function WooCommercePedidos() {
   const canReserve = (pedido: WooPedido) => pedido.estado_erp === "listo_reserva";
 
   return (
-    <div className="min-h-screen bg-slate-50 px-3 py-4 sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
-        <div className="flex flex-col gap-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-100 lg:flex-row lg:items-center lg:justify-between">
+    <div className="bg-slate-50">
+      <div className="flex w-full flex-col gap-4">
+        <div className="flex flex-col gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
                 <ShoppingBag size={22} />
               </div>
               <div>
@@ -234,7 +234,7 @@ export default function WooCommercePedidos() {
             type="button"
             onClick={() => void handleSync()}
             disabled={syncing}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-700 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {syncing ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
             {syncing ? "Sincronizando..." : "Sincronizar Woo"}
@@ -247,7 +247,7 @@ export default function WooCommercePedidos() {
           <MetricCard title="Requieren revision" value={resumen.revisar} tone="amber" />
         </div>
 
-        <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+        <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100 sm:p-4">
           <div className="grid gap-3 lg:grid-cols-[1fr_220px_auto] lg:items-center">
             <label className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -257,7 +257,7 @@ export default function WooCommercePedidos() {
                   setPage(1);
                   setSearch(event.target.value);
                 }}
-                className="h-11 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 placeholder="Buscar por pedido, cliente, correo, SKU o producto"
               />
             </label>
@@ -268,7 +268,7 @@ export default function WooCommercePedidos() {
                 setPage(1);
                 setEstado(event.target.value);
               }}
-              className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               {estados.map((option) => (
                 <option key={option.value || "all"} value={option.value}>
@@ -288,7 +288,7 @@ export default function WooCommercePedidos() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100">
+        <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
           {loading ? (
             <div className="flex h-64 items-center justify-center text-slate-500">
               <Loader2 className="mr-2 animate-spin" size={20} />

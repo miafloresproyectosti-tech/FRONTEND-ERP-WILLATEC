@@ -81,13 +81,13 @@ export default function Notificaciones() {
   const unreadCount = notifications.filter((n) => !n.read_at).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <Bell className="h-8 w-8 text-slate-900 dark:text-white" />
+          <Bell className="h-6 w-6 text-slate-900 dark:text-white" />
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
               Notificaciones
             </h1>
             <p className="text-slate-500 dark:text-slate-400 mt-1">
@@ -101,7 +101,7 @@ export default function Notificaciones() {
         {unreadCount > 0 && (
           <button
             onClick={handleMarkAllAsRead}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            className="h-10 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
           >
             Marcar todo como leído
           </button>
@@ -123,7 +123,7 @@ export default function Notificaciones() {
         </div>
       ) : notifications.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12">
-          <Bell className="h-12 w-12 text-slate-300 dark:text-slate-600 mb-4" />
+          <Bell className="mb-4 h-10 w-10 text-slate-300 dark:text-slate-600" />
           <p className="text-slate-500 dark:text-slate-400">
             No hay notificaciones
           </p>
@@ -157,7 +157,7 @@ export default function Notificaciones() {
               <div
                 key={notification.id}
                 onClick={() => handleNotificationClick(notification)}
-                className={`p-4 rounded-lg border-l-4 cursor-pointer transition-all ${
+                className={`cursor-pointer rounded-xl border-l-4 p-3 transition-all sm:p-4 ${
                   isRead
                     ? "bg-slate-50 dark:bg-slate-800 border-l-slate-300 dark:border-l-slate-600"
                     : unreadToneClasses

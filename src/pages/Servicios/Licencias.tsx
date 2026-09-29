@@ -886,7 +886,7 @@ export default function Licencias() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
 
       {/* HEADER */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1076,34 +1076,34 @@ export default function Licencias() {
       )}
 
       {/* DASHBOARD */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
 
-        <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-red-800 shadow-sm">
+        <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-red-800 shadow-sm">
           <div className="flex justify-between">
             <XCircle />
             <span>Vencidas</span>
           </div>
-          <h2 className="text-3xl font-bold mt-2">
+          <h2 className="mt-1 text-2xl font-bold">
             {licencias.filter(l => l.estado === "VENCIDO").length}
           </h2>
         </div>
 
-        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5 text-amber-800 shadow-sm">
+        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-amber-800 shadow-sm">
           <div className="flex justify-between">
             <AlertCircle />
             <span>Por vencer</span>
           </div>
-          <h2 className="text-3xl font-bold mt-2">
+          <h2 className="mt-1 text-2xl font-bold">
             {licencias.filter(l => l.estado === "POR VENCER").length}
           </h2>
         </div>
 
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5 text-emerald-800 shadow-sm">
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-emerald-800 shadow-sm">
           <div className="flex justify-between">
             <CheckCircle2 />
             <span>Vigentes</span>
           </div>
-          <h2 className="text-3xl font-bold mt-2">
+          <h2 className="mt-1 text-2xl font-bold">
             {licencias.filter(l => l.estado === "VIGENTE").length}
           </h2>
         </div>
@@ -1111,12 +1111,12 @@ export default function Licencias() {
       </div>
 
       {/* FILTERS */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm lg:flex-row">
+      <div className="grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4 md:grid-cols-2 xl:grid-cols-[170px_170px_minmax(260px,1fr)]">
 
         <select 
           value={filterSus}
           onChange={(e) => setFilterSus(e.target.value)} 
-          className="rounded-xl border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+          className="h-11 rounded-xl border border-gray-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option>TODOS</option>
           <option value="12">12 meses</option>
@@ -1128,7 +1128,7 @@ export default function Licencias() {
         <select 
           value={filterEstado}
           onChange={(e) => setFilterEstado(e.target.value)} 
-          className="rounded-xl border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+          className="h-11 rounded-xl border border-gray-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option>TODOS</option>
           <option>VIGENTE</option>
@@ -1136,7 +1136,7 @@ export default function Licencias() {
           <option>VENCIDO</option>
         </select>
 
-        <div className="flex w-full items-center gap-2 rounded-xl border border-gray-200 p-2.5 focus-within:ring-2 focus-within:ring-blue-500">
+        <div className="flex h-11 w-full items-center gap-2 rounded-xl border border-gray-200 px-3 focus-within:ring-2 focus-within:ring-blue-500 md:col-span-2 xl:col-span-1">
           <Search size={16} />
           <input
             className="w-full outline-none"

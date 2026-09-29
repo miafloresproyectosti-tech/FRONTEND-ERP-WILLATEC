@@ -74,7 +74,7 @@ export default function OrdenCompraDetail() {
   };
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen space-y-6">
+    <div className="min-h-screen space-y-4 bg-gray-50">
 
       {/* HEADER */}
       <div className="flex items-center justify-between">
@@ -87,11 +87,11 @@ export default function OrdenCompraDetail() {
         </button>
 
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 bg-gray-200 rounded-xl hover:bg-gray-300">
+          <button className="flex h-10 items-center gap-2 rounded-xl bg-gray-200 px-4 text-sm font-semibold hover:bg-gray-300">
             <Printer size={16} />
             Imprimir
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700">
+          <button className="flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
             <Send size={16} />
             Enviar
           </button>
@@ -99,7 +99,7 @@ export default function OrdenCompraDetail() {
       </div>
 
       {/* TITULO */}
-      <div className="bg-white p-6 rounded-2xl shadow">
+      <div className="rounded-2xl bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">
@@ -115,19 +115,19 @@ export default function OrdenCompraDetail() {
       </div>
 
       {/* INFO */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
 
-        <div className="bg-white p-5 rounded-2xl shadow">
+        <div className="rounded-2xl bg-white p-4 shadow-sm">
           <p className="text-gray-500 text-sm">Proveedor</p>
           <p className="font-semibold text-gray-800">{oc.proveedor}</p>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl shadow">
+        <div className="rounded-2xl bg-white p-4 shadow-sm">
           <p className="text-gray-500 text-sm">Fecha</p>
           <p className="font-semibold text-gray-800">{oc.fecha}</p>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl shadow">
+        <div className="rounded-2xl bg-white p-4 shadow-sm">
           <p className="text-gray-500 text-sm">Total</p>
           <p className="font-bold text-xl text-green-600">
             S/ {total.toFixed(2)}
@@ -136,7 +136,7 @@ export default function OrdenCompraDetail() {
       </div>
 
       {/* ITEMS */}
-      <div className="bg-white rounded-2xl shadow overflow-hidden">
+      <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
         <div className="p-4 border-b">
           <h2 className="font-semibold text-gray-700">Ítems</h2>
         </div>

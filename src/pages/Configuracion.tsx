@@ -679,7 +679,7 @@ ${recoveryCodes.join("\n")}
         if (!canManageSystemSettings) return null;
 
         return (
-          <div className="max-w-4xl mx-auto space-y-6">
+          <div className="mx-auto max-w-4xl space-y-4">
             <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
               <div>
@@ -699,7 +699,7 @@ ${recoveryCodes.join("\n")}
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <div className="lg:col-span-1 space-y-2">
                 <label className="text-sm font-semibold text-gray-700">
                   Nombre de la Empresa
@@ -711,7 +711,7 @@ ${recoveryCodes.join("\n")}
                     handleEmpresaChange("nombre", event.target.value)
                   }
                   placeholder="WILLATEC S.A.C"
-                  className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
               <div className="lg:col-span-2 space-y-2">
@@ -725,7 +725,7 @@ ${recoveryCodes.join("\n")}
                     handleEmpresaChange("ruc", event.target.value)
                   }
                   placeholder="20602503331"
-                  className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
             </div>
@@ -740,10 +740,10 @@ ${recoveryCodes.join("\n")}
                   handleEmpresaChange("direccion", event.target.value)
                 }
                 placeholder="Jr. Jorge Chavez Nro. 1747 - Of.1002 - Brena - Lima"
-                className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">
                   Teléfono
@@ -755,7 +755,7 @@ ${recoveryCodes.join("\n")}
                     handleEmpresaChange("telefono", event.target.value)
                   }
                   placeholder="(01) 757-1253"
-                  className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
               <div className="space-y-2">
@@ -769,7 +769,7 @@ ${recoveryCodes.join("\n")}
                     handleEmpresaChange("correo", event.target.value)
                   }
                   placeholder="ventas@willatec.com"
-                  className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
             </div>
@@ -779,13 +779,13 @@ ${recoveryCodes.join("\n")}
         if (!canManageSystemSettings) return null;
 
         return (
-          <div className="max-w-4xl mx-auto space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="mx-auto max-w-4xl space-y-4">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">
                   Idioma
                 </label>
-                <select className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md">
+                <select className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                   <option value="es">Español</option>
                   <option value="en">English</option>
                 </select>
@@ -794,18 +794,18 @@ ${recoveryCodes.join("\n")}
                 <label className="text-sm font-semibold text-gray-700">
                   Zona Horaria
                 </label>
-                <select className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md">
+                <select className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                   <option value="America/Lima">America/Lima (UTC-5)</option>
                   <option value="UTC">UTC</option>
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">
                   Moneda
                 </label>
-                <select className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md">
+                <select className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                   <option value="PEN">Soles (PEN)</option>
                   <option value="USD">Dólares (USD)</option>
                 </select>
@@ -814,7 +814,7 @@ ${recoveryCodes.join("\n")}
                 <label className="text-sm font-semibold text-gray-700">
                   Formato de Fecha
                 </label>
-                <select className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md">
+                <select className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                   <option value="DD/MM/YYYY">DD/MM/YYYY</option>
                   <option value="MM/DD/YYYY">MM/DD/YYYY</option>
                 </select>
@@ -824,14 +824,14 @@ ${recoveryCodes.join("\n")}
         );
       case "seguridad":
         return (
-          <div className="max-w-4xl mx-auto space-y-8">
+          <div className="mx-auto max-w-4xl space-y-5">
             {canManageSystemSettings && (
               <div className="space-y-6">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-800 mb-4 pb-3 border-b border-gray-200">
                     Política de Contraseñas
                   </h3>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700">
                         Longitud Mínima
@@ -841,7 +841,7 @@ ${recoveryCodes.join("\n")}
                         defaultValue="8"
                         min="6"
                         max="20"
-                        className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
                     </div>
                     <div className="space-y-2">
@@ -852,7 +852,7 @@ ${recoveryCodes.join("\n")}
                         type="number"
                         defaultValue="90"
                         min="30"
-                        className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
                     </div>
                   </div>
@@ -899,7 +899,7 @@ ${recoveryCodes.join("\n")}
                           type="text"
                           value={SUPERADMIN_SECURITY_QUESTIONS[index]}
                           readOnly
-                          className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
+                          className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                           placeholder="Ej. ¿Cuál fue tu primera ciudad?"
                         />
                       </div>
@@ -967,7 +967,7 @@ ${recoveryCodes.join("\n")}
                         onChange={(event) =>
                           setSecurityQuestionsPassword(event.target.value)
                         }
-                        className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         autoComplete="current-password"
                       />
                     </div>
@@ -1006,7 +1006,7 @@ ${recoveryCodes.join("\n")}
                         event.target.value,
                       )
                     }
-                    className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
+                    className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     autoComplete="current-password"
                   />
                 </div>
@@ -1430,11 +1430,11 @@ ${recoveryCodes.join("\n")}
   };
 
   return (
-    <div className="h-full flex flex-col p-6 gap-6">
+    <div className="flex h-full flex-col gap-4">
       {/* HEADER */}
       <div className="flex items-center justify-between flex-shrink-0">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Configuración</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Configuración</h1>
           <p className="text-gray-500 mt-1">
             Gestiona la configuración del sistema ERP
           </p>
@@ -1446,7 +1446,7 @@ ${recoveryCodes.join("\n")}
             type="button"
             onClick={handleSaveChanges}
             disabled={savingEmpresaConfig || savingNotificationPreferences}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+            className="flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
           >
             <Save size={20} />
             {savingEmpresaConfig || savingNotificationPreferences
@@ -1457,7 +1457,7 @@ ${recoveryCodes.join("\n")}
       </div>
 
       {/* TABS */}
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden flex flex-col flex-1">
+      <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-200 flex-shrink-0">
           <nav className="flex justify-center">
             {tabs.map((tab) => {
@@ -1481,8 +1481,9 @@ ${recoveryCodes.join("\n")}
         </div>
 
         {/* CONTENT */}
-        <div className="p-8 overflow-y-auto flex-1">{renderTabContent()}</div>
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5">{renderTabContent()}</div>
       </div>
     </div>
   );
 }
+

@@ -302,11 +302,11 @@ export default function Clientes() {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 sm:text-3xl">
+          <h1 className="text-2xl font-bold text-gray-800">
             Clientes
           </h1>
           <p className="text-gray-500 mt-1">
@@ -316,7 +316,7 @@ export default function Clientes() {
 
         <button
           onClick={handleNuevo}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl sm:h-auto sm:w-auto sm:gap-2 sm:px-5 sm:py-3"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 sm:w-auto sm:gap-2 sm:px-4"
           title="Nuevo Cliente"
         >
           <Plus size={20} />
@@ -325,13 +325,13 @@ export default function Clientes() {
       </div>
 
       {/* Buscador */}
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-200">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div className="w-full xl:max-w-md">
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_200px_220px] xl:items-end">
+          <div className="w-full md:col-span-2 xl:col-span-1">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
               Buscar
             </label>
-        <div className="flex h-12 items-center gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 transition focus-within:border-blue-500 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-100">
+        <div className="flex h-11 items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 transition focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100">
           <Search size={18} className="text-gray-500 flex-shrink-0" />
           <input
             type="text"
@@ -343,11 +343,11 @@ export default function Clientes() {
         </div>
           </div>
 
-        <div className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto xl:justify-end">
+        <>
           <select
             value={filterEstado}
             onChange={(event) => handleEstadoFilterChange(event.target.value as "todos" | "activo" | "inactivo")}
-            className="h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 outline-none transition hover:border-gray-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:w-52"
+            className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 outline-none transition hover:border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           >
             <option value="todos">Todos los estados</option>
             <option value="activo">Activo</option>
@@ -357,7 +357,7 @@ export default function Clientes() {
           <select
             value={filterTipoCliente}
             onChange={(event) => handleTipoClienteFilterChange(event.target.value)}
-            className="h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 outline-none transition hover:border-gray-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:w-56"
+            className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 outline-none transition hover:border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           >
             <option value="todos">Todos los tipos</option>
             {tipoClienteOptions.map((tipo) => (
@@ -366,12 +366,12 @@ export default function Clientes() {
               </option>
             ))}
           </select>
-        </div>
+        </>
       </div>
       </div>
 
       {/* Tabla */}
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         {loading ? (
           <div className="flex items-center justify-center gap-3 px-6 py-12 text-gray-500 lg:hidden">
             <Loader2 className="animate-spin" size={18} />

@@ -3150,17 +3150,17 @@ export function CotizacionDetail() {
   // const selectedCliente = clientes.find(c => c.id === clienteId);
 
   return (
-    <div className="p-8 space-y-6 text-gray-900">
+    <div className="space-y-4 text-gray-900">
       {/* HEADER */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button onClick={() => guardedNavigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg">
-            <ArrowLeft className="w-6 h-6 text-gray-600" />
+        <div className="flex items-center gap-3">
+          <button onClick={() => guardedNavigate(-1)} className="rounded-lg p-2 hover:bg-gray-100">
+            <ArrowLeft className="h-5 w-5 text-gray-600" />
           </button>
           <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
             {cotizacion?.estado_cotizacion_id === 1 && (
-              <CheckCircle className="text-green-500 w-6 h-6" />
+              <CheckCircle className="h-5 w-5 text-green-500" />
             )}
 
             {isEditing ? 'Editar Cotización' : 'Nueva Cotización'}

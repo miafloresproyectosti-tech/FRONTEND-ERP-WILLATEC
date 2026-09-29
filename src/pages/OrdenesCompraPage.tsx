@@ -2116,10 +2116,10 @@ export default function OrdenesCompraPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
             Ordenes de Compra
           </h1>
           <p className="mt-1 text-slate-500 dark:text-slate-400">
@@ -2132,14 +2132,14 @@ export default function OrdenesCompraPage() {
             <button
               type="button"
               onClick={() => openCreateModal("recibir")}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700"
             >
               <ClipboardCheck size={18} /> Registrar OC recibida
             </button>
             <button
               type="button"
               onClick={() => openCreateModal("emitir")}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
               <Send size={18} /> Emitir OC
             </button>
@@ -2147,7 +2147,7 @@ export default function OrdenesCompraPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
         <SummaryCard
           icon={<Send size={22} />}
           label="OC emitidas"
@@ -2199,14 +2199,14 @@ export default function OrdenesCompraPage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 border-b border-gray-200 p-5 dark:border-slate-800 xl:flex-row xl:items-center xl:justify-between">
-          <div className="relative w-full xl:w-96">
-            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+        <div className="grid grid-cols-1 gap-3 border-b border-gray-200 p-3 dark:border-slate-800 sm:p-4 xl:grid-cols-[minmax(260px,1fr)_auto] xl:items-center">
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder="Buscar por OC, cotizacion, cliente..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
             />
           </div>
 
@@ -2216,13 +2216,13 @@ export default function OrdenesCompraPage() {
                 value={proveedorFilter}
                 onChange={(event) => setProveedorFilter(event.target.value)}
                 placeholder="Proveedor"
-                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white sm:w-56"
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white sm:w-52"
               />
             )}
             <select
               value={estadoFilter}
               onChange={(event) => setEstadoFilter(event.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white sm:w-56"
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white sm:w-52"
             >
               <option value="todos">Todos los estados</option>
               {(activeTab === "emitidas"
@@ -2241,7 +2241,7 @@ export default function OrdenesCompraPage() {
             <button
               type="button"
               onClick={refreshActiveTab}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-950"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-950"
             >
               <RefreshCw size={16} /> Actualizar
             </button>

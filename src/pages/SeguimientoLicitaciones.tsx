@@ -3,6 +3,8 @@ import {
   AlertTriangle,
   Eye,
   FileSpreadsheet,
+  LayoutGrid,
+  List,
   LockOpen,
   Loader2,
   Pencil,
@@ -22,7 +24,6 @@ import { OportunidadFormModal } from "../components/licitaciones/OportunidadForm
 import { EstadoBadge, TipoBadge, VigenciaBadge } from "../components/licitaciones/OportunidadBadges";
 import PageSizeSelect from "../components/ui/PageSizeSelect";
 import {
-  CATEGORIAS_OPORTUNIDAD,
   ESTADOS_CIERRE,
   MOTIVOS_NO_CONTINUAR,
   MOTIVOS_PERDIDA,
@@ -71,7 +72,6 @@ import {
   getVigenciaAlert,
   isClosedOpportunity,
   normalizeText,
-  toDatetimeLocalValue,
 } from "../utils/licitaciones";
 
 const DEFAULT_FILTERS: OportunidadFilters = {
@@ -187,6 +187,7 @@ export default function SeguimientoLicitaciones() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Oportunidad | null>(null);
   const [editingLoadingId, setEditingLoadingId] = useState<string | null>(null);
@@ -1323,6 +1324,8 @@ export default function SeguimientoLicitaciones() {
 
   const isInitialLoading = loading && opportunities.length === 0;
   const isRefreshing = loading && opportunities.length > 0;
+  const showEstadoCards = !(isSalesRole && ["disponibles", "creadas"].includes(activeBandeja));
+  const showEstadoSelect = !showEstadoCards;
 
   const sortButton = (key: OportunidadSortKey) => (
     <button
@@ -1343,11 +1346,11 @@ export default function SeguimientoLicitaciones() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Seguimiento de Licitaciones</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Seguimiento de Licitaciones</h1>
           </div>
           <p className="mt-1 text-slate-500 dark:text-slate-400">
             Centraliza licitaciones, privados y WHEREX en un solo panel comercial con seguimiento visual para cada ejecutivo.
@@ -1454,7 +1457,7 @@ export default function SeguimientoLicitaciones() {
         </div>
       </div>
 
-      {!(isSalesRole && ["disponibles", "creadas"].includes(activeBandeja)) && (
+      {showEstadoCards && (
         <div className="grid grid-cols-2 gap-2 md:grid-cols-5 xl:grid-cols-10">
           {SUMMARY_ITEMS.map((item) => (
             <button
@@ -1479,32 +1482,50 @@ export default function SeguimientoLicitaciones() {
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
-          <label className="relative lg:col-span-2">
-            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-4">
+        <div className={`grid grid-cols-1 gap-3 md:grid-cols-2 ${
+          showEstadoSelect
+            ? "xl:grid-cols-[minmax(260px,1fr)_minmax(190px,220px)_minmax(190px,220px)_auto]"
+            : "xl:grid-cols-[minmax(280px,1fr)_minmax(220px,280px)_auto]"
+        }`}>
+          <label className="relative md:col-span-2 xl:col-span-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               value={filters.search}
               onChange={(event) => updateFilter("search", event.target.value)}
-              className="w-full rounded-xl border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              className="h-11 w-full rounded-xl border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
               placeholder="Buscar empresa o requerimiento"
             />
           </label>
-          <select value={filters.estado} onChange={(event) => updateFilter("estado", event.target.value as OportunidadFilters["estado"])} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
-            <option value="todos">Todos los estados</option>
-            {Object.entries(OPORTUNIDAD_ESTADOS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-          <select value={filters.ejecutivo} onChange={(event) => updateFilter("ejecutivo", event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+          {showEstadoSelect && (
+            <select value={filters.estado} onChange={(event) => updateFilter("estado", event.target.value as OportunidadFilters["estado"])} className="h-11 rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+              <option value="todos">Todos los estados</option>
+              {Object.entries(OPORTUNIDAD_ESTADOS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          )}
+          <select value={filters.ejecutivo} onChange={(event) => updateFilter("ejecutivo", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
             <option value="todos">Todos los ejecutivos</option>
             <option value="sin_asignar">Sin asignar</option>
             {ejecutivos.map((ejecutivo) => <option key={ejecutivo.id} value={ejecutivo.id}>{ejecutivo.nombre}</option>)}
           </select>
-          <select value={filters.categoria} onChange={(event) => updateFilter("categoria", event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
-            <option value="todos">Todas las categorias</option>
-            {CATEGORIAS_OPORTUNIDAD.map((categoria) => <option key={categoria} value={categoria}>{categoria}</option>)}
-          </select>
-          <input type="datetime-local" value={filters.vigenciaDesde} onChange={(event) => updateFilter("vigenciaDesde", event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" title="Vigencia desde" />
-          <input type="datetime-local" value={filters.vigenciaHasta} onChange={(event) => updateFilter("vigenciaHasta", event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" title="Vigencia hasta" />
+          <div className="inline-flex h-11 w-full rounded-xl border border-slate-300 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-900 md:col-span-2 xl:col-span-1 xl:w-auto">
+            <button
+              type="button"
+              onClick={() => setViewMode("table")}
+              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold xl:flex-none ${viewMode === "table" ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+              title="Vista tabla"
+            >
+              <List className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("cards")}
+              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold xl:flex-none ${viewMode === "cards" ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+              title="Vista tarjetas"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1520,7 +1541,7 @@ export default function SeguimientoLicitaciones() {
             </span>
           )}
         </div>
-        <div className="grid gap-3 p-3 xl:hidden">
+        <div className={`grid gap-3 p-3 ${viewMode === "cards" ? "md:grid-cols-2 2xl:grid-cols-3" : "xl:hidden"}`}>
           {loading ? (
             Array.from({ length: 4 }).map((_, index) => (
               <div key={index} className="h-44 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
@@ -1631,7 +1652,7 @@ export default function SeguimientoLicitaciones() {
             </div>
           )}
         </div>
-        <div className="hidden overflow-x-auto xl:block">
+        <div className={`${viewMode === "cards" ? "hidden" : "hidden overflow-x-auto xl:block"}`}>
           <table className="min-w-[1180px] w-full">
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
               <tr>
