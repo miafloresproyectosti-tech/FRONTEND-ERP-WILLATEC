@@ -24,7 +24,6 @@ import {
   getProductosPaginated,
   getExternalItems,
   getProductoExternoHistorialCotizaciones,
-  createProducto,
   updateProducto,
   deleteProducto,
   updateCotizacionItem,
@@ -674,28 +673,9 @@ export default function Productos() {
   const handleNuevo = () => {
     if (!canManageInternalProducts) return;
 
-    setProductoSeleccionado({
-      codigo: "",
-      nombre: "",
-      categoria_id: 1,
-      stock: "",
-      precio_referencial: "",
-      descripcion: "",
-      imagen: "",
-      activo: "true",
-      estado: "nuevo",
-      marca: "",
-      modelo: "",
-      serie: "",
-      series_text: "",
-      factura_numero: "",
-      ubicacion_almacen: "",
-      unidad_medida: "unidad",
-      moneda_id: "2",
+    navigate("/inventario/movimientos", {
+      state: { openEntrada: true, crearProducto: true },
     });
-
-    setModoEdicion(false);
-    setOpenModal(true);
   };
 
   const handleExportProductosInternos = async () => {
@@ -1223,15 +1203,15 @@ export default function Productos() {
           route: "/productos",
         });
       } else {
-        const created = await createProducto(payload);
-        setCurrentPage(1);
-        await fetchProductos(1, debouncedSearchTerm);
         addNotification({
-          title: "Producto creado",
-          description: `El producto ${created.nombre} se creó correctamente.`,
-          type: "success",
+          title: "Registra la entrada desde Kardex",
+          description: "Para crear productos con stock, usa Kardex. Asi se guarda factura, costo, series y movimiento.",
+          type: "warning",
           icon: "CheckCircle",
-          route: "/productos",
+          route: "/inventario/movimientos",
+        });
+        navigate("/inventario/movimientos", {
+          state: { openEntrada: true, crearProducto: true },
         });
       }
 
@@ -1789,10 +1769,10 @@ export default function Productos() {
               <button
                 onClick={handleNuevo}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 sm:w-auto sm:gap-2 sm:px-4"
-                title="Nuevo Producto"
+                title="Registrar entrada en Kardex"
               >
                 <Plus size={20} />
-                <span className="hidden sm:inline">Nuevo Producto</span>
+                <span className="hidden sm:inline">Registrar entrada</span>
               </button>
             )}
           </div>

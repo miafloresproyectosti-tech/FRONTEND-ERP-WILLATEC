@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   ChevronLeft,
@@ -299,6 +300,8 @@ const mergeProductosById = (...lists: ProductoInventarioOption[][]) => {
 };
 
 export default function InventarioMovimientos() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const facturaInputRef = useRef<HTMLInputElement | null>(null);
   const facturaPosteriorInputRef = useRef<HTMLInputElement | null>(null);
   const nuevoProductoImagenInputRef = useRef<HTMLInputElement | null>(null);
@@ -549,6 +552,22 @@ export default function InventarioMovimientos() {
         console.error("Error al cargar productos para Kardex:", requestError);
       });
   }, []);
+
+  useEffect(() => {
+    const state = location.state as { openEntrada?: boolean; crearProducto?: boolean } | null;
+
+    if (!state?.openEntrada) return;
+
+    setEntradaProductoSearch("");
+    setEntradaProductoResultsOpen(false);
+    setEntradaModalOpen(true);
+
+    if (state.crearProducto) {
+      setShowNuevoProducto(true);
+    }
+
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
     const term = salidaProductoSearch.trim();
