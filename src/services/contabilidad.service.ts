@@ -26,6 +26,10 @@ export interface Comprobante {
   compra?: any;
   oc_recibida?: any;
   moneda?: any;
+  cuenta_por_pagar_id?: number | null;
+  cuenta_por_cobrar_id?: number | null;
+  cuenta_por_pagar?: { id: number } | null;
+  cuenta_por_cobrar?: { id: number } | null;
 }
 
 export interface CuentaPorPagar {

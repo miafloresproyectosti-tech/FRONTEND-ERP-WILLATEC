@@ -9,6 +9,7 @@ import {
 } from "../../services/compra.service";
 import { getOcEmitidas, type OcEmitida } from "../../services/ordenCompra.service";
 import { createProveedor, getProveedores, type Proveedor } from "../../services/proveedor.service";
+import { useAuth } from "../../AuthContext";
 
 export interface CompraDraftItem {
   key: string;
@@ -64,6 +65,8 @@ export function CompraFormModal({
   onClose,
   onCreated,
 }: CompraFormModalProps) {
+  const { user } = useAuth();
+  const canAuthorizeOverpurchase = ["SUPERADMIN", "ADMIN"].includes(user?.role || "");
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [proveedorSearch, setProveedorSearch] = useState("");
   const [proveedorRuc, setProveedorRuc] = useState("");
@@ -73,6 +76,7 @@ export function CompraFormModal({
   const [monedaId, setMonedaId] = useState(1);
   const [fechaCompra, setFechaCompra] = useState(today);
   const [observacion, setObservacion] = useState("");
+  const [autorizarSobrecompra, setAutorizarSobrecompra] = useState(false);
   const [items, setItems] = useState<CompraDraftItem[]>([]);
   const [ocEmitidas, setOcEmitidas] = useState<OcEmitida[]>([]);
   const [selectedOcId, setSelectedOcId] = useState("");
@@ -98,6 +102,7 @@ export function CompraFormModal({
             },
           ],
     );
+    setAutorizarSobrecompra(false);
     setProveedorSearch("");
     setProveedorRuc("");
     setSelectedProveedor(null);
@@ -332,6 +337,7 @@ export function CompraFormModal({
       fecha_compra: fechaCompra || null,
       moneda_id: monedaId,
       observacion: observacion.trim() || null,
+      autorizar_sobrecompra: canAuthorizeOverpurchase && autorizarSobrecompra,
       items: compraItems,
     };
 
@@ -515,6 +521,12 @@ export function CompraFormModal({
                 rows={2}
               />
             </div>
+            {canAuthorizeOverpurchase && (
+              <label className="lg:col-span-4 flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <input type="checkbox" checked={autorizarSobrecompra} onChange={(event) => setAutorizarSobrecompra(event.target.checked)} className="mt-0.5 h-4 w-4" />
+                <span><strong>Autorizar sobrecompra excepcional</strong><br />Permite comprar más que el saldo requerido; el excedente ingresará como stock adicional.</span>
+              </label>
+            )}
           </div>
 
           <div className="overflow-hidden rounded-xl border border-slate-200">

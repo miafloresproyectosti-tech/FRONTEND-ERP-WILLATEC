@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Eye, Loader2, PackageCheck, Search, XCircle } from "lucide-react";
 
 import { getCompra, getCompras, type Compra } from "../services/compra.service";
@@ -22,8 +22,9 @@ const money = (value: unknown, symbol = "S/") =>
   `${symbol} ${Number(value || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function RecepcionesCompra() {
+  const requestId = useRef(0);
   const { user } = useAuth();
-  const canWrite = ["SUPERADMIN", "ADMIN", "LOGISTICA"].includes(user?.role || "");
+  const canWrite = ["SUPERADMIN", "ADMIN", "LOGISTICA", "VENTAS"].includes(user?.role || "");
   const [rows, setRows] = useState<RecepcionCompra[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -43,18 +44,21 @@ export default function RecepcionesCompra() {
   const [saving, setSaving] = useState(false);
 
   const fetchRows = async () => {
+    const currentRequest = ++requestId.current;
     setLoading(true);
     setError("");
     try {
       const response = await getRecepcionesCompra({ page, perPage, search, estado });
+      if (currentRequest !== requestId.current) return;
       setRows(response.data);
       setLastPage(response.last_page);
       setTotal(response.total);
     } catch (err: any) {
+      if (currentRequest !== requestId.current) return;
       setRows([]);
       setError(err?.response?.data?.message || "No se pudieron cargar las recepciones.");
     } finally {
-      setLoading(false);
+      if (currentRequest === requestId.current) setLoading(false);
     }
   };
 
@@ -148,7 +152,8 @@ export default function RecepcionesCompra() {
     if (!window.confirm(action === "confirmar" ? "Confirmar recepcion e ingresar stock?" : "Cancelar recepcion?")) return;
     setSaving(true);
     try {
-      action === "confirmar" ? await confirmarRecepcionCompra(row.id) : await cancelarRecepcionCompra(row.id);
+      if (action === "confirmar") await confirmarRecepcionCompra(row.id);
+      else await cancelarRecepcionCompra(row.id);
       await fetchRows();
     } catch (err: any) {
       setError(

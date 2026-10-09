@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckSquare,
@@ -108,8 +108,9 @@ const itemToCompraDraft = (requerimiento: RequerimientoCompra, item: Requerimien
 };
 
 export default function RequerimientosCompra() {
+  const requestId = useRef(0);
   const { user } = useAuth();
-  const canWrite = ["SUPERADMIN", "ADMIN", "LOGISTICA"].includes(user?.role || "");
+  const canWrite = ["SUPERADMIN", "ADMIN", "LOGISTICA", "VENTAS"].includes(user?.role || "");
 
   const [rows, setRows] = useState<RequerimientoCompra[]>([]);
   const [loading, setLoading] = useState(false);
@@ -139,6 +140,7 @@ export default function RequerimientosCompra() {
   const selectedList = useMemo(() => Object.values(selectedItems), [selectedItems]);
 
   const fetchRows = async () => {
+    const currentRequest = ++requestId.current;
     setLoading(true);
     setError("");
     try {
@@ -149,14 +151,16 @@ export default function RequerimientosCompra() {
         estado,
         origenTipo: origen,
       });
+      if (currentRequest !== requestId.current) return;
       setRows(response.data);
       setLastPage(response.last_page);
       setTotal(response.total);
     } catch (err: any) {
+      if (currentRequest !== requestId.current) return;
       setError(err?.response?.data?.message || "No se pudieron cargar los requerimientos.");
       setRows([]);
     } finally {
-      setLoading(false);
+      if (currentRequest === requestId.current) setLoading(false);
     }
   };
 

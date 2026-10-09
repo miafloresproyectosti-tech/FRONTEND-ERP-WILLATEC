@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Ban, Eye, FileSearch, Loader2, ReceiptText, Search, Upload, XCircle } from "lucide-react";
 
 import {
@@ -11,6 +11,7 @@ import {
   previewXmlComprobante,
   type Comprobante,
 } from "../services/contabilidad.service";
+import { useAuth } from "../AuthContext";
 
 const perPageOptions = [5, 10, 25, 50, 100];
 const estados = ["todos", "registrado", "anulado"];
@@ -20,6 +21,8 @@ const money = (value: unknown, symbol = "S/") =>
   `${symbol} ${Number(value || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function Comprobantes() {
+  const { user } = useAuth();
+  const canWrite = ["SUPERADMIN", "ADMIN", "CONTABILIDAD"].includes(user?.role || "");
   const [rows, setRows] = useState<Comprobante[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -33,20 +36,25 @@ export default function Comprobantes() {
   const [total, setTotal] = useState(0);
   const [detail, setDetail] = useState<Comprobante | null>(null);
   const [xmlPreview, setXmlPreview] = useState<any>(null);
+  const [generatedIds, setGeneratedIds] = useState<Set<number>>(new Set());
+  const requestId = useRef(0);
 
   const fetchRows = async () => {
+    const currentRequest = ++requestId.current;
     setLoading(true);
     setError("");
     try {
       const response = await getComprobantes({ page, perPage, search, estado, tipoOperacion });
+      if (currentRequest !== requestId.current) return;
       setRows(response.data);
       setLastPage(response.last_page);
       setTotal(response.total);
     } catch (err: any) {
+      if (currentRequest !== requestId.current) return;
       setRows([]);
       setError(err?.response?.data?.message || "No se pudieron cargar los comprobantes.");
     } finally {
-      setLoading(false);
+      if (currentRequest === requestId.current) setLoading(false);
     }
   };
 
@@ -57,6 +65,10 @@ export default function Comprobantes() {
 
   const handlePreviewXml = async (file?: File) => {
     if (!file) return;
+    if (file.size === 0) {
+      setError("El archivo XML está vacío. Vuelve a descargarlo o expórtalo nuevamente.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -104,15 +116,24 @@ export default function Comprobantes() {
     }
   };
 
-  const openDetail = async (row: Comprobante) => setDetail(await getComprobante(row.id));
+  const openDetail = async (row: Comprobante) => {
+    setError("");
+    try { setDetail(await getComprobante(row.id)); }
+    catch (err: any) { setError(err?.response?.data?.message || "No se pudo cargar el detalle del comprobante."); }
+  };
 
   const runAction = async (row: Comprobante, action: "anular" | "cxp" | "cxc") => {
+    const question = action === "anular"
+      ? `¿Anular el comprobante ${row.serie}-${row.numero}? Esta acción puede afectar sus cuentas asociadas.`
+      : `¿Generar la ${action === "cxp" ? "cuenta por pagar" : "cuenta por cobrar"} para ${row.serie}-${row.numero}?`;
+    if (!window.confirm(question)) return;
     setSaving(true);
     setError("");
     try {
       if (action === "anular") await anularComprobante(row.id);
       if (action === "cxp") await generarCuentaPorPagar(row.id);
       if (action === "cxc") await generarCuentaPorCobrar(row.id);
+      if (action !== "anular") setGeneratedIds((ids) => new Set(ids).add(row.id));
       await fetchRows();
     } catch (err: any) {
       setError(
@@ -134,11 +155,11 @@ export default function Comprobantes() {
             <h1 className="text-2xl font-bold text-slate-900">Comprobantes y XML</h1>
             <p className="text-sm text-slate-500">Registra documentos tributarios sin afectar stock ni cuentas hasta generarlas.</p>
           </div>
-          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white">
+          {canWrite && <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white">
             {saving ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
             Preview XML
-            <input type="file" accept=".xml,text/xml" className="hidden" onChange={(e) => handlePreviewXml(e.target.files?.[0])} />
-          </label>
+            <input type="file" accept=".xml,text/xml" className="hidden" onChange={(e) => { handlePreviewXml(e.target.files?.[0]); e.currentTarget.value = ""; }} />
+          </label>}
         </div>
 
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
@@ -188,10 +209,10 @@ export default function Comprobantes() {
                     <td className="px-4 py-3"><span className="rounded-full border px-2 py-1 text-xs font-semibold">{labelize(row.estado)}</span></td>
                     <td className="sticky right-0 bg-white px-4 py-3">
                       <div className="flex justify-end gap-2">
-                        <button onClick={() => openDetail(row)} title="Ver detalle" className="rounded-lg bg-slate-100 p-2 text-slate-700"><Eye size={16} /></button>
-                        {row.tipo_operacion === "compra" && <button onClick={() => runAction(row, "cxp")} title="Generar CxP" className="rounded-lg bg-amber-50 p-2 text-amber-700"><ReceiptText size={16} /></button>}
-                        {row.tipo_operacion === "venta" && <button onClick={() => runAction(row, "cxc")} title="Generar CxC" className="rounded-lg bg-emerald-50 p-2 text-emerald-700"><ReceiptText size={16} /></button>}
-                        {row.estado !== "anulado" && <button onClick={() => runAction(row, "anular")} title="Anular" className="rounded-lg bg-red-50 p-2 text-red-700"><Ban size={16} /></button>}
+                        <button aria-label="Ver detalle" onClick={() => openDetail(row)} title="Ver detalle" className="rounded-lg bg-slate-100 p-2 text-slate-700"><Eye size={16} /></button>
+                        {canWrite && row.estado !== "anulado" && row.tipo_operacion === "compra" && !generatedIds.has(row.id) && !row.cuenta_por_pagar_id && !row.cuenta_por_pagar && <button disabled={saving} aria-label="Generar cuenta por pagar" onClick={() => runAction(row, "cxp")} title="Generar CxP" className="rounded-lg bg-amber-50 p-2 text-amber-700 disabled:opacity-40"><ReceiptText size={16} /></button>}
+                        {canWrite && row.estado !== "anulado" && row.tipo_operacion === "venta" && !generatedIds.has(row.id) && !row.cuenta_por_cobrar_id && !row.cuenta_por_cobrar && <button disabled={saving} aria-label="Generar cuenta por cobrar" onClick={() => runAction(row, "cxc")} title="Generar CxC" className="rounded-lg bg-emerald-50 p-2 text-emerald-700 disabled:opacity-40"><ReceiptText size={16} /></button>}
+                        {canWrite && row.estado !== "anulado" && <button disabled={saving} aria-label="Anular comprobante" onClick={() => runAction(row, "anular")} title="Anular" className="rounded-lg bg-red-50 p-2 text-red-700 disabled:opacity-40"><Ban size={16} /></button>}
                       </div>
                     </td>
                   </tr>

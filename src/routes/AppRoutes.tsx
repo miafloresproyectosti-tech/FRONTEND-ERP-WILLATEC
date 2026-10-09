@@ -243,8 +243,8 @@ export default function AppRoutes() {
           )}
 
           {/* ADMIN */}
-          <Route path="/usuarios" element={<Usuarios />} />
-          <Route path="/configuracion" element={<Configuracion />} />
+          <Route path="/usuarios" element={<ProtectedRoute requiredRoles={["SUPERADMIN", "ADMIN"]}><Usuarios /></ProtectedRoute>} />
+          <Route path="/configuracion" element={<ProtectedRoute requiredRoles={["SUPERADMIN", "ADMIN"]}><Configuracion /></ProtectedRoute>} />
           {featureFlags.controlAdm && (
             <>
               <Route

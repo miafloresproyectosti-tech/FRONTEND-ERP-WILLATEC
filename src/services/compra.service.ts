@@ -104,6 +104,7 @@ export interface CompraPayload {
   fecha_compra?: string | null;
   moneda_id?: number | null;
   observacion?: string | null;
+  autorizar_sobrecompra?: boolean;
   items: Array<{
     requerimiento_compra_item_id?: number | null;
     oc_emitida_item_id?: number | null;

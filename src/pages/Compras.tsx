@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   Ban,
@@ -82,8 +82,9 @@ const itemSubtotal = (item: CompraItem) =>
   numberValue(item.cantidad) * numberValue(item.costo_unitario_estimado);
 
 export default function Compras() {
+  const requestId = useRef(0);
   const { user } = useAuth();
-  const canWrite = ["SUPERADMIN", "ADMIN", "LOGISTICA"].includes(user?.role || "");
+  const canWrite = ["SUPERADMIN", "ADMIN", "LOGISTICA", "VENTAS"].includes(user?.role || "");
 
   const [rows, setRows] = useState<Compra[]>([]);
   const [loading, setLoading] = useState(false);
@@ -101,6 +102,7 @@ export default function Compras() {
   const [modalOpen, setModalOpen] = useState(false);
 
   const fetchRows = async () => {
+    const currentRequest = ++requestId.current;
     setLoading(true);
     setError("");
     try {
@@ -111,14 +113,16 @@ export default function Compras() {
         estado,
         modalidad,
       });
+      if (currentRequest !== requestId.current) return;
       setRows(response.data);
       setLastPage(response.last_page);
       setTotal(response.total);
     } catch (err: any) {
+      if (currentRequest !== requestId.current) return;
       setError(err?.response?.data?.message || "No se pudieron cargar las compras.");
       setRows([]);
     } finally {
-      setLoading(false);
+      if (currentRequest === requestId.current) setLoading(false);
     }
   };
 
