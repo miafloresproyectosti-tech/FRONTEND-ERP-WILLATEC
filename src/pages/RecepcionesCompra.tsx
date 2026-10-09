@@ -36,6 +36,7 @@ export default function RecepcionesCompra() {
   const [total, setTotal] = useState(0);
   const [detail, setDetail] = useState<RecepcionCompra | null>(null);
   const [detailQuantities, setDetailQuantities] = useState<Record<number, number>>({});
+  const [detailSeries, setDetailSeries] = useState<Record<number, string>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [compraSearch, setCompraSearch] = useState("");
   const [comprasDisponibles, setComprasDisponibles] = useState<Compra[]>([]);
@@ -73,6 +74,7 @@ export default function RecepcionesCompra() {
     setDetailQuantities(
       Object.fromEntries((row.items || []).map((item: any) => [Number(item.id), Number(item.cantidad || 0)])),
     );
+    setDetailSeries(Object.fromEntries((row.items || []).map((item: any) => [Number(item.id), ""])));
   };
 
   const loadComprasDisponibles = async () => {
@@ -176,10 +178,12 @@ export default function RecepcionesCompra() {
         items: (detail.items || []).map((item: any) => ({
           recepcion_item_id: item.id,
           cantidad: Number(detailQuantities[Number(item.id)] ?? item.cantidad ?? 0),
+          series: (detailSeries[Number(item.id)] || "").split(/\r?\n|,/).map((serie) => serie.trim()).filter(Boolean),
         })),
       });
       setDetail(null);
       setDetailQuantities({});
+      setDetailSeries({});
       await fetchRows();
     } catch (err: any) {
       setError(
@@ -425,6 +429,19 @@ export default function RecepcionesCompra() {
                       </label>
                     ) : null}
                   </div>
+                  {detail.estado === "borrador" && (
+                    <label className="mt-3 block text-xs font-semibold uppercase text-slate-500">
+                      Series (opcional, una por línea)
+                      <textarea
+                        value={detailSeries[Number(item.id)] || ""}
+                        onChange={(event) => setDetailSeries((current) => ({ ...current, [Number(item.id)]: event.target.value }))}
+                        rows={3}
+                        placeholder="SN001\nSN002"
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal normal-case focus:border-blue-500 focus:outline-none"
+                      />
+                      <span className="mt-1 block font-normal normal-case text-slate-400">Si registras series, debe existir una por cada unidad recibida.</span>
+                    </label>
+                  )}
                 </div>
               ))}
             </div>

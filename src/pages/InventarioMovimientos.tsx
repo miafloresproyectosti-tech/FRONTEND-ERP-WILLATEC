@@ -1054,7 +1054,7 @@ export default function InventarioMovimientos() {
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
           >
             <FilePlus2 className="h-4 w-4" />
-            Registrar entrada
+            Entrada excepcional
           </button>
           <button
             onClick={() => void loadMovimientos()}
@@ -1907,7 +1907,7 @@ export default function InventarioMovimientos() {
                   onChange={(event) => handleEntradaChange("tipo_movimiento", event.target.value)}
                   className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
                 >
-                  <option value="entrada">Compra / entrada nueva</option>
+                  <option value="entrada">Ajuste / entrada excepcional</option>
                   <option value="devolucion">Devolucion de cliente</option>
                 </select>
                 <span className="mt-1 block text-xs font-normal text-gray-500">

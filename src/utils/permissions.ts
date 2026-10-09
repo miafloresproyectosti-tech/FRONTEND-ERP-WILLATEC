@@ -42,7 +42,8 @@ export const rolePermissions: Record<UserRole, string[]> = {
     "soporte_ti",
     "control_pagos",
     "compras",
-    "contabilidad"
+    "contabilidad",
+    "proveedores"
   ],
 
   ADMIN: [
@@ -57,7 +58,8 @@ export const rolePermissions: Record<UserRole, string[]> = {
     "servicios",
     "control_pagos",
     "compras",
-    "contabilidad"
+    "contabilidad",
+    "proveedores"
   ],
 
   VENTAS: [
@@ -66,7 +68,8 @@ export const rolePermissions: Record<UserRole, string[]> = {
     "licitaciones",
     "productos",
     "ordenes_compra",
-    "compras"
+    "compras",
+    "proveedores"
   ],
 
   LICITACIONES: [
@@ -99,6 +102,7 @@ export const rolePermissions: Record<UserRole, string[]> = {
     "cotizaciones",
     "ordenes_compra",
     "compras",
-    "contabilidad"
+    "contabilidad",
+    "proveedores"
   ]
 };

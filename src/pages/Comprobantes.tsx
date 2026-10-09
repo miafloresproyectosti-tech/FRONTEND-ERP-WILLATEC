@@ -36,6 +36,7 @@ export default function Comprobantes() {
   const [total, setTotal] = useState(0);
   const [detail, setDetail] = useState<Comprobante | null>(null);
   const [xmlPreview, setXmlPreview] = useState<any>(null);
+  const [selectedLinkId, setSelectedLinkId] = useState("");
   const [generatedIds, setGeneratedIds] = useState<Set<number>>(new Set());
   const requestId = useRef(0);
 
@@ -72,7 +73,9 @@ export default function Comprobantes() {
     setSaving(true);
     setError("");
     try {
-      setXmlPreview(await previewXmlComprobante(file));
+      const preview = await previewXmlComprobante(file);
+      setXmlPreview(preview);
+      setSelectedLinkId(preview.vinculos_sugeridos?.length === 1 ? String(preview.vinculos_sugeridos[0].id) : "");
     } catch (err: any) {
       setError(err?.response?.data?.message || "No se pudo leer el XML.");
     } finally {
@@ -87,6 +90,9 @@ export default function Comprobantes() {
     try {
       await createComprobante({
         tipo_operacion: xmlPreview.tipo_operacion_sugerida,
+        ...(xmlPreview.tipo_operacion_sugerida === "compra"
+          ? { compra_id: Number(selectedLinkId) }
+          : { oc_recibida_id: Number(selectedLinkId) }),
         tipo_comprobante: xmlPreview.tipo_comprobante,
         serie: xmlPreview.serie,
         numero: xmlPreview.numero,
@@ -252,7 +258,17 @@ export default function Comprobantes() {
                 El XML no coincide con COMPANY_RUC como emisor ni receptor. Revisar configuracion antes de registrar.
               </div>
             )}
-            <button disabled={saving || xmlPreview.duplicado?.existe || xmlPreview.tipo_operacion_sugerida === "observado"} onClick={saveFromPreview} className="mt-4 rounded-xl bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            {xmlPreview.tipo_operacion_sugerida !== "observado" && (
+              <label className="mt-4 block text-sm font-semibold text-slate-700">
+                {xmlPreview.tipo_operacion_sugerida === "compra" ? "Vincular a compra" : "Vincular a OC recibida"}
+                <select value={selectedLinkId} onChange={(e) => setSelectedLinkId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal">
+                  <option value="">Selecciona un documento...</option>
+                  {(xmlPreview.vinculos_sugeridos || []).map((item: { id: number; label: string }) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                </select>
+                {(xmlPreview.vinculos_sugeridos || []).length === 0 && <span className="mt-1 block font-normal text-amber-700">No se encontraron documentos compatibles con el RUC del XML.</span>}
+              </label>
+            )}
+            <button disabled={saving || !selectedLinkId || xmlPreview.duplicado?.existe || xmlPreview.tipo_operacion_sugerida === "observado"} onClick={saveFromPreview} className="mt-4 rounded-xl bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
               Guardar comprobante
             </button>
           </div>

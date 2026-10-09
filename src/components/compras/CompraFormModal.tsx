@@ -8,7 +8,7 @@ import {
   type CompraPayload,
 } from "../../services/compra.service";
 import { getOcEmitidas, type OcEmitida } from "../../services/ordenCompra.service";
-import { createProveedor, getProveedores, type Proveedor } from "../../services/proveedor.service";
+import { createProveedor, getProveedores, updateProveedor, type Proveedor } from "../../services/proveedor.service";
 import { useAuth } from "../../AuthContext";
 
 export interface CompraDraftItem {
@@ -67,9 +67,13 @@ export function CompraFormModal({
 }: CompraFormModalProps) {
   const { user } = useAuth();
   const canAuthorizeOverpurchase = ["SUPERADMIN", "ADMIN"].includes(user?.role || "");
+  const canManageCredit = ["SUPERADMIN", "ADMIN"].includes(user?.role || "");
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [proveedorSearch, setProveedorSearch] = useState("");
   const [proveedorRuc, setProveedorRuc] = useState("");
+  const [tieneCredito, setTieneCredito] = useState(false);
+  const [diasCredito, setDiasCredito] = useState(30);
+  const [limiteCredito, setLimiteCredito] = useState("");
   const [selectedProveedor, setSelectedProveedor] = useState<Proveedor | null>(null);
   const [showProveedorOptions, setShowProveedorOptions] = useState(false);
   const [modalidad, setModalidad] = useState<CompraModalidad>("directa");
@@ -85,6 +89,15 @@ export function CompraFormModal({
   const [creatingProveedor, setCreatingProveedor] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const selectProveedor = (proveedor: Proveedor) => {
+    setSelectedProveedor(proveedor);
+    setProveedorSearch(proveedor.nombre);
+    setTieneCredito(Boolean(proveedor.tiene_credito));
+    setDiasCredito(Number(proveedor.dias_credito || 30));
+    setLimiteCredito(proveedor.limite_credito ? String(proveedor.limite_credito) : "");
+    setShowProveedorOptions(false);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -238,8 +251,7 @@ export function CompraFormModal({
         ruc: proveedorRuc.trim(),
         activo: true,
       });
-      setSelectedProveedor(proveedor);
-      setProveedorSearch(proveedor.nombre);
+      selectProveedor(proveedor);
       setProveedorRuc("");
       setProveedores((current) => [proveedor, ...current.filter((item) => item.id !== proveedor.id)]);
       setShowProveedorOptions(false);
@@ -412,10 +424,8 @@ export function CompraFormModal({
                         key={proveedor.id}
                         type="button"
                         onClick={() => {
-                          setSelectedProveedor(proveedor);
-                          setProveedorSearch(proveedor.nombre);
+                          selectProveedor(proveedor);
                           setProveedorRuc("");
-                          setShowProveedorOptions(false);
                         }}
                         className="block w-full px-3 py-2 text-left text-sm hover:bg-blue-50"
                       >
@@ -526,6 +536,12 @@ export function CompraFormModal({
                 <input type="checkbox" checked={autorizarSobrecompra} onChange={(event) => setAutorizarSobrecompra(event.target.checked)} className="mt-0.5 h-4 w-4" />
                 <span><strong>Autorizar sobrecompra excepcional</strong><br />Permite comprar más que el saldo requerido; el excedente ingresará como stock adicional.</span>
               </label>
+            )}
+            {selectedProveedor && (
+              <div className="lg:col-span-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold text-slate-800">Condición de pago del proveedor</p><span className="text-xs text-slate-500">{tieneCredito ? `Crédito a ${diasCredito} días` : "Contado"}</span></div>
+                {canManageCredit && <div className="mt-3 grid gap-3 sm:grid-cols-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={tieneCredito} onChange={(e) => setTieneCredito(e.target.checked)} />Tiene crédito</label><input type="number" min="0" max="365" disabled={!tieneCredito} value={diasCredito} onChange={(e) => setDiasCredito(Number(e.target.value))} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" placeholder="Días" /><div className="flex gap-2"><input type="number" min="0" disabled={!tieneCredito} value={limiteCredito} onChange={(e) => setLimiteCredito(e.target.value)} className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm disabled:opacity-50" placeholder="Límite" /><button type="button" onClick={async () => { const updated = await updateProveedor(selectedProveedor.id, { nombre: selectedProveedor.nombre, ruc: selectedProveedor.ruc || "", activo: selectedProveedor.activo, tiene_credito: tieneCredito, dias_credito: tieneCredito ? diasCredito : 0, limite_credito: tieneCredito && limiteCredito ? Number(limiteCredito) : null, moneda_credito_id: monedaId }); selectProveedor(updated); }} className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white">Guardar</button></div></div>}
+              </div>
             )}
           </div>
 

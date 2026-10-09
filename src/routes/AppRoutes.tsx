@@ -29,6 +29,7 @@ const OrdenCompraDetail = lazy(() => import("../pages/OrdenCompraDetail"));
 const RequerimientosCompra = lazy(() => import("../pages/RequerimientosCompra"));
 const Compras = lazy(() => import("../pages/Compras"));
 const RecepcionesCompra = lazy(() => import("../pages/RecepcionesCompra"));
+const Proveedores = lazy(() => import("../pages/Proveedores"));
 const Comprobantes = lazy(() => import("../pages/Comprobantes"));
 const CuentasPorPagar = lazy(() => import("../pages/CuentasPorPagar"));
 const CuentasPorCobrar = lazy(() => import("../pages/CuentasPorCobrar"));
@@ -326,6 +327,15 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute requiredPermission="compras">
                 <RecepcionesCompra />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/proveedores"
+            element={
+              <ProtectedRoute requiredPermission="proveedores">
+                <Proveedores />
               </ProtectedRoute>
             }
           />

@@ -558,6 +558,13 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             )}
 
 
+            {hasPermission("proveedores") && (
+              <Link to="/proveedores" onClick={closeMobile} className={itemClass("/proveedores")}>
+                <ShoppingBag size={20} />
+                <span className="font-medium uppercase">Proveedores</span>
+              </Link>
+            )}
+
             {hasPermission("contabilidad") && (
               <div className="mt-2">
                 <button

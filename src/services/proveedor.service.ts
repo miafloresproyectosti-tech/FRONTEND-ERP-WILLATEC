@@ -10,6 +10,10 @@ export interface Proveedor {
   direccion?: string | null;
   observaciones?: string | null;
   activo?: boolean;
+  tiene_credito?: boolean;
+  dias_credito?: number;
+  limite_credito?: number | string | null;
+  moneda_credito_id?: number | null;
 }
 
 export interface ProveedorPayload {
@@ -21,6 +25,10 @@ export interface ProveedorPayload {
   direccion?: string;
   observaciones?: string;
   activo?: boolean;
+  tiene_credito?: boolean;
+  dias_credito?: number;
+  limite_credito?: number | null;
+  moneda_credito_id?: number | null;
 }
 
 export async function getProveedores(params: { search?: string; activo?: boolean; per_page?: number } = {}) {
