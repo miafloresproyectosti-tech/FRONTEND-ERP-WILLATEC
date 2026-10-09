@@ -15,6 +15,8 @@ export type NotificationSectionKey =
   | "cotizaciones"
   | "oportunidades"
   | "ordenes"
+  | "compras"
+  | "contabilidad"
   | "inventario"
   | "servicios"
   | "usuarios"
@@ -44,6 +46,9 @@ export function getNotificationSearchText(notification: DatabaseNotification) {
 
 export function getNotificationSectionKey(notification: DatabaseNotification): NotificationSectionKey {
   const text = getNotificationSearchText(notification);
+
+  if (text.includes("/contabilidad") || text.includes("cuenta por pagar") || text.includes("cuenta por cobrar") || text.includes("comprobante")) return "contabilidad";
+  if (text.includes("/compras") || text.includes("requerimiento") || text.includes("recepción") || text.includes("recepcion")) return "compras";
 
   if (
     notification.data.cotizacion_id ||
@@ -133,6 +138,20 @@ export const NOTIFICATION_SECTION_META: Record<NotificationSectionKey, Omit<Noti
     icon: ShoppingCart,
     accent: "bg-emerald-50 text-emerald-700 border-emerald-200",
   },
+  compras: {
+    key: "compras",
+    label: "Compras",
+    description: "Requerimientos, compras y recepciones",
+    icon: ShoppingCart,
+    accent: "bg-violet-50 text-violet-700 border-violet-200",
+  },
+  contabilidad: {
+    key: "contabilidad",
+    label: "Contabilidad",
+    description: "Comprobantes, cuentas y vencimientos",
+    icon: FileText,
+    accent: "bg-rose-50 text-rose-700 border-rose-200",
+  },
   inventario: {
     key: "inventario",
     label: "Inventario / Kardex",
@@ -167,6 +186,8 @@ export const NOTIFICATION_SECTION_ORDER: NotificationSectionKey[] = [
   "cotizaciones",
   "oportunidades",
   "ordenes",
+  "compras",
+  "contabilidad",
   "inventario",
   "servicios",
   "usuarios",

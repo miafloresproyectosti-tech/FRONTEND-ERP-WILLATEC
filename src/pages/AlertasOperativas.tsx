@@ -9,6 +9,8 @@ const toneByCode: Record<string, string> = {
   compra_confirmada_sin_recepcion: "border-amber-200 bg-amber-50 text-amber-800",
   compra_parcialmente_recibida: "border-amber-200 bg-amber-50 text-amber-800",
   documento_cliente_pendiente: "border-blue-200 bg-blue-50 text-blue-800",
+  recepcion_sin_factura_proveedor: "border-orange-200 bg-orange-50 text-orange-800",
+  comprobante_observado: "border-orange-200 bg-orange-50 text-orange-800",
 };
 
 export default function AlertasOperativas() {
