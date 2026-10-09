@@ -60,6 +60,18 @@ export function CotizacionResumen({
     monedaId === 2
       ? Number((Number(resumen.ganancia ?? 0) * (tipoCambioSolesADolar || 1)).toFixed(2))
       : null;
+  const margenLineas = items.flatMap((item) =>
+    item.destinos_entrega?.length
+      ? item.destinos_entrega.map((destino) => ({
+          margen: Number(destino.margen ?? item.margen ?? 0),
+          cantidad: Number(destino.cantidad || 0),
+        }))
+      : [{ margen: Number(item.margen || 0), cantidad: Number(item.cantidad || 0) }]
+  );
+  const totalCantidadMargen = margenLineas.reduce((sum, line) => sum + line.cantidad, 0);
+  const margenPromedio = totalCantidadMargen > 0
+    ? margenLineas.reduce((sum, line) => sum + line.margen * line.cantidad, 0) / totalCantidadMargen
+    : 0;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border p-6 text-gray-900">
@@ -113,7 +125,7 @@ export function CotizacionResumen({
               </div>
               )}
               <div className="flex justify-between pt-2 border-t text-blue-600 font-bold">
-                Margen Promedio: <span>{items.length > 0 ? (items.reduce((sum, item) => sum + item.margen, 0) / items.length).toFixed(1) : '0.0'}%</span>
+                Margen Promedio: <span>{margenPromedio.toFixed(1)}%</span>
               </div>
               <div className="flex justify-between pt-2 border-t text-purple-600 font-bold">
                 Items Stock: <span>{items.filter(i => i.disponibilidad_tipo === 'stock').length}</span> | 

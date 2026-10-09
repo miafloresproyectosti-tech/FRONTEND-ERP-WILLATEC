@@ -47,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     lastLoginAt?: string | null,
     twoFactorEnabled = false
   ) => {
-    const role = roleStr as UserRole;
+    const role = normalizeRole(roleStr);
     const name =
       email.split("@")[0]?.replace(/\b\w/g, (letter) => letter.toUpperCase()) ||
       "Usuario";
@@ -123,16 +123,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const response = await meRequest();
         const backendUser = response.data?.user;
-        const backendRole = 
+        const backendRole =
           backendUser?.roles && backendUser.roles.length > 0
-            ? backendUser.roles[0].name.toUpperCase()
+            ? normalizeRole(backendUser.roles[0].name)
             : parsed.role
         ;
 
         const userData: User = {
           id: backendUser?.id ?? parsed.id,
           email: backendUser?.email ?? parsed.email,
-          role: backendRole as UserRole,
+          role: normalizeRole(backendRole),
           name:
             backendUser?.nombres ||
             parsed.name ||

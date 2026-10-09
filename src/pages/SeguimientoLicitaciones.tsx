@@ -3,6 +3,8 @@ import {
   AlertTriangle,
   Eye,
   FileSpreadsheet,
+  LayoutGrid,
+  List,
   LockOpen,
   Loader2,
   Pencil,
@@ -11,7 +13,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import jsPDF from "jspdf";
+// import jsPDF from "jspdf";
 import "jspdf-autotable";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -22,9 +24,7 @@ import { OportunidadFormModal } from "../components/licitaciones/OportunidadForm
 import { EstadoBadge, TipoBadge, VigenciaBadge } from "../components/licitaciones/OportunidadBadges";
 import PageSizeSelect from "../components/ui/PageSizeSelect";
 import {
-  CATEGORIAS_OPORTUNIDAD,
   ESTADOS_CIERRE,
-  FORMAS_PAGO,
   MOTIVOS_NO_CONTINUAR,
   MOTIVOS_PERDIDA,
   MOTIVOS_VENCIMIENTO,
@@ -63,7 +63,7 @@ import type {
 } from "../types/licitaciones";
 import { exportExcelFile } from "../utils/exportExcel";
 import { getPaginationItems } from "../utils/pagination";
-import { normalizeRole } from "../utils/permissions";
+import { normalizeRole, rolePermissions } from "../utils/permissions";
 import {
   createId,
   fileToOpportunityFile,
@@ -72,7 +72,6 @@ import {
   getVigenciaAlert,
   isClosedOpportunity,
   normalizeText,
-  toDatetimeLocalValue,
 } from "../utils/licitaciones";
 
 const DEFAULT_FILTERS: OportunidadFilters = {
@@ -132,6 +131,8 @@ const SALES_BANDEJAS = [
   { key: "creadas", label: "Subidas por mi" },
 ] as const;
 
+const OPPORTUNITY_EXECUTIVE_ROLES = new Set(["VENTAS", "SUPERADMIN"]);
+
 const SUPERADMIN_BANDEJAS = [
   { key: "disponibles", label: "Oportunidades Disponibles" },
   { key: "en_atencion", label: "Oportunidades en Atencion" },
@@ -186,6 +187,7 @@ export default function SeguimientoLicitaciones() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Oportunidad | null>(null);
   const [editingLoadingId, setEditingLoadingId] = useState<string | null>(null);
@@ -214,7 +216,7 @@ export default function SeguimientoLicitaciones() {
   const [deletingOpportunityFileId, setDeletingOpportunityFileId] = useState<string | null>(null);
   const [unlinkingQuoteId, setUnlinkingQuoteId] = useState<string | null>(null);
   const [assigningOpportunityId, setAssigningOpportunityId] = useState<string | null>(null);
-  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [changingEstadoId, setChangingEstadoId] = useState<string | null>(null);
   const loadRequestRef = useRef(0);
   const showToastRef = useRef(showToast);
 
@@ -224,19 +226,12 @@ export default function SeguimientoLicitaciones() {
 
   const userName = user?.name || "Usuario";
   const currentRole = normalizeRole(user?.role);
-  const roleLabel =
-    currentRole === "SUPERADMIN"
-      ? "Superadmin"
-      : currentRole === "ADMIN"
-        ? "Admin"
-        : currentRole === "LICITACIONES"
-          ? "Licitaciones"
-          : currentRole === "VENTAS"
-            ? "Ventas"
-            : currentRole;
   const isManager = currentRole === "SUPERADMIN" || currentRole === "ADMIN" || currentRole === "LICITACIONES";
   const isSalesRole = currentRole === "VENTAS";
-  const canCreateOpportunity = currentRole === "LICITACIONES" || currentRole === "VENTAS";
+  const canCreateOpportunity = currentRole === "LICITACIONES" || currentRole === "VENTAS" || currentRole === "SUPERADMIN";
+  const canOpenCotizaciones =
+    rolePermissions[currentRole]?.includes("*") ||
+    rolePermissions[currentRole]?.includes("cotizaciones");
   const [activeBandeja, setActiveBandeja] = useState<string>(
     currentRole === "VENTAS" ? "disponibles" : currentRole === "SUPERADMIN" ? "disponibles" : "todas"
   );
@@ -255,6 +250,11 @@ export default function SeguimientoLicitaciones() {
 
       const mappedUsers = users
         .filter((item) => item.activo !== false)
+        .filter((item) =>
+          item.roles?.some((role) =>
+            OPPORTUNITY_EXECUTIVE_ROLES.has(normalizeRole(role.name)),
+          ),
+        )
         .map((item) => ({
           id: item.id,
           nombre: `${item.nombres || ""} ${item.apellidos || ""}`.trim() || item.email,
@@ -264,11 +264,9 @@ export default function SeguimientoLicitaciones() {
       setEjecutivos(
         mappedUsers.length > 0
           ? mappedUsers
-          : [
-              { id: user?.id || 1, nombre: userName, email: user?.email },
-              { id: 2, nombre: "Maria Ventas", email: "maria@willatec.com" },
-              { id: 3, nombre: "Supervisor Comercial", email: "supervisor@willatec.com" },
-            ]
+          : user?.id && OPPORTUNITY_EXECUTIVE_ROLES.has(currentRole)
+            ? [{ id: user.id, nombre: userName, email: user.email }]
+            : []
       );
       setOpportunities(items);
     } catch (error) {
@@ -372,7 +370,14 @@ export default function SeguimientoLicitaciones() {
     return scopedOpportunities
       .filter((item) => filters.tipo === "todos" || item.tipo === filters.tipo)
       .filter((item) => filters.estado === "todos" || item.estado === filters.estado)
-      .filter((item) => filters.ejecutivo === "todos" || String(item.ejecutivo.id) === filters.ejecutivo)
+      .filter((item) => {
+        if (filters.ejecutivo === "todos") return true;
+
+        const executiveId = Number(item.asignadoA ?? item.ejecutivo?.id ?? 0);
+        if (filters.ejecutivo === "sin_asignar") return executiveId === 0;
+
+        return String(executiveId) === filters.ejecutivo;
+      })
       .filter((item) => filters.categoria === "todos" || item.categoria === filters.categoria)
       .filter((item) => !filters.empresa || normalizeText(item.empresa).includes(normalizeText(filters.empresa)))
       .filter((item) => !filters.requerimiento || normalizeText(item.requerimiento).includes(normalizeText(filters.requerimiento)))
@@ -543,25 +548,26 @@ export default function SeguimientoLicitaciones() {
 
     try {
       setAssigningOpportunityId(opportunity.id);
-      await saveOportunidad(next);
-    const reminder = `Recuerda que tienes una cotización pendiente y se vence ${formatDateTime(next.vigencia)}.`;
-    addNotification({
-      title: "Cotización pendiente",
-      description: reminder,
-      type: "warning",
-      icon: "UserCheck",
-      route: "/seguimiento-licitaciones",
-      targetUserId: next.ejecutivo.id,
-    });
-    addNotification({
-      title: "Oportunidad asignada",
-      description: `${userName} se asigno la oportunidad "${next.requerimiento} - ${next.empresa}".`,
-      type: "info",
-      icon: "UserCheck",
-      route: "/seguimiento-licitaciones",
-      targetRole: "SUPERADMIN",
-    });
-    await loadData();
+      const updated = await saveOportunidad(next);
+      syncSelectedOpportunity(updated);
+      void refreshSelectedOpportunity(opportunity.id, updated);
+      const reminder = `Recuerda que tienes una cotización pendiente y se vence ${formatDateTime(next.vigencia)}.`;
+      addNotification({
+        title: "Cotización pendiente",
+        description: reminder,
+        type: "warning",
+        icon: "UserCheck",
+        route: "/seguimiento-licitaciones",
+        targetUserId: next.ejecutivo.id,
+      });
+      addNotification({
+        title: "Oportunidad asignada",
+        description: `${userName} se asigno la oportunidad "${next.requerimiento} - ${next.empresa}".`,
+        type: "info",
+        icon: "UserCheck",
+        route: "/seguimiento-licitaciones",
+        targetRole: "SUPERADMIN",
+      });
       showToast({ title: "Oportunidad asignada", description: reminder, type: "warning" });
     } finally {
       setAssigningOpportunityId(null);
@@ -606,7 +612,7 @@ export default function SeguimientoLicitaciones() {
       garantia: data.tipo === "licitacion" ? clean(data.garantia) : undefined,
       plazo: data.tipo === "licitacion" ? clean(data.plazo) : undefined,
       carpetaServidor: data.tipo === "licitacion" ? clean(data.carpetaServidor) : undefined,
-      tdr: data.tipo === "licitacion" || data.tipo === "privado" ? data.tdr : undefined,
+      tdr: data.tdr,
       formaPago: data.tipo !== "licitacion" && data.formaPago ? data.formaPago : undefined,
       destinoEntrega: data.tipo === "privado" ? clean(data.destinoEntrega) : undefined,
       wherexId: data.tipo === "wherex" ? clean(data.wherexId) : undefined,
@@ -639,10 +645,11 @@ export default function SeguimientoLicitaciones() {
     };
 
     try {
-      await saveOportunidad(next);
+      const updated = await saveOportunidad(next);
       setModalOpen(false);
       setEditing(null);
-      await loadData();
+      syncSelectedOpportunity(updated);
+      void refreshSelectedOpportunity(updated.id, updated);
       showToast({ title: "Oportunidad guardada", description: "El seguimiento fue actualizado.", type: "success" });
     } catch (error) {
       const response = error as { response?: { data?: { message?: string } }; message?: string };
@@ -662,7 +669,7 @@ export default function SeguimientoLicitaciones() {
   };
 
   const changeEstado = async (item: Oportunidad, estado: OportunidadEstado) => {
-    if (isClosedOpportunity(item.estado)) return;
+    if (isClosedOpportunity(item.estado) || changingEstadoId) return;
 
     if (estado === "perdida") {
       setLossTarget(item);
@@ -680,27 +687,47 @@ export default function SeguimientoLicitaciones() {
       return;
     }
 
-    const now = new Date().toISOString();
-    const updated = await saveOportunidad({
-      ...item,
-      estado,
-      motivoCierre: ESTADOS_CIERRE.includes(estado) ? motivo : item.motivoCierre,
-      comentarioCierre: estado === "no_se_realizara" ? motivo : item.comentarioCierre,
-      modificadoEn: now,
-      modificadoPor: userName,
-      historial: [
-        {
-          id: createId("hist"),
-          fecha: now,
-          usuario: userName,
-          tipo: ESTADOS_CIERRE.includes(estado) ? "cierre" : "estado",
-          descripcion: `Estado cambiado a ${OPORTUNIDAD_ESTADOS[estado]}${motivo ? `: ${motivo}` : ""}.`,
-        },
-        ...item.historial,
-      ],
-    });
-    syncSelectedOpportunity(updated);
-    void refreshSelectedOpportunity(item.id, updated);
+    setChangingEstadoId(item.id);
+    try {
+      const now = new Date().toISOString();
+      const updated = await saveOportunidad({
+        ...item,
+        estado,
+        motivoCierre: ESTADOS_CIERRE.includes(estado) ? motivo : item.motivoCierre,
+        comentarioCierre: estado === "no_se_realizara" ? motivo : item.comentarioCierre,
+        modificadoEn: now,
+        modificadoPor: userName,
+        historial: [
+          {
+            id: createId("hist"),
+            fecha: now,
+            usuario: userName,
+            tipo: ESTADOS_CIERRE.includes(estado) ? "cierre" : "estado",
+            descripcion: `Estado cambiado a ${OPORTUNIDAD_ESTADOS[estado]}${motivo ? `: ${motivo}` : ""}.`,
+          },
+          ...item.historial,
+        ],
+      });
+      syncSelectedOpportunity(updated);
+      void refreshSelectedOpportunity(item.id, updated);
+      showToast({
+        title: "Estado actualizado",
+        description: `La oportunidad quedo como ${OPORTUNIDAD_ESTADOS[estado]}.`,
+        type: "success",
+      });
+    } catch (error) {
+      const response = error as { response?: { data?: { message?: string } }; message?: string };
+      showToast({
+        title: "No se pudo actualizar el estado",
+        description:
+          response.response?.data?.message ||
+          response.message ||
+          "No se pudo guardar el cambio. Intenta nuevamente.",
+        type: "error",
+      });
+    } finally {
+      setChangingEstadoId(null);
+    }
   };
 
   const submitLoss = async () => {
@@ -804,12 +831,12 @@ export default function SeguimientoLicitaciones() {
     }
   };
 
-  const syncSelectedOpportunity = (detail: Oportunidad) => {
+  function syncSelectedOpportunity(detail: Oportunidad) {
     setSelectedDetail(detail);
     setOpportunities((current) =>
       current.map((item) => (item.id === detail.id ? { ...item, ...detail } : item)),
     );
-  };
+  }
 
   const refreshSelectedOpportunity = async (opportunityId: string, immediateDetail?: Oportunidad) => {
     if (immediateDetail) {
@@ -992,23 +1019,32 @@ export default function SeguimientoLicitaciones() {
 
     const cotizacionData = cotizacion as any;
 
-    await addCotizacionRelacionada(selected.id, userName, {
-      cotizacion_id: Number(cotizacion.id),
-      numero: cotizacion.numero,
-      estado: cotizacionData.estadoCotizacion?.nombre || cotizacionData.estado_cotizacion?.nombre || "registrada",
-      monto: Number(cotizacion.total || 0),
-      moneda: cotizacionData.moneda?.codigo || cotizacionData.codigo_moneda,
-      origen: "vinculada",
-    });
+    try {
+      await addCotizacionRelacionada(selected.id, userName, {
+        cotizacion_id: Number(cotizacion.id),
+        numero: cotizacion.numero,
+        estado: cotizacionData.estadoCotizacion?.nombre || cotizacionData.estado_cotizacion?.nombre || "registrada",
+        monto: Number(cotizacion.total || 0),
+        moneda: cotizacionData.moneda?.codigo || cotizacionData.codigo_moneda,
+        origen: "vinculada",
+      });
 
-    setQuoteLinkModalOpen(false);
-    setQuoteLinkSelectedId(null);
-    await loadData();
-    showToast({
-      title: "Cotizacion vinculada",
-      description: `${cotizacion.numero || `#${cotizacion.id}`} quedo asociada a la oportunidad.`,
-      type: "success",
-    });
+      setQuoteLinkModalOpen(false);
+      setQuoteLinkSelectedId(null);
+      await refreshSelectedOpportunity(selected.id);
+      showToast({
+        title: "Cotizacion vinculada",
+        description: `${cotizacion.numero || `#${cotizacion.id}`} quedo asociada a la oportunidad.`,
+        type: "success",
+      });
+    } catch (error) {
+      const response = error as { response?: { data?: { message?: string } }; message?: string };
+      showToast({
+        title: "No se pudo vincular",
+        description: response.response?.data?.message || response.message || "La cotizacion no pudo vincularse a esta oportunidad.",
+        type: "error",
+      });
+    }
   };
 
   const handleDownloadQuotePdf = async (cotizacionId: string | number) => {
@@ -1194,82 +1230,82 @@ export default function SeguimientoLicitaciones() {
     });
   };
 
-  const handleExportPdf = () => {
-    const doc = new jsPDF({ orientation: "landscape" });
-    doc.text("Seguimiento de Licitaciones", 14, 16);
-    (doc as unknown as { autoTable: (options: object) => void }).autoTable({
-      startY: 22,
-      head: [["Tipo", "Empresa", "Requerimiento", "Ejecutivo", "Categoria", "Estado", "Vigencia", "Tiempo"]],
-      body: exportRows.map((row) => [
-        row.tipo,
-        row.empresa,
-        row.requerimiento,
-        row.ejecutivo,
-        row.categoria,
-        row.estado,
-        row.vigencia,
-        row.tiempo_restante,
-      ]),
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [37, 99, 235] },
-    });
-    doc.save("seguimiento-licitaciones.pdf");
-  };
+  // const handleExportPdf = () => {
+  //   const doc = new jsPDF({ orientation: "landscape" });
+  //   doc.text("Seguimiento de Licitaciones", 14, 16);
+  //   (doc as unknown as { autoTable: (options: object) => void }).autoTable({
+  //     startY: 22,
+  //     head: [["Tipo", "Empresa", "Requerimiento", "Ejecutivo", "Categoria", "Estado", "Vigencia", "Tiempo"]],
+  //     body: exportRows.map((row) => [
+  //       row.tipo,
+  //       row.empresa,
+  //       row.requerimiento,
+  //       row.ejecutivo,
+  //       row.categoria,
+  //       row.estado,
+  //       row.vigencia,
+  //       row.tiempo_restante,
+  //     ]),
+  //     styles: { fontSize: 8 },
+  //     headStyles: { fillColor: [37, 99, 235] },
+  //   });
+  //   doc.save("seguimiento-licitaciones.pdf");
+  // };
 
-  const handleImportExcel = async (file?: File) => {
-    if (!file) return;
-    const ExcelJS = await import("exceljs");
-    const workbook = new ExcelJS.Workbook();
-    const buffer = await file.arrayBuffer();
-    await workbook.xlsx.load(buffer);
-    const sheet = workbook.worksheets[0];
-    const now = new Date().toISOString();
-    const imported: Oportunidad[] = [];
+  // const handleImportExcel = async (file?: File) => {
+  //   if (!file) return;
+  //   const ExcelJS = await import("exceljs");
+  //   const workbook = new ExcelJS.Workbook();
+  //   const buffer = await file.arrayBuffer();
+  //   await workbook.xlsx.load(buffer);
+  //   const sheet = workbook.worksheets[0];
+  //   const now = new Date().toISOString();
+  //   const imported: Oportunidad[] = [];
 
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return;
-      const empresa = String(row.getCell(1).value || "").trim();
-      const requerimiento = String(row.getCell(2).value || "").trim();
-      if (!empresa || !requerimiento) return;
+  //   sheet.eachRow((row, rowNumber) => {
+  //     if (rowNumber === 1) return;
+  //     const empresa = String(row.getCell(1).value || "").trim();
+  //     const requerimiento = String(row.getCell(2).value || "").trim();
+  //     if (!empresa || !requerimiento) return;
 
-      imported.push({
-        id: createId("imp"),
-        tipo: "privado",
-        empresa,
-        requerimiento,
-        vigencia: toDatetimeLocalValue(new Date(row.getCell(3).value?.toString() || Date.now() + 2 * 24 * 60 * 60 * 1000)),
-        ejecutivo: { id: 0, nombre: "Sin ejecutivo" },
-        asignadoA: null,
-        asignadoEn: null,
-        asignadoPor: null,
-        esNueva: true,
-        categoria: String(row.getCell(4).value || CATEGORIAS_OPORTUNIDAD[0]),
-        estado: "sin_atender",
-        observacion: "Importado desde Excel.",
-        creadoEn: now,
-        creadoPor: userName,
-        formaPago: "credito_30",
-        comentarios: [],
-        archivos: [],
-        cotizaciones: [],
-        historial: [{
-          id: createId("hist"),
-          fecha: now,
-          usuario: userName,
-          tipo: "creacion",
-          descripcion: "Oportunidad importada desde Excel.",
-        }],
-      });
-    });
+  //     imported.push({
+  //       id: createId("imp"),
+  //       tipo: "privado",
+  //       empresa,
+  //       requerimiento,
+  //       vigencia: toDatetimeLocalValue(new Date(row.getCell(3).value?.toString() || Date.now() + 2 * 24 * 60 * 60 * 1000)),
+  //       ejecutivo: { id: 0, nombre: "Sin ejecutivo" },
+  //       asignadoA: null,
+  //       asignadoEn: null,
+  //       asignadoPor: null,
+  //       esNueva: true,
+  //       categoria: String(row.getCell(4).value || CATEGORIAS_OPORTUNIDAD[0]),
+  //       estado: "sin_atender",
+  //       observacion: "Importado desde Excel.",
+  //       creadoEn: now,
+  //       creadoPor: userName,
+  //       formaPago: "credito_30",
+  //       comentarios: [],
+  //       archivos: [],
+  //       cotizaciones: [],
+  //       historial: [{
+  //         id: createId("hist"),
+  //         fecha: now,
+  //         usuario: userName,
+  //         tipo: "creacion",
+  //         descripcion: "Oportunidad importada desde Excel.",
+  //       }],
+  //     });
+  //   });
 
-    for (const item of imported) {
-      await saveOportunidad(item);
-    }
+  //   for (const item of imported) {
+  //     await saveOportunidad(item);
+  //   }
 
-    await loadData();
-    showToast({ title: "Importacion completada", description: `${imported.length} registros importados.`, type: "success" });
-    if (importInputRef.current) importInputRef.current.value = "";
-  };
+  //   await loadData();
+  //   showToast({ title: "Importacion completada", description: `${imported.length} registros importados.`, type: "success" });
+  //   if (importInputRef.current) importInputRef.current.value = "";
+  // };
 
   const bandejas = currentRole === "VENTAS"
     ? SALES_BANDEJAS
@@ -1288,6 +1324,8 @@ export default function SeguimientoLicitaciones() {
 
   const isInitialLoading = loading && opportunities.length === 0;
   const isRefreshing = loading && opportunities.length > 0;
+  const showEstadoCards = !(isSalesRole && ["disponibles", "creadas"].includes(activeBandeja));
+  const showEstadoSelect = !showEstadoCards;
 
   const sortButton = (key: OportunidadSortKey) => (
     <button
@@ -1308,11 +1346,11 @@ export default function SeguimientoLicitaciones() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Seguimiento de Licitaciones</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Seguimiento de Licitaciones</h1>
           </div>
           <p className="mt-1 text-slate-500 dark:text-slate-400">
             Centraliza licitaciones, privados y WHEREX en un solo panel comercial con seguimiento visual para cada ejecutivo.
@@ -1419,7 +1457,7 @@ export default function SeguimientoLicitaciones() {
         </div>
       </div>
 
-      {!(isSalesRole && ["disponibles", "creadas"].includes(activeBandeja)) && (
+      {showEstadoCards && (
         <div className="grid grid-cols-2 gap-2 md:grid-cols-5 xl:grid-cols-10">
           {SUMMARY_ITEMS.map((item) => (
             <button
@@ -1427,10 +1465,15 @@ export default function SeguimientoLicitaciones() {
               type="button"
               onClick={() => {
                 if (item.key in OPORTUNIDAD_ESTADOS) {
-                  updateFilter("estado", item.key as OportunidadEstado);
+                  updateFilter(
+                    "estado",
+                    filters.estado === item.key ? "todos" : item.key as OportunidadEstado,
+                  );
                 }
               }}
-              className={`rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-950 ${item.className}`}
+              className={`rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-950 ${item.className} ${
+                filters.estado === item.key ? "ring-2 ring-blue-400" : ""
+              }`}
             >
               <p className="min-h-8 text-xs font-semibold leading-4 text-slate-500">{item.label}</p>
               <p className="text-xl font-bold text-slate-900 dark:text-white">{summary[item.key] || 0}</p>
@@ -1439,35 +1482,50 @@ export default function SeguimientoLicitaciones() {
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4 xl:grid-cols-8">
-          <label className="relative lg:col-span-2">
-            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-4">
+        <div className={`grid grid-cols-1 gap-3 md:grid-cols-2 ${
+          showEstadoSelect
+            ? "xl:grid-cols-[minmax(260px,1fr)_minmax(190px,220px)_minmax(190px,220px)_auto]"
+            : "xl:grid-cols-[minmax(280px,1fr)_minmax(220px,280px)_auto]"
+        }`}>
+          <label className="relative md:col-span-2 xl:col-span-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               value={filters.search}
               onChange={(event) => updateFilter("search", event.target.value)}
-              className="w-full rounded-xl border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              className="h-11 w-full rounded-xl border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
               placeholder="Buscar empresa o requerimiento"
             />
           </label>
-          <select value={filters.tipo} onChange={(event) => updateFilter("tipo", event.target.value as OportunidadFilters["tipo"])} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
-            <option value="todos">Todos los tipos</option>
-            {Object.entries(OPORTUNIDAD_TIPOS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-          <select value={filters.estado} onChange={(event) => updateFilter("estado", event.target.value as OportunidadFilters["estado"])} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
-            <option value="todos">Todos los estados</option>
-            {Object.entries(OPORTUNIDAD_ESTADOS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-          <select value={filters.ejecutivo} onChange={(event) => updateFilter("ejecutivo", event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+          {showEstadoSelect && (
+            <select value={filters.estado} onChange={(event) => updateFilter("estado", event.target.value as OportunidadFilters["estado"])} className="h-11 rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+              <option value="todos">Todos los estados</option>
+              {Object.entries(OPORTUNIDAD_ESTADOS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          )}
+          <select value={filters.ejecutivo} onChange={(event) => updateFilter("ejecutivo", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
             <option value="todos">Todos los ejecutivos</option>
+            <option value="sin_asignar">Sin asignar</option>
             {ejecutivos.map((ejecutivo) => <option key={ejecutivo.id} value={ejecutivo.id}>{ejecutivo.nombre}</option>)}
           </select>
-          <select value={filters.categoria} onChange={(event) => updateFilter("categoria", event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
-            <option value="todos">Todas las categorias</option>
-            {CATEGORIAS_OPORTUNIDAD.map((categoria) => <option key={categoria} value={categoria}>{categoria}</option>)}
-          </select>
-          <input type="datetime-local" value={filters.vigenciaDesde} onChange={(event) => updateFilter("vigenciaDesde", event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" title="Vigencia desde" />
-          <input type="datetime-local" value={filters.vigenciaHasta} onChange={(event) => updateFilter("vigenciaHasta", event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" title="Vigencia hasta" />
+          <div className="inline-flex h-11 w-full rounded-xl border border-slate-300 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-900 md:col-span-2 xl:col-span-1 xl:w-auto">
+            <button
+              type="button"
+              onClick={() => setViewMode("table")}
+              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold xl:flex-none ${viewMode === "table" ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+              title="Vista tabla"
+            >
+              <List className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("cards")}
+              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold xl:flex-none ${viewMode === "cards" ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+              title="Vista tarjetas"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1483,7 +1541,7 @@ export default function SeguimientoLicitaciones() {
             </span>
           )}
         </div>
-        <div className="grid gap-3 p-3 xl:hidden">
+        <div className={`grid min-w-0 max-w-full gap-3 p-3 ${viewMode === "cards" ? "md:grid-cols-2 2xl:grid-cols-3" : "xl:hidden"}`}>
           {loading ? (
             Array.from({ length: 4 }).map((_, index) => (
               <div key={index} className="h-44 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
@@ -1494,9 +1552,9 @@ export default function SeguimientoLicitaciones() {
               const alert = getVigenciaAlert(item.vigencia, item.estado);
 
               return (
-                <article key={item.id} className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 ${alert.rowClass}`}>
+                <article key={item.id} className={`min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 ${alert.rowClass}`}>
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="min-w-0 max-w-full">
                       <div className="flex flex-wrap items-center gap-2">
                         <TipoBadge tipo={item.tipo} />
                         {item.esNueva && isAvailableOpportunity(item) && (
@@ -1505,7 +1563,7 @@ export default function SeguimientoLicitaciones() {
                           </span>
                         )}
                       </div>
-                      <h3 className="mt-2 line-clamp-2 text-sm font-bold text-slate-900 dark:text-white">
+                      <h3 className="mt-2 line-clamp-2 break-words text-sm font-bold text-slate-900 dark:text-white">
                         {item.requerimiento}
                       </h3>
                       <p className="mt-1 truncate text-sm text-slate-600 dark:text-slate-300" title={item.empresa}>
@@ -1515,7 +1573,7 @@ export default function SeguimientoLicitaciones() {
                     <EstadoBadge estado={item.estado} />
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-slate-500">
+                  <div className="mt-4 grid min-w-0 grid-cols-1 gap-3 text-xs text-slate-500 sm:grid-cols-2">
                     <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
                       <p className="font-semibold uppercase tracking-wide">Categoria</p>
                       <p className="mt-1 font-bold text-slate-800 dark:text-slate-100">{item.categoria}</p>
@@ -1594,7 +1652,7 @@ export default function SeguimientoLicitaciones() {
             </div>
           )}
         </div>
-        <div className="hidden overflow-x-auto xl:block">
+        <div className={`${viewMode === "cards" ? "hidden" : "hidden overflow-x-auto xl:block"}`}>
           <table className="min-w-[1180px] w-full">
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
               <tr>
@@ -1776,12 +1834,15 @@ export default function SeguimientoLicitaciones() {
         onFinalizeOpportunity={(estado) => {
           if (selected) void changeEstado(selected, estado);
         }}
+        finalizingOpportunity={Boolean(selected && changingEstadoId === selected.id)}
         canMarkProposalPresented={Boolean(selected && canMarkProposalPresented(selected))}
         presentingProposal={Boolean(selected && presentingProposalId === selected.id)}
         onMarkProposalPresented={(file) => void handleMarkProposalPresented(file)}
         canDownloadQuotePdf={currentRole === "LICITACIONES" || currentRole === "SUPERADMIN"}
         downloadingQuoteId={downloadingQuoteId}
         onDownloadQuotePdf={(cotizacionId) => void handleDownloadQuotePdf(cotizacionId)}
+        canOpenQuote={canOpenCotizaciones}
+        onOpenQuote={(cotizacionId) => navigate(`/cotizaciones/${cotizacionId}/view`)}
         loadingDetails={selectedLoading}
         canUploadFile={Boolean(selected && !isClosedOpportunity(selected.estado) && (
           isOpportunityCreator(selected) ||
@@ -1796,7 +1857,11 @@ export default function SeguimientoLicitaciones() {
         unlinkingQuoteId={unlinkingQuoteId}
         canUnlinkQuote={(relacionId) => {
           const quote = selected?.cotizaciones.find((item) => item.id === relacionId);
-          return Boolean(quote && quote.origen === "vinculada" && isCreatedByCurrentUser(quote.creadoPor, quote.creadoPorId));
+          return Boolean(
+            quote &&
+              ["vinculada", "generada"].includes(quote.origen || "vinculada") &&
+              (currentRole === "SUPERADMIN" || isCreatedByCurrentUser(quote.creadoPor, quote.creadoPorId))
+          );
         }}
         onUnlinkQuote={(relacionId) => void handleUnlinkQuote(relacionId)}
         canAssignToMe={Boolean(selected && (isSalesRole || currentRole === "SUPERADMIN") && isAvailableOpportunity(selected))}

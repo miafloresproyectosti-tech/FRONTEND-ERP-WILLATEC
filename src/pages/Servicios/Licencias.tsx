@@ -12,6 +12,8 @@ import {
   FileText,
   Upload,
   RefreshCw,
+  Link2,
+  ExternalLink,
 } from "lucide-react";
 
 import {
@@ -28,12 +30,16 @@ import {
   renovarLicencia,
   updateLicencia,
   uploadLicenciaDocumentos,
+  linkLicenciaCotizacion,
+  unlinkLicenciaCotizacion,
   type LicenciaApi,
+  type LicenciaCotizacionApi,
   type LicenciaDocumentoApi,
   type LicenciaImportPreview,
   type LicenciaImportRow,
   type LicenciaPayload,
 } from "../../services/licencia.service";
+import { exportarCotizacionPdf, getCotizacionesPaginated, type Cotizacion } from "../../services/cotizacion.service";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { exportExcelFile } from "../../utils/exportExcel";
 
@@ -59,6 +65,7 @@ interface Licencia {
   alertasCount: number;
   ultimaAlerta: string | null;
   documentos: LicenciaDocumentoApi[];
+  cotizaciones: LicenciaCotizacionApi[];
   alertas: {
     id: number;
     diasAntes: number;
@@ -94,11 +101,19 @@ export default function Licencias() {
   const [renewMode, setRenewMode] = useState<"ANUAL" | "MENSUAL">("ANUAL");
   const [renewMonths, setRenewMonths] = useState("1");
   const [renewing, setRenewing] = useState(false);
+  const [cotizacionNumero, setCotizacionNumero] = useState("");
+  const [linkingCotizacion, setLinkingCotizacion] = useState(false);
+  const [cotizacionSearch, setCotizacionSearch] = useState("");
+  const [cotizacionesEncontradas, setCotizacionesEncontradas] = useState<Cotizacion[]>([]);
+  const [cotizacionesLoading, setCotizacionesLoading] = useState(false);
+  const [showCotizacionDropdown, setShowCotizacionDropdown] = useState(false);
+  const [viewingPdfCotizacionId, setViewingPdfCotizacionId] = useState<number | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clientesLoading, setClientesLoading] = useState(false);
   const [clienteSearch, setClienteSearch] = useState("");
   const [showClienteDropdown, setShowClienteDropdown] = useState(false);
   const debouncedClienteSearch = useDebouncedValue(clienteSearch, 300);
+  const debouncedCotizacionSearch = useDebouncedValue(cotizacionSearch, 300);
 
   const [form, setForm] = useState({
     cliente_id: "",
@@ -111,6 +126,7 @@ export default function Licencias() {
     correoLicencia: "",
     fechaInicio: "",
     fechaRenovacion: "",
+    cotizacionNumero: "",
   });
 
   const mapLicencia = (licencia: LicenciaApi): Licencia => ({
@@ -137,6 +153,7 @@ export default function Licencias() {
     alertasCount: Number(licencia.alertas_enviadas_count || 0),
     ultimaAlerta: licencia.alertas_enviadas_max_sent_at || null,
     documentos: licencia.documentos || [],
+    cotizaciones: licencia.cotizaciones || [],
     alertas: (licencia.alertas_enviadas || []).map((alerta) => ({
       id: alerta.id,
       diasAntes: Number(alerta.dias_antes),
@@ -219,6 +236,53 @@ export default function Licencias() {
     };
   }, [debouncedClienteSearch, openModal, showClienteDropdown]);
 
+  useEffect(() => {
+  if (!showCotizacionDropdown) {
+    return;
+  }
+
+  let cancelled = false;
+
+  const buscarCotizacionesAprobadas = async () => {
+    try {
+      setCotizacionesLoading(true);
+
+      const response = await getCotizacionesPaginated({
+        search: debouncedCotizacionSearch,
+        estadoCotizacionId: 4, // aprobada
+        page: 1,
+        perPage: 10,
+      });
+
+      if (!cancelled) {
+        setCotizacionesEncontradas(response.data || []);
+      }
+    } catch (error) {
+      console.error("Error al buscar cotizaciones aprobadas:", error);
+
+      if (!cancelled) {
+        setCotizacionesEncontradas([]);
+      }
+    } finally {
+      if (!cancelled) {
+        setCotizacionesLoading(false);
+      }
+    }
+  };
+
+  void buscarCotizacionesAprobadas();
+
+  return () => {
+    cancelled = true;
+  };
+}, [debouncedCotizacionSearch, showCotizacionDropdown]);
+
+  const handleCotizacionSelect = (cotizacion: Cotizacion) => {
+  setCotizacionNumero(cotizacion.numero);
+  setCotizacionSearch(cotizacion.numero);
+  setShowCotizacionDropdown(false);
+  };
+
   const handleClienteSelect = (cliente: Cliente) => {
     setForm((currentForm) => ({
       ...currentForm,
@@ -284,6 +348,21 @@ export default function Licencias() {
     })}`;
   };
 
+  const formatCotizacionTotal = (cotizacion: LicenciaCotizacionApi) => {
+    const total = cotizacion.total === null || cotizacion.total === undefined
+      ? null
+      : Number(cotizacion.total);
+
+    if (total === null || Number.isNaN(total)) return "-";
+
+    const symbol = cotizacion.moneda?.simbolo || (Number(cotizacion.moneda_id) === 2 ? "$" : "S/");
+
+    return `${symbol} ${total.toLocaleString("es-PE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
   const alertDaysFor = (suscripcionMeses: number) =>
     suscripcionMeses >= 12 ? [90, 60, 30, 15, 3, 2, 1, 0] : [7, 4, 3, 2, 1, 0];
 
@@ -293,6 +372,10 @@ export default function Licencias() {
       : "Periodo menor a 12 meses: se enviará faltando 7, 4, 3, 2, 1 día y el mismo día del vencimiento.";
 
   const getNextAlert = (licencia: Licencia) => {
+    if (licencia.renovacionProgramada) {
+      return null;
+    }
+
     const vencimiento = parseDateOnly(licencia.fechaRenovacion);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -346,6 +429,7 @@ export default function Licencias() {
       suscripcion_meses: Number(form.suscripcionMeses),
       correo_licencia: form.correoLicencia.trim() || null,
       fecha_inicio: form.fechaInicio,
+      cotizacion_numero: form.cotizacionNumero.trim() || null,
     };
 
     try {
@@ -388,6 +472,7 @@ export default function Licencias() {
       correoLicencia: licencia.correoLicencia,
       fechaInicio: licencia.fechaInicio,
       fechaRenovacion: licencia.fechaRenovacion,
+      cotizacionNumero: "",
     });
     setClienteSearch(licencia.empresa);
     setEditingId(licencia.id);
@@ -416,6 +501,7 @@ export default function Licencias() {
       correoLicencia: "",
       fechaInicio: "",
       fechaRenovacion: "",
+      cotizacionNumero: "",
     });
     setClienteSearch("");
     setShowClienteDropdown(false);
@@ -496,6 +582,53 @@ export default function Licencias() {
       alert("No se pudo eliminar el PDF.");
     } finally {
       setDeletingDocumentId(null);
+    }
+  };
+
+  const handleLinkCotizacion = async () => {
+    if (!viewModal || !cotizacionNumero.trim()) return;
+
+    try {
+      setLinkingCotizacion(true);
+      const updated = await linkLicenciaCotizacion(viewModal.id, cotizacionNumero.trim());
+      updateLicenciaEnLista(updated);
+      setCotizacionNumero("");
+      setCotizacionNumero("");
+      setCotizacionSearch("");
+      setCotizacionesEncontradas([]);
+      setShowCotizacionDropdown(false);
+    } catch (error) {
+      console.error("Error al enlazar cotizacion:", error);
+      alert("No se pudo enlazar la cotización. Verifica que el número exista.");
+    } finally {
+      setLinkingCotizacion(false);
+    }
+  };
+
+  const handleUnlinkCotizacion = async (cotizacionId: number) => {
+    if (!viewModal) return;
+
+    try {
+      const updated = await unlinkLicenciaCotizacion(viewModal.id, cotizacionId);
+      updateLicenciaEnLista(updated);
+    } catch (error) {
+      console.error("Error al desenlazar cotizacion:", error);
+      alert("No se pudo desenlazar la cotización.");
+    }
+  };
+
+  const handleViewCotizacionPdf = async (cotizacion: LicenciaCotizacionApi) => {
+    try {
+      setViewingPdfCotizacionId(cotizacion.id);
+      const { blob } = await exportarCotizacionPdf(cotizacion.id);
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      console.error("Error al abrir PDF de cotizacion:", error);
+      alert("No se pudo abrir el PDF de la cotización.");
+    } finally {
+      setViewingPdfCotizacionId(null);
     }
   };
 
@@ -753,7 +886,7 @@ export default function Licencias() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
 
       {/* HEADER */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -943,34 +1076,34 @@ export default function Licencias() {
       )}
 
       {/* DASHBOARD */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
 
-        <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-red-800 shadow-sm">
+        <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-red-800 shadow-sm">
           <div className="flex justify-between">
             <XCircle />
             <span>Vencidas</span>
           </div>
-          <h2 className="text-3xl font-bold mt-2">
+          <h2 className="mt-1 text-2xl font-bold">
             {licencias.filter(l => l.estado === "VENCIDO").length}
           </h2>
         </div>
 
-        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5 text-amber-800 shadow-sm">
+        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-amber-800 shadow-sm">
           <div className="flex justify-between">
             <AlertCircle />
             <span>Por vencer</span>
           </div>
-          <h2 className="text-3xl font-bold mt-2">
+          <h2 className="mt-1 text-2xl font-bold">
             {licencias.filter(l => l.estado === "POR VENCER").length}
           </h2>
         </div>
 
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5 text-emerald-800 shadow-sm">
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-emerald-800 shadow-sm">
           <div className="flex justify-between">
             <CheckCircle2 />
             <span>Vigentes</span>
           </div>
-          <h2 className="text-3xl font-bold mt-2">
+          <h2 className="mt-1 text-2xl font-bold">
             {licencias.filter(l => l.estado === "VIGENTE").length}
           </h2>
         </div>
@@ -978,12 +1111,12 @@ export default function Licencias() {
       </div>
 
       {/* FILTERS */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm lg:flex-row">
+      <div className="grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4 md:grid-cols-2 xl:grid-cols-[170px_170px_minmax(260px,1fr)]">
 
         <select 
           value={filterSus}
           onChange={(e) => setFilterSus(e.target.value)} 
-          className="rounded-xl border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+          className="h-11 rounded-xl border border-gray-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option>TODOS</option>
           <option value="12">12 meses</option>
@@ -995,7 +1128,7 @@ export default function Licencias() {
         <select 
           value={filterEstado}
           onChange={(e) => setFilterEstado(e.target.value)} 
-          className="rounded-xl border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+          className="h-11 rounded-xl border border-gray-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option>TODOS</option>
           <option>VIGENTE</option>
@@ -1003,7 +1136,7 @@ export default function Licencias() {
           <option>VENCIDO</option>
         </select>
 
-        <div className="flex w-full items-center gap-2 rounded-xl border border-gray-200 p-2.5 focus-within:ring-2 focus-within:ring-blue-500">
+        <div className="flex h-11 w-full items-center gap-2 rounded-xl border border-gray-200 px-3 focus-within:ring-2 focus-within:ring-blue-500 md:col-span-2 xl:col-span-1">
           <Search size={16} />
           <input
             className="w-full outline-none"
@@ -1031,6 +1164,7 @@ export default function Licencias() {
               <th className="p-3 text-left font-semibold">Fecha inicio</th>
               <th className="p-3 text-left font-semibold">Fecha renovación</th>
               <th className="p-3 text-left font-semibold">Estado</th>
+              <th className="p-3 text-left font-semibold">Cotizaciones</th>
               <th className="p-3 text-left font-semibold">Alertas</th>
               <th className="sticky right-0 z-10 bg-gray-100 p-3 text-left font-semibold shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">Acciones</th>
             </tr>
@@ -1039,13 +1173,13 @@ export default function Licencias() {
           <tbody>
             {loadingLicencias ? (
               <tr>
-                <td colSpan={11} className="p-8 text-center text-gray-500">
+                <td colSpan={12} className="p-8 text-center text-gray-500">
                   Cargando licencias...
                 </td>
               </tr>
             ) : filtradas.length === 0 ? (
               <tr>
-                <td colSpan={11} className="p-8 text-center text-gray-500">
+                <td colSpan={12} className="p-8 text-center text-gray-500">
                   No hay licencias que mostrar
                 </td>
               </tr>
@@ -1091,7 +1225,22 @@ export default function Licencias() {
                           : 'Vencido'
                         }
                       </span>
+                      {l.renovacionProgramada && (
+                        <span className="block rounded bg-emerald-50 px-1.5 py-1 text-center text-[10px] font-semibold text-emerald-700">
+                          Renovación programada
+                        </span>
+                      )}
                     </div>
+                  </td>
+
+                  <td className="p-3">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      l.cotizaciones.length > 0
+                        ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
+                        : "bg-gray-50 text-gray-500 border border-gray-100"
+                    }`}>
+                      {l.cotizaciones.length} enlazada{l.cotizaciones.length === 1 ? "" : "s"}
+                    </span>
                   </td>
 
                   <td className="p-3">
@@ -1106,8 +1255,10 @@ export default function Licencias() {
                       <p className="text-xs text-gray-500">
                         Última: {formatDateTime(l.ultimaAlerta)}
                       </p>
-                      <p className="text-xs font-medium text-blue-700">
-                        Próxima: {nextAlert ? formatDateOnly(nextAlert.date) : "Sin pendiente"}
+                      <p className={`text-xs font-medium ${l.renovacionProgramada ? "text-emerald-700" : "text-blue-700"}`}>
+                        {l.renovacionProgramada
+                          ? "Avisos pausados por renovación"
+                          : `Próxima: ${nextAlert ? formatDateOnly(nextAlert.date) : "Sin pendiente"}`}
                       </p>
                     </div>
                   </td>
@@ -1115,7 +1266,10 @@ export default function Licencias() {
                   <td className="p-3">
                     <div className="flex gap-1 whitespace-nowrap">
                     <button
-                      onClick={() => setViewModal(l)}
+                      onClick={() => {
+                        setCotizacionNumero("");
+                        setViewModal(l);
+                      }}
                       className="bg-gray-100 p-2 rounded hover:bg-gray-200 transition-colors"
                       title="Ver detalle"
                     >
@@ -1296,6 +1450,25 @@ export default function Licencias() {
                   </p>
                 </div>
 
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">
+                    Número de cotización asociada
+                  </label>
+                  <div className="flex items-center gap-2 rounded-lg border border-gray-300 p-3 focus-within:border-transparent focus-within:ring-2 focus-within:ring-blue-500">
+                    <Link2 size={16} className="text-gray-400" />
+                    <input
+                      name="cotizacionNumero"
+                      placeholder="Ej. COT-000123"
+                      className="w-full outline-none"
+                      value={form.cotizacionNumero}
+                      onChange={handleChange}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Opcional. Se busca y enlaza por número de cotización, no por ID.
+                  </p>
+                </div>
+
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-gray-700">
                     Suscripción en meses
@@ -1430,7 +1603,7 @@ export default function Licencias() {
                   </tr>
 
                   <tr className="border-b">
-                    <td className="p-3 font-semibold bg-gray-50">Cotizaciones referenciales</td>
+                    <td className="p-3 font-semibold bg-gray-50">PDFs referenciales subidos</td>
                     <td className="p-3">
                       {viewModal.documentos.length > 0 ? (
                         <div className="space-y-2">
@@ -1508,6 +1681,209 @@ export default function Licencias() {
                 </tbody>
               </table>
 
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <h3 className="font-semibold text-indigo-950">Cotizaciones enlazadas</h3>
+                    <p className="text-xs text-indigo-700">
+                      Historial de cotizaciones que derivaron en venta o renovación de esta licencia.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <div className="relative w-[300px]">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Buscar cotización aprobada
+                      </label>
+
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+
+                        <input
+                          type="text"
+                          value={cotizacionSearch}
+                          onChange={(e) => {
+                            const value = e.target.value;
+
+                            setCotizacionSearch(value);
+
+                            // Si modifica manualmente el texto,
+                            // todavía no hay una cotización seleccionada.
+                            setCotizacionNumero("");
+
+                            setShowCotizacionDropdown(true);
+                          }}
+                          onFocus={() => setShowCotizacionDropdown(true)}
+                          placeholder="Número, cliente, RUC o título..."
+                          autoComplete="off"
+                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+
+                      {showCotizacionDropdown && (
+                        <div className="absolute z-50 top-full right-0 mt-2 w-[560px] max-w-[80vw] bg-white border border-gray-200 rounded-xl shadow-xl max-h-80 overflow-y-auto">
+
+                          {cotizacionesLoading ? (
+                            <div className="flex items-center justify-center gap-2 px-4 py-5 text-sm text-gray-500">
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                              Buscando cotizaciones...
+                            </div>
+                          ) : cotizacionesEncontradas.length > 0 ? (
+                            cotizacionesEncontradas.map((cotizacion) => {
+                              const simbolo =
+                                Number(cotizacion.moneda_id) === 2 ? "$" : "S/";
+
+                              return (
+                                <button
+                                  key={cotizacion.id}
+                                  type="button"
+                                  onClick={() => handleCotizacionSelect(cotizacion)}
+                                  className="w-full text-left px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-blue-50 transition-colors"
+                                >
+                                  {/* Primera fila */}
+                                  <div className="flex items-center justify-between gap-4">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-gray-900">
+                                        {cotizacion.numero}
+                                      </span>
+
+                                      <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
+                                        Aprobada
+                                      </span>
+                                    </div>
+
+                                    <span className="font-bold text-gray-900 whitespace-nowrap">
+                                      {simbolo}{" "}
+                                      {Number(cotizacion.total || 0).toLocaleString("es-PE", {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </span>
+                                  </div>
+
+                                  {/* Cliente */}
+                                  <div className="mt-2 text-sm text-gray-700">
+                                    <span className="text-gray-400">Cliente:</span>{" "}
+                                    <span className="font-medium">
+                                      {cotizacion.cliente?.nombre ||
+                                        cotizacion.cliente_nombre ||
+                                        "Sin cliente"}
+                                    </span>
+                                  </div>
+
+                                  {/* Concepto / título */}
+                                  <div className="mt-1 text-sm text-gray-600">
+                                    <span className="text-gray-400">Concepto:</span>{" "}
+                                    {cotizacion.titulo || "Sin título"}
+                                  </div>
+
+                                  {/* Fecha */}
+                                  {cotizacion.fecha && (
+                                    <div className="mt-1 text-xs text-gray-400">
+                                      Fecha: {cotizacion.fecha}
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <div className="px-4 py-5 text-center">
+                              <Search className="w-5 h-5 text-gray-300 mx-auto mb-2" />
+
+                              <p className="text-sm text-gray-500">
+                                No se encontraron cotizaciones aprobadas
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {cotizacionNumero && (
+                        <div className="mt-1.5 flex items-center gap-1.5 text-xs text-green-700 whitespace-nowrap">
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                          <span>
+                            Seleccionada:
+                            <strong className="ml-1">{cotizacionNumero}</strong>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleLinkCotizacion()}
+                      disabled={linkingCotizacion || !cotizacionNumero.trim()}
+                      className="h-[42px] self-start mt-[21px] px-5 flex items-center justify-center gap-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                    >
+                      <Link2 size={15} />
+                      {linkingCotizacion ? "Enlazando..." : "Enlazar"}
+                    </button>
+                  </div>
+                </div>
+
+                {viewModal.cotizaciones.length > 0 ? (
+                  <div className="overflow-hidden rounded-xl border border-indigo-100 bg-white">
+                    <table className="w-full min-w-[720px] text-sm">
+                      <thead className="bg-indigo-50 text-indigo-900">
+                        <tr>
+                          <th className="p-3 text-left font-semibold">Número</th>
+                          <th className="p-3 text-left font-semibold">Fecha</th>
+                          <th className="p-3 text-left font-semibold">Cliente</th>
+                          <th className="p-3 text-left font-semibold">Total</th>
+                          <th className="p-3 text-left font-semibold">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewModal.cotizaciones.map((cotizacion) => (
+                          <tr key={cotizacion.id} className="border-t border-indigo-50">
+                            <td className="p-3">
+                              <button
+                                type="button"
+                                onClick={() => window.open(`/cotizaciones/${cotizacion.id}/view`, "_blank", "noopener,noreferrer")}
+                                className="inline-flex items-center gap-1 font-bold text-blue-700 hover:text-blue-900"
+                                title={cotizacion.titulo || cotizacion.numero}
+                              >
+                                {cotizacion.numero}
+                                <ExternalLink size={13} />
+                              </button>
+                            </td>
+                            <td className="p-3 text-gray-600">{cotizacion.fecha || "-"}</td>
+                            <td className="p-3 text-gray-700">{cotizacion.cliente_nombre || "-"}</td>
+                            <td className="p-3 font-semibold text-gray-800">{formatCotizacionTotal(cotizacion)}</td>
+                            <td className="p-3">
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleViewCotizacionPdf(cotizacion)}
+                                  disabled={viewingPdfCotizacionId === cotizacion.id}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                                >
+                                  <FileText size={14} />
+                                  {viewingPdfCotizacionId === cotizacion.id ? "Abriendo..." : "VER PDF COTIZACIÓN"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm("¿Desenlazar esta cotización de la licencia?")) {
+                                      void handleUnlinkCotizacion(cotizacion.id);
+                                    }
+                                  }}
+                                  className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
+                                >
+                                  Desenlazar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-indigo-200 bg-white px-4 py-5 text-sm text-gray-500">
+                    Todavía no hay cotizaciones enlazadas para esta licencia.
+                  </div>
+                )}
+              </div>
+
               {(() => {
                 const nextAlert = getNextAlert(viewModal);
 
@@ -1522,7 +1898,14 @@ export default function Licencias() {
                       </div>
                       <div className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm shadow-sm sm:min-w-[210px]">
                         <p className="text-xs font-semibold uppercase text-amber-700">Próxima alerta</p>
-                        {nextAlert ? (
+                        {viewModal.renovacionProgramada ? (
+                          <>
+                            <p className="mt-1 font-bold text-emerald-700">Avisos pausados</p>
+                            <p className="text-xs text-emerald-700">
+                              No se enviarán correos de vencimiento porque la renovación está programada.
+                            </p>
+                          </>
+                        ) : nextAlert ? (
                           <>
                             <p className="mt-1 font-bold text-amber-950">{formatDateOnly(nextAlert.date)}</p>
                             <p className="text-xs text-amber-700">

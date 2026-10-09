@@ -34,6 +34,8 @@ const CuentasPorPagar = lazy(() => import("../pages/CuentasPorPagar"));
 const CuentasPorCobrar = lazy(() => import("../pages/CuentasPorCobrar"));
 const AlertasOperativas = lazy(() => import("../pages/AlertasOperativas"));
 const Notificaciones = lazy(() => import("../pages/Notificaciones"));
+const WooCommercePedidos = lazy(() => import("../pages/WooCommercePedidos"));
+const WillaSnake = lazy(() => import("../pages/WillaSnake"));
 
 // 🆕 SERVICIOS
 import Licencias from "../pages/Servicios/Licencias";
@@ -279,6 +281,24 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute requiredPermission="inventario">
                 <InventarioMovimientos />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/woocommerce/pedidos"
+            element={
+              <ProtectedRoute requiredRoles={["SUPERADMIN", "ADMIN", "LOGISTICA"]}>
+                <WooCommercePedidos />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/willa-snake"
+            element={
+              <ProtectedRoute>
+                <WillaSnake />
               </ProtectedRoute>
             }
           />

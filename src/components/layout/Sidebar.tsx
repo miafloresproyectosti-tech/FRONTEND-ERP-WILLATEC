@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Calendar,
@@ -26,11 +26,21 @@ import {
 
 import { useAuth } from "../../AuthContext";
 import { featureFlags } from "../../config/featureFlags";
+import {
+  notificationService,
+  NOTIFICATIONS_UPDATED_EVENT,
+} from "../../services/notification.service";
+import {
+  getNotificationSectionKey,
+  type NotificationSectionKey,
+} from "../../utils/notificationSections";
 
 interface SidebarProps {
   mobile?: boolean;
   onClose?: () => void;
 }
+
+const SIDEBAR_NOTIFICATION_POLL_MS = 60_000;
 
 export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const location = useLocation();
@@ -46,7 +56,11 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const [seguimientoOpen, setSeguimientoOpen] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [notificationCounts, setNotificationCounts] = useState<
+    Partial<Record<NotificationSectionKey, number>>
+  >({});
   const dropdownTimeoutRef = useRef<number | null>(null);
+  const logoClickRef = useRef({ count: 0, timer: 0 });
 
   const canSeeCommercialGroup =
     user?.role === "SUPERADMIN" || user?.role === "ADMIN";
@@ -63,19 +77,104 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
     if (mobile) onClose?.();
   };
 
+  const handleLogoClick = () => {
+    window.clearTimeout(logoClickRef.current.timer);
+    logoClickRef.current.count += 1;
+    logoClickRef.current.timer = window.setTimeout(() => {
+      logoClickRef.current.count = 0;
+    }, 1200);
+    if (logoClickRef.current.count >= 4) {
+      logoClickRef.current.count = 0;
+      closeMobile();
+      navigate("/willa-snake");
+    }
+  };
+
   const itemClass = (path: string) =>
-    `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all sm:text-base ${
+    `relative flex items-center gap-3 rounded-2xl px-4 py-3 pr-10 text-sm transition-all sm:text-base ${
       isActive(path)
         ? "bg-blue-600 text-white shadow-lg"
         : "text-gray-300 hover:bg-gray-900 hover:text-white"
     }`;
 
   const subItemClass = (path: string) =>
-    `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all ${
+    `relative flex items-center gap-3 rounded-2xl px-4 py-3 pr-10 text-sm transition-all ${
       isActive(path)
         ? "bg-blue-600 text-white shadow-lg"
         : "text-gray-400 hover:bg-gray-900 hover:text-white"
     }`;
+
+  const notificationCount = (...keys: NotificationSectionKey[]) =>
+    keys.reduce((total, key) => total + (notificationCounts[key] || 0), 0);
+
+  const NotificationBadge = ({ count }: { count: number }) => {
+    if (count <= 0) return null;
+
+    return (
+      <span
+        className="absolute right-2.5 top-1/2 flex h-5 min-w-5 -translate-y-1/2 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold leading-none text-white shadow-sm ring-2 ring-gray-950"
+        title={`${count} notificación${count === 1 ? "" : "es"} no leída${count === 1 ? "" : "s"}`}
+      >
+        {count > 99 ? "99+" : count}
+      </span>
+    );
+  };
+
+  const InlineNotificationBadge = ({ count }: { count: number }) => {
+    if (count <= 0) return null;
+
+    return (
+      <span
+        className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold leading-none text-white shadow-sm"
+        title={`${count} notificación${count === 1 ? "" : "es"} no leída${count === 1 ? "" : "s"}`}
+      >
+        {count > 99 ? "99+" : count}
+      </span>
+    );
+  };
+
+  useEffect(() => {
+    if (!user?.id) {
+      setNotificationCounts({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadCounts = async (force = false) => {
+      try {
+        const notifications = await notificationService.getNotifications({ force });
+        if (cancelled) return;
+
+        const counts = notifications
+          .filter((notification) => !notification.read_at)
+          .reduce<Partial<Record<NotificationSectionKey, number>>>((acc, notification) => {
+            const key = getNotificationSectionKey(notification);
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+          }, {});
+
+        setNotificationCounts(counts);
+      } catch (error) {
+        console.warn("No se pudieron cargar indicadores de notificaciones del sidebar:", error);
+      }
+    };
+
+    void loadCounts();
+    const intervalId = window.setInterval(() => void loadCounts(), SIDEBAR_NOTIFICATION_POLL_MS);
+    const handleFocus = () => void loadCounts();
+    const handleUpdated = () => void loadCounts(true);
+
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, handleUpdated);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, handleUpdated);
+    };
+  }, [user?.id]);
 
   const formatLastLogin = (value?: string | null) => {
     if (!value) return "No disponible";
@@ -132,7 +231,9 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   return (
     <>
       <aside className="flex h-full w-[min(74vw,248px)] flex-col justify-between border-r border-gray-800 bg-gray-950 p-3 text-white sm:p-4 lg:w-[248px] [&_nav_a]:px-3 [&_nav_a]:py-2.5 [&_nav_button]:px-3 [&_nav_button]:py-2.5">
+        {/* TOP */}
         <div className="flex min-h-0 flex-col">
+          {/* MOBILE CLOSE */}
           {mobile && (
             <div className="mb-3 flex justify-end lg:hidden">
               <button
@@ -146,15 +247,23 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             </div>
           )}
 
-          <div className="mb-6 flex justify-center">
+          {/* LOGO */}
+          <button
+            type="button"
+            onClick={handleLogoClick}
+            className="mb-6 flex w-full justify-center rounded-2xl outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Willatec"
+          >
             <img
               src="/logoWILLATEC-white.png"
               alt="Willatec"
               className="h-12 object-contain sm:h-14"
             />
-          </div>
+          </button>
 
+          {/* MENU */}
           <nav className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
+            {/* DASHBOARD */}
             {user?.role === "SUPERADMIN" && (
               <Link to="/" onClick={closeMobile} className={itemClass("/")}>
                 <Home size={20} />
@@ -170,10 +279,13 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               >
                 <ClipboardList size={20} />
                 <span className="font-medium">Oportunidades</span>
+                <NotificationBadge count={notificationCount("oportunidades")} />
               </Link>
             )}
 
+            {/* ✅ SUPERADMIN Y ADMIN */}
             {showCommercialGroup && (
+              // CARPETA COMERCIAL
               <div className="mt-2">
                 <button
                   type="button"
@@ -185,16 +297,23 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     <span className="font-medium uppercase">Comercial</span>
                   </div>
 
-                  <ChevronDown
-                    size={18}
-                    className={`transition-transform ${
-                      commercialOpen ? "rotate-180" : ""
-                    }`}
-                  />
+                  <div className="flex items-center gap-2">
+                    <InlineNotificationBadge
+                      count={notificationCount("cotizaciones", "ordenes", "inventario", "usuarios")}
+                    />
+                    <ChevronDown
+                      size={18}
+                      className={`transition-transform ${
+                        commercialOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </div>
                 </button>
 
+                {/* SUBMENU */}
                 {commercialOpen && (
                   <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
+                    {/* COTIZACIONES */}
                     {hasPermission("cotizaciones") && (
                       <Link
                         to="/cotizaciones"
@@ -203,20 +322,11 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       >
                         <FileText size={18} />
                         Cotizaciones
+                        <NotificationBadge count={notificationCount("cotizaciones")} />
                       </Link>
                     )}
 
-                    {/* {hasPermission("servicios") && (
-                      <Link
-                        to="/servicios/licencias"
-                        onClick={closeMobile}
-                        className={subItemClass("/servicios/licencias")}
-                      >
-                        <ShieldCheck size={16} />
-                        Licencias
-                      </Link>
-                    )} */}
-
+                    {/* ORDENES */}
                     {hasPermission("ordenes_compra") && (
                       <Link
                         to="/ordenes-compra"
@@ -225,9 +335,11 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       >
                         <ShoppingCart size={18} />
                         Ordenes de Compra
+                        <NotificationBadge count={notificationCount("ordenes")} />
                       </Link>
                     )}
 
+                    {/* PRODUCTOS */}
                     {hasPermission("productos") && (
                       <Link
                         to="/productos"
@@ -236,9 +348,22 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       >
                         <Package size={18} />
                         Productos
+                        <NotificationBadge count={notificationCount("inventario")} />
                       </Link>
                     )}
 
+                    {/* WOOCOMMERCE PEDIDOS */}
+                    <Link
+                      to="/woocommerce/pedidos"
+                      onClick={closeMobile}
+                      className={subItemClass("/woocommerce/pedidos")}
+                    >
+                      <ShoppingBag size={18} />
+                      WooCommerce
+                      <NotificationBadge count={notificationCount("ordenes")} />
+                    </Link>
+
+                    {/* CLIENTES */}
                     {hasPermission("clientes") && (
                       <Link
                         to="/clientes"
@@ -247,6 +372,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       >
                         <UserCheck size={18} />
                         Clientes
+                        <NotificationBadge count={notificationCount("usuarios")} />
                       </Link>
                     )}
                   </div>
@@ -254,6 +380,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </div>
             )}
 
+            {/* ✅ VENTAS NORMAL */}
             {user?.role === "VENTAS" && (
               <>
                 <Link
@@ -263,6 +390,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <Package size={20} />
                   <span className="font-medium">Productos</span>
+                  <NotificationBadge count={notificationCount("inventario")} />
                 </Link>
 
                 <Link
@@ -272,6 +400,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <UserCheck size={20} />
                   <span className="font-medium">Clientes</span>
+                  <NotificationBadge count={notificationCount("usuarios")} />
                 </Link>
 
                 <Link
@@ -281,6 +410,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <FileText size={20} />
                   <span className="font-medium">Cotizaciones</span>
+                  <NotificationBadge count={notificationCount("cotizaciones")} />
                 </Link>
 
                 <Link
@@ -290,6 +420,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <ShoppingCart size={20} />
                   <span className="font-medium">Ordenes de Compra</span>
+                  <NotificationBadge count={notificationCount("ordenes")} />
                 </Link>
               </>
             )}
@@ -302,6 +433,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               >
                 <Package size={20} />
                 <span className="font-medium">Productos</span>
+                <NotificationBadge count={notificationCount("inventario")} />
               </Link>
             )}
 
@@ -314,6 +446,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <Package size={20} />
                   <span className="font-medium">Productos</span>
+                  <NotificationBadge count={notificationCount("inventario")} />
                 </Link>
 
                 <Link
@@ -323,19 +456,158 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <ClipboardList size={20} />
                   <span className="font-medium">KARDEX</span>
+                  <NotificationBadge count={notificationCount("inventario")} />
+                </Link>
+
+                <Link
+                  to="/woocommerce/pedidos"
+                  onClick={closeMobile}
+                  className={itemClass("/woocommerce/pedidos")}
+                >
+                  <ShoppingBag size={20} />
+                  <span className="font-medium">WooCommerce</span>
+                  <NotificationBadge count={notificationCount("ordenes")} />
                 </Link>
               </>
             )}
 
             {user?.role === "CONTABILIDAD" && (
-              <Link
-                to="/ordenes-compra"
-                onClick={closeMobile}
-                className={itemClass("/ordenes-compra")}
-              >
-                <ShoppingCart size={20} />
-                <span className="font-medium">Ordenes de Compra</span>
-              </Link>
+              <>
+                <Link
+                  to="/cotizaciones"
+                  onClick={closeMobile}
+                  className={itemClass("/cotizaciones")}
+                >
+                  <FileText size={20} />
+                  <span className="font-medium">Cotizaciones</span>
+                  <NotificationBadge count={notificationCount("cotizaciones")} />
+                </Link>
+
+                <Link
+                  to="/ordenes-compra"
+                  onClick={closeMobile}
+                  className={itemClass("/ordenes-compra")}
+                >
+                  <ShoppingCart size={20} />
+                  <span className="font-medium">Ordenes de Compra</span>
+                  <NotificationBadge count={notificationCount("ordenes")} />
+                </Link>
+              </>
+            )}
+
+            {hasPermission("compras") && (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setPurchasesOpen(!purchasesOpen)}
+                  className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-gray-300 transition hover:bg-gray-900 hover:text-white"
+                >
+                  <div className="flex items-center gap-3">
+                    <ShoppingBag size={20} />
+                    <span className="font-medium uppercase">Compras</span>
+                  </div>
+
+                  <ChevronDown
+                    size={18}
+                    className={`transition-transform ${
+                      purchasesOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {purchasesOpen && (
+                  <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
+                    <Link
+                      to="/compras/requerimientos"
+                      onClick={closeMobile}
+                      className={subItemClass("/compras/requerimientos")}
+                    >
+                      <ClipboardList size={18} />
+                      Requerimientos
+                    </Link>
+
+                    <Link
+                      to="/compras"
+                      onClick={closeMobile}
+                      className={subItemClass("/compras")}
+                    >
+                      <ShoppingBag size={18} />
+                      Compras
+                    </Link>
+
+                    <Link
+                      to="/compras/recepciones"
+                      onClick={closeMobile}
+                      className={subItemClass("/compras/recepciones")}
+                    >
+                      <Package size={18} />
+                      Recepciones
+                    </Link>
+
+                    <Link
+                      to="/operaciones/alertas"
+                      onClick={closeMobile}
+                      className={subItemClass("/operaciones/alertas")}
+                    >
+                      <ShieldCheck size={18} />
+                      Alertas
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hasPermission("contabilidad") && (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setAccountingOpen(!accountingOpen)}
+                  className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-gray-300 transition hover:bg-gray-900 hover:text-white"
+                >
+                  <div className="flex items-center gap-3">
+                    <Receipt size={20} />
+                    <span className="font-medium uppercase">Contabilidad</span>
+                  </div>
+
+                  <ChevronDown
+                    size={18}
+                    className={`transition-transform ${
+                      accountingOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {accountingOpen && (
+                  <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
+                    <Link
+                      to="/contabilidad/comprobantes"
+                      onClick={closeMobile}
+                      className={subItemClass("/contabilidad/comprobantes")}
+                    >
+                      <Receipt size={18} />
+                      Comprobantes
+                    </Link>
+
+                    <Link
+                      to="/contabilidad/cuentas-por-pagar"
+                      onClick={closeMobile}
+                      className={subItemClass("/contabilidad/cuentas-por-pagar")}
+                    >
+                      <HandCoins size={18} />
+                      CxP / Pagos
+                    </Link>
+
+                    <Link
+                      to="/contabilidad/cuentas-por-cobrar"
+                      onClick={closeMobile}
+                      className={subItemClass("/contabilidad/cuentas-por-cobrar")}
+                    >
+                      <Landmark size={18} />
+                      CxC / Cobros
+                    </Link>
+                  </div>
+                )}
+              </div>
             )}
 
             {hasPermission("compras") && (
@@ -465,12 +737,15 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     <span className="font-medium uppercase">Servicios</span>
                   </div>
 
-                  <ChevronDown
-                    size={18}
-                    className={`transition-transform ${
-                      servicesOpen ? "rotate-180" : ""
-                    }`}
-                  />
+                  <div className="flex items-center gap-2">
+                    <InlineNotificationBadge count={notificationCount("servicios")} />
+                    <ChevronDown
+                      size={18}
+                      className={`transition-transform ${
+                        servicesOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </div>
                 </button>
 
                 {servicesOpen && (
@@ -482,6 +757,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     >
                       <KeyRound size={18} />
                       Licencias
+                      <NotificationBadge count={notificationCount("servicios")} />
                     </Link>
 
                     <Link
@@ -491,6 +767,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     >
                       <Server size={18} />
                       Hosting
+                      <NotificationBadge count={notificationCount("servicios")} />
                     </Link>
                   </div>
                 )}
@@ -598,6 +875,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </div>
             )}
 
+            {/* USUARIOS */}
             {hasPermission("usuarios") && (
               <Link
                 to="/usuarios"
@@ -606,9 +884,11 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               >
                 <Users size={20} />
                 <span className="font-medium">Usuarios</span>
+                <NotificationBadge count={notificationCount("usuarios")} />
               </Link>
             )}
 
+            {/* AUDITORIA */}
             {hasPermission("auditoria") && (
               <Link
                 to="/auditoria"
@@ -617,6 +897,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               >
                 <ShieldCheck size={20} />
                 <span className="font-medium">Auditoria</span>
+                <NotificationBadge count={notificationCount("usuarios")} />
               </Link>
             )}
 
@@ -628,15 +909,18 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               >
                 <ClipboardList size={20} />
                 <span className="font-medium">KARDEX</span>
+                <NotificationBadge count={notificationCount("inventario")} />
               </Link>
             )}
           </nav>
         </div>
 
+        {/* BOTTOM */}
         <div
           className="sticky bottom-0 space-y-3 bg-gray-950 pt-6"
           onMouseLeave={handleMouseLeave}
         >
+          {/* USER */}
           <div
             onMouseEnter={handleMouseEnter}
             className="relative z-10 w-full rounded-2xl bg-gray-900 p-3 transition hover:bg-gray-800"
@@ -658,6 +942,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </div>
             </button>
 
+            {/* DROPDOWN SUPERADMIN */}
             {user?.role === "SUPERADMIN" && dropdownOpen && (
               <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl">
                 <Link
@@ -681,6 +966,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             )}
           </div>
 
+          {/* OTROS ROLES */}
           {user?.role !== "SUPERADMIN" && (
             <Link
               to="/configuracion"
@@ -703,9 +989,11 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
         </div>
       </aside>
 
+      {/* MODAL PERFIL */}
       {profileModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl border border-white/50 bg-gradient-to-br from-white to-gray-50 p-6 shadow-2xl sm:p-8">
+          {/* HEADER */}
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-xl font-bold text-gray-800 sm:text-2xl">
                 Mi Perfil
@@ -720,6 +1008,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </button>
             </div>
 
+            {/* INFO */}
             <div className="mb-8 flex flex-col items-center border-b border-gray-200 pb-8">
               <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-blue-600 text-3xl font-bold text-white">
                 {user?.name?.charAt(0).toUpperCase() || "M"}
@@ -731,13 +1020,14 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
 
               <p className="mt-1 text-center text-sm font-semibold text-blue-600">
                 {user?.role === "SUPERADMIN"
-                  ? "Superadministrador"
+                  ? "👑 Superadministrador"
                   : user?.role === "ADMIN"
                   ? "Administracion"
                   : user?.role || "Usuario"}
               </p>
             </div>
 
+            {/* DATOS */}
             <div className="mb-8 space-y-4">
               <div className="flex items-center gap-3 rounded-2xl bg-gray-100 p-3">
                 <Mail size={18} className="shrink-0 text-blue-600" />

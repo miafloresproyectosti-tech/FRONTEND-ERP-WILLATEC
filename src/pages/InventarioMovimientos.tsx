@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   ChevronLeft,
@@ -299,6 +300,8 @@ const mergeProductosById = (...lists: ProductoInventarioOption[][]) => {
 };
 
 export default function InventarioMovimientos() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const facturaInputRef = useRef<HTMLInputElement | null>(null);
   const facturaPosteriorInputRef = useRef<HTMLInputElement | null>(null);
   const nuevoProductoImagenInputRef = useRef<HTMLInputElement | null>(null);
@@ -551,6 +554,22 @@ export default function InventarioMovimientos() {
   }, []);
 
   useEffect(() => {
+    const state = location.state as { openEntrada?: boolean; crearProducto?: boolean } | null;
+
+    if (!state?.openEntrada) return;
+
+    setEntradaProductoSearch("");
+    setEntradaProductoResultsOpen(false);
+    setEntradaModalOpen(true);
+
+    if (state.crearProducto) {
+      setShowNuevoProducto(true);
+    }
+
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
     const term = salidaProductoSearch.trim();
 
     if (!salidaModalOpen || term.length < 2 || salidaForm.producto_id) {
@@ -723,7 +742,6 @@ export default function InventarioMovimientos() {
       setError(null);
       const costoEntrada = Number(entradaForm.costo_unitario || 0);
       const payload: ProductoPayload = {
-        sku: nextProductoCodigo,
         codigo: nextProductoCodigo,
         nombre,
         marca: nuevoProducto.marca.trim(),
@@ -994,17 +1012,17 @@ export default function InventarioMovimientos() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <PackageSearch className="h-8 w-8 text-slate-900" />
-            <h1 className="text-3xl font-bold text-slate-900">
+            <PackageSearch className="h-6 w-6 text-slate-900" />
+            <h1 className="text-2xl font-bold text-slate-900">
               KARDEX
             </h1>
           </div>
           <p className="mt-1 text-slate-500">
-            Control valorizado por producto: entradas, salidas, saldo, costo promedio y documentos.
+            Control de los productos: Entradas, Salidas, Saldo, y Documentos.
           </p>
         </div>
 
@@ -1048,7 +1066,7 @@ export default function InventarioMovimientos() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
         <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
           <Filter className="h-4 w-4" />
           Filtros
@@ -1057,7 +1075,7 @@ export default function InventarioMovimientos() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="text-xs font-semibold text-gray-500">
             Busqueda
-            <div className="mt-1 flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
+            <div className="mt-1 flex h-11 items-center gap-2 rounded-xl border border-gray-200 px-3">
               <Search className="h-4 w-4 text-gray-400" />
               <input
                 value={filters.search ?? ""}
@@ -1073,7 +1091,7 @@ export default function InventarioMovimientos() {
             <select
               value={filters.tipo_movimiento ?? ""}
               onChange={(event) => updateFilter("tipo_movimiento", event.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+              className="mt-1 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm text-gray-700 outline-none"
             >
               {tipoOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -1088,7 +1106,7 @@ export default function InventarioMovimientos() {
             <select
               value={filters.origen ?? ""}
               onChange={(event) => updateFilter("origen", event.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+              className="mt-1 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm text-gray-700 outline-none"
             >
               {origenOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -1099,22 +1117,12 @@ export default function InventarioMovimientos() {
           </label>
 
           <label className="text-xs font-semibold text-gray-500">
-            IP origen
-            <input
-              value={filters.ip_origen ?? ""}
-              onChange={(event) => updateFilter("ip_origen", event.target.value)}
-              placeholder="192.168..."
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
-            />
-          </label>
-
-          <label className="text-xs font-semibold text-gray-500">
             Serie
             <input
               value={filters.serie ?? ""}
               onChange={(event) => updateFilter("serie", event.target.value)}
               placeholder="Buscar serie"
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+              className="mt-1 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm text-gray-700 outline-none"
             />
           </label>
 
@@ -1124,7 +1132,7 @@ export default function InventarioMovimientos() {
               value={filters.marca ?? ""}
               onChange={(event) => updateFilter("marca", event.target.value)}
               placeholder="Marca"
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+              className="mt-1 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm text-gray-700 outline-none"
             />
           </label>
 
@@ -1134,17 +1142,7 @@ export default function InventarioMovimientos() {
               value={filters.modelo ?? ""}
               onChange={(event) => updateFilter("modelo", event.target.value)}
               placeholder="Modelo"
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
-            />
-          </label>
-
-          <label className="text-xs font-semibold text-gray-500">
-            Usuario ID
-            <input
-              value={filters.created_by ?? ""}
-              onChange={(event) => updateFilter("created_by", event.target.value)}
-              placeholder="ID"
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+              className="mt-1 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm text-gray-700 outline-none"
             />
           </label>
 
@@ -1154,7 +1152,7 @@ export default function InventarioMovimientos() {
               type="date"
               value={filters.date_from ?? ""}
               onChange={(event) => updateFilter("date_from", event.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+              className="mt-1 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm text-gray-700 outline-none"
             />
           </label>
 
@@ -1164,24 +1162,10 @@ export default function InventarioMovimientos() {
               type="date"
               value={filters.date_to ?? ""}
               onChange={(event) => updateFilter("date_to", event.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+              className="mt-1 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm text-gray-700 outline-none"
             />
           </label>
 
-          <label className="text-xs font-semibold text-gray-500">
-            Filas
-            <select
-              value={filters.per_page ?? 10}
-              onChange={(event) => updateFilter("per_page", Number(event.target.value))}
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
-            >
-              {perPageOptions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
 
         <div className="mt-4 flex justify-end">
@@ -1574,13 +1558,29 @@ export default function InventarioMovimientos() {
             Mostrando {meta.from ?? 0}-{meta.to ?? 0} de {meta.total}
           </div>
           <div className="flex items-center gap-2">
+            <label className="mr-2 flex items-center gap-2 text-sm text-gray-500">
+              <span>Filas</span>
+
+              <select
+                value={filters.per_page ?? 10}
+                onChange={(event) =>
+                  updateFilter("per_page", Number(event.target.value))
+                }
+                className="h-9 rounded-lg border border-gray-200 bg-white px-2 text-sm font-medium text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              >
+                {perPageOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               disabled={meta.current_page <= 1 || loading}
               onClick={() => updateFilter("page", meta.current_page - 1)}
               className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <ChevronLeft className="h-4 w-4" />
-              Anterior
             </button>
             <span className="text-sm font-semibold text-gray-700">
               {meta.current_page} / {meta.last_page}
@@ -1590,7 +1590,6 @@ export default function InventarioMovimientos() {
               onClick={() => updateFilter("page", meta.current_page + 1)}
               className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Siguiente
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>

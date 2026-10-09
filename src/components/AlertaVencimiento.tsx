@@ -24,7 +24,7 @@ export default function AlertaVencimientos({
   };
 
   const alertasLicencias = licencias
-    .filter(l => diasRestantes(l.fechaRenovacion) > 0 && diasRestantes(l.fechaRenovacion) <= 15)
+    .filter(l => !l.renovacionProgramada && diasRestantes(l.fechaRenovacion) > 0 && diasRestantes(l.fechaRenovacion) <= 15)
     .map(l => ({
       tipo: 'LICENCIA' as const,
       empresa: l.empresa,
@@ -35,7 +35,7 @@ export default function AlertaVencimientos({
     }));
 
   const alertasHosting = hostings
-    .filter(h => diasRestantes(h.fechaRenovacion) > 0 && diasRestantes(h.fechaRenovacion) <= 15)
+    .filter(h => !h.renovacionProgramada && diasRestantes(h.fechaRenovacion) > 0 && diasRestantes(h.fechaRenovacion) <= 15)
     .map(h => ({
       tipo: 'HOSTING' as const,
       empresa: h.empresa,

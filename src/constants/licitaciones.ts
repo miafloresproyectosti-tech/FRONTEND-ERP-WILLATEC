@@ -54,12 +54,15 @@ export const FORMAS_PAGO: Record<OportunidadPayment, string> = {
 
 export const CATEGORIAS_OPORTUNIDAD = [
   "Hardware",
+  "Laptops y/o Computadoras",
   "Software",
   "Servicios TI",
   "Licencias",
   "Soporte",
   "Infraestructura",
-  "Consultoria",
+  "Impresoras",
+  "Tintas y/o Toners",
+  "Ferreteria",
   "Otros",
 ];
 

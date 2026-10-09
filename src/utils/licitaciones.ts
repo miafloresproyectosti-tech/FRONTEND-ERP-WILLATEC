@@ -170,6 +170,88 @@ export const downloadFile = (file: OportunidadArchivo) => {
   link.click();
 };
 
+const createObjectUrlFromDataUrl = (dataUrl: string, fallbackType?: string) => {
+  if (!dataUrl.startsWith("data:")) {
+    return { url: dataUrl, revoke: false };
+  }
+
+  const commaIndex = dataUrl.indexOf(",");
+  if (commaIndex === -1) {
+    return { url: dataUrl, revoke: false };
+  }
+
+  const meta = dataUrl.slice(0, commaIndex);
+  const content = dataUrl.slice(commaIndex + 1);
+  const mimeType = meta.match(/^data:([^;,]+)/)?.[1] || fallbackType || "application/octet-stream";
+  const isBase64 = meta.includes(";base64");
+
+  try {
+    const binary = isBase64 ? atob(content) : decodeURIComponent(content);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+
+    return {
+      url: URL.createObjectURL(new Blob([bytes], { type: mimeType })),
+      revoke: true,
+    };
+  } catch {
+    return { url: dataUrl, revoke: false };
+  }
+};
+
+export const openFileInNewTab = (file: OportunidadArchivo) => {
+  if (!file.dataUrl) return false;
+
+  const { url, revoke } = createObjectUrlFromDataUrl(file.dataUrl, file.tipo);
+
+  const scheduleRevoke = () => {
+    if (revoke) {
+      window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+    }
+  };
+
+  if ((file.tipo || "").includes("image")) {
+    const tab = window.open("", "_blank");
+    if (!tab) {
+      if (revoke) URL.revokeObjectURL(url);
+      return false;
+    }
+
+    tab.document.title = file.nombre || "Archivo";
+
+    tab.document.body.style.margin = "0";
+    tab.document.body.style.background = "#0f172a";
+    tab.document.body.style.minHeight = "100vh";
+    tab.document.body.style.display = "flex";
+    tab.document.body.style.alignItems = "center";
+    tab.document.body.style.justifyContent = "center";
+
+    const image = tab.document.createElement("img");
+    image.src = url;
+    image.alt = file.nombre || "Archivo";
+    image.style.display = "block";
+    image.style.maxWidth = "100%";
+    image.style.maxHeight = "100vh";
+    image.style.objectFit = "contain";
+    tab.document.body.appendChild(image);
+
+    scheduleRevoke();
+    return true;
+  }
+
+  const tab = window.open(url, "_blank");
+  if (!tab) {
+    if (revoke) URL.revokeObjectURL(url);
+    return false;
+  }
+
+  scheduleRevoke();
+  return true;
+};
+
 export const applyExpiredState = (opportunity: Oportunidad): Oportunidad => {
   if (opportunity.estado === "vencida" || isClosedOpportunity(opportunity.estado)) {
     return opportunity;

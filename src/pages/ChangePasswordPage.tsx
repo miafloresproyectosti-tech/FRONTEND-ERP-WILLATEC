@@ -79,8 +79,8 @@ export default function ChangePasswordPage() {
       }
 
       showToast({
-        title: "Contrasena cambiada",
-        description: "Tu contrasena fue cambiada correctamente",
+        title: "Contraseña cambiada",
+        description: "Tu contraseña fue cambiada correctamente",
         type: "success",
       });
       sessionStorage.removeItem("temp_user_email");
@@ -98,9 +98,9 @@ export default function ChangePasswordPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
       <div className="w-full max-w-md bg-white rounded-3xl p-8 shadow">
-        <h2 className="text-2xl font-bold mb-4">Cambiar contrasena</h2>
+        <h2 className="text-2xl font-bold mb-4">Cambiar contraseña</h2>
         <p className="text-sm text-gray-600 mb-4">
-          Ingresa una nueva contrasena para completar el acceso.
+          Ingresa una nueva contraseña para completar el acceso.
         </p>
 
         {error && <div className="text-sm text-red-600 mb-3">{error}</div>}
@@ -108,7 +108,7 @@ export default function ChangePasswordPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="password"
-            placeholder="Contrasena actual"
+            placeholder="Contraseña actual"
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             className="w-full px-4 py-3 border rounded-2xl"
@@ -116,7 +116,7 @@ export default function ChangePasswordPage() {
 
           <input
             type="password"
-            placeholder="Nueva contrasena"
+            placeholder="Nueva contraseña"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="w-full px-4 py-3 border rounded-2xl"
@@ -124,7 +124,7 @@ export default function ChangePasswordPage() {
 
           <input
             type="password"
-            placeholder="Confirmar contrasena"
+            placeholder="Confirmar contraseña"
             value={passwordConfirmation}
             onChange={(e) => setPasswordConfirmation(e.target.value)}
             className="w-full px-4 py-3 border rounded-2xl"

@@ -38,6 +38,8 @@ export interface CotizacionItem {
   plantilla_ultimo_uso_nombre?: string | null;
   estado_cotizacion_item_id?: number;
   aplica_costos_adicionales?: boolean;
+  destino_entrega?: string | null;
+  destinos_entrega?: CotizacionItemDestino[];
   created_at?: string;
   updated_at?: string;
   tipo?: "catalogo" | "externo"; // Para diferenciar items de catálogo vs personalizados
@@ -45,6 +47,20 @@ export interface CotizacionItem {
   link_proveedor?: string; // Nuevo campo para link del proveedor
   proveedores?: CotizacionItemProveedor[];
   importacion_calculo?: ImportacionCalculo | null;
+}
+
+export interface CotizacionItemDestino {
+  id?: number;
+  cotizacion_item_id?: number;
+  destino_entrega: string;
+  detalle_variante?: string | null;
+  cantidad: number;
+  margen?: number | null;
+  costo_unitario?: number;
+  precio_venta?: number;
+  subtotal?: number;
+  costo_total?: number;
+  ganancia?: number;
 }
 
 export interface CotizacionItemProveedor {
@@ -106,6 +122,8 @@ export interface ItemFormState {
   disponibilidad_tipo: 'stock' | 'importacion';
   disponibilidad_dias: number;
   aplica_costos_adicionales?: boolean;
+  destino_entrega?: string | null;
+  destinos_entrega?: CotizacionItemDestino[];
   proveedor?: string;
   link_proveedor?: string;
   proveedores?: CotizacionItemProveedor[];
@@ -118,6 +136,7 @@ export interface CotizacionCostosAdicional {
   tipo: string;
   monto: number;
   descripcion: string;
+  destino_entrega?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -170,12 +189,20 @@ export interface Cotizacion {
   fecha: string;
   titulo: string;
   forma_pago?: string;
+  adelanto?: boolean;
+  adelanto_porcentaje?: number | string | null;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
+  entrega_multidestino?: boolean;
   tipo_cambio: number;
   cliente_id: number;
   plantilla_id: number;
   moneda_id?: number;
+  moneda?: {
+    id: number;
+    codigo?: string | null;
+    simbolo?: string | null;
+  } | null;
   validez_dias: number;
   plataforma_id:number;
   user_id: number;
@@ -289,8 +316,11 @@ export interface CreateCotizacionData {
   plataforma_id: number;
   titulo?: string;
   forma_pago?: string;
+  adelanto?: boolean;
+  adelanto_porcentaje?: number | null;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
+  entrega_multidestino?: boolean;
   cliente_contacto?: string;
   modo_distribucion?: "POR_ITEM" | "POR_CANTIDAD";
   moneda_id: number;
@@ -310,8 +340,11 @@ export interface UpdateCotizacionData {
   validez_dias?: number;
   titulo?: string;
   forma_pago?: string;
+  adelanto?: boolean;
+  adelanto_porcentaje?: number | null;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
+  entrega_multidestino?: boolean;
   cliente_contacto?: string;
   delegado_id?: number | null;
   delegado_cotizacion_id?: number | null;
@@ -340,6 +373,7 @@ export interface CreateItemData {
   imagen?: string | null;
   imagen_path?: string | null;
   aplica_costos_adicionales?: boolean;
+  destino_entrega?: string | null;
   importacion_calculo?: ImportacionCalculo | null;
 }
 

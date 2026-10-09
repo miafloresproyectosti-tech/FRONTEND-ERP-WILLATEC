@@ -40,3 +40,9 @@ export async function createProveedor(payload: ProveedorPayload) {
 
   return response.data.proveedor as Proveedor;
 }
+
+export async function updateProveedor(id: number, payload: ProveedorPayload) {
+  const response = await api.put(`/proveedores/${id}`, payload);
+
+  return response.data.proveedor as Proveedor;
+}

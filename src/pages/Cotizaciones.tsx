@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   Search,
@@ -18,6 +18,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 
 import { useAuth } from "../AuthContext";
@@ -69,6 +71,11 @@ type CotizacionListItem = ApiCotizacion & {
   items_count?: number | null;
 };
 
+type TotalPorDestino = {
+  destino: string;
+  total: number;
+};
+
 type ApiErrorResponse = {
   response?: {
     data?: {
@@ -105,6 +112,12 @@ const ESTADO_FILTER_MAP: Record<EstadoResumenKey, number> = {
   oc_registrada: 6,
 };
 
+const ESTADO_FILTER_VALUES = new Set([
+  "todos",
+  "pendientes_revision",
+  ...Object.keys(ESTADO_FILTER_MAP),
+]);
+
 const EMPTY_TOTAL_POR_ESTADO: Record<EstadoResumenKey, number> = {
   borrador: 0,
   enviada: 0,
@@ -112,6 +125,89 @@ const EMPTY_TOTAL_POR_ESTADO: Record<EstadoResumenKey, number> = {
   aprobada: 0,
   rechazada: 0,
   oc_registrada: 0,
+};
+
+const getDestinoLabel = (destino?: string | null) => {
+  const value = String(destino || "").trim();
+
+  return value || "Lima Metropolitana";
+};
+
+const getTotalesPorDestino = (cotizacion: ApiCotizacion): TotalPorDestino[] => {
+  if (!cotizacion.entrega_multidestino || !cotizacion.items?.length) {
+    return [];
+  }
+
+  const totals = new Map<string, number>();
+
+  cotizacion.items.forEach((item) => {
+    const destinos = item.destinos_entrega || [];
+
+    if (destinos.length > 0) {
+      destinos.forEach((destino) => {
+        const destinoLabel = getDestinoLabel(destino.destino_entrega);
+        const subtotal = Number(destino.subtotal ?? 0);
+
+        totals.set(destinoLabel, (totals.get(destinoLabel) || 0) + subtotal);
+      });
+
+      return;
+    }
+
+    const destinoLabel = getDestinoLabel(item.destino_entrega);
+    totals.set(destinoLabel, (totals.get(destinoLabel) || 0) + Number(item.subtotal ?? 0));
+  });
+
+  return Array.from(totals, ([destino, total]) => ({ destino, total }))
+    .filter((item) => item.total > 0)
+    .sort((a, b) => a.destino.localeCompare(b.destino, "es"));
+};
+
+const TotalCotizacionCell = ({
+  cotizacion,
+  className = "",
+  compact = false,
+}: {
+  cotizacion: ApiCotizacion;
+  className?: string;
+  compact?: boolean;
+}) => {
+  const simbolo = Number(cotizacion.moneda_id) === 2 ? "$" : "S/";
+  const totalesPorDestino = getTotalesPorDestino(cotizacion);
+
+  if (totalesPorDestino.length === 0) {
+    return (
+      <div className={className}>
+        {formatMoney(cotizacion.total, simbolo)}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`space-y-2 ${className}`}>
+      <div className="space-y-1.5">
+        {totalesPorDestino.map((destino) => (
+          <div
+            key={destino.destino}
+            className="flex items-center justify-between gap-3 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs dark:bg-blue-950/40"
+          >
+            <span className="min-w-0 truncate font-medium text-blue-900 dark:text-blue-100" title={destino.destino}>
+              {destino.destino}
+            </span>
+            <span className="shrink-0 font-bold text-blue-700 dark:text-blue-200">
+              {formatMoney(destino.total, simbolo)}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className={`flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 ${compact ? "text-[11px]" : "text-xs"}`}>
+        <span>Total general</span>
+        <span className="font-semibold text-slate-700 dark:text-slate-200">
+          {formatMoney(cotizacion.total, simbolo)}
+        </span>
+      </div>
+    </div>
+  );
 };
 
 const getApiErrorMessage = (error: unknown, fallback: string) => {
@@ -136,6 +232,7 @@ export default function Cotizaciones() {
   const addNotificationRef = useRef(addNotification);
 
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
 
 
@@ -146,13 +243,17 @@ export default function Cotizaciones() {
   const [loadingEjecutivos, setLoadingEjecutivos] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
-  const [filterEstado, setFilterEstado] = useState("todos");
+  const [filterEstado, setFilterEstado] = useState(() => {
+    const estadoParam = searchParams.get("estado") || "todos";
+    return ESTADO_FILTER_VALUES.has(estadoParam) ? estadoParam : "todos";
+  });
   const [filterEjecutivo, setFilterEjecutivo] = useState("todos");
   const [fechaDesde, setFechaDesde] = useState("");
   const [fechaHasta, setFechaHasta] = useState("");
   const [ejecutivoOptions, setEjecutivoOptions] = useState<EjecutivoOption[]>([]);
   const [totalPorEstado, setTotalPorEstado] = useState<Record<EstadoResumenKey, number>>(EMPTY_TOTAL_POR_ESTADO);
   const [totalModificacionesPendientes, setTotalModificacionesPendientes] = useState(0);
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCotizaciones, setTotalCotizaciones] = useState(0);
@@ -169,6 +270,36 @@ export default function Cotizaciones() {
   useEffect(() => {
     addNotificationRef.current = addNotification;
   }, [addNotification]);
+
+  const applyEstadoFilter = useCallback(
+    (estado: string) => {
+      const safeEstado = ESTADO_FILTER_VALUES.has(estado) ? estado : "todos";
+      setFilterEstado(safeEstado);
+      setCurrentPage(1);
+      const nextParams = new URLSearchParams(searchParams);
+
+      if (safeEstado === "todos") {
+        nextParams.delete("estado");
+      } else {
+        nextParams.set("estado", safeEstado);
+      }
+
+      setSearchParams(nextParams, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  useEffect(() => {
+    const estadoParam = searchParams.get("estado") || "todos";
+    const safeEstado = ESTADO_FILTER_VALUES.has(estadoParam)
+      ? estadoParam
+      : "todos";
+
+    if (safeEstado !== filterEstado) {
+      setFilterEstado(safeEstado);
+      setCurrentPage(1);
+    }
+  }, [filterEstado, searchParams]);
 
   const loadCotizaciones = useCallback(async () => {
     try {
@@ -204,7 +335,10 @@ export default function Cotizaciones() {
   }, [currentPage, debouncedSearchTerm, fechaDesde, fechaHasta, filterEjecutivo, filterEstado, itemsPerPage]);
 
   const paginatedCotizaciones = cotizaciones;
-  const canReviewCotizaciones = user?.role === "SUPERADMIN" || user?.role === "ADMIN";
+  const userRole = user?.role?.toUpperCase();
+  const canReviewCotizaciones = userRole === "SUPERADMIN" || userRole === "ADMIN";
+  const canCreateCotizacion = userRole === "SUPERADMIN" || userRole === "VENTAS";
+  const canCreateOcForAnyCotizacion = ["SUPERADMIN", "ADMIN", "CONTABILIDAD"].includes(userRole || "");
 
   // ✅ BADGES
   const getEstadoBadge = (estadoId: number) => {
@@ -446,18 +580,21 @@ export default function Cotizaciones() {
     setCotizacionForOc(null);
   };
 
+  const cotizacionForOcEstadoId = Number(cotizacionForOc?.estado_cotizacion_id ?? 0);
+  const cotizacionForOcRegistrada = cotizacionForOcEstadoId === ESTADO_FILTER_MAP.oc_registrada;
+
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* HEADER */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
             Cotizaciones
           </h1>
 
           <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Gestión de cotizaciones del sistema
+            Gestión de cotizaciones
           </p>
         </div>
 
@@ -474,19 +611,21 @@ export default function Cotizaciones() {
       </div>
 
       {/* BOTÓN */}
-      <button
-        onClick={() => navigate("/cotizaciones/new")}
-        className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl flex items-center gap-2 transition shadow-lg"
-      >
-        <Plus size={20} />
-        Nueva Cotización
-      </button>
+      {canCreateCotizacion && (
+        <button
+          onClick={() => navigate("/cotizaciones/new")}
+          className="flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+        >
+          <Plus size={20} />
+          Nueva Cotización
+        </button>
+      )}
 
       {/* CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-200 dark:border-slate-800">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800">
           <div className="flex items-center gap-4">
-            <div className="bg-slate-100 dark:bg-slate-900 p-3 rounded-2xl">
+            <div className="rounded-xl bg-slate-100 p-2.5 dark:bg-slate-900">
               <FileText className="w-6 h-6 text-slate-600 dark:text-slate-200" />
             </div>
 
@@ -502,9 +641,9 @@ export default function Cotizaciones() {
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-200 dark:border-slate-800">
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800">
           <div className="flex items-center gap-4">
-            <div className="bg-blue-100 dark:bg-blue-900 p-3 rounded-2xl">
+            <div className="rounded-xl bg-blue-100 p-2.5 dark:bg-blue-900">
               <FileText className="w-6 h-6 text-blue-600" />
             </div>
 
@@ -520,9 +659,9 @@ export default function Cotizaciones() {
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-200 dark:border-slate-800">
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800">
           <div className="flex items-center gap-4">
-            <div className="bg-green-100 dark:bg-emerald-900 p-3 rounded-2xl">
+            <div className="rounded-xl bg-green-100 p-2.5 dark:bg-emerald-900">
               <FileText className="w-6 h-6 text-green-600" />
             </div>
 
@@ -539,9 +678,9 @@ export default function Cotizaciones() {
         </div>
 
         {canReviewCotizaciones && (
-          <div className="bg-white rounded-3xl p-5 shadow-sm border border-yellow-200 dark:border-yellow-700">
+          <div className="rounded-2xl border border-yellow-200 bg-white p-4 shadow-sm dark:border-yellow-700">
             <div className="flex items-center gap-4">
-              <div className="bg-yellow-100 dark:bg-yellow-900 p-3 rounded-2xl">
+              <div className="rounded-xl bg-yellow-100 p-2.5 dark:bg-yellow-900">
                 <FileText className="w-6 h-6 text-yellow-600" />
               </div>
 
@@ -563,8 +702,8 @@ export default function Cotizaciones() {
 
             <button
               type="button"
-              onClick={() => setFilterEstado("pendientes_revision")}
-              className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-yellow-700 bg-yellow-50 px-4 py-2 rounded-2xl hover:bg-yellow-100"
+              onClick={() => applyEstadoFilter("pendientes_revision")}
+              className="mt-3 inline-flex items-center gap-2 rounded-xl bg-yellow-50 px-3 py-2 text-sm font-semibold text-yellow-700 hover:bg-yellow-100"
             >
               Ver pendientes
             </button>
@@ -572,10 +711,10 @@ export default function Cotizaciones() {
         )}
       </div>
 
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-200 dark:border-slate-800">
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
-            <div className="bg-indigo-100 dark:bg-indigo-900 p-3 rounded-2xl">
+            <div className="rounded-xl bg-indigo-100 p-2.5 dark:bg-indigo-900">
               <Users className="w-6 h-6 text-indigo-600 dark:text-indigo-200" />
             </div>
             <div>
@@ -623,92 +762,113 @@ export default function Cotizaciones() {
       </div>
 
       {/* TABLA */}
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-slate-800">
         {/* FILTROS */}
-        <div className="p-6 border-b border-gray-200 dark:border-slate-800 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="relative w-full md:w-96">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-5 h-5" />
+        <div className="border-b border-gray-200 bg-slate-50/60 px-3 py-3 dark:border-slate-800 dark:bg-slate-950/40 sm:px-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-[minmax(260px,1fr)_145px_145px_190px_190px_auto] xl:items-end">
+            <label className="relative md:col-span-2 xl:col-span-2 2xl:col-span-1">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Busqueda
+              </span>
+              <Search className="pointer-events-none absolute left-4 top-[35px] h-4 w-4 text-slate-400 dark:text-slate-500" />
+              <input
+                type="text"
+                placeholder="Buscar por codigo, cliente o RUC"
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-11 w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-11 pr-4 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              />
+            </label>
 
-            <input
-              type="text"
-              placeholder="Buscar por código o cliente..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full pl-12 pr-4 py-3 bg-slate-100 dark:bg-slate-900 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
-            />
-            <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-              Busca por codigo, titulo, cliente o RUC.
-            </p>
-          </div>
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Desde
+              <input
+                type="date"
+                value={fechaDesde}
+                max={fechaHasta || undefined}
+                onChange={(e) => {
+                  setFechaDesde(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              />
+            </label>
 
-          <div className="flex w-full flex-col gap-3 lg:flex-row xl:w-auto">
-            <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
-              <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Desde
-                <input
-                  type="date"
-                  value={fechaDesde}
-                  max={fechaHasta || undefined}
-                  onChange={(e) => {
-                    setFechaDesde(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                />
-              </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Hasta
+              <input
+                type="date"
+                value={fechaHasta}
+                min={fechaDesde || undefined}
+                onChange={(e) => {
+                  setFechaHasta(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              />
+            </label>
 
-              <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Hasta
-                <input
-                  type="date"
-                  value={fechaHasta}
-                  min={fechaDesde || undefined}
-                  onChange={(e) => {
-                    setFechaHasta(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                />
-              </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Ejecutivo
+              <select
+                value={filterEjecutivo}
+                onChange={(e) => {
+                  setFilterEjecutivo(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              >
+                <option value="todos">Todos los ejecutivos</option>
+                {ejecutivoOptions.map((ejecutivo) => (
+                  <option key={ejecutivo.id} value={ejecutivo.id}>
+                    {ejecutivo.nombre} ({ejecutivo.total})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Estado
+              <select
+                value={filterEstado}
+                onChange={(e) => {
+                  applyEstadoFilter(e.target.value);
+                }}
+                className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              >
+                <option value="todos">Todos los estados</option>
+                {canReviewCotizaciones && (
+                  <option value="pendientes_revision">Pendientes de aprobar</option>
+                )}
+                <option value="borrador">Borrador</option>
+                <option value="enviada">Enviada</option>
+                <option value="parcialmente_aprobada">Parcialmente Aprobada</option>
+                <option value="aprobada">Aprobada</option>
+                <option value="oc_registrada">OC_Registrada</option>
+              </select>
+            </label>
+
+            <div className="inline-flex h-11 w-full rounded-xl border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-900 xl:col-span-4 2xl:col-span-1 2xl:w-auto">
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`inline-flex h-9 flex-1 items-center justify-center rounded-lg transition xl:w-10 xl:flex-none ${viewMode === "table" ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+                title="Vista tabla"
+              >
+                <List className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={()=> setViewMode("cards")}
+                className={`inline-flex h-9 flex-1 items-center justify-center rounded-lg transition xl:w-10 xl:flex-none ${viewMode === "cards" ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+                title="Vista tarjetas"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
             </div>
-
-            <select
-              value={filterEjecutivo}
-              onChange={(e) => {
-                setFilterEjecutivo(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white sm:w-64"
-            >
-              <option value="todos">Todos los ejecutivos</option>
-              {ejecutivoOptions.map((ejecutivo) => (
-                <option key={ejecutivo.id} value={ejecutivo.id}>
-                  {ejecutivo.nombre} ({ejecutivo.total})
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={filterEstado}
-              onChange={(e) => {
-                setFilterEstado(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white sm:w-56"
-            >
-              <option value="todos">Todos los estados</option>
-              {canReviewCotizaciones && (
-                <option value="pendientes_revision">Pendientes de aprobar</option>
-              )}
-              <option value="borrador">Borrador</option>
-              <option value="enviada">Enviada</option>
-              <option value="parcialmente_aprobada">Parcialmente Aprobada</option>
-              <option value="aprobada">Aprobada</option>
-              <option value="oc_registrada">OC_Registrada</option>
-            </select>
 
           </div>
         </div>
@@ -721,7 +881,7 @@ export default function Cotizaciones() {
             </div>
           ) : (
             <>
-            <div className="grid gap-3 p-4 lg:hidden">
+            <div className={`grid min-w-0 max-w-full gap-3 p-3 sm:p-4 ${viewMode === "cards" ? "md:grid-cols-2 2xl:grid-cols-3" : "lg:hidden"}`}>
               {paginatedCotizaciones.length > 0 ? (
                 paginatedCotizaciones.map((cotizacion) => {
                   const cotizacionListItem = cotizacion as CotizacionListItem;
@@ -741,14 +901,15 @@ export default function Cotizaciones() {
                     ESTADO_FILTER_MAP.oc_registrada,
                   ].includes(estadoActualId);
                   const puedeEditarDirecto = puedeEditar && !bloqueaEdicion;
-                  const puedeGenerarOc = puedeEditar && [
+                  const puedeGenerarOc = (puedeEditar || canCreateOcForAnyCotizacion) && [
                     ESTADO_FILTER_MAP.aprobada,
                     ESTADO_FILTER_MAP.parcialmente_aprobada,
+                    ESTADO_FILTER_MAP.oc_registrada,
                   ].includes(estadoActualId);
                   const modificacionesPendientes = Number(cotizacion.modificaciones_pendientes_count || 0);
 
                   return (
-                    <div key={cotizacion.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                    <div key={cotizacion.id} className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate font-bold text-blue-600 dark:text-blue-300">{cotizacion.numero}</p>
@@ -773,9 +934,13 @@ export default function Cotizaciones() {
                             {formatCotizacionDate(cotizacion.fecha)}
                           </p>
                         </div>
-                        <div>
+                        <div className="col-span-2">
                           <p className="text-xs font-semibold uppercase text-slate-400">Total</p>
-                          <p className="mt-1 font-bold text-slate-900 dark:text-slate-100">{formatMoney(cotizacion.total, getSimboloMoneda(cotizacion))}</p>
+                          <TotalCotizacionCell
+                            cotizacion={cotizacion}
+                            className="mt-1 font-bold text-slate-900 dark:text-slate-100"
+                            compact
+                          />
                         </div>
                         <div>
                           <p className="text-xs font-semibold uppercase text-slate-400">Ejecutivo</p>
@@ -796,7 +961,7 @@ export default function Cotizaciones() {
                       <div className="mt-4 grid grid-cols-2 gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
                         <button
                           onClick={() => navigate(`/cotizaciones/${cotizacion.id}/view`)}
-                          className="relative inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                          className="relative inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-slate-100 px-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                           title={modificacionesPendientes > 0 ? `${modificacionesPendientes} modificacion pendiente` : "Ver detalle"}
                         >
                           <Eye size={16} />
@@ -811,7 +976,7 @@ export default function Cotizaciones() {
                         {puedeEditarDirecto && (
                           <button
                             onClick={() => navigate(`/cotizaciones/${cotizacion.id}/edit`)}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-100 text-sm font-semibold text-blue-700 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:hover:bg-blue-800"
+                            className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-blue-100 px-2 text-sm font-semibold text-blue-700 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:hover:bg-blue-800"
                           >
                             <Pencil size={16} />
                             Editar
@@ -825,7 +990,7 @@ export default function Cotizaciones() {
                               setDeleteConfirmationText("");
                             }}
                             disabled={deletingCotizacionId === Number(cotizacion.id)}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-100 text-sm font-semibold text-red-700 hover:bg-red-200 disabled:opacity-60"
+                            className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-red-100 px-2 text-sm font-semibold text-red-700 hover:bg-red-200 disabled:opacity-60"
                           >
                             {deletingCotizacionId === Number(cotizacion.id) ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                             Eliminar
@@ -835,7 +1000,7 @@ export default function Cotizaciones() {
                         {puedeGenerarOc && (
                           <button
                             onClick={() => setCotizacionForOc(cotizacion)}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-green-100 text-sm font-semibold text-green-700 hover:bg-green-200"
+                            className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-green-100 px-2 text-sm font-semibold text-green-700 hover:bg-green-200"
                           >
                             <ShoppingCart size={16} />
                             Generar OC
@@ -852,7 +1017,7 @@ export default function Cotizaciones() {
               )}
             </div>
 
-            <div className="hidden overflow-x-auto lg:block">
+            <div className={`${viewMode === "cards" ? "hidden" : "hidden overflow-x-auto lg:block"}`}>
             <table className="w-full min-w-[1120px] table-fixed">
               <colgroup>
                 <col className="w-[24%]" />
@@ -920,9 +1085,10 @@ export default function Cotizaciones() {
                       ESTADO_FILTER_MAP.oc_registrada,
                     ].includes(estadoActualId);
                     const puedeEditarDirecto = puedeEditar && !bloqueaEdicion;
-                    const puedeGenerarOc = puedeEditar && [
+                    const puedeGenerarOc = (puedeEditar || canCreateOcForAnyCotizacion) && [
                       ESTADO_FILTER_MAP.aprobada,
                       ESTADO_FILTER_MAP.parcialmente_aprobada,
+                      ESTADO_FILTER_MAP.oc_registrada,
                     ].includes(estadoActualId);
                     const modificacionesPendientes = Number(cotizacion.modificaciones_pendientes_count || 0);
 
@@ -969,8 +1135,8 @@ export default function Cotizaciones() {
                           {cotizacionListItem.items_count ?? 0}
                         </td>
 
-                        <td className="px-6 py-5 font-semibold text-slate-900 dark:text-slate-100">
-                          {formatMoney(cotizacion.total, getSimboloMoneda(cotizacion))}
+                        <td className="px-6 py-5 align-top font-semibold text-slate-900 dark:text-slate-100">
+                          <TotalCotizacionCell cotizacion={cotizacion} />
                         </td>
 
                         <td className="px-4 py-5">
@@ -1154,18 +1320,20 @@ export default function Cotizaciones() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 p-6 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => openOrdenCompraFlow("recibir")}
-                className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left transition hover:bg-emerald-100"
-              >
-                <ClipboardCheck className="mb-3 h-7 w-7 text-emerald-600" />
-                <p className="font-bold text-emerald-900">OC recibida</p>
-                <p className="mt-1 text-sm text-emerald-700">
-                  Registrar la orden enviada por el cliente.
-                </p>
-              </button>
+            <div className={`grid grid-cols-1 gap-3 p-6 ${cotizacionForOcRegistrada ? "" : "sm:grid-cols-2"}`}>
+              {!cotizacionForOcRegistrada && (
+                <button
+                  type="button"
+                  onClick={() => openOrdenCompraFlow("recibir")}
+                  className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left transition hover:bg-emerald-100"
+                >
+                  <ClipboardCheck className="mb-3 h-7 w-7 text-emerald-600" />
+                  <p className="font-bold text-emerald-900">OC recibida</p>
+                  <p className="mt-1 text-sm text-emerald-700">
+                    Registrar la orden enviada por el cliente.
+                  </p>
+                </button>
+              )}
 
               <button
                 type="button"

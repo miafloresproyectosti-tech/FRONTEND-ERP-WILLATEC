@@ -183,14 +183,14 @@ export default function ControlPagoFacturasClientesPage() {
   };
 
   const inputClass =
-    "w-full bg-white border border-gray-200 rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900 transition";
+    "h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm outline-none transition focus:border-blue-900 focus:ring-2 focus:ring-blue-900/20";
   <input className={inputClass} />
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* HEADER */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
+          <h1 className="text-2xl font-bold text-gray-900">
             Pago Facturas Clientes
           </h1>
 
@@ -201,7 +201,7 @@ export default function ControlPagoFacturasClientesPage() {
 
         <button
           onClick={abrirNuevo}
-          className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-medium text-white shadow-sm transition hover:bg-blue-700"
+          className="flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
         >
           <Plus size={18} />
           Nueva Factura
@@ -209,15 +209,15 @@ export default function ControlPagoFacturasClientesPage() {
       </div>
 
       {/* CARDS */}
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-        <div className="bg-white border rounded-2xl p-5 shadow-sm">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
           <div className="flex justify-between items-center">
             <div>
               <p className="text-sm text-gray-500">
                 Facturas
               </p>
 
-              <h2 className="text-3xl font-bold mt-2 text-gray-800">
+              <h2 className="mt-1 text-2xl font-bold text-gray-800">
                 {facturas.length}
               </h2>
             </div>
@@ -231,14 +231,14 @@ export default function ControlPagoFacturasClientesPage() {
           </div>
         </div>
 
-        <div className="bg-white border rounded-2xl p-5 shadow-sm">
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
           <div className="flex justify-between items-center">
             <div>
               <p className="text-sm text-gray-500">
                 Total Soles
               </p>
 
-              <h2 className="text-3xl font-bold mt-2 text-gray-800">
+              <h2 className="mt-1 text-2xl font-bold text-gray-800">
                 S/
                 {facturas
                   .reduce(
@@ -259,14 +259,14 @@ export default function ControlPagoFacturasClientesPage() {
           </div>
         </div>
 
-        <div className="bg-white border rounded-2xl p-5 shadow-sm">
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
           <div className="flex justify-between items-center">
             <div>
               <p className="text-sm text-gray-500">
                 Programación
               </p>
 
-              <h2 className="text-3xl font-bold mt-2 text-gray-800">
+              <h2 className="mt-1 text-2xl font-bold text-gray-800">
                 {
                   facturas.filter(
                     (f) =>
@@ -288,8 +288,8 @@ export default function ControlPagoFacturasClientesPage() {
       </div>
 
       {/* BUSCADOR */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center bg-gray-100 rounded-xl px-4">
+      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex h-11 items-center rounded-xl border border-gray-200 bg-gray-50 px-3">
           <Search
             size={18}
             className="text-gray-400"
@@ -302,7 +302,7 @@ export default function ControlPagoFacturasClientesPage() {
             onChange={(e) =>
               setBusqueda(e.target.value)
             }
-            className="w-full bg-transparent outline-none px-4 py-3"
+            className="w-full bg-transparent px-3 text-sm outline-none"
           />
         </div>
       </div>

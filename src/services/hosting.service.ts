@@ -25,6 +25,7 @@ export interface HostingApi {
   cliente?: string | null;
   correo_hosting?: string | null;
   documentos?: HostingDocumentoApi[];
+  cotizaciones?: HostingCotizacionApi[];
   alertas_enviadas_count?: number;
   alertas_enviadas_max_sent_at?: string | null;
   alertas_enviadas?: HostingAlertaEnviadaApi[];
@@ -34,6 +35,27 @@ export interface HostingApi {
     ruc?: string | null;
     correo?: string | null;
   } | null;
+}
+
+export interface HostingCotizacionApi {
+  id: number;
+  numero: string;
+  fecha?: string | null;
+  titulo?: string | null;
+  cliente_nombre?: string | null;
+  moneda_id?: number | null;
+  subtotal?: number | string | null;
+  igv?: number | string | null;
+  total?: number | string | null;
+  moneda?: {
+    id: number;
+    codigo?: string | null;
+    simbolo?: string | null;
+  } | null;
+  pivot?: {
+    created_at?: string | null;
+    created_by?: number | null;
+  };
 }
 
 export interface HostingAlertaEnviadaApi {
@@ -70,6 +92,7 @@ export interface HostingPayload {
   contacto?: string | null;
   cliente?: string | null;
   correo_hosting?: string | null;
+  cotizacion_numero?: string | null;
 }
 
 export interface RenovacionPayload {
@@ -207,6 +230,25 @@ export const deleteHostingDocumento = async (
     `/hostings/${hostingId}/documentos/${documentoId}`
   );
 
+  return response.data.hosting;
+};
+
+export const linkHostingCotizacion = async (
+  id: number,
+  cotizacionNumero: string
+): Promise<HostingApi> => {
+  const response = await api.post(`/hostings/${id}/cotizaciones`, {
+    cotizacion_numero: cotizacionNumero,
+  });
+
+  return response.data.hosting;
+};
+
+export const unlinkHostingCotizacion = async (
+  hostingId: number,
+  cotizacionId: number
+): Promise<HostingApi> => {
+  const response = await api.delete(`/hostings/${hostingId}/cotizaciones/${cotizacionId}`);
   return response.data.hosting;
 };
 

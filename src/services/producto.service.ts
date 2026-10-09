@@ -45,7 +45,25 @@ export interface Producto {
         id?: number;
         nombre?: string | null;
     } | null;
+    woocommerce_producto?: WooCommerceProducto | null;
+    woocommerceProducto?: WooCommerceProducto | null;
     series?: ProductoSerie[];
+}
+
+export interface WooCommerceProducto {
+    id?: number;
+    producto_id?: number;
+    woocommerce_store_id?: number | null;
+    woo_product_id?: number | string | null;
+    woo_variation_id?: number | string | null;
+    woo_parent_id?: number | string | null;
+    woo_sku?: string | null;
+    manage_stock?: boolean | number | string | null;
+    last_stock_sent?: number | string | null;
+    last_stock_received?: number | string | null;
+    last_sync_status?: string | null;
+    last_sync_error?: string | null;
+    last_synced_at?: string | null;
 }
 
 export interface ProductoSerie {
@@ -209,7 +227,7 @@ export interface ProductoExterno {
 }
 
 export interface ProductoPayload {
-    sku: string;
+    sku?: string;
     nombre: string;
     marca: string;
     modelo: string;
@@ -259,6 +277,30 @@ export interface ProductoPaginationMeta {
 
 export interface ProductoPaginatedResponse extends ProductoPaginationMeta {
     data: Producto[];
+}
+
+export interface ProductoSkuPreviewItem {
+    id: number;
+    codigo?: string | null;
+    sku_actual?: string | null;
+    sku_nuevo?: string | null;
+    producto?: string | null;
+    categoria?: string | null;
+    marca?: string | null;
+    modelo?: string | null;
+    vinculado_woocommerce: boolean;
+    woo_product_id?: number | string | null;
+    woo_variation_id?: number | string | null;
+    estado: string;
+    mensaje?: string | null;
+}
+
+export interface ProductoSkuPreviewResponse {
+    total_legacy?: number;
+    total_legacy_restante?: number;
+    limit: number;
+    items: ProductoSkuPreviewItem[];
+    resumen: Record<string, number>;
 }
 
 export interface ProductoExternoHistorialItem {
@@ -336,7 +378,7 @@ function normalizeProducto(producto: Producto): Producto {
 
     return {
         ...producto,
-        sku: producto.sku || producto.codigo || null,
+        sku: producto.sku || null,
         imagen: imageUrl || producto.imagen || null,
         imagen_url: imageUrl || null,
         imagen_path: normalizeStorageImagePath(rawImage),
@@ -601,6 +643,17 @@ export const getProductoExternoHistorialCotizaciones = async (
     };
 };
 
+export const getProductoHistorialCotizaciones = async (
+    id: number | string,
+): Promise<ProductoExternoHistorialResponse> => {
+    const res = await api.get(`/productos/${id}/historial-cotizaciones`);
+
+    return {
+        producto: res.data?.producto ?? { id: Number(id) },
+        historial: Array.isArray(res.data?.historial) ? res.data.historial : [],
+    };
+};
+
 export const getProducto = async (id: number): Promise<Producto> => {
     const res = await api.get(`/productos/${id}`);
     return normalizeProducto(res.data);
@@ -658,6 +711,52 @@ export const updateProducto = async (
 
 export const deleteProducto = async (id: number): Promise<{ message?: string; producto?: Producto }> => {
     const res = await api.delete(`/productos/${id}`);
+    return res.data;
+};
+
+export const mapearProductoWooCommercePorSku = async (
+    id: number,
+): Promise<{ message?: string; mapping?: WooCommerceProducto; log?: any }> => {
+    const res = await api.post(`/woocommerce/productos/${id}/mapear-sku`);
+    return res.data;
+};
+
+export const sincronizarProductoWooCommerce = async (
+    id: number,
+): Promise<{ message?: string; log?: any }> => {
+    const res = await api.post(`/woocommerce/productos/${id}/sync-stock`);
+    return res.data;
+};
+
+export const sincronizarProductosWooCommerceActivos = async (
+    limit = 100,
+): Promise<{
+    message?: string;
+    resumen?: {
+        procesados: number;
+        exitosos: number;
+        errores: number;
+        limite: number;
+        errores_detalle?: { producto_id: number; sku?: string | null; mensaje: string }[];
+    };
+}> => {
+    const res = await api.post("/woocommerce/productos/sync-activos", { limit });
+    return res.data;
+};
+
+export const previewProductoSkuNormalization = async (
+    limit = 25,
+): Promise<ProductoSkuPreviewResponse> => {
+    const res = await api.get("/productos/sku-normalizacion/preview", {
+        params: { limit },
+    });
+    return res.data;
+};
+
+export const applyProductoSkuNormalization = async (
+    limit = 25,
+): Promise<ProductoSkuPreviewResponse> => {
+    const res = await api.post("/productos/sku-normalizacion/apply", { limit });
     return res.data;
 };
 

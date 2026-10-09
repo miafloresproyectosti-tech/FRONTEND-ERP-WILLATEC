@@ -11,19 +11,27 @@ import {
   FileText,
   Loader2,
   Menu,
+  Moon,
   Package,
   RefreshCcw,
   Server,
   ShoppingCart,
+  Sun,
   X,
   type LucideIcon,
 } from "lucide-react";
 
 import { useRefresh } from "../../RefreshContext";
+import { useTheme } from "../../ThemeContext";
 import {
   notificationService,
   type DatabaseNotification,
 } from "../../services/notification.service";
+import {
+  defaultNotificationPreferences,
+  NOTIFICATION_PREFERENCES_UPDATED_EVENT,
+  type NotificationPreferences,
+} from "../../services/notificationPreference.service";
 import {
   getNotificationDescription,
   getNotificationTone,
@@ -117,10 +125,12 @@ async function playGeneratedNotificationSound() {
   }
 }
 
-async function playNotificationSound() {
-  if (CUSTOM_NOTIFICATION_SOUND_URL) {
+async function playNotificationSound(customSoundUrl?: string | null) {
+  const soundUrl = String(customSoundUrl || CUSTOM_NOTIFICATION_SOUND_URL || "").trim();
+
+  if (soundUrl) {
     try {
-      const audio = new Audio(CUSTOM_NOTIFICATION_SOUND_URL);
+      const audio = new Audio(soundUrl);
       audio.preload = "auto";
       audio.volume = 0.85;
       await audio.play();
@@ -336,7 +346,9 @@ export default function Topbar({
   const knownUnreadIdsRef = useRef<Set<string>>(new Set());
   const hasLoadedNotificationsRef = useRef(false);
   const lastNotificationsFetchRef = useRef(0);
+  const notificationPreferencesRef = useRef<NotificationPreferences>(defaultNotificationPreferences);
   const { refreshing, refresh } = useRefresh();
+  const { theme, toggleTheme } = useTheme();
 
   const unreadCount = notifications.filter(
     (notification) => !notification.read_at
@@ -394,8 +406,13 @@ export default function Topbar({
         );
       }
 
-      void playNotificationSound();
-      showNativeNotification(newUnreadNotifications[0]);
+      if (notificationPreferencesRef.current.sound_enabled) {
+        void playNotificationSound(notificationPreferencesRef.current.custom_sound_url);
+      }
+
+      if (notificationPreferencesRef.current.browser_enabled) {
+        showNativeNotification(newUnreadNotifications[0]);
+      }
     }
 
     hasLoadedNotificationsRef.current = true;
@@ -406,7 +423,11 @@ export default function Topbar({
       setNotificationsLoading(true);
       setNotificationsError(null);
       lastNotificationsFetchRef.current = Date.now();
-      const data = await notificationService.getNotifications({ force });
+      const [data, preferences] = await Promise.all([
+        notificationService.getNotifications({ force }),
+        notificationService.getPreferences(),
+      ]);
+      notificationPreferencesRef.current = preferences;
       applyNotifications(data, true);
     } catch (error) {
       console.error("Error al cargar notificaciones:", error);
@@ -426,10 +447,13 @@ export default function Topbar({
       }
 
       lastNotificationsFetchRef.current = Date.now();
-      notificationService
-        .getNotifications({ force })
-        .then((data) => {
+      Promise.all([
+        notificationService.getNotifications({ force }),
+        notificationService.getPreferences(),
+      ])
+        .then(([data, preferences]) => {
           if (!cancelled) {
+            notificationPreferencesRef.current = preferences;
             applyNotifications(data, notifyNewUnread);
           }
         })
@@ -450,10 +474,12 @@ export default function Topbar({
       }
     };
     const handleRefresh = () => fetchNotifications(true, true);
+    const handlePreferencesUpdated = () => fetchNotifications(false, true);
 
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("erp:refreshed", handleRefresh);
+    window.addEventListener(NOTIFICATION_PREFERENCES_UPDATED_EVENT, handlePreferencesUpdated);
 
     return () => {
       cancelled = true;
@@ -461,6 +487,7 @@ export default function Topbar({
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("erp:refreshed", handleRefresh);
+      window.removeEventListener(NOTIFICATION_PREFERENCES_UPDATED_EVENT, handlePreferencesUpdated);
     };
   }, []);
 
@@ -573,23 +600,32 @@ export default function Topbar({
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-950 sm:px-4 lg:px-5">
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
-          className="p-3 rounded-2xl bg-slate-100 border border-slate-200 hover:bg-slate-200 transition"
+          className="rounded-2xl border border-slate-200 bg-slate-100 p-2.5 transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
           aria-label="Toggle sidebar"
           title="Ocultar / mostrar sidebar"
         >
-          <Menu size={22} className="text-slate-700" />
+          <Menu size={22} className="text-slate-700 dark:text-slate-200" />
         </button>
       </div>
 
       <div className="flex items-center gap-3 sm:gap-4">
         <button
+          onClick={toggleTheme}
+          className="relative rounded-2xl border border-slate-200 bg-slate-100 p-2.5 text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+          title={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+          aria-label={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+        >
+          {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
+
+        <button
           onClick={refresh}
           disabled={refreshing}
-          className="relative p-3 rounded-2xl bg-slate-100 text-slate-700 border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+          className="relative rounded-2xl border border-slate-200 bg-slate-100 p-2.5 text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
           title="Actualizar ERP"
           aria-label="Actualizar ERP"
         >
@@ -603,7 +639,9 @@ export default function Topbar({
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => {
-              void requestNativeNotificationPermission();
+              if (notificationPreferencesRef.current.browser_enabled) {
+                void requestNativeNotificationPermission();
+              }
               const nextOpen = !notificationsOpen;
 
               if (nextOpen) {
@@ -612,7 +650,7 @@ export default function Topbar({
 
               setNotificationsOpen(nextOpen);
             }}
-            className="relative p-3 sm:p-4 bg-gradient-to-br from-orange-500 to-red-500 text-white rounded-2xl shadow-lg hover:shadow-xl hover:scale-[1.05] active:scale-[0.98] transition-all duration-300 border border-orange-400/50"
+            className="relative p-3 bg-gradient-to-br from-orange-500 to-red-500 text-white rounded-2xl shadow-lg hover:shadow-xl hover:scale-[1.05] active:scale-[0.98] transition-all duration-300 border border-orange-400/50"
             aria-label="Notificaciones"
             title="Ver notificaciones"
           >
@@ -626,7 +664,7 @@ export default function Topbar({
           </button>
 
           {notificationsOpen && (
-            <div className="absolute top-20 right-0 w-[95vw] sm:w-[430px] lg:w-[480px] bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden z-50 max-h-[80vh]">
+            <div className="absolute top-16 right-0 w-[95vw] sm:w-[430px] lg:w-[480px] bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden z-50 max-h-[80vh]">
               <div className="p-5 sm:p-6 border-b border-slate-200 bg-gradient-to-r from-orange-50 to-red-50/50">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-3">

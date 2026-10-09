@@ -217,15 +217,15 @@ export default function ControlPagoProveedores() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
 
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
 
         {/* HEADER */}
-        <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900">
               Pago Facturas Proveedores
             </h1>
 
@@ -241,7 +241,7 @@ export default function ControlPagoProveedores() {
               setModoVista(false);
               setShowModal(true);
             }}
-            className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-medium text-white shadow-sm transition hover:bg-blue-700"
+            className="flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
           >
             <Plus size={18} />
             Nuevo Pago
@@ -250,10 +250,10 @@ export default function ControlPagoProveedores() {
         </div>
 
         {/* CARDS */}
-        <div className="mb-7 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
 
           {/* PENDIENTES */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
 
             <div className="flex items-center justify-between">
 
@@ -262,7 +262,7 @@ export default function ControlPagoProveedores() {
                   Pendientes
                 </p>
 
-                <h2 className="text-4xl font-bold text-gray-900 mt-2">
+                <h2 className="mt-1 text-2xl font-bold text-gray-900">
                   {
                     pagos.filter(
                       (p) => p.estado === "Pendiente"
@@ -271,9 +271,9 @@ export default function ControlPagoProveedores() {
                 </h2>
               </div>
 
-              <div className="w-14 h-14 rounded-2xl bg-red-100 flex items-center justify-center">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-100">
                 <HandCoins
-                  size={26}
+                  size={22}
                   className="text-red-600"
                 />
               </div>
@@ -283,7 +283,7 @@ export default function ControlPagoProveedores() {
           </div>
 
           {/* PAGADOS */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
 
             <div className="flex items-center justify-between">
 
@@ -292,7 +292,7 @@ export default function ControlPagoProveedores() {
                   Pagados
                 </p>
 
-                <h2 className="text-4xl font-bold text-gray-900 mt-2">
+                <h2 className="mt-1 text-2xl font-bold text-gray-900">
                   {
                     pagos.filter(
                       (p) => p.estado === "Pagado"
@@ -301,9 +301,9 @@ export default function ControlPagoProveedores() {
                 </h2>
               </div>
 
-              <div className="w-14 h-14 rounded-2xl bg-green-100 flex items-center justify-center">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-100">
                 <Save
-                  size={26}
+                  size={22}
                   className="text-green-600"
                 />
               </div>
@@ -313,7 +313,7 @@ export default function ControlPagoProveedores() {
           </div>
 
           {/* TOTAL */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
 
             <div className="flex items-center justify-between">
 
@@ -322,7 +322,7 @@ export default function ControlPagoProveedores() {
                   Total Soles
                 </p>
 
-                <h2 className="text-4xl font-bold text-gray-900 mt-2">
+                <h2 className="mt-1 text-2xl font-bold text-gray-900">
                   S/
                   {pagos
                     .reduce(
@@ -334,9 +334,9 @@ export default function ControlPagoProveedores() {
                 </h2>
               </div>
 
-              <div className="w-14 h-14 rounded-2xl bg-blue-100 flex items-center justify-center">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-100">
                 <CircleDollarSign
-                  size={26}
+                  size={22}
                   className="text-blue-600"
                 />
               </div>
@@ -348,13 +348,13 @@ export default function ControlPagoProveedores() {
         </div>
 
         {/* BUSCADOR */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-6">
+        <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-3">
 
             <div className="relative">
 
             <Search
               size={18}
-              className="absolute left-4 top-3.5 text-gray-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
             />
 
             <input
@@ -364,7 +364,7 @@ export default function ControlPagoProveedores() {
               onChange={(e) =>
                 setBusqueda(e.target.value)
               }
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 outline-none focus:ring-2 focus:ring-blue-500"
+              className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
             />
 
           </div>

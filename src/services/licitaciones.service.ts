@@ -125,6 +125,7 @@ export const saveOportunidad = async (opportunity: Oportunidad) => {
   const isPersisted = Boolean(opportunity.id) && !opportunity.id.startsWith("op-");
 
   if (isPersisted) {
+    delete (payload as Partial<typeof payload>).esNueva;
     const { data } = await api.put<any>(`/licitaciones/${opportunity.id}`, payload);
     return normalizeOpportunity(data);
   }

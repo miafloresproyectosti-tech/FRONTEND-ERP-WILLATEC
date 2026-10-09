@@ -229,18 +229,17 @@ export default function Auditoria() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <FileSearch className="h-8 w-8 text-slate-900" />
-            <h1 className="text-3xl font-bold text-slate-900">
+            <FileSearch className="h-6 w-6 text-slate-900" />
+            <h1 className="text-2xl font-bold text-slate-900">
               Auditoria del Sistema
             </h1>
           </div>
           <p className="mt-1 text-slate-500">
-            Acciones registradas por el backend en cotizaciones, OC, Kardex,
-            productos, proveedores, documentos y cambios relevantes.
+            Acciones registradas de los usuarios en los módulos y cambios relevantes.
           </p>
         </div>
 
@@ -263,9 +262,9 @@ export default function Auditoria() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
+          <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 px-3">
             <Search size={18} className="text-slate-500" />
             <input
               value={filters.search ?? ""}
@@ -275,7 +274,7 @@ export default function Auditoria() {
             />
           </label>
 
-          <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
+          <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 px-3">
             <Filter size={18} className="text-slate-500" />
             <select
               value={filters.event ?? ""}
@@ -293,7 +292,7 @@ export default function Auditoria() {
           <select
             value={filters.tipo ?? ""}
             onChange={(event) => updateFilter("tipo", event.target.value)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none"
+            className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none"
           >
             {tipoOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -305,7 +304,7 @@ export default function Auditoria() {
           <select
             value={filters.per_page ?? 10}
             onChange={(event) => updateFilter("per_page", Number(event.target.value))}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none"
+            className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none"
           >
             {perPageOptions.map((option) => (
               <option key={option} value={option}>
@@ -317,28 +316,16 @@ export default function Auditoria() {
 
         <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <input
-            value={filters.subject_id ?? ""}
-            onChange={(event) => updateFilter("subject_id", event.target.value)}
-            placeholder="ID de entidad"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none"
-          />
-          <input
-            value={filters.causer_id ?? ""}
-            onChange={(event) => updateFilter("causer_id", event.target.value)}
-            placeholder="ID de usuario"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none"
-          />
-          <input
             type="date"
             value={filters.date_from ?? ""}
             onChange={(event) => updateFilter("date_from", event.target.value)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none"
+            className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none"
           />
           <input
             type="date"
             value={filters.date_to ?? ""}
             onChange={(event) => updateFilter("date_to", event.target.value)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none"
+            className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none"
           />
         </div>
       </div>
@@ -350,7 +337,7 @@ export default function Auditoria() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {loading ? (
           <div className="flex items-center justify-center px-4 py-12 text-slate-500 lg:hidden">
             <Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-600" />

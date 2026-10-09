@@ -98,7 +98,7 @@ export default function LoginComponent() {
             className="max-w-45 max-h-45 object-contain"
           />
           <p className="text-xl text-blue-100 mb-8 leading-relaxed">
-            Sistema integral de gestión. Cotizaciones, clientes, inventario y reportes en tiempo real.
+            Centraliza tu gestión. Optimiza tus procesos. Impulsa tu negocio.
           </p>
           <div className="space-y-4">
             <div className="flex items-start gap-3 p-4 bg-white/10 backdrop-blur-sm rounded-2xl">
@@ -106,8 +106,8 @@ export default function LoginComponent() {
                 <span className="text-lg font-bold">✓</span>
               </div>
               <div>
-                <h3 className="text-lg font-bold mb-1">Cotizaciones Rápidas</h3>
-                <p className="text-blue-100 text-sm">Atiende a los cliente de manera continua y rápida</p>
+                <h3 className="text-lg font-bold mb-1">Gestión Ágil</h3>
+                <p className="text-blue-100 text-sm">Optimiza tus procesos y atiende a tus clientes de forma rápida y eficiente.</p>
               </div>
             </div>
             <div className="flex items-start gap-3 p-4 bg-white/10 backdrop-blur-sm rounded-2xl">
@@ -115,8 +115,8 @@ export default function LoginComponent() {
                 <span className="text-lg font-bold">✓</span>
               </div>
               <div>
-                <h3 className="text-lg font-bold mb-1">Gestión Empresarial</h3>
-                <p className="text-blue-100 text-sm">Control total de los procesos de la empresa</p>
+                <h3 className="text-lg font-bold mb-1">Control Empresarial</h3>
+                <p className="text-blue-100 text-sm">Centraliza la información y mantén el control de cada proceso de tu empresa.</p>
               </div>
             </div>
           </div>

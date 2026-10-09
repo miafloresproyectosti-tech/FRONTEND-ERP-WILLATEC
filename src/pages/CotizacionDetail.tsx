@@ -15,6 +15,7 @@ import { CotizacionGeneralForm } from '../components/cotizaciones/CotizacionGene
 import { CotizacionItemsTable } from '../components/cotizaciones/CotizacionItemsTable';
 import type { ItemForm } from '../types/cotizaciones.type';
 import { normalizeStorageImageUrl } from '../utils/storageImage';
+import { normalizeRole, rolePermissions } from '../utils/permissions';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { ExportModal } from '../components/cotizaciones/modals/ExportModal';
 import { ItemTypeModal } from '../components/cotizaciones/modals/ItemTypeModal';
@@ -50,7 +51,7 @@ import {
 } from '../services/cotizacion.service';
 import { addCotizacionRelacionada, getOportunidad, getOportunidadArchivo, getOportunidadByCotizacion } from '../services/licitaciones.service';
 import type { Oportunidad, OportunidadArchivo } from '../types/licitaciones';
-import { canPreviewFile, downloadFile } from '../utils/licitaciones';
+import { canPreviewFile, downloadFile, openFileInNewTab } from '../utils/licitaciones';
 import {
   ArrowLeft,
   Save,
@@ -92,6 +93,7 @@ interface CotizacionLocalDraft {
   version: number;
   savedAt: string;
   payload: any;
+  reason?: 'autosave' | 'conflict';
 }
 
 interface OpportunitySummary {
@@ -258,11 +260,13 @@ const convertirPrecioExternoAPlantilla = (
 export function CotizacionDetail() {
   const navigate = useNavigate();
   const { id, modificacionId } = useParams<{ id: string; modificacionId: string }>();
+  const location = useLocation();
   const { user } = useAuth();
   const { showToast, addNotification } = useNotifications();
 
   const isModificationMode = Boolean(modificacionId);
   const currentModificacionId = modificacionId ? parseInt(modificacionId) : null;
+  const isNewCotizacion = !isModificationMode && (id === 'new' || location.pathname === '/cotizaciones/new');
   const isEditing = !isModificationMode && id !== 'new' && id !== undefined;
   const currentCotizacionId = id && !isModificationMode ? parseInt(id) : null;
   const [exportandoPdf, setExportandoPdf] = useState(false);
@@ -276,12 +280,12 @@ export function CotizacionDetail() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [availableDraft, setAvailableDraft] = useState<CotizacionLocalDraft | null>(null);
   const [showDraftModal, setShowDraftModal] = useState(false);
+  const [conflictDraftNeedsReload, setConflictDraftNeedsReload] = useState(false);
   const baselineDraftRef = useRef<string>('');
   const lastSavedDraftRef = useRef<string>('');
   const allowNextNavigationRef = useRef(false);
 
   //LOCALIZACIÓN
-  const location = useLocation();
   const opportunityContext = useMemo(() => {
     const params = new URLSearchParams(location.search);
 
@@ -341,8 +345,11 @@ export function CotizacionDetail() {
   const [modoDistribucion, setModoDistribucion] = useState<'POR_ITEM' | 'POR_CANTIDAD'>('POR_ITEM');
   const [titulo, setTitulo] = useState('');
   const [formaPago, setFormaPago] = useState('AL CONTADO');
+  const [adelanto, setAdelanto] = useState(false);
+  const [adelantoPorcentaje, setAdelantoPorcentaje] = useState('');
   const [entregaProvincia, setEntregaProvincia] = useState(false);
   const [entregaDestino, setEntregaDestino] = useState('');
+  const [entregaMultidestino, setEntregaMultidestino] = useState(false);
   const [clienteContacto, setClienteContacto] = useState('');
   const selectedPlantilla = plantillas.find((plantilla) => Number(plantilla.id) === Number(plantillaId));
   const isAlquilerPlantilla = isPlantillaAlquiler(selectedPlantilla);
@@ -363,6 +370,7 @@ export function CotizacionDetail() {
   const [items, setItems] = useState<CotizacionItem[]>([]);
   const [costos, setCostos] = useState<CotizacionCostosAdicional[]>([]);
   const [historial, setHistorial] = useState<CotizacionHistorial[]>([]);
+  const [loadedCotizacionUpdatedAt, setLoadedCotizacionUpdatedAt] = useState<string | null>(null);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [productosSearchTerm, setProductosSearchTerm] = useState('');
   const debouncedProductosSearchTerm = useDebouncedValue(productosSearchTerm, 350);
@@ -370,10 +378,34 @@ export function CotizacionDetail() {
   const [productosTotal, setProductosTotal] = useState(0);
   const [usuarios, setUsuarios] = useState<ApiUser[]>([]);
   const [externalItemSuggestions, setExternalItemSuggestions] = useState<ItemForm[]>([]);
+  const multidestinoMissingDestinoWarnedRef = useRef(false);
 
   useEffect(() => {
     selectedClienteIdRef.current = clienteId;
   }, [clienteId]);
+
+  useEffect(() => {
+    if (!entregaMultidestino) {
+      multidestinoMissingDestinoWarnedRef.current = false;
+      return;
+    }
+
+    const hasMissingDestino = items.some((item) =>
+      item.destinos_entrega?.length
+        ? item.destinos_entrega.some((destino) => !destino.destino_entrega?.trim())
+        : !item.destino_entrega?.trim()
+    );
+
+    if (!hasMissingDestino || multidestinoMissingDestinoWarnedRef.current) return;
+
+    multidestinoMissingDestinoWarnedRef.current = true;
+    showToast({
+      title: 'Destino pendiente',
+      description: 'Hay items sin destino asignado. Se asumiran como Lima Metropolitana; asigna su destino y costo adicional si corresponde.',
+      type: 'warning',
+      duration: 5000,
+    } as any);
+  }, [entregaMultidestino, items, showToast]);
 
   const searchActiveClientes = useCallback(async (search = "") => {
     try {
@@ -535,7 +567,7 @@ export function CotizacionDetail() {
       return hydratedFile;
     } catch (error) {
       showToast({
-        title: 'No se pudo cargar el archivo',
+        title: 'No se pudo cargar el archivo' + error,
         description: 'Intenta nuevamente en unos segundos.',
         type: 'warning',
       });
@@ -562,8 +594,12 @@ export function CotizacionDetail() {
   // tipoCambio es ahora estado editable por el usuario
 
   // Verificar permisos del usuario actual sobre la cotización
-  const userRole = user?.role?.toUpperCase();
+  const userRole = normalizeRole(user?.role);
   const isSuperAdmin = userRole === 'SUPERADMIN';
+  const canOpenOportunidades =
+    rolePermissions[userRole]?.includes('*') ||
+    rolePermissions[userRole]?.includes('licitaciones');
+  const canCreateCotizacion = ['SUPERADMIN', 'VENTAS'].includes(userRole);
   const currentEstadoCotizacionId = Number(estadoCotizacionId);
   const currentDelegadoId = delegadoId === null || delegadoId === undefined ? null : Number(delegadoId);
   const currentDelegadoCotizacionId =
@@ -576,8 +612,8 @@ export function CotizacionDetail() {
       : Number(currentDelegadoCotizacionId);
   const isCotizacionCreator = Boolean(cotizacion && user && Number(cotizacion.user_id) === Number(user.id));
   const isCotizacionEditDelegate = Boolean(cotizacion && user && currentDelegadoCotizacionIdNumber === Number(user.id));
-  const canViewGanancia = !cotizacion || isCotizacionCreator || isSuperAdmin;
-  const canEditCotizacion = !cotizacion || isCotizacionCreator || isCotizacionEditDelegate;
+  const canViewGanancia = isNewCotizacion ? canCreateCotizacion : isCotizacionCreator || isSuperAdmin;
+  const canEditCotizacion = isNewCotizacion ? canCreateCotizacion : isCotizacionCreator || isCotizacionEditDelegate;
   const isCotizacionAprobada = currentEstadoCotizacionId === ESTADO_COTIZACION_APROBADA_ID;
   const modificacionPendiente = versionesInfo?.modificaciones?.find((item) =>
     item.estado === 'borrador' || item.estado === 'en_revision'
@@ -619,14 +655,34 @@ export function CotizacionDetail() {
     user &&
     (isSuperAdmin || currentDelegadoId === Number(user.id))
   );
+  const shouldReturnToPendingReview = isSuperAdmin || userRole === 'ADMIN';
+  const pendingReviewPath = '/cotizaciones?estado=pendientes_revision';
   const canChangeReviewEstado = Boolean(
     user && (isSuperAdmin || currentDelegadoId === Number(user.id))
+  );
+  const isNewCotizacionBlockedForRole = Boolean(
+    isNewCotizacion &&
+    user &&
+    !canCreateCotizacion
   );
   const isCotizacionReadOnly = selectedVersion
     ? true
     : isModificationMode
     ? !canEditModificacion
-    : isViewMode || !canEditCotizacion || isCotizacionAprobada;
+    : isNewCotizacion
+      ? isNewCotizacionBlockedForRole
+      : isViewMode || !canEditCotizacion || isCotizacionAprobada;
+
+  useEffect(() => {
+    if (!user || !isNewCotizacion || canCreateCotizacion) return;
+
+    showToast({
+      title: 'Acceso de solo lectura',
+      description: 'Tu rol puede ver cotizaciones y gestionar OC, pero no crear cotizaciones.',
+      type: 'warning',
+    });
+    navigate('/cotizaciones', { replace: true });
+  }, [canCreateCotizacion, isNewCotizacion, navigate, showToast, user]);
 
   useEffect(() => {
     if (!cotizacion) return;
@@ -723,6 +779,8 @@ export function CotizacionDetail() {
         disponibilidad_dias: Number(item.disponibilidad_dias || 4),
         orden: Number(item.orden || index + 1),
         aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
+        destino_entrega: item.destino_entrega || '',
+        destinos_entrega: Array.isArray(item.destinos_entrega) ? item.destinos_entrega : [],
         tipo: item.tipo || (item.producto_id ? 'catalogo' : 'externo'),
         imagen: imageForPreview || rawImage,
         imagen_url: imageForPreview || null,
@@ -739,6 +797,7 @@ export function CotizacionDetail() {
       tipo: costo.tipo || 'viaje',
       monto: Number(costo.monto || 0),
       descripcion: costo.descripcion || '',
+      destino_entrega: costo.destino_entrega || '',
     }));
 
   const applyEditablePayload = (payload: any, baseCotizacion?: Cotizacion | null) => {
@@ -753,8 +812,12 @@ export function CotizacionDetail() {
     setModoDistribucion(source.modo_distribucion || baseCotizacion?.modo_distribucion || 'POR_ITEM');
     setTitulo(source.titulo ?? baseCotizacion?.titulo ?? '');
     setFormaPago(source.forma_pago ?? baseCotizacion?.forma_pago ?? 'AL CONTADO');
+    const porcentajeAdelanto = source.adelanto_porcentaje ?? baseCotizacion?.adelanto_porcentaje ?? null;
+    setAdelanto(Boolean(source.adelanto ?? baseCotizacion?.adelanto ?? false));
+    setAdelantoPorcentaje(porcentajeAdelanto ? String(porcentajeAdelanto) : '');
     setEntregaProvincia(Boolean(source.entrega_provincia ?? baseCotizacion?.entrega_provincia ?? false));
     setEntregaDestino(source.entrega_destino ?? baseCotizacion?.entrega_destino ?? '');
+    setEntregaMultidestino(Boolean(source.entrega_multidestino ?? baseCotizacion?.entrega_multidestino ?? false));
     setClienteContacto(source.cliente_contacto ?? baseCotizacion?.cliente_contacto ?? baseCotizacion?.cliente?.contacto ?? '');
     setDelegadoId(source.delegado_id ?? baseCotizacion?.delegado_id ?? null);
     setDelegadoCotizacionId(
@@ -881,6 +944,8 @@ export function CotizacionDetail() {
     producto_externo_id: undefined,
     estado_cotizacion_item_id: undefined,
     aplica_costos_adicionales: true,
+    destino_entrega: '',
+    destinos_entrega: [],
     tipo: 'externo' as 'catalogo' | 'externo',
     margen: 20,
     nota: '',
@@ -898,56 +963,86 @@ export function CotizacionDetail() {
 
   useEffect(() => {
     const cantidad = Number(itemForm.cantidad || 0);
-    const costoBase = Number(itemForm.costo_base || 0);
-    const margen = Number(itemForm.margen || 0);
-    const costosTotal = costos.reduce((acc, costo) => acc + Number(costo.monto || 0), 0);
     const previewItems = showItemFormModal
       ? editingItemId
         ? items.map(item =>
-          item.id === editingItemId ? { ...item, cantidad, aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true } : item
+          item.id === editingItemId
+            ? {
+                ...item,
+                cantidad,
+                costo_base: Number(itemForm.costo_base || 0),
+                margen: Number(itemForm.margen || 0),
+                garantia_meses: Number(itemForm.garantia_meses || 0),
+                aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true,
+                destino_entrega: itemForm.destino_entrega || '',
+                destinos_entrega: itemForm.destinos_entrega || [],
+              }
+            : item
         )
-        : [...items, { cantidad, aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true } as CotizacionItem]
+        : [
+            ...items,
+            {
+              ...itemForm,
+              id: -1,
+              cantidad,
+              costo_base: Number(itemForm.costo_base || 0),
+              margen: Number(itemForm.margen || 0),
+              garantia_meses: Number(itemForm.garantia_meses || 0),
+              aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true,
+              destino_entrega: itemForm.destino_entrega || '',
+              destinos_entrega: itemForm.destinos_entrega || [],
+            } as CotizacionItem,
+          ]
       : items;
-    const totalCantidad = previewItems.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
-    const itemsConCostos =
-      modoDistribucion === 'POR_CANTIDAD'
-        ? previewItems
-        : previewItems.filter((item) => item.aplica_costos_adicionales !== false);
-    const itemsSeleccionados = itemsConCostos.length > 0 ? itemsConCostos : previewItems;
-    const totalCantidadSeleccionada = itemsSeleccionados.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
-    const divisor =
-      modoDistribucion === 'POR_CANTIDAD'
-        ? totalCantidad > 0 ? totalCantidad : 1
-        : totalCantidadSeleccionada > 0 ? totalCantidadSeleccionada : 1;
-    const costoExtraUnitario = costosTotal / divisor;
-    const itemAplicaCostos =
-      modoDistribucion === 'POR_CANTIDAD'
-        ? true
-        : itemForm.aplica_costos_adicionales !== false;
-    const aplicaCostoExtra = itemAplicaCostos;
-    const costoUnitario = costoBase + (aplicaCostoExtra ? costoExtraUnitario : 0);
-    const periodoMeses = Math.max(0, Number(itemForm.garantia_meses || 0));
-    const precioVentaBase = margen < 100 ? costoUnitario / (1 - margen / 100) : costoUnitario;
-    const precioVenta = precioVentaBase;
-    const subtotal = precioVenta * cantidad * (isAlquilerPlantilla ? periodoMeses : 1);
-    const costoTotal = costoUnitario * cantidad;
-    const gananciaItem = subtotal - costoTotal;
-    const ganancia = currentIncludeIgv ? gananciaItem / 1.18 : gananciaItem;
+    const { items: previewCalculados } = recalcularItems(
+      previewItems,
+      costos,
+      modoDistribucion,
+      currentIncludeIgv,
+      {
+        tipoCalculo: isAlquilerPlantilla ? "ALQUILER" : "VENTA",
+        entregaMultidestino,
+      }
+    );
+    const itemCalculado = editingItemId
+      ? previewCalculados.find((item) => item.id === editingItemId)
+      : previewCalculados.find((item) => item.id === -1);
 
-    setItemForm(prev => ({
-      ...prev,
-      costo_unitario: Number(costoUnitario.toFixed(2)),
-      costo_total: Number(costoTotal.toFixed(2)),
-      precio_venta: Number(precioVenta.toFixed(2)),
-      subtotal: Number(subtotal.toFixed(2)),
-      ganancia: Number(ganancia.toFixed(2)),
-    }));
+    if (!itemCalculado) return;
+
+    setItemForm(prev => {
+      const destinosCalculados = itemCalculado.destinos_entrega || prev.destinos_entrega || [];
+      const destinosChanged = JSON.stringify(prev.destinos_entrega || []) !== JSON.stringify(destinosCalculados);
+      const nextValues = {
+        costo_unitario: Number(itemCalculado.costo_unitario || 0),
+        costo_total: Number(itemCalculado.costo_total || 0),
+        precio_venta: Number(itemCalculado.precio_venta || 0),
+        subtotal: Number(itemCalculado.subtotal || 0),
+        ganancia: Number(itemCalculado.ganancia || 0),
+      };
+      const numbersChanged =
+        Number(prev.costo_unitario || 0) !== nextValues.costo_unitario ||
+        Number(prev.costo_total || 0) !== nextValues.costo_total ||
+        Number(prev.precio_venta || 0) !== nextValues.precio_venta ||
+        Number(prev.subtotal || 0) !== nextValues.subtotal ||
+        Number(prev.ganancia || 0) !== nextValues.ganancia;
+
+      if (!numbersChanged && !destinosChanged) return prev;
+
+      return {
+        ...prev,
+        ...nextValues,
+        ...(destinosChanged ? { destinos_entrega: destinosCalculados } : {}),
+      };
+    });
   }, [
     itemForm.costo_base,
     itemForm.margen,
     itemForm.cantidad,
     itemForm.garantia_meses,
     itemForm.aplica_costos_adicionales,
+    itemForm.destino_entrega,
+    itemForm.destinos_entrega,
     costos,
     items,
     editingItemId,
@@ -955,6 +1050,7 @@ export function CotizacionDetail() {
     modoDistribucion,
     currentIncludeIgv,
     isAlquilerPlantilla,
+    entregaMultidestino,
   ]);
 
   const [costoForm, setCostoForm] = useState({
@@ -963,6 +1059,7 @@ export function CotizacionDetail() {
     tipo: 'viaje',
     monto: 0,
     descripcion: '',
+    destino_entrega: '',
   });
 
   const handleOpenNewItem = () => {
@@ -993,6 +1090,7 @@ export function CotizacionDetail() {
       imagen_url: image || null,
       imagen_path: item.imagen_path || item.imagen || null,
       aplica_costos_adicionales: item.aplica_costos_adicionales ?? true,
+      destinos_entrega: item.destinos_entrega || [],
     });
 
     setShowItemFormModal(true);
@@ -1037,7 +1135,7 @@ export function CotizacionDetail() {
       } catch (error) {
         addNotification({
           title: 'Error',
-          description: 'Error al cargar productos',
+          description: 'Error al cargar productos' + error,
           message: 'Error al cargar productos',
           type: 'error',
           duration: 4000,
@@ -1143,7 +1241,7 @@ export function CotizacionDetail() {
       } catch (error) {
         addNotification({
           title: 'Error',
-          description: 'Error al cargar plataformas',
+          description: 'Error al cargar plataformas' + error,
           message: 'Error al cargar plataformas',
           type: 'error',
           duration: 4000,
@@ -1189,6 +1287,7 @@ export function CotizacionDetail() {
       setSelectedVersion(null);
       const data = await getCotizacion(currentCotizacionId);
       setCotizacion(data);
+      setLoadedCotizacionUpdatedAt(data.updated_at || null);
       setEstadoCotizacionId(Number(data.estado_cotizacion_id));
       setClienteId(Number(data.cliente_id));
       setPlantillaId(Number(data.plantilla_id));
@@ -1199,8 +1298,11 @@ export function CotizacionDetail() {
       setModoDistribucion(data.modo_distribucion);
       setTitulo(data.titulo);
       setFormaPago(data.forma_pago || 'AL CONTADO');
+      setAdelanto(Boolean(data.adelanto));
+      setAdelantoPorcentaje(data.adelanto_porcentaje ? String(data.adelanto_porcentaje) : '');
       setEntregaProvincia(Boolean(data.entrega_provincia));
       setEntregaDestino(data.entrega_destino || '');
+      setEntregaMultidestino(Boolean(data.entrega_multidestino));
       setClienteContacto(data.cliente_contacto || data.cliente?.contacto || '');
       setDelegadoId(data.delegado_id || null);
       setDelegadoCotizacionId(data.delegado_cotizacion_id ?? (data as any).delegadoCotizacionId ?? null);
@@ -1229,7 +1331,7 @@ export function CotizacionDetail() {
           const historialApi = await Promise.resolve([]).then(() => getCotizacionHistorial(currentCotizacionId));
           setHistorial(historialApi);
         } catch (historialError) {
-          console.warn('No se pudo cargar el historial de la cotizaciÃ³n', historialError);
+          console.warn('No se pudo cargar el historial de la cotización', historialError);
         }
       }
     } catch (error) {
@@ -1270,6 +1372,7 @@ export function CotizacionDetail() {
         console.warn('No se pudo cargar versiones de la cotizacion', versionError);
         setVersionesInfo(null);
       }
+
     } catch (error: any) {
       showToast({
         title: 'Error',
@@ -1296,6 +1399,45 @@ export function CotizacionDetail() {
         duration: 4000,
       } as any);
       return;
+    }
+
+    if (costos.length === 0) {
+      const continuar = window.confirm('La cotizacion no tiene costos adicionales. Revisa si corresponde agregar costos antes de enviarla a aprobacion. Deseas continuar de todos modos?');
+
+      if (!continuar) return;
+    }
+
+    if (entregaMultidestino) {
+      const hayItemsSinDestino = items.some((item) =>
+        item.destinos_entrega?.length
+          ? item.destinos_entrega.some((destino) => !destino.destino_entrega?.trim())
+          : !item.destino_entrega?.trim()
+      );
+      const destinosItems = new Set(items.flatMap((item) =>
+        item.destinos_entrega?.length
+          ? item.destinos_entrega.map((destino) => destino.destino_entrega?.trim() || 'Lima Metropolitana')
+          : [item.destino_entrega?.trim() || 'Lima Metropolitana']
+      ));
+      const destinosConCostos = new Set(costos.map((costo) => costo.destino_entrega?.trim() || 'Lima Metropolitana'));
+      const destinosSinCostos = Array.from(destinosItems).filter((destino) => !destinosConCostos.has(destino));
+
+      if (hayItemsSinDestino) {
+        showToast({
+          title: 'Destino asumido',
+          description: 'Hay items sin destino asignado. Se asumiran como Lima Metropolitana; asigna su destino y costo adicional si corresponde.',
+          type: 'warning',
+          duration: 5000,
+        } as any);
+      }
+
+      if (destinosSinCostos.length > 0) {
+        showToast({
+          title: 'Costos por destino',
+          description: `Hay destinos sin costos adicionales: ${destinosSinCostos.join(', ')}.`,
+          type: 'warning',
+          duration: 5000,
+        } as any);
+      }
     }
 
     setIsSendingReview(true);
@@ -1350,15 +1492,10 @@ export function CotizacionDetail() {
     await new Promise(r => setTimeout(r, 0)); // 🔥 fuerza un re-render antes del await pesado
     try {
       const data = await aprobarCotizacion(cotizacionId);
-      const historialApi = await getCotizacionHistorial(cotizacionId);
-
-      setEstadoCotizacionId(4);
-      setCotizacion(data);
-      setHistorial(historialApi);
-
       const approverName = user?.name || 'Superadministrador';
       const targetUserId = cotizacion?.user?.id || cotizacion?.user_id;
       const cotizacionNumero = data.numero || cotizacion?.numero || `#${cotizacionId}`;
+      const approverId = user?.id ? Number(user.id) : null;
 
       showToast({
         title: 'Cotización aprobada',
@@ -1368,7 +1505,7 @@ export function CotizacionDetail() {
         route: `/cotizaciones/${cotizacionId}/view`,
       } as any);
 
-      if (targetUserId) {
+      if (targetUserId && Number(targetUserId) !== approverId) {
         addNotification({
           title: 'Tu cotización fue aprobada',
           description: `La cotizacion ${cotizacionNumero} fue aprobada por ${approverName}`,
@@ -1378,6 +1515,17 @@ export function CotizacionDetail() {
           targetUserId,
         } as any);
       }
+
+      if (shouldReturnToPendingReview) {
+        navigate(pendingReviewPath, { replace: true });
+        return;
+      }
+
+      const historialApi = await getCotizacionHistorial(cotizacionId);
+
+      setEstadoCotizacionId(Number(data.estado_cotizacion_id || ESTADO_COTIZACION_APROBADA_ID));
+      setCotizacion(data);
+      setHistorial(historialApi);
     } catch (error: any) {
       showToast({
         title: 'Error al aprobar la cotización',
@@ -1420,17 +1568,14 @@ export function CotizacionDetail() {
     }
     try {
       const data = await rechazarCotizacion(cotizacionId, comentario);
-      const historialApi = await getCotizacionHistorial(cotizacionId);
 
-      setEstadoCotizacionId(5);
-      setCotizacion(data);
-      setHistorial(historialApi);
       setShowRechazoModal(false);
       setComentarioRechazo('');
 
       const approverName = user?.name || 'Superadministrador';
       const targetUserId = cotizacion?.user?.id || cotizacion?.user_id;
       const cotizacionNumero = data.numero || cotizacion?.numero || `#${cotizacionId}`;
+      const approverId = user?.id ? Number(user.id) : null;
 
       showToast({
         title: 'Cotización rechazada',
@@ -1440,7 +1585,7 @@ export function CotizacionDetail() {
         route: `/cotizaciones/${cotizacionId}/view`,
       } as any);
 
-      if (targetUserId) {
+      if (targetUserId && Number(targetUserId) !== approverId) {
         addNotification({
           title: 'Tu cotización fue rechazada',
           description: `La cotizacion ${cotizacionNumero} fue rechazada por ${approverName}`,
@@ -1450,6 +1595,17 @@ export function CotizacionDetail() {
           targetUserId,
         } as any);
       }
+
+      if (shouldReturnToPendingReview) {
+        navigate(pendingReviewPath, { replace: true });
+        return;
+      }
+
+      const historialApi = await getCotizacionHistorial(cotizacionId);
+
+      setEstadoCotizacionId(Number(data.estado_cotizacion_id || 5));
+      setCotizacion(data);
+      setHistorial(historialApi);
     } catch (error: any) {
       showToast({
         title: 'Error al rechazar la cotización',
@@ -1712,6 +1868,10 @@ export function CotizacionDetail() {
     const status = error?.response?.status;
     const data = error?.response?.data;
     const backendMessage = data?.message;
+    if (status === 409) {
+      return backendMessage || 'Esta cotizacion fue modificada por otro usuario mientras la editabas. Recarga la cotizacion antes de volver a guardar.';
+    }
+
     const validationErrors = data?.errors && typeof data.errors === 'object'
       ? Object.values(data.errors)
         .flat()
@@ -1726,6 +1886,10 @@ export function CotizacionDetail() {
 
     if (status === 413) {
       return 'El archivo o una imagen es demasiado pesada. Revisa las imágenes de los ítems e intenta nuevamente.';
+    }
+
+    if (status === 409) {
+      return backendMessage || 'Esta cotizacion fue modificada por otro usuario mientras la editabas. Recarga la cotizacion antes de volver a guardar.';
     }
 
     if (status === 422) {
@@ -1759,6 +1923,7 @@ export function CotizacionDetail() {
         ...item,
         ...primaryProveedor,
         proveedores,
+        destino_entrega: item.destino_entrega || '',
         costo_unitario: toMoneyValue(item.costo_unitario),
         precio_venta: toMoneyValue(item.precio_venta),
         costo_total: toMoneyValue(item.costo_total),
@@ -1768,6 +1933,16 @@ export function CotizacionDetail() {
       };
     });
     const clienteContactoValue = clienteContacto.trim();
+    const adelantoPorcentajeValue = Number(adelantoPorcentaje);
+
+    if (adelanto && (!Number.isFinite(adelantoPorcentajeValue) || adelantoPorcentajeValue <= 0 || adelantoPorcentajeValue >= 100)) {
+      showToast({
+        title: 'Porcentaje de adelanto inválido',
+        description: 'Ingresa un porcentaje mayor a 0 y menor a 100.',
+        type: 'warning',
+      });
+      return;
+    }
 
     const payload: any = {
       id: currentCotizacionId ?? modificacion?.cotizacion_id,
@@ -1779,8 +1954,11 @@ export function CotizacionDetail() {
       fecha: fecha || getLocalDateString(),
       titulo: titulo,
       forma_pago: formaPago,
+      adelanto: adelanto,
+      adelanto_porcentaje: adelanto ? adelantoPorcentajeValue : null,
       entrega_provincia: entregaProvincia,
       entrega_destino: entregaProvincia ? entregaDestino.trim() : '',
+      entrega_multidestino: entregaMultidestino,
       cliente_contacto: clienteContactoValue,
       tipo_cambio_soles_a_usd: tipoCambioSolesADolar,
       tipo_cambio_usd_a_soles: tipoCambioDolarASoles,
@@ -1805,7 +1983,31 @@ export function CotizacionDetail() {
       payload.delegado_cotizacion_id = delegadoCotizacionId;
     }
 
+    if (!isModificationMode && isEditing && currentCotizacionId && loadedCotizacionUpdatedAt) {
+      payload.last_known_updated_at = loadedCotizacionUpdatedAt;
+    }
+
     return payload;
+  };
+
+  const saveConflictDraft = (payload: any) => {
+    const draft: CotizacionLocalDraft = {
+      version: COTIZACION_DRAFT_VERSION,
+      savedAt: new Date().toISOString(),
+      payload,
+      reason: 'conflict',
+    };
+
+    try {
+      localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+      setAvailableDraft(draft);
+      setConflictDraftNeedsReload(true);
+      setShowDraftModal(true);
+      baselineDraftRef.current = JSON.stringify(payload);
+      lastSavedDraftRef.current = JSON.stringify(payload);
+    } catch (error) {
+      console.warn('No se pudo guardar el borrador local tras conflicto de cotizacion', error);
+    }
   };
 
   const handleSaveCotizacion = async () => {
@@ -1886,6 +2088,7 @@ export function CotizacionDetail() {
 
         // sincronizar estado local con respuesta del servidor
         setCotizacion(finalCotizacion);
+        setLoadedCotizacionUpdatedAt(finalCotizacion.updated_at || null);
         setEstadoCotizacionId(Number(finalCotizacion.estado_cotizacion_id || estadoCotizacionId));
         setDelegadoId(finalCotizacion.delegado_id || null);
         setDelegadoCotizacionId(finalCotizacion.delegado_cotizacion_id ?? (finalCotizacion as any).delegadoCotizacionId ?? null);
@@ -1926,6 +2129,7 @@ export function CotizacionDetail() {
           duration: 4000,
         } as any);
         setCotizacion(newCotizacion);
+        setLoadedCotizacionUpdatedAt(newCotizacion.updated_at || null);
       }
       clearLocalDraft();
       markCurrentStateAsSaved();
@@ -1933,6 +2137,9 @@ export function CotizacionDetail() {
       navigate(postSavePath);
     } catch (error: any) {
       console.error('Error al guardar cotización:', error);
+      if (error?.response?.status === 409) {
+        saveConflictDraft(payload);
+      }
       showToast({
         title: 'Error al guardar cotización',
         description: getCotizacionSaveErrorMessage(error),
@@ -1954,6 +2161,16 @@ export function CotizacionDetail() {
         duration: 4000,
       } as any);
 
+      return;
+    }
+    const destinosItem = entregaMultidestino ? (itemForm.destinos_entrega || []).filter((destino) => destino.destino_entrega?.trim() && Number(destino.cantidad || 0) > 0) : [];
+    const cantidadDestinos = destinosItem.reduce((acc, destino) => acc + Number(destino.cantidad || 0), 0);
+    if (entregaMultidestino && destinosItem.length > 0 && cantidadDestinos !== Number(itemForm.cantidad || 0)) {
+      addNotification({
+        message: `La suma de cantidades por destino (${cantidadDestinos}) debe coincidir con la cantidad del item (${itemForm.cantidad}).`,
+        type: 'warning',
+        duration: 5000,
+      } as any);
       return;
     }
     const proveedores = itemForm.tipo === 'externo' ? normalizeItemProveedores(itemForm) : [];
@@ -1993,6 +2210,8 @@ export function CotizacionDetail() {
 
       tipo: itemForm.tipo,
       aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true,
+      destino_entrega: itemForm.destino_entrega || '',
+      destinos_entrega: destinosItem,
 
       stock: 0,
 
@@ -2034,6 +2253,16 @@ export function CotizacionDetail() {
       } as any);
       return;
     }
+    const destinosItem = entregaMultidestino ? (itemForm.destinos_entrega || []).filter((destino) => destino.destino_entrega?.trim() && Number(destino.cantidad || 0) > 0) : [];
+    const cantidadDestinos = destinosItem.reduce((acc, destino) => acc + Number(destino.cantidad || 0), 0);
+    if (entregaMultidestino && destinosItem.length > 0 && cantidadDestinos !== Number(itemForm.cantidad || 0)) {
+      addNotification({
+        message: `La suma de cantidades por destino (${cantidadDestinos}) debe coincidir con la cantidad del item (${itemForm.cantidad}).`,
+        type: 'warning',
+        duration: 5000,
+      } as any);
+      return;
+    }
 
     const proveedores = itemForm.tipo === 'externo' ? normalizeItemProveedores(itemForm) : [];
     const primaryProveedor = getPrimaryProveedor(proveedores);
@@ -2059,6 +2288,8 @@ export function CotizacionDetail() {
             link_proveedor: primaryProveedor.link_proveedor,
             proveedores,
             aplica_costos_adicionales: itemForm.aplica_costos_adicionales ?? true,
+            destino_entrega: itemForm.destino_entrega || '',
+            destinos_entrega: destinosItem,
             stock: 0,
             imagen: itemForm.imagen || "",
             imagen_url: itemForm.imagen_url,
@@ -2104,6 +2335,38 @@ export function CotizacionDetail() {
         duration: 4000,
       } as any);
     }
+  };
+
+  const handleDeleteItems = (itemIds: number[]) => {
+    if (isCotizacionReadOnly || itemIds.length === 0) return;
+    if (!confirm(`Eliminar ${itemIds.length} items?`)) return;
+
+    setItems((prev) => prev.filter((item) => !itemIds.includes(Number(item.id))));
+    addNotification({
+      message: `${itemIds.length} items eliminados`,
+      type: 'success',
+      duration: 4000,
+    } as any);
+  };
+
+  const handleApplyDestinoMarginToAll = (destinoEntrega: string, margen: number, sourceItemId?: number) => {
+    const destinoKey = destinoEntrega.trim().toLowerCase();
+    if (!destinoKey) return;
+
+    setItems((prev) =>
+      prev.map((item) => {
+        if (Number(item.id) === Number(sourceItemId) || !item.destinos_entrega?.length) return item;
+
+        let changed = false;
+        const destinosActualizados = item.destinos_entrega.map((destino) => {
+          if ((destino.destino_entrega || '').trim().toLowerCase() !== destinoKey) return destino;
+          changed = true;
+          return { ...destino, margen };
+        });
+
+        return changed ? { ...item, destinos_entrega: destinosActualizados } : item;
+      })
+    );
   };
 
   // 🆕 CONTROL DE EXPORTACIÓN
@@ -2188,6 +2451,7 @@ export function CotizacionDetail() {
                 tipo: costoForm.tipo,
                 monto: Number(costoForm.monto),
                 descripcion: costoForm.descripcion || '',
+                destino_entrega: entregaMultidestino ? costoForm.destino_entrega || '' : '',
               }
             : costo
         )
@@ -2209,6 +2473,8 @@ export function CotizacionDetail() {
         monto: Number(costoForm.monto),
 
         descripcion: costoForm.descripcion || '',
+
+        destino_entrega: entregaMultidestino ? costoForm.destino_entrega || '' : '',
       };
 
       setCostos((prev) => [...prev, nuevoCosto]);
@@ -2226,9 +2492,8 @@ export function CotizacionDetail() {
       tipo: 'viaje',
       monto: 0,
       descripcion: '',
+      destino_entrega: '',
     });
-
-    // setShowCostosModal(false);
   };
 
 
@@ -2253,6 +2518,7 @@ export function CotizacionDetail() {
       tipo: costo.tipo,
       monto: Number(costo.monto || 0),
       descripcion: costo.descripcion || '',
+      destino_entrega: costo.destino_entrega || '',
     });
   };
 
@@ -2263,6 +2529,7 @@ export function CotizacionDetail() {
       tipo: 'viaje',
       monto: 0,
       descripcion: '',
+      destino_entrega: '',
     });
   };
 
@@ -2296,6 +2563,8 @@ export function CotizacionDetail() {
       producto_externo_id: undefined,
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
+      destino_entrega: '',
+      destinos_entrega: [],
       tipo: 'externo',
       margen: 20,
       nota: '',
@@ -2348,6 +2617,8 @@ export function CotizacionDetail() {
       precio_incluye_igv: currentIncludeIgv,
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
+      destino_entrega: '',
+      destinos_entrega: [],
       tipo: 'catalogo',
       margen: 0,
       nota: '',
@@ -2424,6 +2695,8 @@ export function CotizacionDetail() {
       imagen_path: suggestion.imagen_path || image || null,
       tipo: 'externo',
       aplica_costos_adicionales: suggestion.aplica_costos_adicionales ?? true,
+      destino_entrega: suggestion.destino_entrega || prev.destino_entrega || '',
+      destinos_entrega: suggestion.destinos_entrega || prev.destinos_entrega || [],
       importacion_calculo: null,
     }));
   };
@@ -2561,12 +2834,44 @@ export function CotizacionDetail() {
       producto_externo_id: undefined,
       estado_cotizacion_item_id: undefined,
       aplica_costos_adicionales: true,
+      destino_entrega: '',
+      destinos_entrega: [],
       tipo: 'externo' as 'catalogo' | 'externo',
       proveedor: '',
       link_proveedor: '',
       proveedores: [{ nombre: '', link: '', precio: null, notas: '' }],
       importacion_calculo: null,
     });
+  };
+
+  const destinosCotizacion = useMemo(() => {
+    const destinos = new Set<string>();
+
+    items.forEach((item) => {
+      if (item.destino_entrega?.trim()) destinos.add(item.destino_entrega.trim());
+      item.destinos_entrega?.forEach((destino) => {
+        if (destino.destino_entrega?.trim()) destinos.add(destino.destino_entrega.trim());
+      });
+    });
+    costos.forEach((costo) => {
+      if (costo.destino_entrega?.trim()) destinos.add(costo.destino_entrega.trim());
+    });
+
+    destinos.add('Lima Metropolitana');
+
+    return Array.from(destinos).sort((a, b) => a.localeCompare(b));
+  }, [items, costos]);
+
+  const handleChangeItemDestino = (itemId: number, destino: string) => {
+    if (isCotizacionReadOnly) return;
+
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? { ...item, destino_entrega: destino }
+          : item
+      )
+    );
   };
 
   //RECALCULO DE ITEMS
@@ -2579,9 +2884,12 @@ export function CotizacionDetail() {
       costos,
       modoDistribucion,
       currentIncludeIgv,
-      { tipoCalculo: isAlquilerPlantilla ? "ALQUILER" : "VENTA" }
+      {
+        tipoCalculo: isAlquilerPlantilla ? "ALQUILER" : "VENTA",
+        entregaMultidestino,
+      }
     );
-  }, [items, costos, modoDistribucion, currentIncludeIgv, isAlquilerPlantilla]);
+  }, [items, costos, modoDistribucion, currentIncludeIgv, isAlquilerPlantilla, entregaMultidestino]);
 
   const buildDraftSnapshot = useCallback(() => {
     if (isCotizacionReadOnly) return '';
@@ -2611,6 +2919,7 @@ export function CotizacionDetail() {
     formaPago,
     entregaProvincia,
     entregaDestino,
+    entregaMultidestino,
     tipoCambioSolesADolar,
     tipoCambioDolarASoles,
     validezDias,
@@ -2639,6 +2948,7 @@ export function CotizacionDetail() {
 
     setAvailableDraft(null);
     setShowDraftModal(false);
+    setConflictDraftNeedsReload(false);
     lastSavedDraftRef.current = '';
   }, [draftStorageKey]);
 
@@ -2685,6 +2995,7 @@ export function CotizacionDetail() {
         JSON.stringify(parsedDraft.payload) !== snapshot
       ) {
         setAvailableDraft(parsedDraft);
+        setConflictDraftNeedsReload(false);
         setShowDraftModal(true);
       }
     } catch (error) {
@@ -2791,6 +3102,11 @@ export function CotizacionDetail() {
     markCurrentStateAsSaved();
   };
 
+  const reloadAfterConflictDraft = () => {
+    allowProgrammaticNavigation();
+    window.location.reload();
+  };
+
   const estadoLabels: Record<number, string> = {
     1: 'Borrador',
     2: 'Enviada',
@@ -2853,17 +3169,17 @@ export function CotizacionDetail() {
   // const selectedCliente = clientes.find(c => c.id === clienteId);
 
   return (
-    <div className="p-8 space-y-6 text-gray-900">
+    <div className="space-y-4 text-gray-900">
       {/* HEADER */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button onClick={() => guardedNavigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg">
-            <ArrowLeft className="w-6 h-6 text-gray-600" />
+        <div className="flex items-center gap-3">
+          <button onClick={() => guardedNavigate(-1)} className="rounded-lg p-2 hover:bg-gray-100">
+            <ArrowLeft className="h-5 w-5 text-gray-600" />
           </button>
           <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
             {cotizacion?.estado_cotizacion_id === 1 && (
-              <CheckCircle className="text-green-500 w-6 h-6" />
+              <CheckCircle className="h-5 w-5 text-green-500" />
             )}
 
             {isEditing ? 'Editar Cotización' : 'Nueva Cotización'}
@@ -2975,6 +3291,16 @@ export function CotizacionDetail() {
               </div>
               <h2 className="text-lg font-bold text-slate-950">{opportunitySummary.empresa || 'Empresa no definida'}</h2>
               <p className="mt-1 text-sm font-semibold text-blue-900">{opportunitySummary.requerimiento || 'Requerimiento no definido'}</p>
+              {canOpenOportunidades && opportunitySummary.id && (
+                <button
+                  type="button"
+                  onClick={() => guardedNavigate(`/seguimiento-licitaciones?oportunidad_id=${opportunitySummary.id}`)}
+                  className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Ver oportunidad
+                </button>
+              )}
             </div>
             <div className="grid min-w-0 grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:w-[520px]">
               <div className="rounded-xl bg-white/80 px-3 py-2">
@@ -3105,10 +3431,16 @@ export function CotizacionDetail() {
 
             formaPago={formaPago}
             setFormaPago={setFormaPago}
+            adelanto={adelanto}
+            setAdelanto={setAdelanto}
+            adelantoPorcentaje={adelantoPorcentaje}
+            setAdelantoPorcentaje={setAdelantoPorcentaje}
             entregaProvincia={entregaProvincia}
             setEntregaProvincia={setEntregaProvincia}
             entregaDestino={entregaDestino}
             setEntregaDestino={setEntregaDestino}
+            entregaMultidestino={entregaMultidestino}
+            setEntregaMultidestino={setEntregaMultidestino}
             clienteContacto={clienteContacto}
             setClienteContacto={setClienteContacto}
 
@@ -3142,9 +3474,13 @@ export function CotizacionDetail() {
             estadoCotizacionId={estadoCotizacionId}
             setEstadoCotizacionId={setEstadoCotizacionId}
             onDeleteItem={handleDeleteItem}
+            onDeleteItems={handleDeleteItems}
             onOpenEdit={handleOpenEditItem}
             onReorderItems={handleReorderItems}
             onToggleAplicaCostosAdicionales={handleToggleAplicaCostosAdicionales}
+            entregaMultidestino={entregaMultidestino}
+            destinos={destinosCotizacion}
+            onDestinoChange={handleChangeItemDestino}
             todosItemsAprobados={todosItemsAprobados}
             onApproveAll={() => setEstadoCotizacionId(4)}
 
@@ -3579,34 +3915,65 @@ export function CotizacionDetail() {
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="border-b border-gray-100 px-6 py-4">
-              <h2 className="text-lg font-bold text-gray-900">Borrador encontrado</h2>
+              <h2 className="text-lg font-bold text-gray-900">
+                {conflictDraftNeedsReload ? 'Cotizacion actualizada por otro usuario' : 'Borrador encontrado'}
+              </h2>
               <p className="mt-1 text-sm text-gray-500">
-                Hay cambios no guardados de esta cotizacion en este equipo.
+                {conflictDraftNeedsReload
+                  ? 'Tus cambios se guardaron como borrador local para que no pierdas tu trabajo.'
+                  : 'Hay cambios no guardados de esta cotizacion en este equipo.'}
               </p>
             </div>
             <div className="space-y-3 px-6 py-5 text-sm text-gray-600">
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
                 Ultimo guardado local: {new Date(availableDraft.savedAt).toLocaleString('es-PE')}
               </div>
-              <p>
-                Puedes recuperar el borrador para continuar editando, o descartarlo y seguir con la version cargada del sistema.
-              </p>
+              {conflictDraftNeedsReload ? (
+                <p>
+                  Otra persona guardo esta cotizacion antes que tu. Recarga para traer la version vigente; al abrir nuevamente podras recuperar este borrador local.
+                </p>
+              ) : (
+                <p>
+                  Puedes recuperar el borrador para continuar editando, o descartarlo y seguir con la version cargada del sistema.
+                </p>
+              )}
             </div>
             <div className="flex flex-col-reverse gap-2 border-t border-gray-100 px-6 py-4 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={discardLocalDraft}
-                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-              >
-                Descartar
-              </button>
-              <button
-                type="button"
-                onClick={restoreLocalDraft}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-              >
-                Recuperar borrador
-              </button>
+              {conflictDraftNeedsReload ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowDraftModal(false)}
+                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Seguir revisando
+                  </button>
+                  <button
+                    type="button"
+                    onClick={reloadAfterConflictDraft}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Recargar cotizacion
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={discardLocalDraft}
+                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Descartar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={restoreLocalDraft}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Recuperar borrador
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -3651,6 +4018,9 @@ export function CotizacionDetail() {
         onSelectExternalSuggestion={handleExternalSuggestionSelection}
         isAlquiler={isAlquilerPlantilla}
         costoSinIgv={!currentIncludeIgv}
+        entregaMultidestino={entregaMultidestino}
+        destinos={destinosCotizacion}
+        onApplyDestinoMarginToAll={handleApplyDestinoMarginToAll}
       />
 
       {/* 4. Modal Costos Adicionales */}
@@ -3666,6 +4036,8 @@ export function CotizacionDetail() {
         onCancelEditCosto={handleCancelEditCosto}
         readOnly={isCotizacionReadOnly}
         simboloMoneda={simboloMoneda}
+        entregaMultidestino={entregaMultidestino}
+        destinos={destinosCotizacion}
       />
 
       {showRechazoModal && (
@@ -3820,13 +4192,31 @@ export function CotizacionDetail() {
       {/* 5. Modal Exportación */}
       {previewOpportunityFile && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
               <div className="min-w-0">
                 <p className="text-xs font-bold uppercase text-slate-500">Archivo de oportunidad</p>
                 <h3 className="truncate text-lg font-bold text-slate-900">{previewOpportunityFile.nombre}</h3>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const opened = openFileInNewTab(previewOpportunityFile);
+                    if (!opened) {
+                      showToast({
+                        title: 'No se pudo abrir la pestaña',
+                        description: 'El navegador bloqueó la apertura. Usa Descargar para revisar el archivo.',
+                        type: 'warning',
+                        duration: 4000,
+                      } as any);
+                    }
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Abrir en pestaña
+                </button>
                 <button
                   type="button"
                   onClick={() => downloadFile(previewOpportunityFile)}
@@ -3845,7 +4235,7 @@ export function CotizacionDetail() {
                 </button>
               </div>
             </div>
-            <div className="overflow-auto bg-slate-50 p-4">
+            <div className="min-h-0 flex-1 overflow-auto bg-slate-50 p-4">
               <OpportunityFilePreview file={previewOpportunityFile} />
             </div>
           </div>
@@ -3881,11 +4271,11 @@ function OpportunityFilePreview({ file }: { file: OportunidadArchivo }) {
   }
 
   if ((file.tipo || '').includes('image')) {
-    return <img src={file.dataUrl} alt={file.nombre} className="mx-auto max-h-[70vh] w-full rounded-xl object-contain" />;
+    return <img src={file.dataUrl} alt={file.nombre} className="mx-auto h-full max-h-[82vh] w-full rounded-xl object-contain" />;
   }
 
   if ((file.tipo || '').includes('pdf')) {
-    return <iframe title={file.nombre} src={file.dataUrl} className="h-[70vh] w-full rounded-xl border border-slate-200 bg-white" />;
+    return <iframe title={file.nombre} src={file.dataUrl} className="h-[82vh] w-full rounded-xl border border-slate-200 bg-white" />;
   }
 
   return (
