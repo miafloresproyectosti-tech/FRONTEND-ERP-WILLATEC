@@ -1022,7 +1022,7 @@ export default function InventarioMovimientos() {
             </h1>
           </div>
           <p className="mt-1 text-slate-500">
-            Control valorizado por producto: entradas, salidas, saldo, costo promedio y documentos.
+            Control de los productos: Entradas, Salidas, Saldo, y Documentos.
           </p>
         </div>
 
@@ -1117,16 +1117,6 @@ export default function InventarioMovimientos() {
           </label>
 
           <label className="text-xs font-semibold text-gray-500">
-            IP origen
-            <input
-              value={filters.ip_origen ?? ""}
-              onChange={(event) => updateFilter("ip_origen", event.target.value)}
-              placeholder="192.168..."
-              className="mt-1 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm text-gray-700 outline-none"
-            />
-          </label>
-
-          <label className="text-xs font-semibold text-gray-500">
             Serie
             <input
               value={filters.serie ?? ""}
@@ -1157,16 +1147,6 @@ export default function InventarioMovimientos() {
           </label>
 
           <label className="text-xs font-semibold text-gray-500">
-            Usuario ID
-            <input
-              value={filters.created_by ?? ""}
-              onChange={(event) => updateFilter("created_by", event.target.value)}
-              placeholder="ID"
-              className="mt-1 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm text-gray-700 outline-none"
-            />
-          </label>
-
-          <label className="text-xs font-semibold text-gray-500">
             Desde
             <input
               type="date"
@@ -1186,20 +1166,6 @@ export default function InventarioMovimientos() {
             />
           </label>
 
-          <label className="text-xs font-semibold text-gray-500">
-            Filas
-            <select
-              value={filters.per_page ?? 10}
-              onChange={(event) => updateFilter("per_page", Number(event.target.value))}
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
-            >
-              {perPageOptions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
 
         <div className="mt-4 flex justify-end">
@@ -1592,13 +1558,29 @@ export default function InventarioMovimientos() {
             Mostrando {meta.from ?? 0}-{meta.to ?? 0} de {meta.total}
           </div>
           <div className="flex items-center gap-2">
+            <label className="mr-2 flex items-center gap-2 text-sm text-gray-500">
+              <span>Filas</span>
+
+              <select
+                value={filters.per_page ?? 10}
+                onChange={(event) =>
+                  updateFilter("per_page", Number(event.target.value))
+                }
+                className="h-9 rounded-lg border border-gray-200 bg-white px-2 text-sm font-medium text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              >
+                {perPageOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               disabled={meta.current_page <= 1 || loading}
               onClick={() => updateFilter("page", meta.current_page - 1)}
               className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <ChevronLeft className="h-4 w-4" />
-              Anterior
             </button>
             <span className="text-sm font-semibold text-gray-700">
               {meta.current_page} / {meta.last_page}
@@ -1608,7 +1590,6 @@ export default function InventarioMovimientos() {
               onClick={() => updateFilter("page", meta.current_page + 1)}
               className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Siguiente
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
