@@ -187,6 +187,7 @@ export default function SeguimientoLicitaciones() {
   const debouncedSearch = useDebouncedValue(filters.search, 250);
   const [sortKey, setSortKey] = useState<OportunidadSortKey>("vigencia");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [soloUrgentes, setSoloUrgentes] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
@@ -379,12 +380,22 @@ export default function SeguimientoLicitaciones() {
     });
   }, [activeBandeja, currentRole, isAssignedToOtherSalesExecutive, isAttentionOpportunity, isAvailableOpportunity, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
 
+  const isUrgentOpportunity = (item: Oportunidad): boolean => {
+  if (isClosedOpportunity(item.estado)) return false;
+
+  const remaining = new Date(item.vigencia).getTime() - Date.now();
+  const warningLimit = 72 * 60 * 60 * 1000;
+
+  return remaining > 0 && remaining <= warningLimit;
+};
+
   const filteredOpportunities = useMemo(() => {
     const search = normalizeText(debouncedSearch);
     const vigenciaDesdeTime = filters.vigenciaDesde ? new Date(filters.vigenciaDesde).getTime() : null;
     const vigenciaHastaTime = filters.vigenciaHasta ? new Date(filters.vigenciaHasta).getTime() : null;
 
     return scopedOpportunities
+      .filter((item) => !soloUrgentes || isUrgentOpportunity(item))
       .filter((item) => filters.tipo === "todos" || item.tipo === filters.tipo)
       .filter((item) => filters.estado === "todos" || item.estado === filters.estado)
       .filter((item) => {
@@ -405,6 +416,9 @@ export default function SeguimientoLicitaciones() {
         return normalizeText(`${item.empresa} ${item.requerimiento}`).includes(search);
       })
       .sort((a, b) => {
+        if (soloUrgentes) {
+          return new Date(a.vigencia).getTime() - new Date(b.vigencia).getTime();
+        }
         if (currentRole === "LICITACIONES") {
           const dateA = new Date(a.creadoEn).getTime();
           const dateB = new Date(b.creadoEn).getTime();
@@ -431,7 +445,7 @@ export default function SeguimientoLicitaciones() {
         const [first, second] = values[sortKey];
         return String(first).localeCompare(String(second), "es", { numeric: true }) * direction;
       });
-  }, [activeBandeja, currentRole, debouncedSearch, filters, isSalesRole, scopedOpportunities, sortDirection, sortKey]);
+  }, [activeBandeja, currentRole, debouncedSearch, filters, isSalesRole, scopedOpportunities, soloUrgentes, sortDirection, sortKey]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOpportunities.length / itemsPerPage));
   const paginationItems = getPaginationItems(currentPage, totalPages);
@@ -1413,7 +1427,7 @@ export default function SeguimientoLicitaciones() {
         </div>
       )}
 
-      {upcomingDueOpportunities.length > 0 && (
+      {(upcomingDueOpportunities.length > 0 || soloUrgentes) && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-100">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 items-start gap-3">
@@ -1427,20 +1441,26 @@ export default function SeguimientoLicitaciones() {
                     : `${upcomingDueOpportunities.length} oportunidades proximas a vencer`}
                 </p>
                 <p className="mt-1 text-xs font-medium text-amber-800/90 dark:text-amber-100/80">
-                  La mas cercana vence {formatDateTime(upcomingDueOpportunities[0].vigencia)}: {upcomingDueOpportunities[0].empresa} - {upcomingDueOpportunities[0].requerimiento}
+                  {upcomingDueOpportunities.length > 0
+                    ? `La más cercana vence ${formatDateTime(upcomingDueOpportunities[0].vigencia)}: ${upcomingDueOpportunities[0].empresa} - ${upcomingDueOpportunities[0].requerimiento}`
+                    : "Ya no hay oportunidades próximas a vencer en esta bandeja."}
                 </p>
               </div>
             </div>
             <button
               type="button"
               onClick={() => {
-                setSortKey("vigencia");
-                setSortDirection("asc");
+                setSoloUrgentes((current) => !current);
                 setCurrentPage(1);
               }}
-              className="inline-flex h-10 items-center justify-center rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-800 shadow-sm hover:bg-amber-100 dark:border-amber-500/50 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-900/50"
+              aria-pressed={soloUrgentes}
+              className={`inline-flex h-10 items-center justify-center rounded-xl border px-4 text-sm font-semibold shadow-sm transition ${
+                soloUrgentes
+                  ? "border-amber-600 bg-amber-600 text-white hover:bg-amber-700"
+                  : "border-amber-300 bg-white text-amber-800 hover:bg-amber-100 dark:border-amber-500/50 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-900/50"
+              }`}
             >
-              Ver primero las urgentes
+              {soloUrgentes ? "Mostrar todas" : "Mostrar solo urgentes"}
             </button>
           </div>
         </div>
@@ -1456,6 +1476,7 @@ export default function SeguimientoLicitaciones() {
                 type="button"
                 onClick={() => {
                   setActiveBandeja(bandeja.key);
+                  setSoloUrgentes(false);
                   setCurrentPage(1);
                 }}
                 className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
