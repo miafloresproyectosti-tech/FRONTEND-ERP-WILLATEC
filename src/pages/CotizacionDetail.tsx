@@ -22,6 +22,7 @@ import { ItemTypeModal } from '../components/cotizaciones/modals/ItemTypeModal';
 import { ProductModal } from '../components/cotizaciones/modals/ProductModal';
 import { ItemFormModal } from '../components/cotizaciones/modals/ItemFormModal';
 import { CostosModal } from '../components/cotizaciones/modals/CostosModal';
+import { CotizacionCambiosModal} from '../components/cotizaciones/modals/CotizacionCambiosModal';
 import {
   getCotizacion,
   createCotizacion,
@@ -72,6 +73,11 @@ import {
   Eye,
   Download,
   FileText,
+  GitCompareArrows,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  MessageSquareText,
 } from 'lucide-react';
 
 const ESTADO_COTIZACION_APROBADA_ID = 4;
@@ -470,6 +476,10 @@ export function CotizacionDetail() {
   const [modificacion, setModificacion] = useState<CotizacionModificacion | null>(null);
   const [versionesInfo, setVersionesInfo] = useState<CotizacionVersionesResponse | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<CotizacionVersion | null>(null);
+  const [comparacionVersion, setComparacionVersion] = useState<{anterior: CotizacionVersion, nueva: CotizacionVersion} | null>(null);
+  const [showCambiosModal, setShowCambiosModal] = useState(false);
+  const [modificacionCompararId, setModificacionCompararId] = useState<number | null>(null);
+  const [historialExpandido, setHistorialExpandido] = useState(true)
   const [comentarioRevisionModificacion, setComentarioRevisionModificacion] = useState('');
 
   const [estadoCotizacionId, setEstadoCotizacionId] = useState<number>(1);
@@ -842,6 +852,24 @@ export function CotizacionDetail() {
     applyEditablePayload(snapshotPayload, cotizacion);
     setEstadoCotizacionId(Number((snapshotCotizacion as any).estado_cotizacion_id || ESTADO_COTIZACION_APROBADA_ID));
   };
+
+  const handleVerCambiosVersion = (version: CotizacionVersion) => {
+    if(!versionesInfo) return;
+
+    const anterior = versionesInfo.versiones.find(
+      (item) => Number(item.version_number) === Number(version.version_number) - 1
+    );
+
+    if (!anterior){
+      alert('No existe una versión anterior para comparar.');
+      return;
+    }
+
+    setComparacionVersion({
+      anterior,
+      nueva: version,
+    })
+  }
 
   const handleVolverVersionVigente = () => {
     setSelectedVersion(null);
@@ -3576,113 +3604,312 @@ export function CotizacionDetail() {
           )}
 
           {versionesInfo && (
-            <div className="bg-white rounded-xl shadow-sm border p-6 text-gray-900">
-              <h2 className="text-base font-semibold text-gray-800 mb-3">
-                Versiones
-              </h2>
-              <div className="space-y-2">
-                {versionesInfo.versiones.map((version) => (
-                  <button
-                    key={version.id}
-                    type="button"
-                    onClick={() => handleSelectVersion(version)}
-                    className={`w-full flex items-center justify-between rounded-lg border px-3 py-2 text-sm text-left transition ${
-                      selectedVersion?.id === version.id
-                        ? 'border-slate-900 bg-slate-900 text-white'
-                        : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 p-5">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
+                    <History className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">
+                      Historial de versiones
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      {versionesInfo.versiones.length} versiones registradas
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setHistorialExpandido(!historialExpandido)}
+                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                  aria-label={historialExpandido ? "Contraer historial" : "Expandir historial"}
+                >
+                  {historialExpandido
+                    ? <ChevronUp className="h-5 w-5" />
+                    : <ChevronDown className="h-5 w-5" />}
+                </button>
+              </div>
+
+              {historialExpandido && (
+                  <div
+                    className="
+                      max-h-[560px]
+                      overflow-y-auto
+                      overscroll-contain
+                      space-y-3
+                      p-4
+                      scrollbar-thin
+                      scrollbar-thumb-slate-300
+                      scrollbar-track-transparent
+                    "
+                  >
+            {[...versionesInfo.versiones]
+              .sort((a, b) => Number(b.version_number) - Number(a.version_number))
+              .map((version) => {
+                const vigente =
+                  Number(version.version_number) ===
+                  Number(versionesInfo.version_vigente);
+
+            const seleccionada = selectedVersion?.id === version.id;
+
+            const modificacion = versionesInfo.modificaciones.find(
+              (item) =>
+                Number(item.version_number) === Number(version.version_number) &&
+                item.estado === "aprobada"
+            );
+
+            const autoaprobada =
+              modificacion?.comentario_revision
+                ?.toLowerCase()
+                .includes("aprobacion automatica") ?? false;
+
+            return (
+              <div
+                key={version.id}
+                className={`rounded-xl border p-4 transition ${
+                  seleccionada
+                    ? "border-blue-400 bg-blue-50/60"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-slate-900">
+                    {version.numero_version}
+                  </h3>
+
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                      vigente
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-slate-100 text-slate-600"
                     }`}
                   >
-                    <span className={`font-medium ${selectedVersion?.id === version.id ? 'text-white' : 'text-gray-700'}`}>
-                      {version.numero_version}
+                    {vigente ? "Vigente" : "Histórica"}
+                  </span>
+                </div>
+
+                {modificacion && (
+                  <div className="mt-3 space-y-2">
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                        autoaprobada
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-blue-50 text-blue-700"
+                      }`}
+                    >
+                      {autoaprobada
+                        ? "Autoaprobada"
+                        : "Aprobación manual"}
                     </span>
-                    <span className={`text-xs ${selectedVersion?.id === version.id ? 'text-slate-200' : 'text-gray-500'}`}>
-                      {Number(version.version_number) === Number(versionesInfo.version_vigente) ? 'Vigente' : 'Historica'}
-                    </span>
-                  </button>
-                ))}
-                {versionesInfo.modificaciones.map((item) => (
+
+                    <p className="text-sm text-slate-700">
+                      {modificacion.motivo}
+                    </p>
+
+                    <p className="text-xs text-slate-500">
+                      Solicitante:{" "}
+                      {[
+                        modificacion.solicitante?.nombres,
+                        modificacion.solicitante?.apellidos,
+                      ].filter(Boolean).join(" ") ||
+                        modificacion.solicitante?.email ||
+                        "No identificado"}
+                    </p>
+
+                    {modificacion.comentario_revision?.trim() && (
+                      <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                        <span className="font-semibold">Revisión: </span>
+                        {modificacion.comentario_revision}
+                      </div>
+                    )}
+
+                    {modificacion.comentario_reenvio_revision?.trim() && (
+                      <p className="text-xs text-slate-500">
+                        Reenvío: {modificacion.comentario_reenvio_revision}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {version.approved_at && (
+                  <p className="mt-3 text-xs text-slate-400">
+                    {new Date(version.approved_at).toLocaleString("es-PE")}
+                  </p>
+                )}
+
+                <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
                   <button
-                    key={`mod-${item.id}`}
                     type="button"
-                    onClick={() => guardedNavigate(`/cotizaciones/modificaciones/${item.id}/edit`)}
-                    className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-left transition hover:border-amber-300 hover:bg-amber-100"
+                    onClick={() => handleSelectVersion(version)}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    <Eye className="mr-1 inline h-4 w-4" />
+                    Ver versión
+                  </button>
+
+                  {Number(version.version_number) > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleVerCambiosVersion(version)}
+                      className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+                    >
+                      <GitCompareArrows className="mr-1 inline h-4 w-4" />
+                      Ver cambios
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {versionesInfo.modificaciones
+                .filter((item) => item.estado !== "aprobada")
+                .map((item) => (
+                  <div
+                    key={`mod-${item.id}`}
+                    className="rounded-xl border border-amber-200 bg-amber-50/60 p-4"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-amber-900">Propuesta V{item.version_number}</span>
-                      <span className="text-xs text-amber-700">{item.estado.replace('_', ' ')}</span>
+                      <h3 className="text-sm font-bold text-amber-900">
+                        Propuesta V{item.version_number}
+                      </h3>
+                      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+                        {item.estado.replace("_", " ")}
+                      </span>
                     </div>
-                    <p className="text-xs text-amber-700 mt-1 line-clamp-2">{item.motivo}</p>
+
+                    <p className="mt-2 text-sm text-slate-700">
+                      {item.motivo}
+                    </p>
+
                     {item.comentario_revision?.trim() && (
-                      <p className="text-xs text-amber-900 mt-2 line-clamp-2">
-                        Revision: {item.comentario_revision}
+                      <p className="mt-2 text-xs text-slate-600">
+                        Revisión: {item.comentario_revision}
                       </p>
                     )}
+
                     {item.comentario_reenvio_revision?.trim() && (
-                      <p className="text-xs text-amber-900 mt-1 line-clamp-2">
-                        Reenvio: {item.comentario_reenvio_revision}
+                      <p className="mt-1 text-xs text-slate-600">
+                        Reenvío: {item.comentario_reenvio_revision}
                       </p>
                     )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
-          {(comentariosRevision.length > 0 || comentariosRevisionModificaciones.length > 0) && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
-              <h2 className="text-base font-semibold text-amber-900 mb-3">
-                Comentarios de revision
-              </h2>
-              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                {comentariosRevisionModificaciones.map((revision) => (
-                  <div
-                    key={`mod-revision-${revision.id}`}
-                    className="bg-white border border-amber-100 rounded-lg p-3"
-                  >
-                    <p className="text-xs font-medium text-amber-800">
-                      Propuesta V{revision.version_number} - {revision.estado.replace('_', ' ')}
-                    </p>
-                    {revision.comentario_revision?.trim() && (
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap mt-2">
-                        {revision.comentario_revision}
-                      </p>
-                    )}
-                    {revision.comentario_reenvio_revision?.trim() && (
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap mt-2">
-                        Reenvio: {revision.comentario_reenvio_revision}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap items-center justify-between gap-2 mt-3 text-xs text-gray-400">
-                      <span>Por: {revision.revisor?.nombres || revision.revisor?.email || 'Revisor no identificado'}</span>
-                      {(revision.reviewed_at || revision.submitted_at) && (
-                        <span>{new Date(revision.reviewed_at || revision.submitted_at || '').toLocaleString('es-PE')}</span>
-                      )}
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          guardedNavigate(
+                            `/cotizaciones/modificaciones/${item.id}/edit`
+                          )
+                        }
+                        className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                      >
+                        Ver propuesta
+                      </button>
                     </div>
                   </div>
                 ))}
-                {comentariosRevision.map((movimiento) => (
-                  <div
-                    key={movimiento.id}
-                    className="bg-white border border-amber-100 rounded-lg p-3"
-                  >
-                    <p className="text-xs font-medium text-amber-800">
-                      {estadoLabels[movimiento.estado_anterior_id || 0] || 'Sin estado'} {'->'} {estadoLabels[movimiento.estado_nuevo_id] || 'Estado actualizado'}
-                    </p>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap mt-2">
-                      {movimiento.comentario}
-                    </p>
-                    <div className="flex flex-wrap items-center justify-between gap-2 mt-3 text-xs text-gray-400">
-                      <span>Por: {getNombreUsuarioHistorial(movimiento)}</span>
-                      {movimiento.created_at && (
-                        <span>{new Date(movimiento.created_at).toLocaleString('es-PE')}</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
+          {comentariosRevision.length > 0 && (
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              {/* Encabezado */}
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-indigo-50 p-2.5 text-indigo-600">
+                    <History className="h-5 w-5" />
+                  </div>
+
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">
+                      Historial de aprobaciones
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Decisiones y observaciones de la cotización
+                    </p>
+                  </div>
+                </div>
+
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                  {comentariosRevision.length}
+                </span>
+              </div>
+
+              {/* Movimientos */}
+              <div className="space-y-0 px-5 py-4">
+                {[...comentariosRevision]
+                  .sort(
+                    (a, b) =>
+                      new Date(b.created_at || 0).getTime() -
+                      new Date(a.created_at || 0).getTime()
+                  )
+                  .map((movimiento, index, lista) => {
+                    const estadoAnterior =
+                      estadoLabels[movimiento.estado_anterior_id || 0] ||
+                      "Sin estado";
+
+                    const estadoNuevo =
+                      estadoLabels[movimiento.estado_nuevo_id] ||
+                      "Estado actualizado";
+
+                    const esUltimo = index === lista.length - 1;
+
+                    return (
+                      <div key={movimiento.id} className="relative flex gap-3 pb-5 last:pb-0">
+                        {/* Línea vertical */}
+                        {!esUltimo && (
+                          <div className="absolute bottom-0 left-[15px] top-8 w-px bg-slate-200" />
+                        )}
+
+                        {/* Indicador */}
+                        <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-indigo-100 bg-indigo-50 text-indigo-600">
+                          <History className="h-4 w-4" />
+                        </div>
+
+                        {/* Contenido */}
+                        <div className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-slate-800">
+                              {estadoAnterior} → {estadoNuevo}
+                            </p>
+
+                            {movimiento.created_at && (
+                              <span className="text-[11px] text-slate-400">
+                                {new Date(movimiento.created_at).toLocaleString("es-PE")}
+                              </span>
+                            )}
+                          </div>
+
+                          {movimiento.comentario?.trim() && (
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+                              {movimiento.comentario}
+                            </p>
+                          )}
+
+                          <div className="mt-3 flex items-center gap-2 border-t border-slate-200 pt-2">
+                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-700">
+                              {getNombreUsuarioHistorial(movimiento)
+                                .trim()
+                                .charAt(0)
+                                .toUpperCase() || "U"}
+                            </div>
+
+                            <span className="text-xs text-slate-500">
+                              {getNombreUsuarioHistorial(movimiento)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
           {isModificationMode && canReviewModificacion && (
             <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3 text-gray-900">
               <h2 className="text-base font-semibold text-gray-800">Revision de modificacion</h2>
@@ -4247,6 +4474,14 @@ export function CotizacionDetail() {
         onClose={() => setShowExportModal(false)}
         onExportPdf={handleExportarPdf}
         exportandoPdf={exportandoPdf}
+      />
+
+      <CotizacionCambiosModal
+        abierto={comparacionVersion !== null}
+        cerrar={()=> setComparacionVersion(null)}
+        anterior={comparacionVersion?.anterior ?? null}
+        nueva={comparacionVersion?.nueva ?? null}
+        verFinanzas= {canViewGanancia}
       />
 
     </div>

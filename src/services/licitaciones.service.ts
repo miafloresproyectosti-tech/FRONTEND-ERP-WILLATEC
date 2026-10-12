@@ -70,6 +70,10 @@ export const getOportunidades = async (): Promise<Oportunidad[]> => {
   return normalizeList(Array.isArray(data) ? data : data.data || []);
 };
 
+export const procesarAlertasVencimientoOportunidades = async (): Promise<void> => {
+  await api.post("/licitaciones/alertas-vencimiento/procesar");
+};
+
 export const getOportunidad = async (
   id: string,
   options?: { includeFileData?: boolean },

@@ -41,9 +41,11 @@ import {
   deleteOportunidad,
   getOportunidad,
   getOportunidades,
+  procesarAlertasVencimientoOportunidades,
   registrarVistaOportunidad,
   saveOportunidad,
 } from "../services/licitaciones.service";
+import { NOTIFICATIONS_UPDATED_EVENT } from "../services/notification.service";
 import { getUsers } from "../services/usuario.service";
 import {
   descargarPdfCotizacion,
@@ -128,7 +130,7 @@ const TYPE_TABS = [
 const SALES_BANDEJAS = [
   { key: "disponibles", label: "Oportunidades Disponibles" },
   { key: "mis", label: "Mis Oportunidades" },
-  { key: "creadas", label: "Subidas por mi" },
+  { key: "creadas", label: "En atencion por ventas" },
 ] as const;
 
 const OPPORTUNITY_EXECUTIVE_ROLES = new Set(["VENTAS", "SUPERADMIN"]);
@@ -241,6 +243,12 @@ export default function SeguimientoLicitaciones() {
     loadRequestRef.current = requestId;
     setLoading(true);
     try {
+      await procesarAlertasVencimientoOportunidades().then(() => {
+        window.dispatchEvent(new Event(NOTIFICATIONS_UPDATED_EVENT));
+      }).catch((error) => {
+        console.warn("No se pudieron procesar alertas de vencimiento de oportunidades:", error);
+      });
+
       const [items, users] = await Promise.all([
         getOportunidades(),
         getUsers().catch(() => []),
@@ -328,20 +336,29 @@ export default function SeguimientoLicitaciones() {
     );
   }, [user?.email, user?.id, userName]);
 
-  const isCreatedByMeAssignedToOther = useCallback((item: Oportunidad) => (
-    isCreatedByMeOpportunity(item) &&
-    !isMyOpportunity(item) &&
-    !isAvailableOpportunity(item)
-  ), [isAvailableOpportunity, isCreatedByMeOpportunity, isMyOpportunity]);
-
   const isAttentionOpportunity = useCallback((item: Oportunidad) => (
     item.estado === "en_atencion" || item.estado === "atendido" || item.estado === "cotizacion_generada"
   ), []);
 
+  const salesExecutiveIds = useMemo(
+    () => new Set(ejecutivos.map((ejecutivo) => Number(ejecutivo.id)).filter(Boolean)),
+    [ejecutivos],
+  );
+
+  const isAssignedToOtherSalesExecutive = useCallback((item: Oportunidad) => {
+    if (!user?.id) return false;
+
+    const executiveId = Number(item.asignadoA ?? item.ejecutivo?.id ?? 0);
+    if (!executiveId || executiveId === Number(user.id)) return false;
+    if (!isAttentionOpportunity(item)) return false;
+
+    return salesExecutiveIds.size === 0 || salesExecutiveIds.has(executiveId);
+  }, [isAttentionOpportunity, salesExecutiveIds, user?.id]);
+
   const scopedOpportunities = useMemo(() => {
     if (isSalesRole) {
       if (activeBandeja === "mis") return opportunities.filter(isMyOpportunity);
-      if (activeBandeja === "creadas") return opportunities.filter(isCreatedByMeAssignedToOther);
+      if (activeBandeja === "creadas") return opportunities.filter(isAssignedToOtherSalesExecutive);
       return opportunities.filter(isAvailableOpportunity);
     }
 
@@ -360,7 +377,7 @@ export default function SeguimientoLicitaciones() {
 
       return hasNoExecutive || executiveId === user?.id;
     });
-  }, [activeBandeja, currentRole, isAttentionOpportunity, isAvailableOpportunity, isCreatedByMeAssignedToOther, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
+  }, [activeBandeja, currentRole, isAssignedToOtherSalesExecutive, isAttentionOpportunity, isAvailableOpportunity, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
 
   const filteredOpportunities = useMemo(() => {
     const search = normalizeText(debouncedSearch);
@@ -493,12 +510,26 @@ export default function SeguimientoLicitaciones() {
     scopedOpportunities.forEach((item) => {
       result[item.estado] += 1;
       const remaining = new Date(item.vigencia).getTime() - Date.now();
-      if (remaining > 0 && remaining <= 3 * 24 * 60 * 60 * 1000) {
+      if (!isClosedOpportunity(item.estado) && remaining > 0 && remaining <= 3 * 24 * 60 * 60 * 1000) {
         result.proximas += 1;
       }
     });
 
     return result;
+  }, [scopedOpportunities]);
+
+  const upcomingDueOpportunities = useMemo(() => {
+    const now = Date.now();
+    const warningLimit = 3 * 24 * 60 * 60 * 1000;
+
+    return scopedOpportunities
+      .filter((item) => {
+        if (isClosedOpportunity(item.estado)) return false;
+
+        const remaining = new Date(item.vigencia).getTime() - now;
+        return remaining > 0 && remaining <= warningLimit;
+      })
+      .sort((a, b) => new Date(a.vigencia).getTime() - new Date(b.vigencia).getTime());
   }, [scopedOpportunities]);
 
   const typeSummary = useMemo(() => {
@@ -1316,7 +1347,7 @@ export default function SeguimientoLicitaciones() {
   const getBandejaCount = (key: string) => {
     if (key === "disponibles") return opportunities.filter(isAvailableOpportunity).length;
     if (key === "mis") return opportunities.filter(isMyOpportunity).length;
-    if (key === "creadas") return opportunities.filter(isCreatedByMeAssignedToOther).length;
+    if (key === "creadas") return opportunities.filter(isAssignedToOtherSalesExecutive).length;
     if (key === "en_atencion") return opportunities.filter(isAttentionOpportunity).length;
     if (key === "finalizadas") return opportunities.filter((item) => isClosedOpportunity(item.estado)).length;
     return opportunities.length;
@@ -1378,6 +1409,39 @@ export default function SeguimientoLicitaciones() {
             <p className="text-xs font-medium text-blue-600/80 dark:text-blue-200/80">
               Estamos sincronizando oportunidades, responsables, estados y vigencias.
             </p>
+          </div>
+        </div>
+      )}
+
+      {upcomingDueOpportunities.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-100">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/60 dark:text-amber-200 dark:ring-amber-500/40">
+                <AlertTriangle className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-bold">
+                  {upcomingDueOpportunities.length === 1
+                    ? "1 oportunidad proxima a vencer"
+                    : `${upcomingDueOpportunities.length} oportunidades proximas a vencer`}
+                </p>
+                <p className="mt-1 text-xs font-medium text-amber-800/90 dark:text-amber-100/80">
+                  La mas cercana vence {formatDateTime(upcomingDueOpportunities[0].vigencia)}: {upcomingDueOpportunities[0].empresa} - {upcomingDueOpportunities[0].requerimiento}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSortKey("vigencia");
+                setSortDirection("asc");
+                setCurrentPage(1);
+              }}
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-800 shadow-sm hover:bg-amber-100 dark:border-amber-500/50 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-900/50"
+            >
+              Ver primero las urgentes
+            </button>
           </div>
         </div>
       )}
