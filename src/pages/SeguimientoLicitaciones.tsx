@@ -351,7 +351,10 @@ export default function SeguimientoLicitaciones() {
     if (!executiveId || executiveId === Number(user.id)) return false;
     if (!isAttentionOpportunity(item)) return false;
 
-    return salesExecutiveIds.size === 0 || salesExecutiveIds.has(executiveId);
+    // Ventas no consulta el modulo Usuarios; si el catalogo de ejecutivos
+    // no esta disponible, una oportunidad asignada a otro usuario se considera
+    // atendida por ventas y no se oculta de esta bandeja.
+    return salesExecutiveIds.size <= 1 || salesExecutiveIds.has(executiveId);
   }, [isAttentionOpportunity, salesExecutiveIds, user?.id]);
 
   const scopedOpportunities = useMemo(() => {
@@ -1922,7 +1925,12 @@ export default function SeguimientoLicitaciones() {
         canMarkProposalPresented={Boolean(selected && canMarkProposalPresented(selected))}
         presentingProposal={Boolean(selected && presentingProposalId === selected.id)}
         onMarkProposalPresented={(file) => void handleMarkProposalPresented(file)}
-        canDownloadQuotePdf={currentRole === "LICITACIONES" || currentRole === "SUPERADMIN"}
+        canDownloadQuotePdf={
+          hasPermission("licitaciones.cotizaciones_pdf") ||
+          hasPermission("licitaciones.cotizaciones") ||
+          hasPermission("licitaciones") ||
+          currentRole === "SUPERADMIN"
+        }
         downloadingQuoteId={downloadingQuoteId}
         onDownloadQuotePdf={(cotizacionId) => void handleDownloadQuotePdf(cotizacionId)}
         canOpenQuote={canOpenCotizaciones}
