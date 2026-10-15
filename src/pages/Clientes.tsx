@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "../AuthContext";
 import {
   Search,
   Plus,
@@ -56,6 +57,10 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Clientes() {
   const { addNotification } = useNotifications();
+  const { hasPermission } = useAuth();
+  const canCreateCliente = hasPermission("clientes.crear");
+  const canEditCliente = hasPermission("clientes.editar");
+  const canDeleteCliente = hasPermission("clientes.eliminar");
 
   const [clientesData, setClientesData] = useState<Cliente[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -136,6 +141,7 @@ export default function Clientes() {
   }, [currentPage, debouncedSearchTerm, filterEstado, filterTipoCliente, perPage]);
 
   const handleNuevo = () => {
+    if(!canCreateCliente) return;
     setClienteSeleccionado({
       ...FORM_VACIO,
       tipo_cliente_id: 1,
@@ -146,13 +152,14 @@ export default function Clientes() {
   };
 
   const handleEditar = (cliente: Cliente) => {
+    if(!canEditCliente) return;
     setClienteSeleccionado(cliente);
     setModoEdicion(true);
     setOpenModal(true);
   };
 
   const confirmarEliminar = async () => {
-    if (!clienteAEliminar) return;
+    if(!canDeleteCliente || !clienteAEliminar) return;
 
     try {
       setSaving(true);
@@ -181,6 +188,8 @@ export default function Clientes() {
   };
 
   const handleGuardar = async () => {
+    if(modoEdicion && !canEditCliente) return;
+    if(!modoEdicion && !canCreateCliente) return;
     const nombre = String(clienteSeleccionado.nombre || "").trim();
     const correo = String(clienteSeleccionado.correo || "").trim();
     const telefono = String(clienteSeleccionado.telefono || "").trim();
@@ -314,6 +323,7 @@ export default function Clientes() {
           </p>
         </div>
 
+        {canCreateCliente && (
         <button
           onClick={handleNuevo}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 sm:w-auto sm:gap-2 sm:px-4"
@@ -322,6 +332,7 @@ export default function Clientes() {
           <Plus size={20} />
           <span className="hidden sm:inline">Nuevo Cliente</span>
         </button>
+        )}
       </div>
 
       {/* Buscador */}
@@ -417,7 +428,9 @@ export default function Clientes() {
                   </div>
                 </div>
 
+                {(canEditCliente || canDeleteCliente) && (
                 <div className="mt-4 grid grid-cols-2 gap-2 border-t border-gray-100 pt-3">
+                  {canEditCliente && (
                   <button
                     onClick={() => handleEditar(cliente)}
                     className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-100 text-sm font-semibold text-blue-700 hover:bg-blue-200"
@@ -425,6 +438,9 @@ export default function Clientes() {
                     <Pencil size={16} />
                     Editar
                   </button>
+                  )}
+
+                  {canDeleteCliente && (
                   <button
                     onClick={() => setClienteAEliminar(cliente)}
                     className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-100 text-sm font-semibold text-red-700 hover:bg-red-200"
@@ -432,7 +448,9 @@ export default function Clientes() {
                     <Trash2 size={16} />
                     Eliminar
                   </button>
+                  )}
                 </div>
+                )}
               </div>
             ))}
           </div>
@@ -554,6 +572,7 @@ export default function Clientes() {
 
                   <td className="sticky right-0 bg-white px-4 py-5 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)]">
                     <div className="flex items-center justify-center gap-2">
+                      {canEditCliente && (
                       <button
                         onClick={() => handleEditar(cliente)}
                         className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-200 transition-all duration-200 hover:scale-105 shadow-sm"
@@ -561,7 +580,8 @@ export default function Clientes() {
                       >
                         <Pencil size={18} />
                       </button>
-
+                      )}
+                      {canDeleteCliente && (
                       <button
                         onClick={() => setClienteAEliminar(cliente)}
                         className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-all duration-200 hover:scale-105 shadow-sm"
@@ -569,6 +589,11 @@ export default function Clientes() {
                       >
                         <Trash2 size={18} />
                       </button>
+                      )}
+
+                      {!canEditCliente && !canDeleteCliente && (
+                        <span className="text-gray-400 text-sm">Sin acciones</span>
+                      )}
                     </div>
                   </td>
                 </tr>

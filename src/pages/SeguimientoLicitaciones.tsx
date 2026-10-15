@@ -65,7 +65,7 @@ import type {
 } from "../types/licitaciones";
 import { exportExcelFile } from "../utils/exportExcel";
 import { getPaginationItems } from "../utils/pagination";
-import { normalizeRole, rolePermissions } from "../utils/permissions";
+import { normalizeRole } from "../utils/permissions";
 import {
   createId,
   fileToOpportunityFile,
@@ -176,7 +176,7 @@ const findSimilarOpportunity = (
 };
 
 export default function SeguimientoLicitaciones() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const { addNotification, showToast } = useNotifications();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -231,10 +231,8 @@ export default function SeguimientoLicitaciones() {
   const currentRole = normalizeRole(user?.role);
   const isManager = currentRole === "SUPERADMIN" || currentRole === "ADMIN" || currentRole === "LICITACIONES";
   const isSalesRole = currentRole === "VENTAS";
-  const canCreateOpportunity = currentRole === "LICITACIONES" || currentRole === "VENTAS" || currentRole === "SUPERADMIN";
-  const canOpenCotizaciones =
-    rolePermissions[currentRole]?.includes("*") ||
-    rolePermissions[currentRole]?.includes("cotizaciones");
+  const canCreateOpportunity = hasPermission("licitaciones.crear");
+  const canOpenCotizaciones = hasPermission("cotizaciones");
   const [activeBandeja, setActiveBandeja] = useState<string>(
     currentRole === "VENTAS" ? "disponibles" : currentRole === "SUPERADMIN" ? "disponibles" : "todas"
   );
@@ -830,6 +828,7 @@ export default function SeguimientoLicitaciones() {
     const hasQuote = Boolean(item.cotizacionId || item.cotizacionNumero || item.cotizaciones.length > 0);
 
     return (
+      hasPermission("licitaciones.eliminar") &&
       isOpportunityCreator(item) &&
       item.estado === "sin_atender" &&
       isAvailableOpportunity(item) &&
@@ -912,7 +911,7 @@ export default function SeguimientoLicitaciones() {
   };
 
   const isCreatedByCurrentUser = (createdBy?: string | null, createdById?: string | number | null) => {
-    if (!user?.id) return false;
+    if (!user?.id || !hasPermission("licitaciones.asignar")) return false;
     if (createdById && Number(createdById) === Number(user.id)) return true;
 
     const creator = normalizeText(createdBy || "");
@@ -1164,7 +1163,7 @@ export default function SeguimientoLicitaciones() {
   };
 
   const canReleaseOpportunity = (item: Oportunidad) => {
-    if (!user?.id) return false;
+    if (!user?.id || !hasPermission("licitaciones.editar")) return false;
     if (currentRole === "SUPERADMIN") return true;
     return Number(item.asignadoA ?? item.ejecutivo?.id ?? 0) === user.id;
   };
@@ -1174,7 +1173,7 @@ export default function SeguimientoLicitaciones() {
   };
 
   const canManageOpportunityQuote = (item: Oportunidad) => {
-    if (!user?.id) return false;
+    if (!user?.id || !hasPermission("cotizaciones.crear")) return false;
     if (item.estado !== "en_atencion") return false;
     if (item.cotizacionId || item.cotizacionNumero || item.cotizaciones.length > 0) return false;
 
@@ -1182,7 +1181,7 @@ export default function SeguimientoLicitaciones() {
   };
 
   const canMarkProposalPresented = (item: Oportunidad) => {
-    if (!user?.id) return false;
+    if (!user?.id || !hasPermission("licitaciones.editar")) return false;
     if (!["cotizacion_generada", "vencida"].includes(item.estado)) return false;
 
     if (item.tipo === "licitacion") {
@@ -1929,7 +1928,7 @@ export default function SeguimientoLicitaciones() {
         canOpenQuote={canOpenCotizaciones}
         onOpenQuote={(cotizacionId) => navigate(`/cotizaciones/${cotizacionId}/view`)}
         loadingDetails={selectedLoading}
-        canUploadFile={Boolean(selected && !isClosedOpportunity(selected.estado) && (
+        canUploadFile={Boolean(selected && hasPermission("licitaciones.archivos") && !isClosedOpportunity(selected.estado) && (
           isOpportunityCreator(selected) ||
           Number(selected.asignadoA ?? selected.ejecutivo?.id ?? 0) === Number(user?.id) ||
           currentRole === "SUPERADMIN"
@@ -1937,19 +1936,20 @@ export default function SeguimientoLicitaciones() {
         uploadingFile={uploadingOpportunityFile}
         onUploadFile={(file) => void handleUploadOpportunityFile(file)}
         deletingFileId={deletingOpportunityFileId}
-        canDeleteFile={(file) => isCreatedByCurrentUser(file.creadoPor)}
+        canDeleteFile={(file) => hasPermission("licitaciones.archivos") && isCreatedByCurrentUser(file.creadoPor)}
         onDeleteFile={(file) => void handleDeleteOpportunityFile(file)}
         unlinkingQuoteId={unlinkingQuoteId}
         canUnlinkQuote={(relacionId) => {
           const quote = selected?.cotizaciones.find((item) => item.id === relacionId);
           return Boolean(
             quote &&
+              hasPermission("licitaciones.cotizaciones") &&
               ["vinculada", "generada"].includes(quote.origen || "vinculada") &&
               (currentRole === "SUPERADMIN" || isCreatedByCurrentUser(quote.creadoPor, quote.creadoPorId))
           );
         }}
         onUnlinkQuote={(relacionId) => void handleUnlinkQuote(relacionId)}
-        canAssignToMe={Boolean(selected && (isSalesRole || currentRole === "SUPERADMIN") && isAvailableOpportunity(selected))}
+        canAssignToMe={Boolean(selected && hasPermission("licitaciones.asignar") && (isSalesRole || currentRole === "SUPERADMIN") && isAvailableOpportunity(selected))}
         assigningToMe={Boolean(selected && assigningOpportunityId === selected.id)}
         onAssignToMe={() => {
           if (selected) void handleAssignToMe(selected);

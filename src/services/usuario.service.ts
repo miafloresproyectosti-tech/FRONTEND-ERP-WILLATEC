@@ -1,5 +1,11 @@
 import api from "./api";
-import { cachedRequest } from "../utils/cache";
+import { cachedRequest, clearCache } from "../utils/cache";
+
+const asArray = <T>(value: unknown): T[] => {
+  if (Array.isArray(value)) return value as T[];
+  if (value && typeof value === "object") return Object.values(value) as T[];
+  return [];
+};
 
 // Interfaces
 export interface User {
@@ -57,6 +63,25 @@ export interface UpdateUserData {
   activo?: boolean;
 }
 
+export interface PermissionCatalogItem {
+  key: string;
+  label: string;
+  description: string;
+  module?: string;
+  parent?: string;
+}
+
+export interface RoleWithPermissions {
+  id: number;
+  name: string;
+  permissions: string[];
+}
+
+export interface RoleCatalogItem {
+  id: number;
+  name: string;
+}
+
 // Funciones del servicio
 export const getUsers = async (): Promise<User[]> => {
   const response = await api.get("/users");
@@ -93,15 +118,40 @@ export const toggleUserStatus = async (id: number): Promise<User> => {
   return response.data;
 };
 
-export const getRoles = async () => {
+export const getRoles = async (): Promise<RoleCatalogItem[]> => {
   return cachedRequest(
     "catalog:roles",
     async () => {
       const response = await api.get("/roles");
-      return response.data;
+      return asArray(response.data?.roles ?? response.data);
     },
     { ttlMs: 12 * 60 * 60 * 1000 }
   );
+};
+
+export const getRolesPermissionsConfig = async (): Promise<{
+  roles: RoleWithPermissions[];
+  permissions: PermissionCatalogItem[];
+}> => {
+  const response = await api.get("/roles");
+  const payload = response.data;
+
+  return {
+    roles: asArray(payload?.roles ?? payload),
+    permissions: asArray(payload?.permissions),
+  };
+};
+
+export const updateRolePermissions = async (
+  roleId: number,
+  permissions: string[],
+): Promise<RoleWithPermissions> => {
+  const response = await api.put(`/roles/${roleId}/permissions`, {
+    permissions,
+  });
+
+  clearCache("catalog:roles");
+  return response.data?.role ?? response.data;
 };
 
 export const resetPassword = async (id: number) => {

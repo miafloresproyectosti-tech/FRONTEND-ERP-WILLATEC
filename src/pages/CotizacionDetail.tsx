@@ -15,7 +15,7 @@ import { CotizacionGeneralForm } from '../components/cotizaciones/CotizacionGene
 import { CotizacionItemsTable } from '../components/cotizaciones/CotizacionItemsTable';
 import type { ItemForm } from '../types/cotizaciones.type';
 import { normalizeStorageImageUrl } from '../utils/storageImage';
-import { normalizeRole, rolePermissions } from '../utils/permissions';
+import { normalizeRole } from '../utils/permissions';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { ExportModal } from '../components/cotizaciones/modals/ExportModal';
 import { ItemTypeModal } from '../components/cotizaciones/modals/ItemTypeModal';
@@ -267,7 +267,7 @@ export function CotizacionDetail() {
   const navigate = useNavigate();
   const { id, modificacionId } = useParams<{ id: string; modificacionId: string }>();
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const { showToast, addNotification } = useNotifications();
 
   const isModificationMode = Boolean(modificacionId);
@@ -606,10 +606,8 @@ export function CotizacionDetail() {
   // Verificar permisos del usuario actual sobre la cotización
   const userRole = normalizeRole(user?.role);
   const isSuperAdmin = userRole === 'SUPERADMIN';
-  const canOpenOportunidades =
-    rolePermissions[userRole]?.includes('*') ||
-    rolePermissions[userRole]?.includes('licitaciones');
-  const canCreateCotizacion = ['SUPERADMIN', 'VENTAS'].includes(userRole);
+  const canOpenOportunidades = hasPermission('licitaciones');
+  const canCreateCotizacion = hasPermission('cotizaciones.crear');
   const currentEstadoCotizacionId = Number(estadoCotizacionId);
   const currentDelegadoId = delegadoId === null || delegadoId === undefined ? null : Number(delegadoId);
   const currentDelegadoCotizacionId =

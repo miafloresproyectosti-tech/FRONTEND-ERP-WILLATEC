@@ -320,6 +320,8 @@ export default function InventarioMovimientos() {
   const [salidaModalOpen, setSalidaModalOpen] = useState(false);
   const [entradaProductoSearch, setEntradaProductoSearch] = useState("");
   const [entradaProductoResultsOpen, setEntradaProductoResultsOpen] = useState(false);
+  const [entradaProductosBusqueda, setEntradaProductosBusqueda] = useState<ProductoInventarioOption[]>([]);
+  const [loadingEntradaProductos, setLoadingEntradaProductos] = useState(false);
   const [entradaSerieSearch, setEntradaSerieSearch] = useState("");
   const [salidaProductoSearch, setSalidaProductoSearch] = useState("");
   const [salidaProductoResultsOpen, setSalidaProductoResultsOpen] = useState(false);
@@ -401,9 +403,14 @@ export default function InventarioMovimientos() {
     [filters],
   );
 
+  const entradaProductosDisponibles = useMemo(
+    () => mergeProductosById(productos, entradaProductosBusqueda),
+    [entradaProductosBusqueda, productos],
+  );
+
   const selectedProducto = useMemo(
-    () => productos.find((producto) => producto.id === Number(entradaForm.producto_id)) || null,
-    [entradaForm.producto_id, productos],
+    () => entradaProductosDisponibles.find((producto) => producto.id === Number(entradaForm.producto_id)) || null,
+    [entradaForm.producto_id, entradaProductosDisponibles],
   );
   const entradaEsDevolucion = entradaForm.tipo_movimiento === "devolucion";
   const filteredEntradaSeries = useMemo(
@@ -435,7 +442,11 @@ export default function InventarioMovimientos() {
 
     if (!term) return productos.slice(0, 10);
 
-    return productos
+    if (entradaProductosBusqueda.length > 0) {
+      return entradaProductosBusqueda.slice(0, 10);
+    }
+
+    return entradaProductosDisponibles
       .filter((producto) => {
         const series = producto.series?.map((serie) => serie.serie).filter(Boolean).join(" ") || "";
 
@@ -453,7 +464,7 @@ export default function InventarioMovimientos() {
           .some((value) => String(value).toLowerCase().includes(term));
       })
       .slice(0, 10);
-  }, [entradaProductoSearch, productos]);
+  }, [entradaProductoSearch, entradaProductosBusqueda, entradaProductosDisponibles, productos]);
 
   const filteredSalidaProductos = useMemo(() => {
     const term = salidaProductoSearch.trim().toLowerCase();
@@ -570,6 +581,45 @@ export default function InventarioMovimientos() {
   }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
+    const term = entradaProductoSearch.trim();
+
+    if (!entradaModalOpen || term.length < 2 || entradaForm.producto_id) {
+      setEntradaProductosBusqueda([]);
+      setLoadingEntradaProductos(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timeout = window.setTimeout(async () => {
+      try {
+        setLoadingEntradaProductos(true);
+        const results = await getProductosInventario({
+          search: term,
+          per_page: 25,
+        });
+
+        if (!cancelled) {
+          setEntradaProductosBusqueda(results);
+        }
+      } catch (requestError) {
+        console.error("Error al buscar productos para entrada Kardex:", requestError);
+        if (!cancelled) {
+          setEntradaProductosBusqueda([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingEntradaProductos(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [entradaForm.producto_id, entradaModalOpen, entradaProductoSearch]);
+
+  useEffect(() => {
     const term = salidaProductoSearch.trim();
 
     if (!salidaModalOpen || term.length < 2 || salidaForm.producto_id) {
@@ -671,8 +721,11 @@ export default function InventarioMovimientos() {
   };
 
   const handleProductoEntradaChange = (productoId: string) => {
-    const producto = productos.find((item) => item.id === Number(productoId));
+    const producto = entradaProductosDisponibles.find((item) => item.id === Number(productoId));
 
+    if (producto) {
+      setProductos((current) => mergeProductosById(current, [producto]));
+    }
     setEntradaForm((current) => ({
       ...current,
       producto_id: productoId,
@@ -864,6 +917,7 @@ export default function InventarioMovimientos() {
         series_text: "",
       });
       setEntradaProductoSearch("");
+      setEntradaProductosBusqueda([]);
       setEntradaProductoResultsOpen(false);
       setFactura(null);
       if (facturaInputRef.current) {
@@ -872,6 +926,7 @@ export default function InventarioMovimientos() {
       setProveedorSearch("");
       await loadMovimientos();
       setProductos(await getProductosInventario());
+      setEntradaProductosBusqueda([]);
     } catch (requestError) {
       console.error("Error al registrar entrada Kardex:", requestError);
       setError("No se pudo registrar la entrada. Revisa los datos y permisos.");
@@ -1636,6 +1691,7 @@ export default function InventarioMovimientos() {
                         onClick={() => {
                           handleProductoEntradaChange("");
                           setEntradaProductoSearch("");
+                          setEntradaProductosBusqueda([]);
                           setEntradaProductoResultsOpen(false);
                         }}
                         className="absolute right-2 top-2 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
@@ -1647,6 +1703,12 @@ export default function InventarioMovimientos() {
 
                     {entradaProductoResultsOpen && (
                       <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl">
+                        {loadingEntradaProductos && (
+                          <div className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-semibold text-gray-500">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Buscando productos...
+                          </div>
+                        )}
                         {filteredEntradaProductos.map((producto) => (
                           <button
                             key={producto.id}
@@ -1676,7 +1738,7 @@ export default function InventarioMovimientos() {
                             </span>
                           </button>
                         ))}
-                        {filteredEntradaProductos.length === 0 && (
+                        {!loadingEntradaProductos && filteredEntradaProductos.length === 0 && (
                           <div className="px-3 py-4 text-center text-xs font-semibold text-gray-500">
                             No se encontraron productos
                           </div>
