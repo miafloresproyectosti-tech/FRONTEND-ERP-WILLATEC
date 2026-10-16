@@ -1,13 +1,31 @@
 import { OPORTUNIDAD_ESTADO_BADGES, OPORTUNIDAD_ESTADOS, OPORTUNIDAD_TIPOS } from "../../constants/licitaciones";
-import type { OportunidadEstado, OportunidadTipo } from "../../types/licitaciones";
+import type { Oportunidad, OportunidadEstado, OportunidadTipo } from "../../types/licitaciones";
 import { getVigenciaAlert } from "../../utils/licitaciones";
 
-export function EstadoBadge({ estado }: { estado: OportunidadEstado }) {
+export function getOportunidadEstadoLabel(opportunity: Pick<Oportunidad, "estado" | "cotizaciones">) {
+  if (opportunity.estado !== "cotizacion_generada") {
+    return OPORTUNIDAD_ESTADOS[opportunity.estado];
+  }
+
+  if (opportunity.cotizaciones.some((quote) => quote.tieneModificacionPendiente)) {
+    return "Modificacion de cotizacion";
+  }
+
+  if (opportunity.cotizaciones.some((quote) =>
+    String(quote.estado || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes("aprob")
+  )) {
+    return "Por subir";
+  }
+
+  return "Cotizacion pendiente";
+}
+
+export function EstadoBadge({ estado, label }: { estado: OportunidadEstado; label?: string }) {
   return (
     <span
       className={`inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ring-1 ${OPORTUNIDAD_ESTADO_BADGES[estado]}`}
     >
-      {OPORTUNIDAD_ESTADOS[estado]}
+      {label ?? OPORTUNIDAD_ESTADOS[estado]}
     </span>
   );
 }

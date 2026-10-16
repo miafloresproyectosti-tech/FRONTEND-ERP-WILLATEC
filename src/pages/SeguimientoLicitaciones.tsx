@@ -21,7 +21,7 @@ import { useAuth } from "../AuthContext";
 import { useNotifications } from "../NotificationContext";
 import { OportunidadDetailDrawer } from "../components/licitaciones/OportunidadDetailDrawer";
 import { OportunidadFormModal } from "../components/licitaciones/OportunidadFormModal";
-import { EstadoBadge, TipoBadge, VigenciaBadge } from "../components/licitaciones/OportunidadBadges";
+import { EstadoBadge, getOportunidadEstadoLabel, TipoBadge, VigenciaBadge } from "../components/licitaciones/OportunidadBadges";
 import PageSizeSelect from "../components/ui/PageSizeSelect";
 import {
   ESTADOS_CIERRE,
@@ -371,6 +371,8 @@ export default function SeguimientoLicitaciones() {
       return opportunities;
     }
 
+    if (currentRole === "LICITACIONES") return opportunities;
+
     if (isManager) return opportunities;
 
     return opportunities.filter((item) => {
@@ -382,7 +384,7 @@ export default function SeguimientoLicitaciones() {
   }, [activeBandeja, currentRole, isAssignedToOtherSalesExecutive, isAttentionOpportunity, isAvailableOpportunity, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
 
   const isUrgentOpportunity = (item: Oportunidad): boolean => {
-  if (isClosedOpportunity(item.estado)) return false;
+  if (isClosedOpportunity(item.estado) || item.estado === "atendido") return false;
 
   const remaining = new Date(item.vigencia).getTime() - Date.now();
   const warningLimit = 72 * 60 * 60 * 1000;
@@ -421,9 +423,13 @@ export default function SeguimientoLicitaciones() {
           return new Date(a.vigencia).getTime() - new Date(b.vigencia).getTime();
         }
         if (currentRole === "LICITACIONES") {
-          const dateA = new Date(a.creadoEn).getTime();
-          const dateB = new Date(b.creadoEn).getTime();
-          return dateB - dateA;
+          const urgentDiff = Number(isUrgentOpportunity(b)) - Number(isUrgentOpportunity(a));
+          if (urgentDiff !== 0) return urgentDiff;
+
+          const dueDiff = new Date(a.vigencia).getTime() - new Date(b.vigencia).getTime();
+          if (dueDiff !== 0) return dueDiff;
+
+          return new Date(b.creadoEn).getTime() - new Date(a.creadoEn).getTime();
         }
 
         if (isSalesRole && ["mis", "creadas"].includes(activeBandeja)) {
@@ -525,7 +531,7 @@ export default function SeguimientoLicitaciones() {
     scopedOpportunities.forEach((item) => {
       result[item.estado] += 1;
       const remaining = new Date(item.vigencia).getTime() - Date.now();
-      if (!isClosedOpportunity(item.estado) && remaining > 0 && remaining <= 3 * 24 * 60 * 60 * 1000) {
+      if (!isClosedOpportunity(item.estado) && item.estado !== "atendido" && remaining > 0 && remaining <= 3 * 24 * 60 * 60 * 1000) {
         result.proximas += 1;
       }
     });
@@ -539,7 +545,7 @@ export default function SeguimientoLicitaciones() {
 
     return scopedOpportunities
       .filter((item) => {
-        if (isClosedOpportunity(item.estado)) return false;
+        if (isClosedOpportunity(item.estado) || item.estado === "atendido") return false;
 
         const remaining = new Date(item.vigencia).getTime() - now;
         return remaining > 0 && remaining <= warningLimit;
@@ -1657,7 +1663,7 @@ export default function SeguimientoLicitaciones() {
                         {item.empresa}
                       </p>
                     </div>
-                    <EstadoBadge estado={item.estado} />
+                    <EstadoBadge estado={item.estado} label={getOportunidadEstadoLabel(item)} />
                   </div>
 
                   <div className="mt-4 grid min-w-0 grid-cols-1 gap-3 text-xs text-slate-500 sm:grid-cols-2">
@@ -1786,7 +1792,7 @@ export default function SeguimientoLicitaciones() {
                       </Td>
                       <Td>{formatDateTime(item.creadoEn)}</Td>
                       <Td>
-                        <EstadoBadge estado={item.estado} />
+                        <EstadoBadge estado={item.estado} label={getOportunidadEstadoLabel(item)} />
                       </Td>
                       <Td>
                         <div className="max-w-[170px]">

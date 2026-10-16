@@ -24,6 +24,9 @@ import {
   resetPassword,
   getRolesPermissionsConfig,
   updateRolePermissions,
+  createRole,
+  updateRole,
+  deleteRole,
   type User as ApiUser,
   type CreateUserData,
   type UpdateUserData,
@@ -97,6 +100,10 @@ export default function Usuarios() {
   const [permissionSearch, setPermissionSearch] = useState("");
   const [expandedRoles, setExpandedRoles] = useState<number[]>([]);
   const [expandedModules, setExpandedModules] = useState<string[]>([]);
+  const [roleModalOpen, setRoleModalOpen] = useState(false);
+  const [roleEditing, setRoleEditing] = useState<RoleWithPermissions | null>(null);
+  const [roleName, setRoleName] = useState("");
+  const [roleSaving, setRoleSaving] = useState(false);
 
   const toggleExpandedRole = (roleId: number) => {
     setExpandedRoles((prev) =>
@@ -414,6 +421,76 @@ export default function Usuarios() {
     }
   };
 
+  const openRoleModal = (role?: RoleWithPermissions) => {
+    if (role?.name.toUpperCase() === "SUPERADMIN") return;
+    setRoleEditing(role ?? null);
+    setRoleName(role?.name ?? "");
+    setRoleModalOpen(true);
+  };
+
+  const handleRoleSave = async () => {
+    const normalizedName = roleName.trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(normalizedName)) {
+      showToast({
+        title: "Nombre no valido",
+        description: "Usa solo letras minusculas, numeros, guion o guion bajo.",
+        type: "warning",
+      });
+      return;
+    }
+
+    try {
+      setRoleSaving(true);
+      if (roleEditing) {
+        const updated = await updateRole(roleEditing.id, { name: normalizedName });
+        setRolesConfig((current) => current.map((role) => role.id === updated.id ? { ...role, ...updated } : role));
+      } else {
+        const created = await createRole({ name: normalizedName });
+        setRolesConfig((current) => [...current, created]);
+      }
+      setRoleModalOpen(false);
+      showToast({
+        title: roleEditing ? "Rol actualizado" : "Rol creado",
+        description: "Puedes asignarle permisos desde su panel.",
+        type: "success",
+      });
+    } catch (error) {
+      console.error("Error al guardar rol:", error);
+      showToast({
+        title: "No se pudo guardar el rol",
+        description: "Verifica que el nombre no este repetido e intenta nuevamente.",
+        type: "warning",
+      });
+    } finally {
+      setRoleSaving(false);
+    }
+  };
+
+  const handleRoleDelete = async (role: RoleWithPermissions) => {
+    if (role.name.toUpperCase() === "SUPERADMIN") return;
+    if (!window.confirm(`¿Eliminar el rol ${role.name.toUpperCase()}?`)) return;
+
+    try {
+      setSavingRoleId(role.id);
+      await deleteRole(role.id);
+      setRolesConfig((current) => current.filter((item) => item.id !== role.id));
+      showToast({
+        title: "Rol eliminado",
+        description: "El rol fue eliminado correctamente.",
+        type: "success",
+      });
+    } catch (error) {
+      console.error("Error al eliminar rol:", error);
+      showToast({
+        title: "No se pudo eliminar",
+        description: "Asegurate de que el rol no tenga usuarios asignados.",
+        type: "warning",
+      });
+    } finally {
+      setSavingRoleId(null);
+    }
+  };
+
   const toggleRolePermission = async (role: RoleWithPermissions, permission: string) => {
     if (role.name.toUpperCase() === "SUPERADMIN") return;
 
@@ -508,22 +585,32 @@ export default function Usuarios() {
       )}
 
       {activeTab === "roles" && canAddUser ? (
-        <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-lg font-bold text-gray-800">Roles y permisos</h2>
               <p className="text-sm text-gray-500">
-                Gestiona permisos por modulo y accion.
+                Crea roles y controla sus permisos por modulo y accion.
               </p>
             </div>
-            <div className="flex h-11 w-full items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 md:max-w-sm">
-              <Search size={18} className="shrink-0 text-gray-500" />
-              <input
-                value={permissionSearch}
-                onChange={(event) => setPermissionSearch(event.target.value)}
-                placeholder="Buscar permiso o modulo..."
-                className="w-full bg-transparent text-sm outline-none"
-              />
+            <div className="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
+              <div className="flex h-11 min-w-0 items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 sm:w-72">
+                <Search size={18} className="shrink-0 text-gray-500" />
+                <input
+                  value={permissionSearch}
+                  onChange={(event) => setPermissionSearch(event.target.value)}
+                  placeholder="Buscar permiso o modulo..."
+                  className="w-full bg-transparent text-sm outline-none"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => openRoleModal()}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+              >
+                <Plus size={17} />
+                Nuevo rol
+              </button>
             </div>
           </div>
 
@@ -556,7 +643,7 @@ export default function Usuarios() {
               return (
                 <div
                   key={role.id}
-                  className="overflow-hidden rounded-2xl border border-gray-200 bg-white"
+                  className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
                 >
                   {/* ENCABEZADO DEL ROL */}
                   <button
@@ -577,12 +664,34 @@ export default function Usuarios() {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       {savingRoleId === role.id && (
                         <Loader2
                           size={18}
                           className="animate-spin text-blue-600"
                         />
+                      )}
+
+                      {!isSuperadmin && (
+                        <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => openRoleModal(role)}
+                            className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-600"
+                            title="Editar rol"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleRoleDelete(role)}
+                            disabled={savingRoleId === role.id}
+                            className="rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            title="Eliminar rol"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       )}
 
                       {roleExpanded ? (
@@ -675,7 +784,17 @@ export default function Usuarios() {
                                             onChange={() =>
                                               toggleRolePermission(role, permission.key)
                                             }
-                                            className="h-5 w-5 shrink-0 accent-blue-600"
+                                            className="peer sr-only"
+                                          />
+                                          <span
+                                            aria-hidden="true"
+                                            className={`relative h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors after:block after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform ${
+                                              checked ? "bg-blue-600 after:translate-x-5" : "bg-slate-300"
+                                            } ${
+                                              isSuperadmin || savingRoleId === role.id
+                                                ? "opacity-60"
+                                                : "peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2"
+                                            }`}
                                           />
                                         </label>
                                       );
@@ -1026,6 +1145,74 @@ export default function Usuarios() {
         )}
       </div>
       </>
+      )}
+
+      {roleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">
+                  Administracion de acceso
+                </p>
+                <h2 className="mt-1 text-xl font-bold text-slate-900">
+                  {roleEditing ? "Editar rol" : "Crear nuevo rol"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {roleEditing
+                    ? "El cambio conserva todos los permisos actuales."
+                    : "El rol comenzara sin permisos para asignarlos de forma controlada."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRoleModalOpen(false)}
+                className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
+                title="Cerrar"
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Identificador del rol
+                </label>
+                <input
+                  value={roleName}
+                  onChange={(event) => setRoleName(event.target.value.toLowerCase())}
+                  placeholder="ejemplo: compras"
+                  autoFocus
+                  className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Usa letras minusculas, numeros, guion o guion bajo.
+                </p>
+              </div>
+
+              <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setRoleModalOpen(false)}
+                  disabled={roleSaving}
+                  className="h-11 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleRoleSave()}
+                  disabled={roleSaving || !roleName.trim()}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {roleSaving && <Loader2 size={16} className="animate-spin" />}
+                  {roleEditing ? "Guardar cambios" : "Crear rol"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* MODAL CONFIRMAR ELIMINAR */}

@@ -353,6 +353,7 @@ export function CotizacionDetail() {
   const [formaPago, setFormaPago] = useState('AL CONTADO');
   const [adelanto, setAdelanto] = useState(false);
   const [adelantoPorcentaje, setAdelantoPorcentaje] = useState('');
+  const [cuotaMensual, setCuotaMensual] = useState(false);
   const [entregaProvincia, setEntregaProvincia] = useState(false);
   const [entregaDestino, setEntregaDestino] = useState('');
   const [entregaMultidestino, setEntregaMultidestino] = useState(false);
@@ -823,6 +824,7 @@ export function CotizacionDetail() {
     const porcentajeAdelanto = source.adelanto_porcentaje ?? baseCotizacion?.adelanto_porcentaje ?? null;
     setAdelanto(Boolean(source.adelanto ?? baseCotizacion?.adelanto ?? false));
     setAdelantoPorcentaje(porcentajeAdelanto ? String(porcentajeAdelanto) : '');
+    setCuotaMensual(Boolean(source.cuota_mensual ?? baseCotizacion?.cuota_mensual ?? false));
     setEntregaProvincia(Boolean(source.entrega_provincia ?? baseCotizacion?.entrega_provincia ?? false));
     setEntregaDestino(source.entrega_destino ?? baseCotizacion?.entrega_destino ?? '');
     setEntregaMultidestino(Boolean(source.entrega_multidestino ?? baseCotizacion?.entrega_multidestino ?? false));
@@ -1086,6 +1088,7 @@ export function CotizacionDetail() {
     monto: 0,
     descripcion: '',
     destino_entrega: '',
+    imagen_evidencia: null as string | null,
   });
 
   const handleOpenNewItem = () => {
@@ -1326,6 +1329,7 @@ export function CotizacionDetail() {
       setFormaPago(data.forma_pago || 'AL CONTADO');
       setAdelanto(Boolean(data.adelanto));
       setAdelantoPorcentaje(data.adelanto_porcentaje ? String(data.adelanto_porcentaje) : '');
+      setCuotaMensual(Boolean(data.cuota_mensual));
       setEntregaProvincia(Boolean(data.entrega_provincia));
       setEntregaDestino(data.entrega_destino || '');
       setEntregaMultidestino(Boolean(data.entrega_multidestino));
@@ -1982,6 +1986,7 @@ export function CotizacionDetail() {
       forma_pago: formaPago,
       adelanto: adelanto,
       adelanto_porcentaje: adelanto ? adelantoPorcentajeValue : null,
+      cuota_mensual: cuotaMensual,
       entrega_provincia: entregaProvincia,
       entrega_destino: entregaProvincia ? entregaDestino.trim() : '',
       entrega_multidestino: entregaMultidestino,
@@ -2478,6 +2483,7 @@ export function CotizacionDetail() {
                 monto: Number(costoForm.monto),
                 descripcion: costoForm.descripcion || '',
                 destino_entrega: entregaMultidestino ? costoForm.destino_entrega || '' : '',
+                imagen_evidencia: costoForm.imagen_evidencia || null,
               }
             : costo
         )
@@ -2501,6 +2507,7 @@ export function CotizacionDetail() {
         descripcion: costoForm.descripcion || '',
 
         destino_entrega: entregaMultidestino ? costoForm.destino_entrega || '' : '',
+        imagen_evidencia: costoForm.imagen_evidencia || null,
       };
 
       setCostos((prev) => [...prev, nuevoCosto]);
@@ -2519,6 +2526,7 @@ export function CotizacionDetail() {
       monto: 0,
       descripcion: '',
       destino_entrega: '',
+      imagen_evidencia: null,
     });
   };
 
@@ -2545,6 +2553,7 @@ export function CotizacionDetail() {
       monto: Number(costo.monto || 0),
       descripcion: costo.descripcion || '',
       destino_entrega: costo.destino_entrega || '',
+      imagen_evidencia: costo.imagen_evidencia || null,
     });
   };
 
@@ -2556,6 +2565,7 @@ export function CotizacionDetail() {
       monto: 0,
       descripcion: '',
       destino_entrega: '',
+      imagen_evidencia: null,
     });
   };
 
@@ -3461,6 +3471,9 @@ export function CotizacionDetail() {
             setAdelanto={setAdelanto}
             adelantoPorcentaje={adelantoPorcentaje}
             setAdelantoPorcentaje={setAdelantoPorcentaje}
+            cuotaMensual={cuotaMensual}
+            setCuotaMensual={setCuotaMensual}
+            totalCotizacion={Number(resumen.total || 0)}
             entregaProvincia={entregaProvincia}
             setEntregaProvincia={setEntregaProvincia}
             entregaDestino={entregaDestino}

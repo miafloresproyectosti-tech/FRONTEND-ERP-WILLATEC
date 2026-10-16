@@ -137,6 +137,7 @@ export interface CotizacionCostosAdicional {
   monto: number;
   descripcion: string;
   destino_entrega?: string | null;
+  imagen_evidencia?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -191,6 +192,7 @@ export interface Cotizacion {
   forma_pago?: string;
   adelanto?: boolean;
   adelanto_porcentaje?: number | string | null;
+  cuota_mensual?: boolean;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
   entrega_multidestino?: boolean;
@@ -318,6 +320,7 @@ export interface CreateCotizacionData {
   forma_pago?: string;
   adelanto?: boolean;
   adelanto_porcentaje?: number | null;
+  cuota_mensual?: boolean;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
   entrega_multidestino?: boolean;
@@ -342,6 +345,7 @@ export interface UpdateCotizacionData {
   forma_pago?: string;
   adelanto?: boolean;
   adelanto_porcentaje?: number | null;
+  cuota_mensual?: boolean;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
   entrega_multidestino?: boolean;
@@ -521,6 +525,9 @@ function prepareCotizacionData(data: any): any {
 export interface AddCostoData {
   tipo: string;
   monto: number;
+  descripcion?: string;
+  destino_entrega?: string;
+  imagen_evidencia?: string | null;
 }
 
 export interface Plantilla{

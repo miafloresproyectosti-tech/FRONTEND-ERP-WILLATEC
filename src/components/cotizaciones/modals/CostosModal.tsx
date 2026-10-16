@@ -1,5 +1,6 @@
 import type { CotizacionCostosAdicional } from "../../../services/cotizacion.service";
-import { X, DollarSign, Trash2, Pencil } from "lucide-react";
+import { useRef, useState, type ClipboardEvent } from "react";
+import { X, DollarSign, Trash2, Pencil, Eye, ImagePlus, ClipboardPaste } from "lucide-react";
 import { formatMoney } from "../../../utils/formatNumber";
 
 interface Props{
@@ -15,6 +16,7 @@ interface Props{
     monto: number
     descripcion: string
     destino_entrega?: string
+    imagen_evidencia?: string | null
   }
 
   setCostoForm: (data: any) => void;
@@ -44,7 +46,32 @@ export function CostosModal({
   entregaMultidestino = false,
   destinos = [],
 }: Props) {
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   if (!open) return null;
+
+  const readImage = (file?: File) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    if (file.size > 4 * 1024 * 1024) {
+      window.alert("La imagen no puede superar 4 MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => setCostoForm({ ...costoForm, imagen_evidencia: String(reader.result) });
+    reader.readAsDataURL(file);
+  };
+
+  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    const image = Array.from(event.clipboardData.files).find((file) => file.type.startsWith("image/"))
+      || Array.from(event.clipboardData.items)
+        .find((item) => item.type.startsWith("image/"))
+        ?.getAsFile();
+    if (image) {
+      event.preventDefault();
+      readImage(image);
+    }
+  };
 
   const normalizeDestino = (destino?: string | null) => {
     const value = destino?.trim();
@@ -62,9 +89,9 @@ export function CostosModal({
   ).sort(([a], [b]) => a.localeCompare(b));
 
   return (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onPaste={handlePaste}>
     
-    <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
+    <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5 shadow-2xl">
       
       {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
@@ -82,11 +109,11 @@ export function CostosModal({
       </div>
 
       {/* LISTA DE COSTOS */}
-      <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
+      <div className="space-y-3 mb-4 max-h-64 overflow-y-auto pr-1">
         {costos.map((costo) => (
           <div
             key={costo.id}
-            className="flex justify-between items-center border p-2 rounded"
+            className="flex justify-between items-center gap-3 border border-slate-200 p-3 rounded-xl bg-slate-50"
           >
             <div>
               <p className="text-sm font-medium">
@@ -105,6 +132,11 @@ export function CostosModal({
                 <p className="mt-1 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
                   {costo.destino_entrega || "Lima Metropolitana"}
                 </p>
+              )}
+              {costo.imagen_evidencia && (
+                <button type="button" onClick={() => setPreviewImage(costo.imagen_evidencia || null)} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-900" title="Ver evidencia">
+                  <Eye className="h-4 w-4" /> Ver evidencia
+                </button>
               )}
             </div>
 
@@ -198,6 +230,28 @@ export function CostosModal({
           placeholder="Monto"
         />
 
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-slate-700">Evidencia del costo</p>
+              <p className="text-xs text-slate-500">Opcional. Puedes subir o pegar una imagen.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => readImage(event.target.files?.[0])} />
+              <button type="button" onClick={() => imageInputRef.current?.click()} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                <ImagePlus className="h-4 w-4" /> Subir
+              </button>
+              <span className="inline-flex items-center gap-1 text-xs text-slate-500"><ClipboardPaste className="h-4 w-4" /> Pegar</span>
+            </div>
+          </div>
+          {costoForm.imagen_evidencia && (
+            <div className="mt-3 flex items-center gap-3">
+              <img src={costoForm.imagen_evidencia} alt="Evidencia del costo" className="h-16 w-16 rounded-lg border border-slate-200 object-cover" />
+              <button type="button" onClick={() => setCostoForm({ ...costoForm, imagen_evidencia: null })} className="text-xs font-semibold text-red-600 hover:text-red-700">Quitar imagen</button>
+            </div>
+          )}
+        </div>
+
         <input
           type="text"
           value={costoForm.descripcion}
@@ -252,6 +306,14 @@ export function CostosModal({
 
       </div>
     </div>
+    {previewImage && (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={() => setPreviewImage(null)}>
+        <div className="relative max-h-full max-w-3xl rounded-xl bg-white p-2" onClick={(event) => event.stopPropagation()}>
+          <button type="button" onClick={() => setPreviewImage(null)} className="absolute right-2 top-2 rounded-full bg-white p-1 shadow" title="Cerrar"><X className="h-5 w-5" /></button>
+          <img src={previewImage} alt="Evidencia del costo" className="max-h-[80vh] max-w-full rounded-lg object-contain" />
+        </div>
+      </div>
+    )}
   </div>
 );
 }

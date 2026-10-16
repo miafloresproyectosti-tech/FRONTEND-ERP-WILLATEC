@@ -82,6 +82,10 @@ export interface RoleCatalogItem {
   name: string;
 }
 
+export interface RolePayload {
+  name: string;
+}
+
 // Funciones del servicio
 export const getUsers = async (): Promise<User[]> => {
   const response = await api.get("/users");
@@ -152,6 +156,26 @@ export const updateRolePermissions = async (
 
   clearCache("catalog:roles");
   return response.data?.role ?? response.data;
+};
+
+export const createRole = async (payload: RolePayload): Promise<RoleWithPermissions> => {
+  const response = await api.post("/roles", payload);
+  clearCache("catalog:roles");
+  return response.data?.role ?? response.data;
+};
+
+export const updateRole = async (
+  roleId: number,
+  payload: RolePayload,
+): Promise<RoleWithPermissions> => {
+  const response = await api.patch(`/roles/${roleId}`, payload);
+  clearCache("catalog:roles");
+  return response.data?.role ?? response.data;
+};
+
+export const deleteRole = async (roleId: number): Promise<void> => {
+  await api.delete(`/roles/${roleId}`);
+  clearCache("catalog:roles");
 };
 
 export const resetPassword = async (id: number) => {

@@ -35,7 +35,7 @@ import {
   isClosedOpportunity,
   openFileInNewTab,
 } from "../../utils/licitaciones";
-import { EstadoBadge, TipoBadge, VigenciaBadge } from "./OportunidadBadges";
+import { EstadoBadge, getOportunidadEstadoLabel, TipoBadge, VigenciaBadge } from "./OportunidadBadges";
 
 interface Props {
   opportunity: Oportunidad | null;
@@ -214,7 +214,7 @@ export function OportunidadDetailDrawer({
             <div>
               <div className="mb-3 flex flex-wrap gap-2">
                 <TipoBadge tipo={opportunity.tipo} />
-                <EstadoBadge estado={opportunity.estado} />
+                <EstadoBadge estado={opportunity.estado} label={getOportunidadEstadoLabel(opportunity)} />
                 <VigenciaBadge
                   vigencia={opportunity.vigencia}
                   estado={opportunity.estado}
