@@ -47,6 +47,7 @@ export function CostosModal({
   destinos = [],
 }: Props) {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [readingImage, setReadingImage] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   if (!open) return null;
 
@@ -58,7 +59,12 @@ export function CostosModal({
     }
 
     const reader = new FileReader();
-    reader.onload = () => setCostoForm({ ...costoForm, imagen_evidencia: String(reader.result) });
+    setReadingImage(true);
+    reader.onload = () => {
+      setCostoForm({ ...costoForm, imagen_evidencia: String(reader.result) });
+      setReadingImage(false);
+    };
+    reader.onerror = () => setReadingImage(false);
     reader.readAsDataURL(file);
   };
 
@@ -238,8 +244,8 @@ export function CostosModal({
             </div>
             <div className="flex items-center gap-2">
               <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => readImage(event.target.files?.[0])} />
-              <button type="button" onClick={() => imageInputRef.current?.click()} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">
-                <ImagePlus className="h-4 w-4" /> Subir
+              <button type="button" onClick={() => imageInputRef.current?.click()} disabled={readingImage} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60">
+                {readingImage ? "Procesando..." : <><ImagePlus className="h-4 w-4" /> Subir</>}
               </button>
               <span className="inline-flex items-center gap-1 text-xs text-slate-500"><ClipboardPaste className="h-4 w-4" /> Pegar</span>
             </div>
@@ -290,7 +296,8 @@ export function CostosModal({
 
         <button
           onClick={onAddCosto}
-          className="w-full py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold"
+          disabled={readingImage}
+          className="w-full py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold disabled:cursor-not-allowed disabled:opacity-60"
         >
           {costoForm.id ? "Guardar cambios" : "Agregar costo"}
         </button>

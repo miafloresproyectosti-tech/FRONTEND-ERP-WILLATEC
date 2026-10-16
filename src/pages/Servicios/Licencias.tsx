@@ -103,6 +103,7 @@ export default function Licencias() {
   const [renewing, setRenewing] = useState(false);
   const [cotizacionNumero, setCotizacionNumero] = useState("");
   const [linkingCotizacion, setLinkingCotizacion] = useState(false);
+  const [unlinkingCotizacionId, setUnlinkingCotizacionId] = useState<number | null>(null);
   const [cotizacionSearch, setCotizacionSearch] = useState("");
   const [cotizacionesEncontradas, setCotizacionesEncontradas] = useState<Cotizacion[]>([]);
   const [cotizacionesLoading, setCotizacionesLoading] = useState(false);
@@ -606,14 +607,17 @@ export default function Licencias() {
   };
 
   const handleUnlinkCotizacion = async (cotizacionId: number) => {
-    if (!viewModal) return;
+    if (!viewModal || unlinkingCotizacionId) return;
 
     try {
+      setUnlinkingCotizacionId(cotizacionId);
       const updated = await unlinkLicenciaCotizacion(viewModal.id, cotizacionId);
       updateLicenciaEnLista(updated);
     } catch (error) {
       console.error("Error al desenlazar cotizacion:", error);
       alert("No se pudo desenlazar la cotización.");
+    } finally {
+      setUnlinkingCotizacionId(null);
     }
   };
 
@@ -1866,9 +1870,10 @@ export default function Licencias() {
                                       void handleUnlinkCotizacion(cotizacion.id);
                                     }
                                   }}
-                                  className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
+                                  disabled={unlinkingCotizacionId === cotizacion.id}
+                                  className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                  Desenlazar
+                                  {unlinkingCotizacionId === cotizacion.id ? "Desenlazando..." : "Desenlazar"}
                                 </button>
                               </div>
                             </td>

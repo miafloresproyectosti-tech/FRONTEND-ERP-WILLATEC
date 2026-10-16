@@ -97,6 +97,7 @@ export default function Usuarios() {
   const [permissionsCatalog, setPermissionsCatalog] = useState<PermissionCatalogItem[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [savingRoleId, setSavingRoleId] = useState<number | null>(null);
+  const [resettingUserId, setResettingUserId] = useState<number | null>(null);
   const [permissionSearch, setPermissionSearch] = useState("");
   const [expandedRoles, setExpandedRoles] = useState<number[]>([]);
   const [expandedModules, setExpandedModules] = useState<string[]>([]);
@@ -382,6 +383,23 @@ export default function Usuarios() {
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
+  };
+
+  const handleResetPassword = async (usuario: User) => {
+    if (resettingUserId) return;
+    setResettingUserId(usuario.id);
+    try {
+      const res = await resetPassword(usuario.id);
+      const temp = res?.temporary_password || res?.password || res?.temporay_password || null;
+      setTempPassword(temp);
+      setShowTempModal(true);
+      showToast({ title: "Contraseña generada", description: "Se generó una contraseña temporal", type: "info" });
+    } catch (err) {
+      console.error("Error al resetear contraseña", err);
+      showToast({ title: "Error", description: "No se pudo resetear la contraseña", type: "warning" });
+    } finally {
+      setResettingUserId(null);
+    }
   };
 
   const canAddUser = user?.role === "SUPERADMIN";
@@ -912,6 +930,8 @@ export default function Usuarios() {
                       </button>
                       <button
                         onClick={async () => {
+                          if (resettingUserId) return;
+                          setResettingUserId(u.id);
                           try {
                             const res = await resetPassword(u.id);
                             const temp =
@@ -933,13 +953,16 @@ export default function Usuarios() {
                               description: "No se pudo resetear la contraseña",
                               type: "warning",
                             });
+                          } finally {
+                            setResettingUserId(null);
                           }
                         }}
-                        className="inline-flex h-11 items-center justify-center gap-1 rounded-xl bg-yellow-100 text-sm font-semibold text-yellow-700 hover:bg-yellow-200"
+                        disabled={resettingUserId === u.id}
+                        className="inline-flex h-11 items-center justify-center gap-1 rounded-xl bg-yellow-100 text-sm font-semibold text-yellow-700 hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-60"
                         title="Resetear contraseña"
                       >
-                        <Key size={16} />
-                        <span className="hidden sm:inline">Reset</span>
+                        {resettingUserId === u.id ? <Loader2 size={16} className="animate-spin" /> : <Key size={16} />}
+                        <span className="hidden sm:inline">{resettingUserId === u.id ? "..." : "Reset"}</span>
                       </button>
                     </div>
                   )}
@@ -1031,6 +1054,8 @@ export default function Usuarios() {
                             </button>
                             <button
                               onClick={async () => {
+                                if (resettingUserId) return;
+                                setResettingUserId(u.id);
                                 try {
                                   const res = await resetPassword(u.id);
                                   // esperar { tempPassword }
@@ -1058,12 +1083,15 @@ export default function Usuarios() {
                                       "No se pudo resetear la contraseña",
                                     type: "warning",
                                   });
+                                } finally {
+                                  setResettingUserId(null);
                                 }
                               }}
-                              className="w-11 h-11 rounded-xl bg-yellow-100 text-yellow-700 flex items-center justify-center hover:bg-yellow-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                              disabled={resettingUserId === u.id}
+                              className="w-11 h-11 rounded-xl bg-yellow-100 text-yellow-700 flex items-center justify-center hover:bg-yellow-200 transition-all duration-200 hover:scale-105 shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
                               title="Resetear contraseña"
                             >
-                              <Key size={18} />
+                              {resettingUserId === u.id ? <Loader2 size={18} className="animate-spin" /> : <Key size={18} />}
                             </button>
                           </div>
                         )}

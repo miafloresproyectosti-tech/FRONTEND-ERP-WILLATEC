@@ -28,6 +28,16 @@ import {
 } from "../../../services/producto.service";
 import { sanitizeLimitedRichText } from "../../../utils/richText";
 
+const getImportCalculationType = (
+  price: string | number,
+): ImportacionCalculoTipo => {
+  const amount = Number(price) || 0;
+
+  if (amount < 200) return "under200";
+  if (amount < 2000) return "from201to1999";
+  return "from2000up";
+};
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -94,6 +104,16 @@ export function ItemFormModal({
     unidades: itemForm.cantidad ? String(itemForm.cantidad) : "1",
     pesoTotal: "",
   });
+
+  React.useEffect(() => {
+    const automaticType = getImportCalculationType(
+      importCalcForm.precioProducto,
+    );
+
+    setImportCalcType((current) =>
+      current === automaticType ? current : automaticType,
+    );
+  }, [importCalcForm.precioProducto]);
   const destinosDisponibles = React.useMemo(() => {
     const values = new Set<string>(["Lima Metropolitana"]);
     destinos.forEach((destino) => {
@@ -1455,12 +1475,7 @@ export function ItemFormModal({
                 Tipo de importación
                 <select
                   value={importCalcType}
-                  onChange={(event) =>
-                    setImportCalcType(
-                      event.target.value as typeof importCalcType,
-                    )
-                  }
-                  disabled={isImportCalcReadOnly}
+                  disabled
                   className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="under200">IMPORTACIÓN MENOS DE $200</option>
@@ -1471,6 +1486,9 @@ export function ItemFormModal({
                     IMPORTACIÓN VALOR DE $2000 A +
                   </option>
                 </select>
+                <span className="mt-1 block text-[11px] font-normal normal-case text-gray-400">
+                  Se selecciona automaticamente segun el precio del producto.
+                </span>
               </label>
 
               <div className="overflow-hidden rounded-lg border border-gray-200">

@@ -108,6 +108,7 @@ export default function Clientes() {
 
 
   useEffect(() => {
+    let cancelled = false;
     const fetchClientes = async () => {
       try {
         setLoading(true);
@@ -120,6 +121,7 @@ export default function Clientes() {
           tipoClienteId: filterTipoCliente === "todos" ? undefined : Number(filterTipoCliente),
         });
 
+        if (cancelled) return;
         setClientesData(response.data);
         setTotalPages(response.last_page);
         setTotalClientes(response.total);
@@ -133,11 +135,14 @@ export default function Clientes() {
           route: "/clientes",
         });
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchClientes();
+    return () => {
+      cancelled = true;
+    };
   }, [currentPage, debouncedSearchTerm, filterEstado, filterTipoCliente, perPage]);
 
   const handleNuevo = () => {

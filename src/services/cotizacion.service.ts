@@ -193,6 +193,7 @@ export interface Cotizacion {
   adelanto?: boolean;
   adelanto_porcentaje?: number | string | null;
   cuota_mensual?: boolean;
+  cuota_mensual_meses?: number | null;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
   entrega_multidestino?: boolean;
@@ -321,6 +322,7 @@ export interface CreateCotizacionData {
   adelanto?: boolean;
   adelanto_porcentaje?: number | null;
   cuota_mensual?: boolean;
+  cuota_mensual_meses?: number | null;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
   entrega_multidestino?: boolean;
@@ -346,6 +348,7 @@ export interface UpdateCotizacionData {
   adelanto?: boolean;
   adelanto_porcentaje?: number | null;
   cuota_mensual?: boolean;
+  cuota_mensual_meses?: number | null;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
   entrega_multidestino?: boolean;
@@ -500,10 +503,19 @@ function buildCotizacionFormData(data: any): FormData {
 }
 
 function prepareCotizacionData(data: any): any {
-  if (!Array.isArray(data.items)) return data;
+  const cuotaMensualMeses = Math.max(
+    1,
+    Number(data.cuota_mensual_meses) || 12,
+  );
+  const normalizedData = {
+    ...data,
+    cuota_mensual_meses: cuotaMensualMeses,
+  };
+
+  if (!Array.isArray(data.items)) return normalizedData;
 
   return {
-    ...data,
+    ...normalizedData,
     items: data.items.map((item: any) => {
       const imageSource = item.imagen || item.imagen_path || item.imagen_url;
       const imagePathSource = item.imagen_path || imageSource;
@@ -910,10 +922,12 @@ export async function getCotizacionVersiones(
 export async function solicitarModificacionCotizacion(
   cotizacionId: number,
   motivo: string,
+  versionId: number,
 ): Promise<CotizacionModificacion> {
   try {
     const response = await api.post(`/cotizaciones/${cotizacionId}/solicitar-modificacion`, {
       motivo,
+      version_id: versionId,
     });
     return response.data?.modificacion || response.data?.data || response.data;
   } catch (error) {
@@ -968,14 +982,14 @@ export async function updateCotizacionModificacion(
 export async function enviarModificacionRevision(
   modificacionId: number,
   comentarioReenvioRevision?: string,
-): Promise<CotizacionModificacion> {
+): Promise<{ message?: string; modificacion: CotizacionModificacion }> {
   try {
     const response = await api.patch(`/cotizaciones/modificaciones/${modificacionId}/enviar-revision`, {
       ...(comentarioReenvioRevision?.trim()
         ? { comentario_reenvio_revision: comentarioReenvioRevision.trim() }
         : {}),
     });
-    return response.data?.modificacion || response.data?.data || response.data;
+    return response.data;
   } catch (error) {
     console.error("Error al enviar modificacion a revision:", error);
     throw error;

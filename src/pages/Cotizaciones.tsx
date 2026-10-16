@@ -240,6 +240,7 @@ export default function Cotizaciones() {
 
 
   const [loading, setLoading] = useState(true);
+  const cotizacionesRequestRef = useRef(0);
   const [loadingEjecutivos, setLoadingEjecutivos] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
@@ -302,6 +303,7 @@ export default function Cotizaciones() {
   }, [filterEstado, searchParams]);
 
   const loadCotizaciones = useCallback(async () => {
+    const requestId = ++cotizacionesRequestRef.current;
     try {
       setLoading(true);
       const response = await getCotizacionesPaginated({
@@ -314,6 +316,7 @@ export default function Cotizaciones() {
         fechaDesde,
         fechaHasta,
       });
+      if (requestId !== cotizacionesRequestRef.current) return;
       setCotizaciones(response.data || []);
       setTotalPages(response.last_page || 1);
       setTotalCotizaciones(response.total || 0);
@@ -330,7 +333,7 @@ export default function Cotizaciones() {
         route: '/cotizaciones',
       });
     } finally {
-      setLoading(false);
+      if (requestId === cotizacionesRequestRef.current) setLoading(false);
     }
   }, [currentPage, debouncedSearchTerm, fechaDesde, fechaHasta, filterEjecutivo, filterEstado, itemsPerPage]);
 

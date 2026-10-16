@@ -100,6 +100,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const role = normalizeRole(user.role);
     if (role === "SUPERADMIN") return true;
 
+    // Configuracion es accesible para todos los usuarios autenticados;
+    // la vista restringe internamente los apartados administrativos.
+    if (permission === "configuracion") return true;
+
     const permissions =
     user.permissions ?? [];
 

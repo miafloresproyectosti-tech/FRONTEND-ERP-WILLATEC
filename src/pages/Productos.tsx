@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
@@ -392,6 +392,8 @@ export default function Productos() {
   const [itemsPerPage, setItemsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
+  const productosRequestRef = useRef(0);
+  const externosRequestRef = useRef(0);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"stock" | "externos">("stock");
   const [productosMeta, setProductosMeta] = useState({
@@ -588,6 +590,7 @@ export default function Productos() {
 
   const fetchProductos = useCallback(
     async (page = currentPage, search = debouncedSearchTerm) => {
+      const requestId = ++productosRequestRef.current;
       try {
         setLoading(true);
         const response = await getProductosPaginated({
@@ -595,6 +598,7 @@ export default function Productos() {
           search,
           perPage: itemsPerPage,
         });
+        if (requestId !== productosRequestRef.current) return;
         setProductos(response.data.map(mapProducto));
         setProductosMeta({
           current_page: response.current_page,
@@ -614,7 +618,7 @@ export default function Productos() {
           route: "/productos",
         });
       } finally {
-        setLoading(false);
+        if (requestId === productosRequestRef.current) setLoading(false);
       }
     },
     [addNotification, currentPage, debouncedSearchTerm, itemsPerPage],
@@ -628,9 +632,11 @@ export default function Productos() {
 
   const fetchExternalItems = useCallback(
     async (page = 1, search = searchTerm, perPage = externalPerPage) => {
+      const requestId = ++externosRequestRef.current;
       try {
         setExternalLoading(true);
         const response = await getExternalItems(page, search, perPage);
+        if (requestId !== externosRequestRef.current) return;
         setExternalItems(response.data.map((item) => item));
         setExternalMeta(response.meta);
       } catch (error) {
@@ -643,7 +649,7 @@ export default function Productos() {
           route: "/productos",
         });
       } finally {
-        setExternalLoading(false);
+        if (requestId === externosRequestRef.current) setExternalLoading(false);
       }
     },
     [addNotification, externalPerPage, searchTerm],

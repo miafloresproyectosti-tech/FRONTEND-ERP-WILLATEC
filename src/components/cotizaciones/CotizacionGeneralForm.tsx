@@ -52,6 +52,8 @@ interface Props {
   setAdelantoPorcentaje: (v: string) => void;
   cuotaMensual: boolean;
   setCuotaMensual: (v: boolean) => void;
+  cuotaMensualMeses: number;
+  setCuotaMensualMeses: (v: number) => void;
   totalCotizacion: number;
 
   entregaProvincia: boolean;
@@ -109,6 +111,8 @@ export function CotizacionGeneralForm({
   setAdelantoPorcentaje,
   cuotaMensual,
   setCuotaMensual,
+  cuotaMensualMeses,
+  setCuotaMensualMeses,
   totalCotizacion,
   entregaProvincia,
   setEntregaProvincia,
@@ -348,9 +352,21 @@ export function CotizacionGeneralForm({
                   ¿Hay cuota mensual?
                 </label>
                 {cuotaMensual && (
-                  <p className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
-                    Cuota calculada: {totalCotizacion / 12 > 0 ? (totalCotizacion / 12).toFixed(2) : '0.00'} (total dividido entre 12 meses).
-                  </p>
+                  <div className="mt-2 space-y-2 rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
+                    <label className="flex items-center justify-between gap-3">
+                      <span>Periodo de cuota (meses)</span>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={cuotaMensualMeses}
+                        disabled={disabled}
+                        onChange={(e) => setCuotaMensualMeses(Math.max(1, Number(e.target.value) || 1))}
+                        className="h-8 w-24 rounded-md border border-blue-200 bg-white px-2 text-right text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                    </label>
+                    <p>Cuota calculada: {(totalCotizacion / Math.max(1, cuotaMensualMeses || 1)).toFixed(2)} (total dividido entre {cuotaMensualMeses || 1} meses).</p>
+                  </div>
                 )}
               </div>
               <div className="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4">

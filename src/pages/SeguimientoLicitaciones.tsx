@@ -99,6 +99,17 @@ const MIS_OPORTUNIDADES_ACTIVE_RANK: Record<OportunidadEstado, number> = {
   vencida: 4,
 };
 
+const LICITACIONES_STATE_PRIORITY: Record<OportunidadEstado, number> = {
+  sin_atender: 0,
+  en_atencion: 0,
+  cotizacion_generada: 0,
+  atendido: 1,
+  ganada: 1,
+  perdida: 1,
+  no_se_realizara: 1,
+  vencida: 1,
+};
+
 const SORT_LABELS: Record<OportunidadSortKey, string> = {
   empresa: "Empresa",
   vigencia: "Vigencia",
@@ -220,6 +231,12 @@ export default function SeguimientoLicitaciones() {
   const [unlinkingQuoteId, setUnlinkingQuoteId] = useState<string | null>(null);
   const [assigningOpportunityId, setAssigningOpportunityId] = useState<string | null>(null);
   const [changingEstadoId, setChangingEstadoId] = useState<string | null>(null);
+  const [deletingOpportunityId, setDeletingOpportunityId] = useState<string | null>(null);
+  const [submittingLoss, setSubmittingLoss] = useState(false);
+  const [commentingOpportunity, setCommentingOpportunity] = useState(false);
+  const [linkingQuote, setLinkingQuote] = useState(false);
+  const [releasingQuote, setReleasingQuote] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
   const loadRequestRef = useRef(0);
   const showToastRef = useRef(showToast);
 
@@ -229,6 +246,7 @@ export default function SeguimientoLicitaciones() {
 
   const userName = user?.name || "Usuario";
   const currentRole = normalizeRole(user?.role);
+  const isLicitacionesRole = currentRole === "LICITACIONES";
   const isManager = currentRole === "SUPERADMIN" || currentRole === "ADMIN" || currentRole === "LICITACIONES";
   const isSalesRole = currentRole === "VENTAS";
   const canCreateOpportunity = hasPermission("licitaciones.crear");
@@ -237,10 +255,10 @@ export default function SeguimientoLicitaciones() {
     currentRole === "VENTAS" ? "disponibles" : currentRole === "SUPERADMIN" ? "disponibles" : "todas"
   );
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (options?: { silent?: boolean }) => {
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
-    setLoading(true);
+    if (!options?.silent) setLoading(true);
     try {
       await procesarAlertasVencimientoOportunidades().then(() => {
         window.dispatchEvent(new Event(NOTIFICATIONS_UPDATED_EVENT));
@@ -285,7 +303,7 @@ export default function SeguimientoLicitaciones() {
       });
     } finally {
       if (requestId === loadRequestRef.current) {
-        setLoading(false);
+        if (!options?.silent) setLoading(false);
       }
     }
   }, [user?.email, user?.id, userName]);
@@ -295,24 +313,29 @@ export default function SeguimientoLicitaciones() {
   }, [loadData]);
 
   useEffect(() => {
+    if (isLicitacionesRole) {
+      setItemsPerPage(100);
+      setCurrentPage(1);
+    }
+  }, [isLicitacionesRole]);
+
+  useEffect(() => {
     const intervalId = window.setInterval(() => {
-      void getOportunidades()
-        .then((items) => {
-          setOpportunities((current) => {
-            if (current.length > 0 && items.length === 0) {
-              return current;
-            }
+      void loadData({ silent: true });
+    }, 15000);
 
-            return items;
-          });
-        })
-        .catch((error) => {
-          console.error("No se pudo refrescar oportunidades", error);
-        });
-    }, 60000);
+    const refreshOnFocus = () => {
+      if (document.visibilityState === "visible") void loadData({ silent: true });
+    };
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
 
-    return () => window.clearInterval(intervalId);
-  }, []);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+    };
+  }, [loadData]);
 
   const isAvailableOpportunity = useCallback((item: Oportunidad) => {
     const executiveId = Number(item.asignadoA ?? item.ejecutivo?.id ?? 0);
@@ -371,7 +394,7 @@ export default function SeguimientoLicitaciones() {
       return opportunities;
     }
 
-    if (currentRole === "LICITACIONES") return opportunities;
+    if (isLicitacionesRole) return opportunities;
 
     if (isManager) return opportunities;
 
@@ -381,7 +404,7 @@ export default function SeguimientoLicitaciones() {
 
       return hasNoExecutive || executiveId === user?.id;
     });
-  }, [activeBandeja, currentRole, isAssignedToOtherSalesExecutive, isAttentionOpportunity, isAvailableOpportunity, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
+  }, [activeBandeja, currentRole, isAssignedToOtherSalesExecutive, isAttentionOpportunity, isAvailableOpportunity, isLicitacionesRole, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
 
   const isUrgentOpportunity = (item: Oportunidad): boolean => {
   if (isClosedOpportunity(item.estado) || item.estado === "atendido") return false;
@@ -400,7 +423,7 @@ export default function SeguimientoLicitaciones() {
     return scopedOpportunities
       .filter((item) => !soloUrgentes || isUrgentOpportunity(item))
       .filter((item) => filters.tipo === "todos" || item.tipo === filters.tipo)
-      .filter((item) => filters.estado === "todos" || item.estado === filters.estado)
+      .filter((item) => isLicitacionesRole || filters.estado === "todos" || item.estado === filters.estado)
       .filter((item) => {
         if (filters.ejecutivo === "todos") return true;
 
@@ -422,9 +445,9 @@ export default function SeguimientoLicitaciones() {
         if (soloUrgentes) {
           return new Date(a.vigencia).getTime() - new Date(b.vigencia).getTime();
         }
-        if (currentRole === "LICITACIONES") {
-          const urgentDiff = Number(isUrgentOpportunity(b)) - Number(isUrgentOpportunity(a));
-          if (urgentDiff !== 0) return urgentDiff;
+        if (isLicitacionesRole) {
+          const stateDiff = LICITACIONES_STATE_PRIORITY[a.estado] - LICITACIONES_STATE_PRIORITY[b.estado];
+          if (stateDiff !== 0) return stateDiff;
 
           const dueDiff = new Date(a.vigencia).getTime() - new Date(b.vigencia).getTime();
           if (dueDiff !== 0) return dueDiff;
@@ -452,7 +475,7 @@ export default function SeguimientoLicitaciones() {
         const [first, second] = values[sortKey];
         return String(first).localeCompare(String(second), "es", { numeric: true }) * direction;
       });
-  }, [activeBandeja, currentRole, debouncedSearch, filters, isSalesRole, scopedOpportunities, soloUrgentes, sortDirection, sortKey]);
+  }, [activeBandeja, currentRole, debouncedSearch, filters, isLicitacionesRole, isSalesRole, scopedOpportunities, soloUrgentes, sortDirection, sortKey]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOpportunities.length / itemsPerPage));
   const paginationItems = getPaginationItems(currentPage, totalPages);
@@ -791,6 +814,9 @@ export default function SeguimientoLicitaciones() {
     }
 
     const now = new Date().toISOString();
+    if (submittingLoss) return;
+    setSubmittingLoss(true);
+    try {
     const attachedDocument = lossFile ? await fileToOpportunityFile(lossFile, userName) : undefined;
     const observations = lossObservations.trim();
     const lessons = [trimmedReason, observations].filter(Boolean);
@@ -830,7 +856,11 @@ export default function SeguimientoLicitaciones() {
     setLossError("");
     syncSelectedOpportunity(updated);
     void refreshSelectedOpportunity(lossTarget.id, updated);
+    setSubmittingLoss(false);
     showToast({ title: "Oportunidad perdida", description: "Se registró el motivo y las observaciones de la pérdida.", type: "success" });
+    } finally {
+      setSubmittingLoss(false);
+    }
   };
 
   const canDeleteOpportunity = (item: Oportunidad) => {
@@ -856,9 +886,17 @@ export default function SeguimientoLicitaciones() {
     }
 
     if (!window.confirm(`Eliminar la oportunidad de ${item.empresa}?`)) return;
-    await deleteOportunidad(item.id);
-    await loadData();
-    showToast({ title: "Oportunidad eliminada", type: "success" });
+    if (deletingOpportunityId) return;
+    setDeletingOpportunityId(item.id);
+    try {
+      await deleteOportunidad(item.id);
+      await loadData();
+      showToast({ title: "Oportunidad eliminada", type: "success" });
+    } catch {
+      showToast({ title: "No se pudo eliminar", description: "Intenta nuevamente.", type: "error" });
+    } finally {
+      setDeletingOpportunityId(null);
+    }
   };
 
   const handleEditOpportunity = async (item: Oportunidad) => {
@@ -909,14 +947,19 @@ export default function SeguimientoLicitaciones() {
   };
 
   const handleAddComment = async (comment: string) => {
-    if (!selected) return;
-    await addComentarioOportunidad(selected.id, {
-      id: createId("comment"),
-      usuario: userName,
-      fecha: new Date().toISOString(),
-      comentario: comment,
-    });
-    await refreshSelectedOpportunity(selected.id);
+    if (!selected || commentingOpportunity) return;
+    setCommentingOpportunity(true);
+    try {
+      await addComentarioOportunidad(selected.id, {
+        id: createId("comment"),
+        usuario: userName,
+        fecha: new Date().toISOString(),
+        comentario: comment,
+      });
+      await refreshSelectedOpportunity(selected.id);
+    } finally {
+      setCommentingOpportunity(false);
+    }
   };
 
   const isCreatedByCurrentUser = (createdBy?: string | null, createdById?: string | number | null) => {
@@ -1062,7 +1105,7 @@ export default function SeguimientoLicitaciones() {
   }, [quoteLinkModalOpen, quoteLinkSearch]);
 
   const handleLinkExistingQuote = async () => {
-    if (!selected || !quoteLinkSelectedId) return;
+    if (!selected || !quoteLinkSelectedId || linkingQuote) return;
 
     const cotizacion = quoteLinkOptions.find((item) => Number(item.id) === Number(quoteLinkSelectedId));
     if (!cotizacion) {
@@ -1072,6 +1115,7 @@ export default function SeguimientoLicitaciones() {
 
     const cotizacionData = cotizacion as any;
 
+    setLinkingQuote(true);
     try {
       await addCotizacionRelacionada(selected.id, userName, {
         cotizacion_id: Number(cotizacion.id),
@@ -1097,6 +1141,8 @@ export default function SeguimientoLicitaciones() {
         description: response.response?.data?.message || response.message || "La cotizacion no pudo vincularse a esta oportunidad.",
         type: "error",
       });
+    } finally {
+      setLinkingQuote(false);
     }
   };
 
@@ -1215,12 +1261,14 @@ export default function SeguimientoLicitaciones() {
   };
 
   const handleReleaseQuote = async (item: Oportunidad, reason: string) => {
+    if (releasingQuote) return;
     const trimmed = reason.trim();
     if (!trimmed) {
       setReleaseError("Escribe el motivo para liberar la oportunidad.");
       return;
     }
 
+    setReleasingQuote(true);
     const now = new Date().toISOString();
     const updated = await saveOportunidad({
       ...item,
@@ -1251,6 +1299,7 @@ export default function SeguimientoLicitaciones() {
     setReleaseError("");
     syncSelectedOpportunity(updated);
     void refreshSelectedOpportunity(item.id, updated);
+    setReleasingQuote(false);
     showToast({ title: "Cotización liberada", description: "La oportunidad volvió a estar disponible para asignarse.", type: "success" });
   };
 
@@ -1266,6 +1315,8 @@ export default function SeguimientoLicitaciones() {
   }));
 
   const handleExportExcel = async () => {
+    if (exportingExcel) return;
+    setExportingExcel(true);
     await exportExcelFile({
       filename: "seguimiento-licitaciones.xlsx",
       title: "Seguimiento de Licitaciones",
@@ -1280,7 +1331,7 @@ export default function SeguimientoLicitaciones() {
         { header: "Tiempo restante", key: "tiempo_restante", width: 18 },
       ],
       rows: exportRows,
-    });
+    }).finally(() => setExportingExcel(false));
   };
 
   // const handleExportPdf = () => {
@@ -1416,9 +1467,9 @@ export default function SeguimientoLicitaciones() {
               Nuevo
             </button>
           )}
-          <button type="button" onClick={handleExportExcel} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
-            <FileSpreadsheet size={18} />
-            Excel
+          <button type="button" onClick={handleExportExcel} disabled={exportingExcel} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
+            {exportingExcel ? <Loader2 size={18} className="animate-spin" /> : <FileSpreadsheet size={18} />}
+            {exportingExcel ? "Exportando..." : "Excel"}
           </button>
         </div>
       </div>
@@ -1723,11 +1774,11 @@ export default function SeguimientoLicitaciones() {
                     {canDeleteOpportunity(item) && (
                       <IconButton
                         title={locked ? "Registro bloqueado" : "Eliminar"}
-                        disabled={locked}
+                        disabled={locked || deletingOpportunityId === item.id}
                         danger
                         onClick={() => void handleDelete(item)}
                       >
-                        <Trash2 size={17} />
+                        {deletingOpportunityId === item.id ? <Loader2 size={17} className="animate-spin" /> : <Trash2 size={17} />}
                       </IconButton>
                     )}
                     {currentRole === "LICITACIONES" && item.estado === "atendido" && (
@@ -1852,11 +1903,11 @@ export default function SeguimientoLicitaciones() {
                           {canDeleteOpportunity(item) && (
                             <IconButton
                               title={locked ? "Registro bloqueado" : "Eliminar"}
-                              disabled={locked}
+                              disabled={locked || deletingOpportunityId === item.id}
                               danger
                               onClick={() => void handleDelete(item)}
                             >
-                              <Trash2 size={17} />
+                              {deletingOpportunityId === item.id ? <Loader2 size={17} className="animate-spin" /> : <Trash2 size={17} />}
                             </IconButton>
                           )}
                           {currentRole === "LICITACIONES" && item.estado === "atendido" && (
@@ -1918,6 +1969,7 @@ export default function SeguimientoLicitaciones() {
         opportunity={selected}
         onClose={() => setSelectedId(null)}
         onAddComment={(comment) => void handleAddComment(comment)}
+        commenting={commentingOpportunity}
         onGenerateQuote={() => void handleGenerateQuote()}
         canManageOpportunity={Boolean(selected && canManageOpportunityQuote(selected))}
         onMarkQuoteDone={() => void handleMarkQuoteDone()}
@@ -2059,10 +2111,11 @@ export default function SeguimientoLicitaciones() {
               <button
                 type="button"
                 onClick={() => void handleLinkExistingQuote()}
-                disabled={!quoteLinkSelectedId}
-                className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!quoteLinkSelectedId || linkingQuote}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Vincular cotizacion
+                {linkingQuote && <Loader2 size={16} className="animate-spin" />}
+                {linkingQuote ? "Vinculando..." : "Vincular cotizacion"}
               </button>
             </div>
           </div>
@@ -2107,8 +2160,9 @@ export default function SeguimientoLicitaciones() {
               <button type="button" onClick={() => { setLossModalOpen(false); setLossTarget(null); setLossReason(""); setLossObservations(""); setLossFile(null); setLossError(""); }} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
                 Cancelar
               </button>
-              <button type="button" onClick={() => void submitLoss()} className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700">
-                Guardar resultado
+              <button type="button" onClick={() => void submitLoss()} disabled={submittingLoss} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60">
+                {submittingLoss && <Loader2 size={16} className="animate-spin" />}
+                {submittingLoss ? "Guardando..." : "Guardar resultado"}
               </button>
             </div>
           </div>
@@ -2161,7 +2215,8 @@ export default function SeguimientoLicitaciones() {
               <button type="button" onClick={() => { setReleaseModalOpen(false); setReleaseTarget(null); setReleaseReason(""); setReleaseError(""); }} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
                 Cancelar
               </button>
-              <button type="button" onClick={() => void handleReleaseQuote(releaseTarget, releaseReason)} className="rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700">
+              <button type="button" onClick={() => void handleReleaseQuote(releaseTarget, releaseReason)} disabled={releasingQuote} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60">
+                {releasingQuote && <Loader2 size={16} className="animate-spin" />}
                 Confirmar liberación
               </button>
             </div>

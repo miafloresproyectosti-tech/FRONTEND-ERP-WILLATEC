@@ -38,6 +38,7 @@ import {
   enviarModificacionRevision,
   aprobarModificacionCotizacion,
   rechazarModificacionCotizacion,
+  getCotizacionesCount,
   reorderCotizacionItems,
   // deleteItem,
   exportarCotizacionPdf,
@@ -354,6 +355,7 @@ export function CotizacionDetail() {
   const [adelanto, setAdelanto] = useState(false);
   const [adelantoPorcentaje, setAdelantoPorcentaje] = useState('');
   const [cuotaMensual, setCuotaMensual] = useState(false);
+  const [cuotaMensualMeses, setCuotaMensualMeses] = useState(12);
   const [entregaProvincia, setEntregaProvincia] = useState(false);
   const [entregaDestino, setEntregaDestino] = useState('');
   const [entregaMultidestino, setEntregaMultidestino] = useState(false);
@@ -473,6 +475,8 @@ export function CotizacionDetail() {
   const [comentarioReenvioRevision, setComentarioReenvioRevision] = useState('');
   const [showSolicitudModificacionModal, setShowSolicitudModificacionModal] = useState(false);
   const [motivoModificacion, setMotivoModificacion] = useState('');
+  const [versionOrigenId, setVersionOrigenId] = useState<number | null>(null);
+  const [cargandoVersiones, setCargandoVersiones] = useState(false);
   const [solicitandoModificacion, setSolicitandoModificacion] = useState(false);
   const [modificacion, setModificacion] = useState<CotizacionModificacion | null>(null);
   const [versionesInfo, setVersionesInfo] = useState<CotizacionVersionesResponse | null>(null);
@@ -666,6 +670,24 @@ export function CotizacionDetail() {
   );
   const shouldReturnToPendingReview = isSuperAdmin || userRole === 'ADMIN';
   const pendingReviewPath = '/cotizaciones?estado=pendientes_revision';
+  const navigateAfterReview = async () => {
+    if (!shouldReturnToPendingReview) return false;
+
+    try {
+      const pendingCount = await getCotizacionesCount(
+        { pendienteRevision: true },
+        { force: true },
+      );
+      navigate(pendingCount > 0 ? pendingReviewPath : '/cotizaciones', {
+        replace: true,
+      });
+    } catch (error) {
+      console.error('No se pudo validar pendientes de aprobacion:', error);
+      navigate(pendingReviewPath, { replace: true });
+    }
+
+    return true;
+  };
   const canChangeReviewEstado = Boolean(
     user && (isSuperAdmin || currentDelegadoId === Number(user.id))
   );
@@ -825,6 +847,7 @@ export function CotizacionDetail() {
     setAdelanto(Boolean(source.adelanto ?? baseCotizacion?.adelanto ?? false));
     setAdelantoPorcentaje(porcentajeAdelanto ? String(porcentajeAdelanto) : '');
     setCuotaMensual(Boolean(source.cuota_mensual ?? baseCotizacion?.cuota_mensual ?? false));
+    setCuotaMensualMeses(Number(source.cuota_mensual_meses ?? baseCotizacion?.cuota_mensual_meses ?? 12) || 12);
     setEntregaProvincia(Boolean(source.entrega_provincia ?? baseCotizacion?.entrega_provincia ?? false));
     setEntregaDestino(source.entrega_destino ?? baseCotizacion?.entrega_destino ?? '');
     setEntregaMultidestino(Boolean(source.entrega_multidestino ?? baseCotizacion?.entrega_multidestino ?? false));
@@ -1330,6 +1353,7 @@ export function CotizacionDetail() {
       setAdelanto(Boolean(data.adelanto));
       setAdelantoPorcentaje(data.adelanto_porcentaje ? String(data.adelanto_porcentaje) : '');
       setCuotaMensual(Boolean(data.cuota_mensual));
+      setCuotaMensualMeses(Number(data.cuota_mensual_meses) || 12);
       setEntregaProvincia(Boolean(data.entrega_provincia));
       setEntregaDestino(data.entrega_destino || '');
       setEntregaMultidestino(Boolean(data.entrega_multidestino));
@@ -1344,15 +1368,25 @@ export function CotizacionDetail() {
       const historialData = data.historial || data.cotizacion_historial || [];
       setHistorial(historialData);
       if (Number(data.estado_cotizacion_id) === ESTADO_COTIZACION_APROBADA_ID) {
+        setCargandoVersiones(true);
         try {
           const versionData = await getCotizacionVersiones(currentCotizacionId);
           setVersionesInfo(versionData);
+          setVersionOrigenId(
+            versionData.versiones.find((version) => Number(version.version_number) === Number(versionData.version_vigente))?.id
+              || versionData.versiones[versionData.versiones.length - 1]?.id
+              || null,
+          );
         } catch (versionError) {
           console.warn('No se pudo cargar versiones de la cotizacion', versionError);
           setVersionesInfo(null);
+          setVersionOrigenId(null);
+        } finally {
+          setCargandoVersiones(false);
         }
       } else {
         setVersionesInfo(null);
+        setVersionOrigenId(null);
       }
       setLoading(false);
 
@@ -1546,8 +1580,7 @@ export function CotizacionDetail() {
         } as any);
       }
 
-      if (shouldReturnToPendingReview) {
-        navigate(pendingReviewPath, { replace: true });
+      if (await navigateAfterReview()) {
         return;
       }
 
@@ -1626,8 +1659,7 @@ export function CotizacionDetail() {
         } as any);
       }
 
-      if (shouldReturnToPendingReview) {
-        navigate(pendingReviewPath, { replace: true });
+      if (await navigateAfterReview()) {
         return;
       }
 
@@ -1654,6 +1686,16 @@ export function CotizacionDetail() {
 
     if (!cotizacionId || !canRequestModificacion || solicitandoModificacion) return;
 
+    if (!versionOrigenId) {
+      showToast({
+        title: 'Selecciona una version',
+        description: 'Debes elegir la version que servira como base de la modificacion.',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
+
     if (!motivo) {
       showToast({
         title: 'Motivo requerido',
@@ -1666,7 +1708,7 @@ export function CotizacionDetail() {
 
     setSolicitandoModificacion(true);
     try {
-      const nuevaModificacion = await solicitarModificacionCotizacion(cotizacionId, motivo);
+      const nuevaModificacion = await solicitarModificacionCotizacion(cotizacionId, motivo, versionOrigenId);
       setShowSolicitudModificacionModal(false);
       setMotivoModificacion('');
       showToast({
@@ -1695,12 +1737,16 @@ export function CotizacionDetail() {
     try {
       const payload = buildCotizacionPayload();
       await updateCotizacionModificacion(currentModificacionId, payload);
-      const updated = await enviarModificacionRevision(currentModificacionId, comentarioReenvioRevision);
+      const response = await enviarModificacionRevision(currentModificacionId, comentarioReenvioRevision);
+      const updated = response.modificacion;
+      const autoaprobada = response.message?.toLowerCase().includes('automatic') ?? false;
       setComentarioReenvioRevision('');
       setModificacion(updated);
       showToast({
-        title: 'Modificacion enviada',
-        description: 'La propuesta fue enviada para revision.',
+        title: autoaprobada ? 'Modificacion autoaprobada' : 'Modificacion enviada',
+        description: autoaprobada
+          ? 'La propuesta fue aprobada automaticamente porque no altera montos.'
+          : 'La propuesta fue enviada para revision.',
         type: 'success',
         duration: 4000,
       } as any);
@@ -1732,7 +1778,9 @@ export function CotizacionDetail() {
         type: 'success',
         duration: 4000,
       } as any);
-      navigate(`/cotizaciones/${data.cotizacion.id}/view`);
+      if (!(await navigateAfterReview())) {
+        navigate(`/cotizaciones/${data.cotizacion.id}/view`);
+      }
     } catch (error: any) {
       showToast({
         title: 'Error al aprobar modificacion',
@@ -1768,7 +1816,9 @@ export function CotizacionDetail() {
         type: 'warning',
         duration: 4000,
       } as any);
-      navigate(`/cotizaciones/${updated.cotizacion_id}/view`);
+      if (!(await navigateAfterReview())) {
+        navigate(`/cotizaciones/${updated.cotizacion_id}/view`);
+      }
     } catch (error: any) {
       showToast({
         title: 'Error al rechazar modificacion',
@@ -1987,6 +2037,8 @@ export function CotizacionDetail() {
       adelanto: adelanto,
       adelanto_porcentaje: adelanto ? adelantoPorcentajeValue : null,
       cuota_mensual: cuotaMensual,
+      // La columna es NOT NULL: cuando no hay cuota, conservamos un valor neutro.
+      cuota_mensual_meses: Math.max(1, Number(cuotaMensualMeses) || 12),
       entrega_provincia: entregaProvincia,
       entrega_destino: entregaProvincia ? entregaDestino.trim() : '',
       entrega_multidestino: entregaMultidestino,
@@ -3261,7 +3313,12 @@ export function CotizacionDetail() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="font-semibold text-blue-900">
-                Propuesta V{modificacion.version_number} - {modificacion.estado.replace('_', ' ')}
+                Propuesta V{modificacion.version_number}
+                {versionesInfo?.versiones.find((version) => Number(version.id) === Number(modificacion.original_version_id)) && (
+                  <span className="ml-1 text-blue-700">
+                    (tomada desde V{versionesInfo.versiones.find((version) => Number(version.id) === Number(modificacion.original_version_id))?.version_number})
+                  </span>
+                )} - {modificacion.estado.replace('_', ' ')}
               </p>
               <p className="text-sm text-blue-700">{modificacion.motivo}</p>
               {modificacion.comentario_revision?.trim() && (
@@ -3473,6 +3530,8 @@ export function CotizacionDetail() {
             setAdelantoPorcentaje={setAdelantoPorcentaje}
             cuotaMensual={cuotaMensual}
             setCuotaMensual={setCuotaMensual}
+            cuotaMensualMeses={cuotaMensualMeses}
+            setCuotaMensualMeses={setCuotaMensualMeses}
             totalCotizacion={Number(resumen.total || 0)}
             entregaProvincia={entregaProvincia}
             setEntregaProvincia={setEntregaProvincia}
@@ -3688,6 +3747,11 @@ export function CotizacionDetail() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-bold text-slate-900">
                     {version.numero_version}
+                    {modificacion && (
+                      <span className="ml-1 font-medium text-slate-600">
+                        (tomada desde V{versionesInfo.versiones.find((item) => Number(item.id) === Number(modificacion.original_version_id))?.version_number || 1})
+                      </span>
+                    )}
                   </h3>
 
                   <span
@@ -3785,6 +3849,11 @@ export function CotizacionDetail() {
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="text-sm font-bold text-amber-900">
                         Propuesta V{item.version_number}
+                        {versionesInfo.versiones.find((version) => Number(version.id) === Number(item.original_version_id)) && (
+                          <span className="ml-1 font-medium">
+                            (tomada desde V{versionesInfo.versiones.find((version) => Number(version.id) === Number(item.original_version_id))?.version_number})
+                          </span>
+                        )}
                       </h3>
                       <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
                         {item.estado.replace("_", " ")}
@@ -4318,12 +4387,83 @@ export function CotizacionDetail() {
 
       {/* 5. Modal Delegación */}
       {showSolicitudModificacionModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
-            <h3 className="text-xl font-bold mb-4">Solicitar modificacion</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-xl font-bold text-slate-900">Solicitar modificacion</h3>
             <p className="text-sm text-gray-600 mb-4">
-              La cotizacion aprobada no se editara directamente. Se creara una propuesta para revision.
+              Selecciona la version desde la que deseas iniciar los cambios y explica el motivo.
             </p>
+            <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Version base</p>
+                  <p className="text-xs text-slate-500">Se mostraran los cambios y motivos registrados.</p>
+                </div>
+                {cargandoVersiones && <Loader2 className="h-5 w-5 animate-spin text-blue-600" />}
+              </div>
+              {cargandoVersiones ? (
+                <div className="py-6 text-center text-sm text-slate-500">Cargando versiones...</div>
+              ) : versionesInfo?.versiones?.length ? (
+                <div className="grid max-h-72 gap-2 overflow-y-auto pr-1">
+                  {[...versionesInfo.versiones]
+                    .sort((a, b) => Number(b.version_number) - Number(a.version_number))
+                    .map((version) => {
+                      const versionModificacion = versionesInfo.modificaciones.find((item) => Number(item.version_number) === Number(version.version_number));
+                      const sourceVersion = versionModificacion
+                        ? versionesInfo.versiones.find((item) => Number(item.id) === Number(versionModificacion.original_version_id))
+                        : null;
+                      const selected = Number(versionOrigenId) === Number(version.id);
+
+                      return (
+                        <button
+                          key={version.id}
+                          type="button"
+                          onClick={() => setVersionOrigenId(version.id)}
+                          className={`w-full rounded-xl border p-3 text-left transition ${selected ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-blue-300'}`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-bold text-slate-900">{version.numero_version}</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {sourceVersion ? `Tomada desde ${sourceVersion.numero_version}` : version.notas || 'Version inicial aprobada'}
+                              </p>
+                            </div>
+                            <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${selected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                              {selected ? 'Seleccionada' : 'Elegir'}
+                            </span>
+                          </div>
+                          {versionModificacion?.motivo && (
+                            <p className="mt-2 line-clamp-2 text-xs text-slate-600">Motivo: {versionModificacion.motivo}</p>
+                          )}
+                          {version.approved_at && <p className="mt-2 text-[11px] text-slate-400">Aprobada: {new Date(version.approved_at).toLocaleString('es-PE')}</p>}
+                          {Number(version.version_number) > 1 && (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleVerCambiosVersion(version);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleVerCambiosVersion(version);
+                                }
+                              }}
+                              className="mt-2 inline-flex text-xs font-semibold text-blue-700 hover:text-blue-900"
+                            >
+                              Ver cambios de esta version
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                </div>
+              ) : (
+                <p className="py-4 text-sm text-amber-700">No hay versiones disponibles para seleccionar.</p>
+              )}
+            </div>
             <textarea
               value={motivoModificacion}
               onChange={(e) => setMotivoModificacion(e.target.value)}
@@ -4342,10 +4482,10 @@ export function CotizacionDetail() {
               </button>
               <button
                 onClick={handleSolicitarModificacion}
-                disabled={solicitandoModificacion}
+                disabled={solicitandoModificacion || cargandoVersiones || !versionOrigenId || !versionesInfo?.versiones?.length}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {solicitandoModificacion ? 'Creando...' : 'Crear propuesta'}
+                {solicitandoModificacion ? 'Creando propuesta...' : 'Crear propuesta'}
               </button>
             </div>
           </div>

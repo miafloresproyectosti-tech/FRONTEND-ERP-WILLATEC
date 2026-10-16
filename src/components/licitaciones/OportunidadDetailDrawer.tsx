@@ -4,6 +4,7 @@ import {
   FileDown,
   FileText,
   LockOpen,
+  Loader2,
   MessageSquare,
   Paperclip,
   Plus,
@@ -41,6 +42,7 @@ interface Props {
   opportunity: Oportunidad | null;
   onClose: () => void;
   onAddComment: (comment: string) => void;
+  commenting?: boolean;
   onGenerateQuote: () => void;
   canManageOpportunity?: boolean;
   onMarkQuoteDone?: () => void;
@@ -74,6 +76,7 @@ export function OportunidadDetailDrawer({
   opportunity,
   onClose,
   onAddComment,
+  commenting = false,
   onGenerateQuote,
   canManageOpportunity = false,
   onMarkQuoteDone,
@@ -739,10 +742,11 @@ export function OportunidadDetailDrawer({
                 <button
                   type="button"
                   onClick={submitComment}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                  disabled={commenting}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <Plus size={16} />
-                  Agregar
+                  {commenting ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  {commenting ? "Guardando..." : "Agregar"}
                 </button>
               </div>
             )}
@@ -846,6 +850,7 @@ export function OportunidadDetailDrawer({
                               onDownloadQuotePdf(item.cotizacionId!)
                             }
                             disabled={
+                              item.puedeDescargarPdf !== true ||
                               item.tieneModificacionPendiente ||
                               String(downloadingQuoteId) ===
                                 String(item.cotizacionId)
@@ -854,6 +859,9 @@ export function OportunidadDetailDrawer({
                             title={
                               item.tieneModificacionPendiente
                                 ? "La cotizacion tiene una modificacion pendiente de aprobacion"
+                                : item.puedeDescargarPdf !== true
+                                  ? item.pdfBloqueoMotivo ||
+                                    "El PDF se habilitara solo cuando la cotizacion este aprobada."
                                 : "Descargar PDF de cotizacion"
                             }
                           >
