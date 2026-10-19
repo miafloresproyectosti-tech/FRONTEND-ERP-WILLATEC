@@ -164,7 +164,7 @@ export interface CotizacionHistorial {
   };
 }
 
-export type EstadoModificacion = "borrador" | "en_revision" | "aprobada" | "rechazada";
+export type EstadoModificacion = "borrador" | "en_revision" | "aprobada" | "rechazada" | "cancelada";
 
 export interface UserLite {
   id: number;
@@ -839,6 +839,17 @@ export async function enviarCotizacionRevision(id: number, comentario?: string):
   }
 }
 
+export async function cancelarRevisionCotizacion(
+  id: number,
+  motivo?: string,
+): Promise<Cotizacion> {
+  const response = await api.patch(`/cotizaciones/${id}/cancelar-revision`, {
+    ...(motivo?.trim() ? { motivo: motivo.trim() } : {}),
+  });
+  clearCotizacionesReadCache();
+  return response.data?.cotizacion || response.data?.data || response.data;
+}
+
 export async function aprobarCotizacion(id: number): Promise<Cotizacion> {
   try {
     const response = await api.patch(`/cotizaciones/${id}/aprobar`, {
@@ -994,6 +1005,17 @@ export async function enviarModificacionRevision(
     console.error("Error al enviar modificacion a revision:", error);
     throw error;
   }
+}
+
+export async function cancelarModificacionCotizacion(
+  modificacionId: number,
+  motivo?: string,
+): Promise<CotizacionModificacion> {
+  const response = await api.patch(`/cotizaciones/modificaciones/${modificacionId}/cancelar`, {
+    ...(motivo?.trim() ? { motivo: motivo.trim() } : {}),
+  });
+  clearCotizacionesReadCache();
+  return response.data?.modificacion || response.data?.data || response.data;
 }
 
 export async function aprobarModificacionCotizacion(

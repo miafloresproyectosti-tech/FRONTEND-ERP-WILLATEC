@@ -28,6 +28,7 @@ import {
   createCotizacion,
   updateCotizacion,
   enviarCotizacionRevision,
+  cancelarRevisionCotizacion,
   aprobarCotizacion,
   rechazarCotizacion,
   getCotizacionHistorial,
@@ -36,6 +37,7 @@ import {
   getCotizacionModificacion,
   updateCotizacionModificacion,
   enviarModificacionRevision,
+  cancelarModificacionCotizacion,
   aprobarModificacionCotizacion,
   rechazarModificacionCotizacion,
   getCotizacionesCount,
@@ -79,6 +81,7 @@ import {
   ChevronUp,
   Clock3,
   MessageSquareText,
+  RotateCcw,
 } from 'lucide-react';
 
 const ESTADO_COTIZACION_APROBADA_ID = 4;
@@ -486,6 +489,7 @@ export function CotizacionDetail() {
   const [modificacionCompararId, setModificacionCompararId] = useState<number | null>(null);
   const [historialExpandido, setHistorialExpandido] = useState(true)
   const [comentarioRevisionModificacion, setComentarioRevisionModificacion] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const [estadoCotizacionId, setEstadoCotizacionId] = useState<number>(1);
 
@@ -662,6 +666,17 @@ export function CotizacionDetail() {
     currentCotizacionId &&
     currentEstadoCotizacionId === 1 &&
     canEditCotizacion
+  );
+  const canCancelCotizacionReview = Boolean(
+    currentCotizacionId &&
+    currentEstadoCotizacionId === 2 &&
+    canEditCotizacion
+  );
+  const canCancelModificacion = Boolean(
+    isModificationMode &&
+    canEditModificacion &&
+    modificacion &&
+    ['borrador', 'en_revision'].includes(modificacion.estado)
   );
   const canReviewCotizacion = Boolean(
     currentEstadoCotizacionId === 2 &&
@@ -1506,6 +1521,12 @@ export function CotizacionDetail() {
 
     setIsSendingReview(true);
     try {
+      if (!isModificationMode && !isCotizacionReadOnly && currentCotizacionId) {
+        const updated = await updateCotizacion(currentCotizacionId, buildCotizacionPayload());
+        setCotizacion(updated);
+        setLoadedCotizacionUpdatedAt(updated.updated_at || null);
+      }
+
       const data = await enviarCotizacionRevision(cotizacionId, comentarioReenvioRevision);
       const historialApi = await getCotizacionHistorial(cotizacionId);
 
@@ -1533,6 +1554,39 @@ export function CotizacionDetail() {
       } as any);
     } finally {
       setIsSendingReview(false);
+    }
+  };
+
+  const handleCancelarRevision = async () => {
+    const cotizacionId = cotizacion?.id || currentCotizacionId;
+    if (!cotizacionId || !canCancelCotizacionReview || isCancelling) return;
+
+    if (!window.confirm('La cotizacion volvera a Borrador y dejara de estar pendiente de aprobacion. Deseas continuar?')) {
+      return;
+    }
+
+    const motivo = window.prompt('Motivo de la cancelacion (opcional):') || '';
+    setIsCancelling(true);
+    try {
+      const data = await cancelarRevisionCotizacion(cotizacionId, motivo);
+      setCotizacion(data);
+      setEstadoCotizacionId(Number(data.estado_cotizacion_id || 1));
+      setHistorial(await getCotizacionHistorial(cotizacionId));
+      showToast({
+        title: 'Envio cancelado',
+        description: 'La cotizacion volvio a Borrador.',
+        type: 'success',
+        duration: 4000,
+      } as any);
+    } catch (error: any) {
+      showToast({
+        title: 'No se pudo cancelar',
+        description: error?.response?.data?.message || 'La cotizacion ya no esta en revision.',
+        type: 'error',
+        duration: 5000,
+      } as any);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -1760,6 +1814,36 @@ export function CotizacionDetail() {
       } as any);
     } finally {
       setIsSendingReview(false);
+    }
+  };
+
+  const handleCancelarModificacion = async () => {
+    if (!currentModificacionId || !canCancelModificacion || isCancelling) return;
+
+    if (!window.confirm('Se cancelara solo esta modificacion. La cotizacion y su version vigente quedaran intactas. Deseas continuar?')) {
+      return;
+    }
+
+    const motivo = window.prompt('Motivo de la cancelacion (opcional):') || '';
+    setIsCancelling(true);
+    try {
+      await cancelarModificacionCotizacion(currentModificacionId, motivo);
+      showToast({
+        title: 'Modificacion cancelada',
+        description: 'La version vigente de la cotizacion se mantuvo intacta.',
+        type: 'success',
+        duration: 4000,
+      } as any);
+      navigate(`/cotizaciones/${modificacion?.cotizacion_id || currentCotizacionId}/view`);
+    } catch (error: any) {
+      showToast({
+        title: 'No se pudo cancelar',
+        description: error?.response?.data?.message || 'La modificacion ya no esta pendiente.',
+        type: 'error',
+        duration: 5000,
+      } as any);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -4043,11 +4127,29 @@ export function CotizacionDetail() {
                 >
                   {isSendingReview ? (
                     <>
-                      <Loader2 className="w-5 h-5 animate-spin" /> Enviando...
+                      <Loader2 className="w-5 h-5 animate-spin" /> Guardando y enviando...
                     </>
                   ) : (
                     <>
-                      <Send className="w-5 h-5" /> Enviar para aprobación
+                      <Send className="w-5 h-5" /> Guardar y enviar a aprobación
+                    </>
+                  )}
+                </button>
+              )}
+
+              {canCancelCotizacionReview && (
+                <button
+                  onClick={handleCancelarRevision}
+                  disabled={isCancelling || isApproving || isRejecting}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isCancelling ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" /> Cancelando...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-5 h-5" /> Cancelar envio a revision
                     </>
                   )}
                 </button>
@@ -4163,11 +4265,29 @@ export function CotizacionDetail() {
                 >
                   {isSendingReview ? (
                     <>
-                      <Loader2 className="w-5 h-5 animate-spin" /> Enviando...
+                      <Loader2 className="w-5 h-5 animate-spin" /> Guardando y enviando...
                     </>
                   ) : (
                     <>
-                      <Send className="w-5 h-5" /> Enviar a revision
+                      <Send className="w-5 h-5" /> Guardar y enviar a revision
+                    </>
+                  )}
+                </button>
+              )}
+
+              {canCancelModificacion && (
+                <button
+                  onClick={handleCancelarModificacion}
+                  disabled={isCancelling || saving || isSendingReview}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isCancelling ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" /> Cancelando...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-5 h-5" /> Cancelar modificacion
                     </>
                   )}
                 </button>
@@ -4181,11 +4301,29 @@ export function CotizacionDetail() {
                 >
                   {isSendingReview ? (
                     <>
-                      <Loader2 className="w-5 h-5 animate-spin" /> Enviando...
+                      <Loader2 className="w-5 h-5 animate-spin" /> Guardando y enviando...
                     </>
                   ) : (
                     <>
-                      <Send className="w-5 h-5" /> Enviar para aprobación
+                      <Send className="w-5 h-5" /> Guardar y enviar a aprobación
+                    </>
+                  )}
+                </button>
+              )}
+
+              {!isModificationMode && canCancelCotizacionReview && (
+                <button
+                  onClick={handleCancelarRevision}
+                  disabled={isCancelling || saving || isApproving || isRejecting}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isCancelling ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" /> Cancelando...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-5 h-5" /> Cancelar envio a revision
                     </>
                   )}
                 </button>

@@ -30,8 +30,9 @@ import { sanitizeLimitedRichText } from "../../../utils/richText";
 
 const getImportCalculationType = (
   price: string | number,
+  units: string | number = 1,
 ): ImportacionCalculoTipo => {
-  const amount = Number(price) || 0;
+  const amount = (Number(price) || 0) * (Number(units) || 0);
 
   if (amount < 200) return "under200";
   if (amount < 2000) return "from201to1999";
@@ -108,12 +109,13 @@ export function ItemFormModal({
   React.useEffect(() => {
     const automaticType = getImportCalculationType(
       importCalcForm.precioProducto,
+      importCalcForm.unidades,
     );
 
     setImportCalcType((current) =>
       current === automaticType ? current : automaticType,
     );
-  }, [importCalcForm.precioProducto]);
+  }, [importCalcForm.precioProducto, importCalcForm.unidades]);
   const destinosDisponibles = React.useMemo(() => {
     const values = new Set<string>(["Lima Metropolitana"]);
     destinos.forEach((destino) => {

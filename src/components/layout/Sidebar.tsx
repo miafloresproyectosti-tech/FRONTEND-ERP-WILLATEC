@@ -263,7 +263,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
           <nav className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
             {/* DASHBOARD */}
             {hasPermission("dashboard") && (
-              <Link to="/" onClick={closeMobile} className={itemClass("/")}>
+              <Link to="/dashboard" onClick={closeMobile} className={itemClass("/dashboard")}>
                 <Home size={20} />
                 <span className="font-medium">Dashboard</span>
               </Link>
