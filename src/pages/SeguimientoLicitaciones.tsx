@@ -41,12 +41,12 @@ import {
   deleteOportunidad,
   getOportunidad,
   getOportunidades,
+  getLicitacionEjecutivos,
   procesarAlertasVencimientoOportunidades,
   registrarVistaOportunidad,
   saveOportunidad,
 } from "../services/licitaciones.service";
 import { NOTIFICATIONS_UPDATED_EVENT } from "../services/notification.service";
-import { getUsers } from "../services/usuario.service";
 import {
   descargarPdfCotizacion,
   exportarCotizacionPdf,
@@ -60,6 +60,7 @@ import type {
   OportunidadEstado,
   OportunidadFilters,
   OportunidadFormData,
+  OportunidadFiltroEstado,
   OportunidadSortKey,
   SortDirection,
 } from "../types/licitaciones";
@@ -130,6 +131,33 @@ const SUMMARY_ITEMS: Array<{ key: string; label: string; className: string }> = 
   { key: "vencida", label: "Vencidas", className: "border-red-200" },
   { key: "proximas", label: "Proximas a vencer", className: "border-orange-200" },
 ];
+
+const OPPORTUNITY_FILTER_STATES: Record<OportunidadFiltroEstado, string> = {
+  ...OPORTUNIDAD_ESTADOS,
+  cotizacion_pendiente: "Cotizacion pendiente",
+  modificacion_cotizacion: "Modificacion de cotizacion",
+  por_subir: "Por subir",
+};
+
+const getOpportunityFilterStatus = (opportunity: Oportunidad): OportunidadFiltroEstado => {
+  if (opportunity.estado !== "cotizacion_generada") return opportunity.estado;
+
+  if (opportunity.cotizaciones.some((quote) => quote.tieneModificacionPendiente)) {
+    return "modificacion_cotizacion";
+  }
+
+  if (opportunity.cotizaciones.some((quote) =>
+    String(quote.estado || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .includes("aprob"),
+  )) {
+    return "por_subir";
+  }
+
+  return "cotizacion_pendiente";
+};
 
 const TYPE_TABS = [
   { key: "todos", label: "Todos", description: "Todo el portafolio" },
@@ -259,41 +287,31 @@ export default function SeguimientoLicitaciones() {
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
     if (!options?.silent) setLoading(true);
-    try {
-      await procesarAlertasVencimientoOportunidades().then(() => {
-        window.dispatchEvent(new Event(NOTIFICATIONS_UPDATED_EVENT));
-      }).catch((error) => {
-        console.warn("No se pudieron procesar alertas de vencimiento de oportunidades:", error);
-      });
 
-      const [items, users] = await Promise.all([
-        getOportunidades(),
-        getUsers().catch(() => []),
-      ]);
+    // Mantiene el flujo de alertas, pero no bloquea la primera pintura de oportunidades.
+    void procesarAlertasVencimientoOportunidades().then(() => {
+      window.dispatchEvent(new Event(NOTIFICATIONS_UPDATED_EVENT));
+    }).catch((error) => {
+      console.warn("No se pudieron procesar alertas de vencimiento de oportunidades:", error);
+    });
+
+    try {
+      const items = await getOportunidades();
 
       if (requestId !== loadRequestRef.current) return;
-
-      const mappedUsers = users
-        .filter((item) => item.activo !== false)
-        .filter((item) =>
-          item.roles?.some((role) =>
-            OPPORTUNITY_EXECUTIVE_ROLES.has(normalizeRole(role.name)),
-          ),
-        )
-        .map((item) => ({
-          id: item.id,
-          nombre: `${item.nombres || ""} ${item.apellidos || ""}`.trim() || item.email,
-          email: item.email,
-        }));
-
-      setEjecutivos(
-        mappedUsers.length > 0
-          ? mappedUsers
-          : user?.id && OPPORTUNITY_EXECUTIVE_ROLES.has(currentRole)
-            ? [{ id: user.id, nombre: userName, email: user.email }]
-            : []
-      );
       setOpportunities(items);
+      setEjecutivos((current) => {
+        const merged = new Map<number, EjecutivoAsignado>();
+        [...current, ...items.map((item) => item.ejecutivo)]
+          .filter((item) => item?.id && item.nombre !== "Sin ejecutivo")
+          .forEach((item) => merged.set(Number(item.id), { ...item, id: Number(item.id) }));
+
+        if (user?.id && OPPORTUNITY_EXECUTIVE_ROLES.has(currentRole)) {
+          merged.set(user.id, { id: user.id, nombre: userName, email: user.email });
+        }
+
+        return merged.size > 0 ? Array.from(merged.values()) : current;
+      });
     } catch (error) {
       console.error("No se pudieron cargar oportunidades", error);
       showToastRef.current({
@@ -308,9 +326,38 @@ export default function SeguimientoLicitaciones() {
     }
   }, [user?.email, user?.id, userName]);
 
+  const loadExecutives = useCallback(async () => {
+    const users = await getLicitacionEjecutivos().catch(() => []);
+    const fromUsers = users
+      .filter((item) => item.activo !== false)
+      .filter((item) => item.roles?.some((role) =>
+        OPPORTUNITY_EXECUTIVE_ROLES.has(normalizeRole(role.name)),
+      ))
+      .map((item) => ({
+        id: item.id,
+        nombre: `${item.nombres || ""} ${item.apellidos || ""}`.trim() || item.email,
+        email: item.email,
+      }));
+
+    setEjecutivos((current) => {
+      const merged = new Map<number, EjecutivoAsignado>();
+      [...fromUsers]
+        .filter((item) => item?.id && item.nombre !== "Sin ejecutivo")
+        .forEach((item) => merged.set(Number(item.id), { ...item, id: Number(item.id) }));
+
+      if (user?.id && OPPORTUNITY_EXECUTIVE_ROLES.has(currentRole)) {
+        merged.set(user.id, { id: user.id, nombre: userName, email: user.email });
+      }
+
+      // Conserva temporalmente el catalogo anterior si una recarga secundaria falla.
+      return merged.size > 0 ? Array.from(merged.values()) : current;
+    });
+  }, [currentRole, user?.email, user?.id, userName]);
+
   useEffect(() => {
     void loadData();
-  }, [loadData]);
+    void loadExecutives();
+  }, [loadData, loadExecutives]);
 
   useEffect(() => {
     if (isLicitacionesRole) {
@@ -423,7 +470,7 @@ export default function SeguimientoLicitaciones() {
     return scopedOpportunities
       .filter((item) => !soloUrgentes || isUrgentOpportunity(item))
       .filter((item) => filters.tipo === "todos" || item.tipo === filters.tipo)
-      .filter((item) => isLicitacionesRole || filters.estado === "todos" || item.estado === filters.estado)
+      .filter((item) => filters.estado === "todos" || getOpportunityFilterStatus(item) === filters.estado)
       .filter((item) => {
         if (filters.ejecutivo === "todos") return true;
 
@@ -624,6 +671,10 @@ export default function SeguimientoLicitaciones() {
     try {
       setAssigningOpportunityId(opportunity.id);
       const updated = await saveOportunidad(next);
+      setOpportunities((current) => current.map((item) => item.id === opportunity.id ? updated : item));
+      setEjecutivos((current) => current.some((item) => item.id === user.id)
+        ? current
+        : [...current, { id: user.id, nombre: userName, email: user.email }]);
       syncSelectedOpportunity(updated);
       void refreshSelectedOpportunity(opportunity.id, updated);
       const reminder = `Recuerda que tienes una cotización pendiente y se vence ${formatDateTime(next.vigencia)}.`;
@@ -1644,7 +1695,7 @@ export default function SeguimientoLicitaciones() {
           {showEstadoSelect && (
             <select value={filters.estado} onChange={(event) => updateFilter("estado", event.target.value as OportunidadFilters["estado"])} className="h-11 rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
               <option value="todos">Todos los estados</option>
-              {Object.entries(OPORTUNIDAD_ESTADOS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {Object.entries(OPPORTUNITY_FILTER_STATES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           )}
           <select value={filters.ejecutivo} onChange={(event) => updateFilter("ejecutivo", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">

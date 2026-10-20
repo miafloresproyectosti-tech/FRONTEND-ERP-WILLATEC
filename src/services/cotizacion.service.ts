@@ -570,6 +570,15 @@ export interface GetCotizacionesParams {
   fechaHasta?: string;
 }
 
+export interface CotizacionEjecutivo {
+  id: number;
+  nombres: string;
+  apellidos: string;
+  email: string;
+  activo: boolean;
+  roles: Array<{ id: number; name: string }>;
+}
+
 const COTIZACIONES_COUNT_CACHE_PREFIX = "cotizaciones:count:";
 const COTIZACIONES_PENDIENTES_REVISION_CACHE_PREFIX = "cotizaciones:pendientes-revision:";
 const COTIZACIONES_COUNT_TTL_MS = 30_000;
@@ -598,6 +607,11 @@ export async function getCotizaciones(
     console.error("Error al obtener cotizaciones:", error);
     throw error;
   }
+}
+
+export async function getCotizacionEjecutivos(): Promise<CotizacionEjecutivo[]> {
+  const response = await api.get<CotizacionEjecutivo[]>('/cotizaciones/ejecutivos');
+  return Array.isArray(response.data) ? response.data : [];
 }
 
 export async function getCotizacionesPaginated({

@@ -28,10 +28,12 @@ import {
   deleteCotizacion,
   getCotizacionesCount,
   getCotizacionesPaginated,
+  getCotizacionEjecutivos,
   getCotizacionesPendientesRevisionCount,
   type Cotizacion as ApiCotizacion,
 } from "../services/cotizacion.service";
-import { getUsers, type User as ApiUser } from "../services/usuario.service";
+import type { User as ApiUser } from "../services/usuario.service";
+import type { CotizacionEjecutivo } from "../services/cotizacion.service";
 import { formatMoney } from "../utils/formatNumber";
 import { getPaginationItems } from "../utils/pagination";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
@@ -381,7 +383,7 @@ export default function Cotizaciones() {
     return cotizacion.user_id ? `Usuario #${cotizacion.user_id}` : 'N/A';
   }, []);
 
-  const getApiUserNombre = useCallback((apiUser: ApiUser) => {
+  const getApiUserNombre = useCallback((apiUser: Pick<ApiUser, "nombres" | "apellidos" | "email" | "id">) => {
     const nombres = apiUser.nombres || "";
     const apellidos = apiUser.apellidos || "";
     const nombreCompleto = `${nombres} ${apellidos}`.trim();
@@ -389,7 +391,7 @@ export default function Cotizaciones() {
     return nombreCompleto || apiUser.email || `Usuario #${apiUser.id}`;
   }, []);
 
-  const isCotizacionExecutiveUser = useCallback((apiUser: ApiUser) => {
+  const isCotizacionExecutiveUser = useCallback((apiUser: { roles?: Array<{ name: string }> }) => {
     const roleNames = (apiUser.roles || []).map((role) => role.name.toUpperCase());
 
     return roleNames.length === 0 || roleNames.some((roleName) => ["VENTAS", "SUPERADMIN"].includes(roleName));
@@ -406,10 +408,24 @@ export default function Cotizaciones() {
   const loadEjecutivosResumen = useCallback(async (force = false) => {
     try {
       setLoadingEjecutivos(true);
-      const users = await getUsers();
+      const users: CotizacionEjecutivo[] = await getCotizacionEjecutivos();
       const cotizacionExecutiveUsers = users.filter(
         (apiUser) => apiUser.activo !== false && isCotizacionExecutiveUser(apiUser)
       );
+
+      const baseOptions = cotizacionExecutiveUsers.map((apiUser) => {
+        const roleNames = (apiUser.roles || []).map((role) => role.name.toUpperCase());
+
+        return {
+          id: apiUser.id,
+          nombre: getApiUserNombre(apiUser),
+          total: 0,
+          isSuperadmin: roleNames.includes("SUPERADMIN"),
+        };
+      });
+
+      // Muestra el catálogo en cuanto llega; los totales se actualizan en segundo plano.
+      setEjecutivoOptions(baseOptions);
 
       const resumen = await Promise.all(
         cotizacionExecutiveUsers.map(async (apiUser) => {
@@ -421,7 +437,10 @@ export default function Cotizaciones() {
             ejecutivoId: apiUser.id,
             fechaDesde,
             fechaHasta,
-          }, { force });
+          }, { force }).catch((error) => {
+            console.warn(`No se pudo calcular el total del ejecutivo ${apiUser.id}:`, error);
+            return 0;
+          });
 
           return {
             id: apiUser.id,
@@ -438,7 +457,7 @@ export default function Cotizaciones() {
       );
     } catch (error) {
       console.warn("Error al cargar resumen de ejecutivos:", error);
-      setEjecutivoOptions([]);
+      // Conserva el último catálogo visible si falla una actualización secundaria.
     } finally {
       setLoadingEjecutivos(false);
     }
@@ -733,28 +752,33 @@ export default function Cotizaciones() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {loadingEjecutivos ? (
+            {visibleEjecutivoResumenOptions.length > 0 ? (
+              <>
+                {visibleEjecutivoResumenOptions.map((ejecutivo) => (
+                  <button
+                    key={ejecutivo.id}
+                    type="button"
+                    onClick={() => {
+                      setFilterEjecutivo(String(ejecutivo.id));
+                      setCurrentPage(1);
+                    }}
+                    className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                      filterEjecutivo === String(ejecutivo.id)
+                        ? "bg-indigo-600 text-white"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    {ejecutivo.nombre}: {ejecutivo.total}
+                  </button>
+                ))}
+                {loadingEjecutivos && (
+                  <Loader2 size={14} className="self-center animate-spin text-indigo-600" />
+                )}
+              </>
+            ) : loadingEjecutivos ? (
               <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
                 <Loader2 size={14} className="animate-spin" /> Calculando...
               </span>
-            ) : visibleEjecutivoResumenOptions.length > 0 ? (
-              visibleEjecutivoResumenOptions.map((ejecutivo) => (
-                <button
-                  key={ejecutivo.id}
-                  type="button"
-                  onClick={() => {
-                    setFilterEjecutivo(String(ejecutivo.id));
-                    setCurrentPage(1);
-                  }}
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-                    filterEjecutivo === String(ejecutivo.id)
-                      ? "bg-indigo-600 text-white"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  {ejecutivo.nombre}: {ejecutivo.total}
-                </button>
-              ))
             ) : (
               <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
                 Sin datos de ejecutivos

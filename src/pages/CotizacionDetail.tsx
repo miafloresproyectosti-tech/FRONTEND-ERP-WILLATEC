@@ -7,7 +7,7 @@ import { getActiveClientesSearchCached, type Cliente } from '../services/cliente
 import { getExternalItems, getProductosPaginated, type Producto } from "../services/producto.service";
 import { getPlantillas } from '../services/plantilla.service';
 import { getPlataformas } from '../services/plataforma.service';
-import { getUsers, type User as ApiUser } from '../services/usuario.service';
+import { getCotizacionEjecutivos, type CotizacionEjecutivo } from '../services/cotizacion.service';
 import { recalcularItems } from "../utils/recalcularItems";
 import { isPlantillaAlquiler } from "../utils/plantillas";
 import { CotizacionResumen } from '../components/cotizaciones/CotizacionResumen';
@@ -388,7 +388,7 @@ export function CotizacionDetail() {
   const debouncedProductosSearchTerm = useDebouncedValue(productosSearchTerm, 350);
   const [productosLoading, setProductosLoading] = useState(false);
   const [productosTotal, setProductosTotal] = useState(0);
-  const [usuarios, setUsuarios] = useState<ApiUser[]>([]);
+  const [usuarios, setUsuarios] = useState<CotizacionEjecutivo[]>([]);
   const [externalItemSuggestions, setExternalItemSuggestions] = useState<ItemForm[]>([]);
   const multidestinoMissingDestinoWarnedRef = useRef(false);
 
@@ -1176,7 +1176,7 @@ export function CotizacionDetail() {
   useEffect(() => {
     const fetchUsuarios = async () => {
       try {
-        const data = await getUsers();
+        const data = await getCotizacionEjecutivos();
         setUsuarios(data);
       } catch (error) {
         console.warn('Error al cargar usuarios:', error);
