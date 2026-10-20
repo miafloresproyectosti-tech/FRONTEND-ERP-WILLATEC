@@ -992,7 +992,8 @@ export default function SeguimientoLicitaciones() {
       console.warn("No se pudo refrescar el detalle de oportunidad", error);
     }
 
-    void loadData().catch((error) => {
+    // La actualización posterior no debe reemplazar la tabla por skeletons.
+    void loadData({ silent: true }).catch((error) => {
       console.warn("No se pudo refrescar el listado de oportunidades", error);
     });
   };
@@ -1737,7 +1738,7 @@ export default function SeguimientoLicitaciones() {
           )}
         </div>
         <div className={`grid min-w-0 max-w-full gap-3 p-3 ${viewMode === "cards" ? "md:grid-cols-2 2xl:grid-cols-3" : "xl:hidden"}`}>
-          {loading ? (
+          {isInitialLoading ? (
             Array.from({ length: 4 }).map((_, index) => (
               <div key={index} className="h-44 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
             ))
@@ -1864,7 +1865,7 @@ export default function SeguimientoLicitaciones() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {isInitialLoading ? (
                 Array.from({ length: 5 }).map((_, index) => (
                   <tr key={index} className="border-b border-slate-100 dark:border-slate-800">
                     <td colSpan={10} className="px-5 py-4">
