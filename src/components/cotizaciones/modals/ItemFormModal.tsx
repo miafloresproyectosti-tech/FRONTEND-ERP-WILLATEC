@@ -105,6 +105,11 @@ export function ItemFormModal({
     unidades: itemForm.cantidad ? String(itemForm.cantidad) : "1",
     pesoTotal: "",
   });
+  const [applyMarginToAll, setApplyMarginToAll] = React.useState<Record<number, boolean>>({});
+
+  React.useEffect(() => {
+    if (open) setApplyMarginToAll({});
+  }, [open, editingItem?.id]);
 
   React.useEffect(() => {
     const automaticType = getImportCalculationType(
@@ -613,12 +618,18 @@ export function ItemFormModal({
       destinos_entrega: nextDestinos,
     });
 
-    if (fieldName === "margen" && value !== null) {
-      const destinoEntrega = nextDestinos[index]?.destino_entrega?.trim();
-      const margen = Number(value);
-      if (destinoEntrega && Number.isFinite(margen) && window.confirm(`Aplicar ${margen}% a todos los items con destino "${destinoEntrega}"?`)) {
-        onApplyDestinoMarginToAll?.(destinoEntrega, margen, itemForm.id);
-      }
+  };
+
+  const handleApplyMarginToAll = (index: number, checked: boolean) => {
+    if (readOnly) return;
+
+    setApplyMarginToAll((current) => ({ ...current, [index]: checked }));
+    if (!checked) return;
+
+    const destinoEntrega = destinosItem[index]?.destino_entrega?.trim();
+    const margen = Number(destinosItem[index]?.margen ?? itemForm.margen ?? 0);
+    if (destinoEntrega && Number.isFinite(margen)) {
+      onApplyDestinoMarginToAll?.(destinoEntrega, margen, itemForm.id);
     }
   };
 
@@ -1056,25 +1067,38 @@ export function ItemFormModal({
                           )}
                           {field(
                             "Margen %",
-                            <input
-                              className={`${inp} text-center`}
-                              type="number"
-                              min={0}
-                              max={99.99}
-                              step="0.1"
-                              disabled={readOnly}
-                              value={destino.margen?.toString() ?? ""}
-                              onChange={(e) =>
-                                updateDestinoItem(
-                                  index,
-                                  "margen",
-                                  e.target.value === ""
-                                    ? null
-                                    : parseFloat(e.target.value),
-                                )
-                              }
-                              placeholder={String(itemForm.margen || 0)}
-                            />,
+                            <div className="space-y-1">
+                              <input
+                                className={`${inp} text-center`}
+                                type="number"
+                                min={0}
+                                max={99.99}
+                                step="0.1"
+                                disabled={readOnly}
+                                value={destino.margen?.toString() ?? ""}
+                                onChange={(e) =>
+                                  updateDestinoItem(
+                                    index,
+                                    "margen",
+                                    e.target.value === ""
+                                      ? null
+                                      : parseFloat(e.target.value),
+                                  )
+                                }
+                                placeholder={String(itemForm.margen || 0)}
+                              />
+                              {!readOnly && (
+                                <label className="flex cursor-pointer items-center justify-center gap-1 text-[9px] leading-none text-gray-500">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(applyMarginToAll[index])}
+                                    onChange={(e) => handleApplyMarginToAll(index, e.target.checked)}
+                                    className="h-3 w-3 accent-blue-600"
+                                  />
+                                  <span>Aplicar a todos</span>
+                                </label>
+                              )}
+                            </div>,
                           )}
                           {!readOnly ? (
                             <button

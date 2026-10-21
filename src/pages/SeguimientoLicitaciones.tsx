@@ -124,7 +124,9 @@ const SUMMARY_ITEMS: Array<{ key: string; label: string; className: string }> = 
   { key: "sin_atender", label: "Sin atender", className: "border-slate-200" },
   { key: "en_atencion", label: "En atencion", className: "border-sky-200" },
   { key: "atendido", label: "Atendidas", className: "border-teal-200" },
-  { key: "cotizacion_generada", label: "Cotizaciones generadas", className: "border-indigo-200" },
+  { key: "cotizacion_pendiente", label: "Cotizacion pendiente", className: "border-indigo-200" },
+  { key: "modificacion_cotizacion", label: "Modificacion de cotizacion", className: "border-violet-200" },
+  { key: "por_subir", label: "Por subir", className: "border-blue-200" },
   { key: "ganada", label: "Ganadas", className: "border-emerald-200" },
   { key: "perdida", label: "Perdidas", className: "border-rose-200" },
   { key: "no_se_realizara", label: "No se realizara", className: "border-amber-200" },
@@ -594,12 +596,12 @@ export default function SeguimientoLicitaciones() {
 
   const summary = useMemo(() => {
     const result: Record<string, number> = { total: scopedOpportunities.length, proximas: 0 };
-    Object.keys(OPORTUNIDAD_ESTADOS).forEach((key) => {
+    Object.keys(OPPORTUNITY_FILTER_STATES).forEach((key) => {
       result[key] = 0;
     });
 
     scopedOpportunities.forEach((item) => {
-      result[item.estado] += 1;
+      result[getOpportunityFilterStatus(item)] += 1;
       const remaining = new Date(item.vigencia).getTime() - Date.now();
       if (!isClosedOpportunity(item.estado) && item.estado !== "atendido" && remaining > 0 && remaining <= 3 * 24 * 60 * 60 * 1000) {
         result.proximas += 1;
@@ -1654,16 +1656,23 @@ export default function SeguimientoLicitaciones() {
       </div>
 
       {showEstadoCards && (
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-5 xl:grid-cols-10">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-12">
           {SUMMARY_ITEMS.map((item) => (
             <button
               key={item.key}
               type="button"
               onClick={() => {
-                if (item.key in OPORTUNIDAD_ESTADOS) {
+                if (item.key === "total") {
+                  setFilters((current) => ({
+                    ...current,
+                    estado: "todos",
+                    ejecutivo: "todos",
+                  }));
+                  setCurrentPage(1);
+                } else if (item.key in OPPORTUNITY_FILTER_STATES) {
                   updateFilter(
                     "estado",
-                    filters.estado === item.key ? "todos" : item.key as OportunidadEstado,
+                    filters.estado === item.key ? "todos" : item.key as OportunidadFiltroEstado,
                   );
                 }
               }}

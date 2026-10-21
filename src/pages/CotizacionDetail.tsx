@@ -1078,7 +1078,22 @@ export function CotizacionDetail() {
 
     setItemForm(prev => {
       const destinosCalculados = itemCalculado.destinos_entrega || prev.destinos_entrega || [];
-      const destinosChanged = JSON.stringify(prev.destinos_entrega || []) !== JSON.stringify(destinosCalculados);
+      // Conserva el texto que se esta editando. El calculador normaliza internamente
+      // el destino para agrupar costos, pero no debe borrar espacios del input.
+      const destinosConValoresCalculados = (prev.destinos_entrega || []).map((destino, index) => {
+        const calculado = destinosCalculados[index];
+        if (!calculado) return destino;
+
+        return {
+          ...destino,
+          costo_unitario: calculado.costo_unitario,
+          precio_venta: calculado.precio_venta,
+          subtotal: calculado.subtotal,
+          costo_total: calculado.costo_total,
+          ganancia: calculado.ganancia,
+        };
+      });
+      const destinosChanged = JSON.stringify(prev.destinos_entrega || []) !== JSON.stringify(destinosConValoresCalculados);
       const nextValues = {
         costo_unitario: Number(itemCalculado.costo_unitario || 0),
         costo_total: Number(itemCalculado.costo_total || 0),
@@ -1098,7 +1113,7 @@ export function CotizacionDetail() {
       return {
         ...prev,
         ...nextValues,
-        ...(destinosChanged ? { destinos_entrega: destinosCalculados } : {}),
+        ...(destinosChanged ? { destinos_entrega: destinosConValoresCalculados } : {}),
       };
     });
   }, [
