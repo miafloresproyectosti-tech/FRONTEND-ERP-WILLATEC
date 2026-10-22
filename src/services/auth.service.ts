@@ -31,6 +31,11 @@ export const loginRequest = async (email: string, password: string) => {
       token,
       role,
       id,
+      permissions: (user.roles || []).flatMap((item: any) =>
+        (item.permissions || []).map((permission: any) =>
+          typeof permission === "string" ? permission : permission.name
+        )
+      ),
       requires_password_change,
       last_login_at,
       two_factor_enabled: response.data.two_factor_enabled || false,
@@ -142,6 +147,11 @@ export const twoFactorChallengeRequest = async (
     id: user.id,
     email: user.email,
     role,
+    permissions: (user.roles || []).flatMap((item: any) =>
+      (item.permissions || []).map((permission: any) =>
+        typeof permission === "string" ? permission : permission.name
+      )
+    ),
     requires_password_change: response.data.requires_password_change,
     last_login_at: user.last_login_at || null,
     two_factor_enabled: true,

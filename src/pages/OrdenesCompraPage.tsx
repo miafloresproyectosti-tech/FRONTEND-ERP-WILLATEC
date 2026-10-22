@@ -659,6 +659,8 @@ export default function OrdenesCompraPage() {
     useState<PaginationState>(emptyPagination);
   const [perPage, setPerPage] = useState(10);
   const [loading, setLoading] = useState(false);
+  const emitidasRequestRef = useRef(0);
+  const recibidasRequestRef = useRef(0);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [preview, setPreview] = useState<OcPreview | null>(null);
   const [emitidaBasePreview, setEmitidaBasePreview] =
@@ -1078,6 +1080,7 @@ export default function OrdenesCompraPage() {
 
   const loadEmitidas = useCallback(
     async (page = emitidasPagination.page) => {
+      const requestId = ++emitidasRequestRef.current;
       try {
         setLoading(true);
         const response = await getOcEmitidas({
@@ -1087,6 +1090,7 @@ export default function OrdenesCompraPage() {
           proveedor: proveedorFilter,
           perPage,
         });
+        if (requestId !== emitidasRequestRef.current) return;
         setEmitidas(response.data);
         setEmitidasPagination({
           page: response.current_page || page,
@@ -1105,7 +1109,7 @@ export default function OrdenesCompraPage() {
           type: "warning",
         });
       } finally {
-        setLoading(false);
+        if (requestId === emitidasRequestRef.current) setLoading(false);
       }
     },
     [
@@ -1120,6 +1124,7 @@ export default function OrdenesCompraPage() {
 
   const loadRecibidas = useCallback(
     async (page = recibidasPagination.page) => {
+      const requestId = ++recibidasRequestRef.current;
       try {
         setLoading(true);
         const response = await getOcRecibidas({
@@ -1128,6 +1133,7 @@ export default function OrdenesCompraPage() {
           estado: estadoFilter,
           perPage,
         });
+        if (requestId !== recibidasRequestRef.current) return;
         setRecibidas(response.data);
         setRecibidasPagination({
           page: response.current_page || page,
@@ -1146,7 +1152,7 @@ export default function OrdenesCompraPage() {
           type: "warning",
         });
       } finally {
-        setLoading(false);
+        if (requestId === recibidasRequestRef.current) setLoading(false);
       }
     },
     [estadoFilter, perPage, recibidasPagination.page, searchTerm, showToast],

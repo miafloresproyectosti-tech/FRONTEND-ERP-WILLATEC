@@ -4,7 +4,6 @@ import { useAuth } from '../../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { loginRequest } from '../../services/auth.service';
 import { normalizeRole } from '../../utils/permissions';
-import { getDefaultRouteByRole } from '../../utils/roleRoutes';
 import ResetPasswordModal from './ResetPasswordModal';
 
 export default function LoginComponent() {
@@ -60,6 +59,7 @@ export default function LoginComponent() {
         requires_password_change,
         last_login_at,
         two_factor_enabled,
+        permissions,
       } = result;
       // Si el backend indica que la contraseña es temporal, redirigir a cambio de contraseña
       if (requires_password_change) {
@@ -72,9 +72,9 @@ export default function LoginComponent() {
       }
 
       const normalizedRole = normalizeRole(role);
-      login(id, email, normalizedRole, last_login_at, two_factor_enabled);
+      login(id, email, normalizedRole, last_login_at, two_factor_enabled, permissions);
 
-      navigate(getDefaultRouteByRole(normalizedRole));
+      navigate('/');
     } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Error al iniciar sesión, revise sus credenciales');
 

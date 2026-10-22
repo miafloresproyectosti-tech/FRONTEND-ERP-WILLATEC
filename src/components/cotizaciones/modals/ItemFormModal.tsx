@@ -28,6 +28,17 @@ import {
 } from "../../../services/producto.service";
 import { sanitizeLimitedRichText } from "../../../utils/richText";
 
+const getImportCalculationType = (
+  price: string | number,
+  units: string | number = 1,
+): ImportacionCalculoTipo => {
+  const amount = (Number(price) || 0) * (Number(units) || 0);
+
+  if (amount < 200) return "under200";
+  if (amount < 2000) return "from201to1999";
+  return "from2000up";
+};
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -94,6 +105,22 @@ export function ItemFormModal({
     unidades: itemForm.cantidad ? String(itemForm.cantidad) : "1",
     pesoTotal: "",
   });
+  const [applyMarginToAll, setApplyMarginToAll] = React.useState<Record<number, boolean>>({});
+
+  React.useEffect(() => {
+    if (open) setApplyMarginToAll({});
+  }, [open, editingItem?.id]);
+
+  React.useEffect(() => {
+    const automaticType = getImportCalculationType(
+      importCalcForm.precioProducto,
+      importCalcForm.unidades,
+    );
+
+    setImportCalcType((current) =>
+      current === automaticType ? current : automaticType,
+    );
+  }, [importCalcForm.precioProducto, importCalcForm.unidades]);
   const destinosDisponibles = React.useMemo(() => {
     const values = new Set<string>(["Lima Metropolitana"]);
     destinos.forEach((destino) => {
@@ -591,12 +618,18 @@ export function ItemFormModal({
       destinos_entrega: nextDestinos,
     });
 
-    if (fieldName === "margen" && value !== null) {
-      const destinoEntrega = nextDestinos[index]?.destino_entrega?.trim();
-      const margen = Number(value);
-      if (destinoEntrega && Number.isFinite(margen) && window.confirm(`Aplicar ${margen}% a todos los items con destino "${destinoEntrega}"?`)) {
-        onApplyDestinoMarginToAll?.(destinoEntrega, margen, itemForm.id);
-      }
+  };
+
+  const handleApplyMarginToAll = (index: number, checked: boolean) => {
+    if (readOnly) return;
+
+    setApplyMarginToAll((current) => ({ ...current, [index]: checked }));
+    if (!checked) return;
+
+    const destinoEntrega = destinosItem[index]?.destino_entrega?.trim();
+    const margen = Number(destinosItem[index]?.margen ?? itemForm.margen ?? 0);
+    if (destinoEntrega && Number.isFinite(margen)) {
+      onApplyDestinoMarginToAll?.(destinoEntrega, margen, itemForm.id);
     }
   };
 
@@ -1034,25 +1067,38 @@ export function ItemFormModal({
                           )}
                           {field(
                             "Margen %",
-                            <input
-                              className={`${inp} text-center`}
-                              type="number"
-                              min={0}
-                              max={99.99}
-                              step="0.1"
-                              disabled={readOnly}
-                              value={destino.margen?.toString() ?? ""}
-                              onChange={(e) =>
-                                updateDestinoItem(
-                                  index,
-                                  "margen",
-                                  e.target.value === ""
-                                    ? null
-                                    : parseFloat(e.target.value),
-                                )
-                              }
-                              placeholder={String(itemForm.margen || 0)}
-                            />,
+                            <div className="space-y-1">
+                              <input
+                                className={`${inp} text-center`}
+                                type="number"
+                                min={0}
+                                max={99.99}
+                                step="0.1"
+                                disabled={readOnly}
+                                value={destino.margen?.toString() ?? ""}
+                                onChange={(e) =>
+                                  updateDestinoItem(
+                                    index,
+                                    "margen",
+                                    e.target.value === ""
+                                      ? null
+                                      : parseFloat(e.target.value),
+                                  )
+                                }
+                                placeholder={String(itemForm.margen || 0)}
+                              />
+                              {!readOnly && (
+                                <label className="flex cursor-pointer items-center justify-center gap-1 text-[9px] leading-none text-gray-500">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(applyMarginToAll[index])}
+                                    onChange={(e) => handleApplyMarginToAll(index, e.target.checked)}
+                                    className="h-3 w-3 accent-blue-600"
+                                  />
+                                  <span>Aplicar a todos</span>
+                                </label>
+                              )}
+                            </div>,
                           )}
                           {!readOnly ? (
                             <button
@@ -1455,12 +1501,7 @@ export function ItemFormModal({
                 Tipo de importación
                 <select
                   value={importCalcType}
-                  onChange={(event) =>
-                    setImportCalcType(
-                      event.target.value as typeof importCalcType,
-                    )
-                  }
-                  disabled={isImportCalcReadOnly}
+                  disabled
                   className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="under200">IMPORTACIÓN MENOS DE $200</option>
@@ -1471,6 +1512,9 @@ export function ItemFormModal({
                     IMPORTACIÓN VALOR DE $2000 A +
                   </option>
                 </select>
+                <span className="mt-1 block text-[11px] font-normal normal-case text-gray-400">
+                  Se selecciona automaticamente segun el precio del producto.
+                </span>
               </label>
 
               <div className="overflow-hidden rounded-lg border border-gray-200">

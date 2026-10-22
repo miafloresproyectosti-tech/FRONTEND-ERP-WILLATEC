@@ -21,7 +21,7 @@ import { useAuth } from "../AuthContext";
 import { useNotifications } from "../NotificationContext";
 import { OportunidadDetailDrawer } from "../components/licitaciones/OportunidadDetailDrawer";
 import { OportunidadFormModal } from "../components/licitaciones/OportunidadFormModal";
-import { EstadoBadge, TipoBadge, VigenciaBadge } from "../components/licitaciones/OportunidadBadges";
+import { EstadoBadge, getOportunidadEstadoLabel, TipoBadge, VigenciaBadge } from "../components/licitaciones/OportunidadBadges";
 import PageSizeSelect from "../components/ui/PageSizeSelect";
 import {
   ESTADOS_CIERRE,
@@ -41,10 +41,12 @@ import {
   deleteOportunidad,
   getOportunidad,
   getOportunidades,
+  getLicitacionEjecutivos,
+  procesarAlertasVencimientoOportunidades,
   registrarVistaOportunidad,
   saveOportunidad,
 } from "../services/licitaciones.service";
-import { getUsers } from "../services/usuario.service";
+import { NOTIFICATIONS_UPDATED_EVENT } from "../services/notification.service";
 import {
   descargarPdfCotizacion,
   exportarCotizacionPdf,
@@ -58,12 +60,13 @@ import type {
   OportunidadEstado,
   OportunidadFilters,
   OportunidadFormData,
+  OportunidadFiltroEstado,
   OportunidadSortKey,
   SortDirection,
 } from "../types/licitaciones";
 import { exportExcelFile } from "../utils/exportExcel";
 import { getPaginationItems } from "../utils/pagination";
-import { normalizeRole, rolePermissions } from "../utils/permissions";
+import { normalizeRole } from "../utils/permissions";
 import {
   createId,
   fileToOpportunityFile,
@@ -97,6 +100,17 @@ const MIS_OPORTUNIDADES_ACTIVE_RANK: Record<OportunidadEstado, number> = {
   vencida: 4,
 };
 
+const LICITACIONES_STATE_PRIORITY: Record<OportunidadEstado, number> = {
+  sin_atender: 0,
+  en_atencion: 0,
+  cotizacion_generada: 0,
+  atendido: 1,
+  ganada: 1,
+  perdida: 1,
+  no_se_realizara: 1,
+  vencida: 1,
+};
+
 const SORT_LABELS: Record<OportunidadSortKey, string> = {
   empresa: "Empresa",
   vigencia: "Vigencia",
@@ -110,13 +124,42 @@ const SUMMARY_ITEMS: Array<{ key: string; label: string; className: string }> = 
   { key: "sin_atender", label: "Sin atender", className: "border-slate-200" },
   { key: "en_atencion", label: "En atencion", className: "border-sky-200" },
   { key: "atendido", label: "Atendidas", className: "border-teal-200" },
-  { key: "cotizacion_generada", label: "Cotizaciones generadas", className: "border-indigo-200" },
+  { key: "cotizacion_pendiente", label: "Cotizacion pendiente", className: "border-indigo-200" },
+  { key: "modificacion_cotizacion", label: "Modificacion de cotizacion", className: "border-violet-200" },
+  { key: "por_subir", label: "Por subir", className: "border-blue-200" },
   { key: "ganada", label: "Ganadas", className: "border-emerald-200" },
   { key: "perdida", label: "Perdidas", className: "border-rose-200" },
   { key: "no_se_realizara", label: "No se realizara", className: "border-amber-200" },
   { key: "vencida", label: "Vencidas", className: "border-red-200" },
   { key: "proximas", label: "Proximas a vencer", className: "border-orange-200" },
 ];
+
+const OPPORTUNITY_FILTER_STATES: Record<OportunidadFiltroEstado, string> = {
+  ...OPORTUNIDAD_ESTADOS,
+  cotizacion_pendiente: "Cotizacion pendiente",
+  modificacion_cotizacion: "Modificacion de cotizacion",
+  por_subir: "Por subir",
+};
+
+const getOpportunityFilterStatus = (opportunity: Oportunidad): OportunidadFiltroEstado => {
+  if (opportunity.estado !== "cotizacion_generada") return opportunity.estado;
+
+  if (opportunity.cotizaciones.some((quote) => quote.tieneModificacionPendiente)) {
+    return "modificacion_cotizacion";
+  }
+
+  if (opportunity.cotizaciones.some((quote) =>
+    String(quote.estado || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .includes("aprob"),
+  )) {
+    return "por_subir";
+  }
+
+  return "cotizacion_pendiente";
+};
 
 const TYPE_TABS = [
   { key: "todos", label: "Todos", description: "Todo el portafolio" },
@@ -128,7 +171,7 @@ const TYPE_TABS = [
 const SALES_BANDEJAS = [
   { key: "disponibles", label: "Oportunidades Disponibles" },
   { key: "mis", label: "Mis Oportunidades" },
-  { key: "creadas", label: "Subidas por mi" },
+  { key: "creadas", label: "En atencion por ventas" },
 ] as const;
 
 const OPPORTUNITY_EXECUTIVE_ROLES = new Set(["VENTAS", "SUPERADMIN"]);
@@ -174,7 +217,7 @@ const findSimilarOpportunity = (
 };
 
 export default function SeguimientoLicitaciones() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const { addNotification, showToast } = useNotifications();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -185,6 +228,7 @@ export default function SeguimientoLicitaciones() {
   const debouncedSearch = useDebouncedValue(filters.search, 250);
   const [sortKey, setSortKey] = useState<OportunidadSortKey>("vigencia");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [soloUrgentes, setSoloUrgentes] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
@@ -217,6 +261,12 @@ export default function SeguimientoLicitaciones() {
   const [unlinkingQuoteId, setUnlinkingQuoteId] = useState<string | null>(null);
   const [assigningOpportunityId, setAssigningOpportunityId] = useState<string | null>(null);
   const [changingEstadoId, setChangingEstadoId] = useState<string | null>(null);
+  const [deletingOpportunityId, setDeletingOpportunityId] = useState<string | null>(null);
+  const [submittingLoss, setSubmittingLoss] = useState(false);
+  const [commentingOpportunity, setCommentingOpportunity] = useState(false);
+  const [linkingQuote, setLinkingQuote] = useState(false);
+  const [releasingQuote, setReleasingQuote] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
   const loadRequestRef = useRef(0);
   const showToastRef = useRef(showToast);
 
@@ -226,49 +276,44 @@ export default function SeguimientoLicitaciones() {
 
   const userName = user?.name || "Usuario";
   const currentRole = normalizeRole(user?.role);
+  const isLicitacionesRole = currentRole === "LICITACIONES";
   const isManager = currentRole === "SUPERADMIN" || currentRole === "ADMIN" || currentRole === "LICITACIONES";
   const isSalesRole = currentRole === "VENTAS";
-  const canCreateOpportunity = currentRole === "LICITACIONES" || currentRole === "VENTAS" || currentRole === "SUPERADMIN";
-  const canOpenCotizaciones =
-    rolePermissions[currentRole]?.includes("*") ||
-    rolePermissions[currentRole]?.includes("cotizaciones");
+  const canCreateOpportunity = hasPermission("licitaciones.crear");
+  const canOpenCotizaciones = hasPermission("cotizaciones");
   const [activeBandeja, setActiveBandeja] = useState<string>(
     currentRole === "VENTAS" ? "disponibles" : currentRole === "SUPERADMIN" ? "disponibles" : "todas"
   );
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (options?: { silent?: boolean }) => {
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
-    setLoading(true);
+    if (!options?.silent) setLoading(true);
+
+    // Mantiene el flujo de alertas, pero no bloquea la primera pintura de oportunidades.
+    void procesarAlertasVencimientoOportunidades().then(() => {
+      window.dispatchEvent(new Event(NOTIFICATIONS_UPDATED_EVENT));
+    }).catch((error) => {
+      console.warn("No se pudieron procesar alertas de vencimiento de oportunidades:", error);
+    });
+
     try {
-      const [items, users] = await Promise.all([
-        getOportunidades(),
-        getUsers().catch(() => []),
-      ]);
+      const items = await getOportunidades();
 
       if (requestId !== loadRequestRef.current) return;
-
-      const mappedUsers = users
-        .filter((item) => item.activo !== false)
-        .filter((item) =>
-          item.roles?.some((role) =>
-            OPPORTUNITY_EXECUTIVE_ROLES.has(normalizeRole(role.name)),
-          ),
-        )
-        .map((item) => ({
-          id: item.id,
-          nombre: `${item.nombres || ""} ${item.apellidos || ""}`.trim() || item.email,
-          email: item.email,
-        }));
-
-      setEjecutivos(
-        mappedUsers.length > 0
-          ? mappedUsers
-          : user?.id && OPPORTUNITY_EXECUTIVE_ROLES.has(currentRole)
-            ? [{ id: user.id, nombre: userName, email: user.email }]
-            : []
-      );
       setOpportunities(items);
+      setEjecutivos((current) => {
+        const merged = new Map<number, EjecutivoAsignado>();
+        [...current, ...items.map((item) => item.ejecutivo)]
+          .filter((item) => item?.id && item.nombre !== "Sin ejecutivo")
+          .forEach((item) => merged.set(Number(item.id), { ...item, id: Number(item.id) }));
+
+        if (user?.id && OPPORTUNITY_EXECUTIVE_ROLES.has(currentRole)) {
+          merged.set(user.id, { id: user.id, nombre: userName, email: user.email });
+        }
+
+        return merged.size > 0 ? Array.from(merged.values()) : current;
+      });
     } catch (error) {
       console.error("No se pudieron cargar oportunidades", error);
       showToastRef.current({
@@ -278,34 +323,68 @@ export default function SeguimientoLicitaciones() {
       });
     } finally {
       if (requestId === loadRequestRef.current) {
-        setLoading(false);
+        if (!options?.silent) setLoading(false);
       }
     }
   }, [user?.email, user?.id, userName]);
 
+  const loadExecutives = useCallback(async () => {
+    const users = await getLicitacionEjecutivos().catch(() => []);
+    const fromUsers = users
+      .filter((item) => item.activo !== false)
+      .filter((item) => item.roles?.some((role) =>
+        OPPORTUNITY_EXECUTIVE_ROLES.has(normalizeRole(role.name)),
+      ))
+      .map((item) => ({
+        id: item.id,
+        nombre: `${item.nombres || ""} ${item.apellidos || ""}`.trim() || item.email,
+        email: item.email,
+      }));
+
+    setEjecutivos((current) => {
+      const merged = new Map<number, EjecutivoAsignado>();
+      [...fromUsers]
+        .filter((item) => item?.id && item.nombre !== "Sin ejecutivo")
+        .forEach((item) => merged.set(Number(item.id), { ...item, id: Number(item.id) }));
+
+      if (user?.id && OPPORTUNITY_EXECUTIVE_ROLES.has(currentRole)) {
+        merged.set(user.id, { id: user.id, nombre: userName, email: user.email });
+      }
+
+      // Conserva temporalmente el catalogo anterior si una recarga secundaria falla.
+      return merged.size > 0 ? Array.from(merged.values()) : current;
+    });
+  }, [currentRole, user?.email, user?.id, userName]);
+
   useEffect(() => {
     void loadData();
-  }, [loadData]);
+    void loadExecutives();
+  }, [loadData, loadExecutives]);
+
+  useEffect(() => {
+    if (isLicitacionesRole) {
+      setItemsPerPage(100);
+      setCurrentPage(1);
+    }
+  }, [isLicitacionesRole]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
-      void getOportunidades()
-        .then((items) => {
-          setOpportunities((current) => {
-            if (current.length > 0 && items.length === 0) {
-              return current;
-            }
+      void loadData({ silent: true });
+    }, 15000);
 
-            return items;
-          });
-        })
-        .catch((error) => {
-          console.error("No se pudo refrescar oportunidades", error);
-        });
-    }, 60000);
+    const refreshOnFocus = () => {
+      if (document.visibilityState === "visible") void loadData({ silent: true });
+    };
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
 
-    return () => window.clearInterval(intervalId);
-  }, []);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+    };
+  }, [loadData]);
 
   const isAvailableOpportunity = useCallback((item: Oportunidad) => {
     const executiveId = Number(item.asignadoA ?? item.ejecutivo?.id ?? 0);
@@ -328,20 +407,32 @@ export default function SeguimientoLicitaciones() {
     );
   }, [user?.email, user?.id, userName]);
 
-  const isCreatedByMeAssignedToOther = useCallback((item: Oportunidad) => (
-    isCreatedByMeOpportunity(item) &&
-    !isMyOpportunity(item) &&
-    !isAvailableOpportunity(item)
-  ), [isAvailableOpportunity, isCreatedByMeOpportunity, isMyOpportunity]);
-
   const isAttentionOpportunity = useCallback((item: Oportunidad) => (
     item.estado === "en_atencion" || item.estado === "atendido" || item.estado === "cotizacion_generada"
   ), []);
 
+  const salesExecutiveIds = useMemo(
+    () => new Set(ejecutivos.map((ejecutivo) => Number(ejecutivo.id)).filter(Boolean)),
+    [ejecutivos],
+  );
+
+  const isAssignedToOtherSalesExecutive = useCallback((item: Oportunidad) => {
+    if (!user?.id) return false;
+
+    const executiveId = Number(item.asignadoA ?? item.ejecutivo?.id ?? 0);
+    if (!executiveId || executiveId === Number(user.id)) return false;
+    if (!isAttentionOpportunity(item)) return false;
+
+    // Ventas no consulta el modulo Usuarios; si el catalogo de ejecutivos
+    // no esta disponible, una oportunidad asignada a otro usuario se considera
+    // atendida por ventas y no se oculta de esta bandeja.
+    return salesExecutiveIds.size <= 1 || salesExecutiveIds.has(executiveId);
+  }, [isAttentionOpportunity, salesExecutiveIds, user?.id]);
+
   const scopedOpportunities = useMemo(() => {
     if (isSalesRole) {
       if (activeBandeja === "mis") return opportunities.filter(isMyOpportunity);
-      if (activeBandeja === "creadas") return opportunities.filter(isCreatedByMeAssignedToOther);
+      if (activeBandeja === "creadas") return opportunities.filter(isAssignedToOtherSalesExecutive);
       return opportunities.filter(isAvailableOpportunity);
     }
 
@@ -352,6 +443,8 @@ export default function SeguimientoLicitaciones() {
       return opportunities;
     }
 
+    if (isLicitacionesRole) return opportunities;
+
     if (isManager) return opportunities;
 
     return opportunities.filter((item) => {
@@ -360,7 +453,16 @@ export default function SeguimientoLicitaciones() {
 
       return hasNoExecutive || executiveId === user?.id;
     });
-  }, [activeBandeja, currentRole, isAttentionOpportunity, isAvailableOpportunity, isCreatedByMeAssignedToOther, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
+  }, [activeBandeja, currentRole, isAssignedToOtherSalesExecutive, isAttentionOpportunity, isAvailableOpportunity, isLicitacionesRole, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
+
+  const isUrgentOpportunity = (item: Oportunidad): boolean => {
+  if (isClosedOpportunity(item.estado) || item.estado === "atendido") return false;
+
+  const remaining = new Date(item.vigencia).getTime() - Date.now();
+  const warningLimit = 72 * 60 * 60 * 1000;
+
+  return remaining > 0 && remaining <= warningLimit;
+};
 
   const filteredOpportunities = useMemo(() => {
     const search = normalizeText(debouncedSearch);
@@ -368,8 +470,9 @@ export default function SeguimientoLicitaciones() {
     const vigenciaHastaTime = filters.vigenciaHasta ? new Date(filters.vigenciaHasta).getTime() : null;
 
     return scopedOpportunities
+      .filter((item) => !soloUrgentes || isUrgentOpportunity(item))
       .filter((item) => filters.tipo === "todos" || item.tipo === filters.tipo)
-      .filter((item) => filters.estado === "todos" || item.estado === filters.estado)
+      .filter((item) => filters.estado === "todos" || getOpportunityFilterStatus(item) === filters.estado)
       .filter((item) => {
         if (filters.ejecutivo === "todos") return true;
 
@@ -388,10 +491,17 @@ export default function SeguimientoLicitaciones() {
         return normalizeText(`${item.empresa} ${item.requerimiento}`).includes(search);
       })
       .sort((a, b) => {
-        if (currentRole === "LICITACIONES") {
-          const dateA = new Date(a.creadoEn).getTime();
-          const dateB = new Date(b.creadoEn).getTime();
-          return dateB - dateA;
+        if (soloUrgentes) {
+          return new Date(a.vigencia).getTime() - new Date(b.vigencia).getTime();
+        }
+        if (isLicitacionesRole) {
+          const stateDiff = LICITACIONES_STATE_PRIORITY[a.estado] - LICITACIONES_STATE_PRIORITY[b.estado];
+          if (stateDiff !== 0) return stateDiff;
+
+          const dueDiff = new Date(a.vigencia).getTime() - new Date(b.vigencia).getTime();
+          if (dueDiff !== 0) return dueDiff;
+
+          return new Date(b.creadoEn).getTime() - new Date(a.creadoEn).getTime();
         }
 
         if (isSalesRole && ["mis", "creadas"].includes(activeBandeja)) {
@@ -414,7 +524,7 @@ export default function SeguimientoLicitaciones() {
         const [first, second] = values[sortKey];
         return String(first).localeCompare(String(second), "es", { numeric: true }) * direction;
       });
-  }, [activeBandeja, currentRole, debouncedSearch, filters, isSalesRole, scopedOpportunities, sortDirection, sortKey]);
+  }, [activeBandeja, currentRole, debouncedSearch, filters, isLicitacionesRole, isSalesRole, scopedOpportunities, soloUrgentes, sortDirection, sortKey]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOpportunities.length / itemsPerPage));
   const paginationItems = getPaginationItems(currentPage, totalPages);
@@ -486,19 +596,33 @@ export default function SeguimientoLicitaciones() {
 
   const summary = useMemo(() => {
     const result: Record<string, number> = { total: scopedOpportunities.length, proximas: 0 };
-    Object.keys(OPORTUNIDAD_ESTADOS).forEach((key) => {
+    Object.keys(OPPORTUNITY_FILTER_STATES).forEach((key) => {
       result[key] = 0;
     });
 
     scopedOpportunities.forEach((item) => {
-      result[item.estado] += 1;
+      result[getOpportunityFilterStatus(item)] += 1;
       const remaining = new Date(item.vigencia).getTime() - Date.now();
-      if (remaining > 0 && remaining <= 3 * 24 * 60 * 60 * 1000) {
+      if (!isClosedOpportunity(item.estado) && item.estado !== "atendido" && remaining > 0 && remaining <= 3 * 24 * 60 * 60 * 1000) {
         result.proximas += 1;
       }
     });
 
     return result;
+  }, [scopedOpportunities]);
+
+  const upcomingDueOpportunities = useMemo(() => {
+    const now = Date.now();
+    const warningLimit = 3 * 24 * 60 * 60 * 1000;
+
+    return scopedOpportunities
+      .filter((item) => {
+        if (isClosedOpportunity(item.estado) || item.estado === "atendido") return false;
+
+        const remaining = new Date(item.vigencia).getTime() - now;
+        return remaining > 0 && remaining <= warningLimit;
+      })
+      .sort((a, b) => new Date(a.vigencia).getTime() - new Date(b.vigencia).getTime());
   }, [scopedOpportunities]);
 
   const typeSummary = useMemo(() => {
@@ -549,6 +673,10 @@ export default function SeguimientoLicitaciones() {
     try {
       setAssigningOpportunityId(opportunity.id);
       const updated = await saveOportunidad(next);
+      setOpportunities((current) => current.map((item) => item.id === opportunity.id ? updated : item));
+      setEjecutivos((current) => current.some((item) => item.id === user.id)
+        ? current
+        : [...current, { id: user.id, nombre: userName, email: user.email }]);
       syncSelectedOpportunity(updated);
       void refreshSelectedOpportunity(opportunity.id, updated);
       const reminder = `Recuerda que tienes una cotización pendiente y se vence ${formatDateTime(next.vigencia)}.`;
@@ -739,6 +867,9 @@ export default function SeguimientoLicitaciones() {
     }
 
     const now = new Date().toISOString();
+    if (submittingLoss) return;
+    setSubmittingLoss(true);
+    try {
     const attachedDocument = lossFile ? await fileToOpportunityFile(lossFile, userName) : undefined;
     const observations = lossObservations.trim();
     const lessons = [trimmedReason, observations].filter(Boolean);
@@ -778,13 +909,18 @@ export default function SeguimientoLicitaciones() {
     setLossError("");
     syncSelectedOpportunity(updated);
     void refreshSelectedOpportunity(lossTarget.id, updated);
+    setSubmittingLoss(false);
     showToast({ title: "Oportunidad perdida", description: "Se registró el motivo y las observaciones de la pérdida.", type: "success" });
+    } finally {
+      setSubmittingLoss(false);
+    }
   };
 
   const canDeleteOpportunity = (item: Oportunidad) => {
     const hasQuote = Boolean(item.cotizacionId || item.cotizacionNumero || item.cotizaciones.length > 0);
 
     return (
+      hasPermission("licitaciones.eliminar") &&
       isOpportunityCreator(item) &&
       item.estado === "sin_atender" &&
       isAvailableOpportunity(item) &&
@@ -803,9 +939,17 @@ export default function SeguimientoLicitaciones() {
     }
 
     if (!window.confirm(`Eliminar la oportunidad de ${item.empresa}?`)) return;
-    await deleteOportunidad(item.id);
-    await loadData();
-    showToast({ title: "Oportunidad eliminada", type: "success" });
+    if (deletingOpportunityId) return;
+    setDeletingOpportunityId(item.id);
+    try {
+      await deleteOportunidad(item.id);
+      await loadData();
+      showToast({ title: "Oportunidad eliminada", type: "success" });
+    } catch {
+      showToast({ title: "No se pudo eliminar", description: "Intenta nuevamente.", type: "error" });
+    } finally {
+      setDeletingOpportunityId(null);
+    }
   };
 
   const handleEditOpportunity = async (item: Oportunidad) => {
@@ -850,24 +994,30 @@ export default function SeguimientoLicitaciones() {
       console.warn("No se pudo refrescar el detalle de oportunidad", error);
     }
 
-    void loadData().catch((error) => {
+    // La actualización posterior no debe reemplazar la tabla por skeletons.
+    void loadData({ silent: true }).catch((error) => {
       console.warn("No se pudo refrescar el listado de oportunidades", error);
     });
   };
 
   const handleAddComment = async (comment: string) => {
-    if (!selected) return;
-    await addComentarioOportunidad(selected.id, {
-      id: createId("comment"),
-      usuario: userName,
-      fecha: new Date().toISOString(),
-      comentario: comment,
-    });
-    await refreshSelectedOpportunity(selected.id);
+    if (!selected || commentingOpportunity) return;
+    setCommentingOpportunity(true);
+    try {
+      await addComentarioOportunidad(selected.id, {
+        id: createId("comment"),
+        usuario: userName,
+        fecha: new Date().toISOString(),
+        comentario: comment,
+      });
+      await refreshSelectedOpportunity(selected.id);
+    } finally {
+      setCommentingOpportunity(false);
+    }
   };
 
   const isCreatedByCurrentUser = (createdBy?: string | null, createdById?: string | number | null) => {
-    if (!user?.id) return false;
+    if (!user?.id || !hasPermission("licitaciones.asignar")) return false;
     if (createdById && Number(createdById) === Number(user.id)) return true;
 
     const creator = normalizeText(createdBy || "");
@@ -1009,7 +1159,7 @@ export default function SeguimientoLicitaciones() {
   }, [quoteLinkModalOpen, quoteLinkSearch]);
 
   const handleLinkExistingQuote = async () => {
-    if (!selected || !quoteLinkSelectedId) return;
+    if (!selected || !quoteLinkSelectedId || linkingQuote) return;
 
     const cotizacion = quoteLinkOptions.find((item) => Number(item.id) === Number(quoteLinkSelectedId));
     if (!cotizacion) {
@@ -1019,6 +1169,7 @@ export default function SeguimientoLicitaciones() {
 
     const cotizacionData = cotizacion as any;
 
+    setLinkingQuote(true);
     try {
       await addCotizacionRelacionada(selected.id, userName, {
         cotizacion_id: Number(cotizacion.id),
@@ -1044,6 +1195,8 @@ export default function SeguimientoLicitaciones() {
         description: response.response?.data?.message || response.message || "La cotizacion no pudo vincularse a esta oportunidad.",
         type: "error",
       });
+    } finally {
+      setLinkingQuote(false);
     }
   };
 
@@ -1119,7 +1272,7 @@ export default function SeguimientoLicitaciones() {
   };
 
   const canReleaseOpportunity = (item: Oportunidad) => {
-    if (!user?.id) return false;
+    if (!user?.id || !hasPermission("licitaciones.editar")) return false;
     if (currentRole === "SUPERADMIN") return true;
     return Number(item.asignadoA ?? item.ejecutivo?.id ?? 0) === user.id;
   };
@@ -1129,7 +1282,7 @@ export default function SeguimientoLicitaciones() {
   };
 
   const canManageOpportunityQuote = (item: Oportunidad) => {
-    if (!user?.id) return false;
+    if (!user?.id || !hasPermission("cotizaciones.crear")) return false;
     if (item.estado !== "en_atencion") return false;
     if (item.cotizacionId || item.cotizacionNumero || item.cotizaciones.length > 0) return false;
 
@@ -1137,7 +1290,7 @@ export default function SeguimientoLicitaciones() {
   };
 
   const canMarkProposalPresented = (item: Oportunidad) => {
-    if (!user?.id) return false;
+    if (!user?.id || !hasPermission("licitaciones.editar")) return false;
     if (!["cotizacion_generada", "vencida"].includes(item.estado)) return false;
 
     if (item.tipo === "licitacion") {
@@ -1162,12 +1315,14 @@ export default function SeguimientoLicitaciones() {
   };
 
   const handleReleaseQuote = async (item: Oportunidad, reason: string) => {
+    if (releasingQuote) return;
     const trimmed = reason.trim();
     if (!trimmed) {
       setReleaseError("Escribe el motivo para liberar la oportunidad.");
       return;
     }
 
+    setReleasingQuote(true);
     const now = new Date().toISOString();
     const updated = await saveOportunidad({
       ...item,
@@ -1198,6 +1353,7 @@ export default function SeguimientoLicitaciones() {
     setReleaseError("");
     syncSelectedOpportunity(updated);
     void refreshSelectedOpportunity(item.id, updated);
+    setReleasingQuote(false);
     showToast({ title: "Cotización liberada", description: "La oportunidad volvió a estar disponible para asignarse.", type: "success" });
   };
 
@@ -1213,6 +1369,8 @@ export default function SeguimientoLicitaciones() {
   }));
 
   const handleExportExcel = async () => {
+    if (exportingExcel) return;
+    setExportingExcel(true);
     await exportExcelFile({
       filename: "seguimiento-licitaciones.xlsx",
       title: "Seguimiento de Licitaciones",
@@ -1227,7 +1385,7 @@ export default function SeguimientoLicitaciones() {
         { header: "Tiempo restante", key: "tiempo_restante", width: 18 },
       ],
       rows: exportRows,
-    });
+    }).finally(() => setExportingExcel(false));
   };
 
   // const handleExportPdf = () => {
@@ -1316,7 +1474,7 @@ export default function SeguimientoLicitaciones() {
   const getBandejaCount = (key: string) => {
     if (key === "disponibles") return opportunities.filter(isAvailableOpportunity).length;
     if (key === "mis") return opportunities.filter(isMyOpportunity).length;
-    if (key === "creadas") return opportunities.filter(isCreatedByMeAssignedToOther).length;
+    if (key === "creadas") return opportunities.filter(isAssignedToOtherSalesExecutive).length;
     if (key === "en_atencion") return opportunities.filter(isAttentionOpportunity).length;
     if (key === "finalizadas") return opportunities.filter((item) => isClosedOpportunity(item.estado)).length;
     return opportunities.length;
@@ -1363,9 +1521,9 @@ export default function SeguimientoLicitaciones() {
               Nuevo
             </button>
           )}
-          <button type="button" onClick={handleExportExcel} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
-            <FileSpreadsheet size={18} />
-            Excel
+          <button type="button" onClick={handleExportExcel} disabled={exportingExcel} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
+            {exportingExcel ? <Loader2 size={18} className="animate-spin" /> : <FileSpreadsheet size={18} />}
+            {exportingExcel ? "Exportando..." : "Excel"}
           </button>
         </div>
       </div>
@@ -1382,6 +1540,45 @@ export default function SeguimientoLicitaciones() {
         </div>
       )}
 
+      {(upcomingDueOpportunities.length > 0 || soloUrgentes) && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-100">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/60 dark:text-amber-200 dark:ring-amber-500/40">
+                <AlertTriangle className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-bold">
+                  {upcomingDueOpportunities.length === 1
+                    ? "1 oportunidad proxima a vencer"
+                    : `${upcomingDueOpportunities.length} oportunidades proximas a vencer`}
+                </p>
+                <p className="mt-1 text-xs font-medium text-amber-800/90 dark:text-amber-100/80">
+                  {upcomingDueOpportunities.length > 0
+                    ? `La más cercana vence ${formatDateTime(upcomingDueOpportunities[0].vigencia)}: ${upcomingDueOpportunities[0].empresa} - ${upcomingDueOpportunities[0].requerimiento}`
+                    : "Ya no hay oportunidades próximas a vencer en esta bandeja."}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSoloUrgentes((current) => !current);
+                setCurrentPage(1);
+              }}
+              aria-pressed={soloUrgentes}
+              className={`inline-flex h-10 items-center justify-center rounded-xl border px-4 text-sm font-semibold shadow-sm transition ${
+                soloUrgentes
+                  ? "border-amber-600 bg-amber-600 text-white hover:bg-amber-700"
+                  : "border-amber-300 bg-white text-amber-800 hover:bg-amber-100 dark:border-amber-500/50 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-900/50"
+              }`}
+            >
+              {soloUrgentes ? "Mostrar todas" : "Mostrar solo urgentes"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {bandejas.length > 0 && (
         <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950">
           {bandejas.map((bandeja) => {
@@ -1392,6 +1589,7 @@ export default function SeguimientoLicitaciones() {
                 type="button"
                 onClick={() => {
                   setActiveBandeja(bandeja.key);
+                  setSoloUrgentes(false);
                   setCurrentPage(1);
                 }}
                 className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
@@ -1458,16 +1656,23 @@ export default function SeguimientoLicitaciones() {
       </div>
 
       {showEstadoCards && (
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-5 xl:grid-cols-10">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-12">
           {SUMMARY_ITEMS.map((item) => (
             <button
               key={item.key}
               type="button"
               onClick={() => {
-                if (item.key in OPORTUNIDAD_ESTADOS) {
+                if (item.key === "total") {
+                  setFilters((current) => ({
+                    ...current,
+                    estado: "todos",
+                    ejecutivo: "todos",
+                  }));
+                  setCurrentPage(1);
+                } else if (item.key in OPPORTUNITY_FILTER_STATES) {
                   updateFilter(
                     "estado",
-                    filters.estado === item.key ? "todos" : item.key as OportunidadEstado,
+                    filters.estado === item.key ? "todos" : item.key as OportunidadFiltroEstado,
                   );
                 }
               }}
@@ -1500,7 +1705,7 @@ export default function SeguimientoLicitaciones() {
           {showEstadoSelect && (
             <select value={filters.estado} onChange={(event) => updateFilter("estado", event.target.value as OportunidadFilters["estado"])} className="h-11 rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
               <option value="todos">Todos los estados</option>
-              {Object.entries(OPORTUNIDAD_ESTADOS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {Object.entries(OPPORTUNITY_FILTER_STATES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           )}
           <select value={filters.ejecutivo} onChange={(event) => updateFilter("ejecutivo", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
@@ -1542,7 +1747,7 @@ export default function SeguimientoLicitaciones() {
           )}
         </div>
         <div className={`grid min-w-0 max-w-full gap-3 p-3 ${viewMode === "cards" ? "md:grid-cols-2 2xl:grid-cols-3" : "xl:hidden"}`}>
-          {loading ? (
+          {isInitialLoading ? (
             Array.from({ length: 4 }).map((_, index) => (
               <div key={index} className="h-44 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
             ))
@@ -1570,7 +1775,7 @@ export default function SeguimientoLicitaciones() {
                         {item.empresa}
                       </p>
                     </div>
-                    <EstadoBadge estado={item.estado} />
+                    <EstadoBadge estado={item.estado} label={getOportunidadEstadoLabel(item)} />
                   </div>
 
                   <div className="mt-4 grid min-w-0 grid-cols-1 gap-3 text-xs text-slate-500 sm:grid-cols-2">
@@ -1630,11 +1835,11 @@ export default function SeguimientoLicitaciones() {
                     {canDeleteOpportunity(item) && (
                       <IconButton
                         title={locked ? "Registro bloqueado" : "Eliminar"}
-                        disabled={locked}
+                        disabled={locked || deletingOpportunityId === item.id}
                         danger
                         onClick={() => void handleDelete(item)}
                       >
-                        <Trash2 size={17} />
+                        {deletingOpportunityId === item.id ? <Loader2 size={17} className="animate-spin" /> : <Trash2 size={17} />}
                       </IconButton>
                     )}
                     {currentRole === "LICITACIONES" && item.estado === "atendido" && (
@@ -1669,7 +1874,7 @@ export default function SeguimientoLicitaciones() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {isInitialLoading ? (
                 Array.from({ length: 5 }).map((_, index) => (
                   <tr key={index} className="border-b border-slate-100 dark:border-slate-800">
                     <td colSpan={10} className="px-5 py-4">
@@ -1699,7 +1904,7 @@ export default function SeguimientoLicitaciones() {
                       </Td>
                       <Td>{formatDateTime(item.creadoEn)}</Td>
                       <Td>
-                        <EstadoBadge estado={item.estado} />
+                        <EstadoBadge estado={item.estado} label={getOportunidadEstadoLabel(item)} />
                       </Td>
                       <Td>
                         <div className="max-w-[170px]">
@@ -1759,11 +1964,11 @@ export default function SeguimientoLicitaciones() {
                           {canDeleteOpportunity(item) && (
                             <IconButton
                               title={locked ? "Registro bloqueado" : "Eliminar"}
-                              disabled={locked}
+                              disabled={locked || deletingOpportunityId === item.id}
                               danger
                               onClick={() => void handleDelete(item)}
                             >
-                              <Trash2 size={17} />
+                              {deletingOpportunityId === item.id ? <Loader2 size={17} className="animate-spin" /> : <Trash2 size={17} />}
                             </IconButton>
                           )}
                           {currentRole === "LICITACIONES" && item.estado === "atendido" && (
@@ -1825,6 +2030,7 @@ export default function SeguimientoLicitaciones() {
         opportunity={selected}
         onClose={() => setSelectedId(null)}
         onAddComment={(comment) => void handleAddComment(comment)}
+        commenting={commentingOpportunity}
         onGenerateQuote={() => void handleGenerateQuote()}
         canManageOpportunity={Boolean(selected && canManageOpportunityQuote(selected))}
         onMarkQuoteDone={() => void handleMarkQuoteDone()}
@@ -1838,13 +2044,18 @@ export default function SeguimientoLicitaciones() {
         canMarkProposalPresented={Boolean(selected && canMarkProposalPresented(selected))}
         presentingProposal={Boolean(selected && presentingProposalId === selected.id)}
         onMarkProposalPresented={(file) => void handleMarkProposalPresented(file)}
-        canDownloadQuotePdf={currentRole === "LICITACIONES" || currentRole === "SUPERADMIN"}
+        canDownloadQuotePdf={
+          hasPermission("licitaciones.cotizaciones_pdf") ||
+          hasPermission("licitaciones.cotizaciones") ||
+          hasPermission("licitaciones") ||
+          currentRole === "SUPERADMIN"
+        }
         downloadingQuoteId={downloadingQuoteId}
         onDownloadQuotePdf={(cotizacionId) => void handleDownloadQuotePdf(cotizacionId)}
         canOpenQuote={canOpenCotizaciones}
         onOpenQuote={(cotizacionId) => navigate(`/cotizaciones/${cotizacionId}/view`)}
         loadingDetails={selectedLoading}
-        canUploadFile={Boolean(selected && !isClosedOpportunity(selected.estado) && (
+        canUploadFile={Boolean(selected && hasPermission("licitaciones.archivos") && !isClosedOpportunity(selected.estado) && (
           isOpportunityCreator(selected) ||
           Number(selected.asignadoA ?? selected.ejecutivo?.id ?? 0) === Number(user?.id) ||
           currentRole === "SUPERADMIN"
@@ -1852,19 +2063,20 @@ export default function SeguimientoLicitaciones() {
         uploadingFile={uploadingOpportunityFile}
         onUploadFile={(file) => void handleUploadOpportunityFile(file)}
         deletingFileId={deletingOpportunityFileId}
-        canDeleteFile={(file) => isCreatedByCurrentUser(file.creadoPor)}
+        canDeleteFile={(file) => hasPermission("licitaciones.archivos") && isCreatedByCurrentUser(file.creadoPor)}
         onDeleteFile={(file) => void handleDeleteOpportunityFile(file)}
         unlinkingQuoteId={unlinkingQuoteId}
         canUnlinkQuote={(relacionId) => {
           const quote = selected?.cotizaciones.find((item) => item.id === relacionId);
           return Boolean(
             quote &&
+              hasPermission("licitaciones.cotizaciones") &&
               ["vinculada", "generada"].includes(quote.origen || "vinculada") &&
               (currentRole === "SUPERADMIN" || isCreatedByCurrentUser(quote.creadoPor, quote.creadoPorId))
           );
         }}
         onUnlinkQuote={(relacionId) => void handleUnlinkQuote(relacionId)}
-        canAssignToMe={Boolean(selected && (isSalesRole || currentRole === "SUPERADMIN") && isAvailableOpportunity(selected))}
+        canAssignToMe={Boolean(selected && hasPermission("licitaciones.asignar") && (isSalesRole || currentRole === "SUPERADMIN") && isAvailableOpportunity(selected))}
         assigningToMe={Boolean(selected && assigningOpportunityId === selected.id)}
         onAssignToMe={() => {
           if (selected) void handleAssignToMe(selected);
@@ -1960,10 +2172,11 @@ export default function SeguimientoLicitaciones() {
               <button
                 type="button"
                 onClick={() => void handleLinkExistingQuote()}
-                disabled={!quoteLinkSelectedId}
-                className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!quoteLinkSelectedId || linkingQuote}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Vincular cotizacion
+                {linkingQuote && <Loader2 size={16} className="animate-spin" />}
+                {linkingQuote ? "Vinculando..." : "Vincular cotizacion"}
               </button>
             </div>
           </div>
@@ -2008,8 +2221,9 @@ export default function SeguimientoLicitaciones() {
               <button type="button" onClick={() => { setLossModalOpen(false); setLossTarget(null); setLossReason(""); setLossObservations(""); setLossFile(null); setLossError(""); }} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
                 Cancelar
               </button>
-              <button type="button" onClick={() => void submitLoss()} className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700">
-                Guardar resultado
+              <button type="button" onClick={() => void submitLoss()} disabled={submittingLoss} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60">
+                {submittingLoss && <Loader2 size={16} className="animate-spin" />}
+                {submittingLoss ? "Guardando..." : "Guardar resultado"}
               </button>
             </div>
           </div>
@@ -2062,7 +2276,8 @@ export default function SeguimientoLicitaciones() {
               <button type="button" onClick={() => { setReleaseModalOpen(false); setReleaseTarget(null); setReleaseReason(""); setReleaseError(""); }} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
                 Cancelar
               </button>
-              <button type="button" onClick={() => void handleReleaseQuote(releaseTarget, releaseReason)} className="rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700">
+              <button type="button" onClick={() => void handleReleaseQuote(releaseTarget, releaseReason)} disabled={releasingQuote} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60">
+                {releasingQuote && <Loader2 size={16} className="animate-spin" />}
                 Confirmar liberación
               </button>
             </div>

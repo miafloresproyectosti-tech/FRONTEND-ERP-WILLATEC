@@ -7,8 +7,12 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Loader2,
   Key,
+  ShieldCheck,
+  Users as UsersIcon,
 } from "lucide-react";
 import { useAuth } from "../AuthContext";
 import {
@@ -18,9 +22,16 @@ import {
   updateUser,
   deleteUser,
   resetPassword,
+  getRolesPermissionsConfig,
+  updateRolePermissions,
+  createRole,
+  updateRole,
+  deleteRole,
   type User as ApiUser,
   type CreateUserData,
   type UpdateUserData,
+  type PermissionCatalogItem,
+  type RoleWithPermissions,
 } from "../services/usuario.service";
 import TempPasswordModal from "../components/ui/TempPasswordModal";
 import { useNotifications } from "../NotificationContext";
@@ -81,12 +92,47 @@ export default function Usuarios() {
   const [usuarioAEliminar, setUsuarioAEliminar] = useState<User | null>(null);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [showTempModal, setShowTempModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<"usuarios" | "roles">("usuarios");
+  const [rolesConfig, setRolesConfig] = useState<RoleWithPermissions[]>([]);
+  const [permissionsCatalog, setPermissionsCatalog] = useState<PermissionCatalogItem[]>([]);
+  const [loadingRoles, setLoadingRoles] = useState(false);
+  const [savingRoleId, setSavingRoleId] = useState<number | null>(null);
+  const [resettingUserId, setResettingUserId] = useState<number | null>(null);
+  const [permissionSearch, setPermissionSearch] = useState("");
+  const [expandedRoles, setExpandedRoles] = useState<number[]>([]);
+  const [expandedModules, setExpandedModules] = useState<string[]>([]);
+  const [roleModalOpen, setRoleModalOpen] = useState(false);
+  const [roleEditing, setRoleEditing] = useState<RoleWithPermissions | null>(null);
+  const [roleName, setRoleName] = useState("");
+  const [roleSaving, setRoleSaving] = useState(false);
+
+  const toggleExpandedRole = (roleId: number) => {
+    setExpandedRoles((prev) =>
+      prev.includes(roleId)
+        ? prev.filter((id) => id !== roleId)
+        : [...prev, roleId]
+    );
+  };
+
+  const toggleExpandedModule = (moduleKey: string) => {
+    setExpandedModules((prev) =>
+      prev.includes(moduleKey)
+        ? prev.filter((key) => key !== moduleKey)
+        : [...prev, moduleKey]
+    );
+  };
   const { showToast } = useNotifications();
 
   // Cargar usuarios al montar el componente
   useEffect(() => {
     loadUsers();
   }, []);
+
+  useEffect(() => {
+    if (user?.role === "SUPERADMIN") {
+      void loadRolesPermissions();
+    }
+  }, [user?.role]);
 
   const loadUsers = async () => {
     try {
@@ -339,7 +385,170 @@ export default function Usuarios() {
     setSearchTerm(e.target.value);
   };
 
+  const handleResetPassword = async (usuario: User) => {
+    if (resettingUserId) return;
+    setResettingUserId(usuario.id);
+    try {
+      const res = await resetPassword(usuario.id);
+      const temp = res?.temporary_password || res?.password || res?.temporay_password || null;
+      setTempPassword(temp);
+      setShowTempModal(true);
+      showToast({ title: "Contraseña generada", description: "Se generó una contraseña temporal", type: "info" });
+    } catch (err) {
+      console.error("Error al resetear contraseña", err);
+      showToast({ title: "Error", description: "No se pudo resetear la contraseña", type: "warning" });
+    } finally {
+      setResettingUserId(null);
+    }
+  };
+
   const canAddUser = user?.role === "SUPERADMIN";
+  const filteredPermissionsCatalog = permissionsCatalog.filter((permission) => {
+    const term = permissionSearch.trim().toLowerCase();
+    if (!term) return true;
+
+    return [
+      permission.label,
+      permission.description,
+      permission.key,
+      permission.module,
+    ]
+      .filter(Boolean)
+      .some((value) => value!.toLowerCase().includes(term));
+  });
+
+  const permissionsByModule = filteredPermissionsCatalog.reduce(
+    (groups, permission) => {
+      const moduleName = permission.module || "General";
+      groups[moduleName] = [...(groups[moduleName] || []), permission];
+      return groups;
+    },
+    {} as Record<string, PermissionCatalogItem[]>,
+  );
+
+  const loadRolesPermissions = async () => {
+    try {
+      setLoadingRoles(true);
+      const data = await getRolesPermissionsConfig();
+      setRolesConfig(data.roles);
+      setPermissionsCatalog(data.permissions);
+    } catch (error) {
+      console.error("Error al cargar permisos:", error);
+    } finally {
+      setLoadingRoles(false);
+    }
+  };
+
+  const openRoleModal = (role?: RoleWithPermissions) => {
+    if (role?.name.toUpperCase() === "SUPERADMIN") return;
+    setRoleEditing(role ?? null);
+    setRoleName(role?.name ?? "");
+    setRoleModalOpen(true);
+  };
+
+  const handleRoleSave = async () => {
+    const normalizedName = roleName.trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(normalizedName)) {
+      showToast({
+        title: "Nombre no valido",
+        description: "Usa solo letras minusculas, numeros, guion o guion bajo.",
+        type: "warning",
+      });
+      return;
+    }
+
+    try {
+      setRoleSaving(true);
+      if (roleEditing) {
+        const updated = await updateRole(roleEditing.id, { name: normalizedName });
+        setRolesConfig((current) => current.map((role) => role.id === updated.id ? { ...role, ...updated } : role));
+      } else {
+        const created = await createRole({ name: normalizedName });
+        setRolesConfig((current) => [...current, created]);
+      }
+      setRoleModalOpen(false);
+      showToast({
+        title: roleEditing ? "Rol actualizado" : "Rol creado",
+        description: "Puedes asignarle permisos desde su panel.",
+        type: "success",
+      });
+    } catch (error) {
+      console.error("Error al guardar rol:", error);
+      showToast({
+        title: "No se pudo guardar el rol",
+        description: "Verifica que el nombre no este repetido e intenta nuevamente.",
+        type: "warning",
+      });
+    } finally {
+      setRoleSaving(false);
+    }
+  };
+
+  const handleRoleDelete = async (role: RoleWithPermissions) => {
+    if (role.name.toUpperCase() === "SUPERADMIN") return;
+    if (!window.confirm(`¿Eliminar el rol ${role.name.toUpperCase()}?`)) return;
+
+    try {
+      setSavingRoleId(role.id);
+      await deleteRole(role.id);
+      setRolesConfig((current) => current.filter((item) => item.id !== role.id));
+      showToast({
+        title: "Rol eliminado",
+        description: "El rol fue eliminado correctamente.",
+        type: "success",
+      });
+    } catch (error) {
+      console.error("Error al eliminar rol:", error);
+      showToast({
+        title: "No se pudo eliminar",
+        description: "Asegurate de que el rol no tenga usuarios asignados.",
+        type: "warning",
+      });
+    } finally {
+      setSavingRoleId(null);
+    }
+  };
+
+  const toggleRolePermission = async (role: RoleWithPermissions, permission: string) => {
+    if (role.name.toUpperCase() === "SUPERADMIN") return;
+
+    const current = new Set(role.permissions);
+    const children = permissionsCatalog
+      .filter((item) => item.parent === permission || item.key.startsWith(`${permission}.`))
+      .map((item) => item.key);
+
+    if (current.has(permission)) {
+      current.delete(permission);
+      children.forEach((child) => current.delete(child));
+    } else {
+      current.add(permission);
+      children.forEach((child) => current.add(child));
+      // const parent = permissionsCatalog.find((item) => item.key === permission)?.parent;
+      // if (parent) current.add(parent);
+    }
+
+    try {
+      setSavingRoleId(role.id);
+      const updatedRole = await updateRolePermissions(role.id, Array.from(current));
+      setRolesConfig((prev) =>
+        prev.map((item) => (item.id === role.id ? updatedRole : item)),
+      );
+      showToast({
+        title: "Permisos actualizados",
+        description: `Rol ${role.name} actualizado correctamente.`,
+        type: "success",
+      });
+    } catch (error) {
+      console.error("Error al actualizar permisos:", error);
+      showToast({
+        title: "No se pudo actualizar",
+        description: "Intenta nuevamente.",
+        type: "warning",
+      });
+    } finally {
+      setSavingRoleId(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -366,6 +575,264 @@ export default function Usuarios() {
         )}
       </div>
 
+      {canAddUser && (
+        <div className="inline-flex rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+          <button
+            onClick={() => setActiveTab("usuarios")}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+              activeTab === "usuarios"
+                ? "bg-blue-600 text-white shadow-sm"
+                : "text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <UsersIcon size={16} />
+            Usuarios
+          </button>
+          <button
+            onClick={() => setActiveTab("roles")}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+              activeTab === "roles"
+                ? "bg-blue-600 text-white shadow-sm"
+                : "text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <ShieldCheck size={16} />
+            Roles
+          </button>
+        </div>
+      )}
+
+      {activeTab === "roles" && canAddUser ? (
+        <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-gray-800">Roles y permisos</h2>
+              <p className="text-sm text-gray-500">
+                Crea roles y controla sus permisos por modulo y accion.
+              </p>
+            </div>
+            <div className="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
+              <div className="flex h-11 min-w-0 items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 sm:w-72">
+                <Search size={18} className="shrink-0 text-gray-500" />
+                <input
+                  value={permissionSearch}
+                  onChange={(event) => setPermissionSearch(event.target.value)}
+                  placeholder="Buscar permiso o modulo..."
+                  className="w-full bg-transparent text-sm outline-none"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => openRoleModal()}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+              >
+                <Plus size={17} />
+                Nuevo rol
+              </button>
+            </div>
+          </div>
+
+          {loadingRoles ? (
+            <div className="flex items-center justify-center py-10 text-gray-600">
+              <Loader2 size={24} className="mr-2 animate-spin text-blue-600" />
+              Cargando permisos...
+            </div>
+          ) : rolesConfig.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-10 text-center text-gray-500">
+              No se encontraron roles. Revisa que el endpoint /roles este respondiendo.
+            </div>
+          ) : permissionsCatalog.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-10 text-center text-gray-500">
+              No se encontraron permisos configurados.
+            </div>
+          ) : (  
+            rolesConfig.map((role) => {
+              const isSuperadmin = role.name.toUpperCase() === "SUPERADMIN";
+              const searching = permissionSearch.trim().length > 0;
+              const roleExpanded = searching || expandedRoles.includes(role.id);
+
+              const totalPermissions = permissionsCatalog.length;
+              const activePermissions = isSuperadmin
+                ? totalPermissions
+                : permissionsCatalog.filter((p) =>
+                    role.permissions.includes(p.key)
+                  ).length;
+
+              return (
+                <div
+                  key={role.id}
+                  className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
+                >
+                  {/* ENCABEZADO DEL ROL */}
+                  <button
+                    type="button"
+                    onClick={() => toggleExpandedRole(role.id)}
+                    aria-expanded={roleExpanded}
+                    className="flex w-full items-center justify-between gap-4 p-4 text-left transition hover:bg-gray-50"
+                  >
+                    <div>
+                      <h2 className="text-base font-bold text-gray-800">
+                        {role.name.toUpperCase()}
+                      </h2>
+
+                      <p className="mt-1 text-xs text-gray-500">
+                        {isSuperadmin
+                          ? "Acceso total protegido"
+                          : `${activePermissions} de ${totalPermissions} permisos activos`}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {savingRoleId === role.id && (
+                        <Loader2
+                          size={18}
+                          className="animate-spin text-blue-600"
+                        />
+                      )}
+
+                      {!isSuperadmin && (
+                        <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => openRoleModal(role)}
+                            className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-600"
+                            title="Editar rol"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleRoleDelete(role)}
+                            disabled={savingRoleId === role.id}
+                            className="rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            title="Eliminar rol"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      )}
+
+                      {roleExpanded ? (
+                        <ChevronUp size={20} className="text-gray-500" />
+                      ) : (
+                        <ChevronDown size={20} className="text-gray-500" />
+                      )}
+                    </div>
+                  </button>
+
+                  {/* CONTENIDO DEL ROL */}
+                  {roleExpanded && (
+                    <div className="space-y-3 border-t border-gray-100 p-4">
+                      {Object.entries(permissionsByModule).length === 0 ? (
+                        <p className="py-6 text-center text-sm text-gray-500">
+                          No hay permisos que coincidan con la búsqueda.
+                        </p>
+                      ) : (
+                        Object.entries(permissionsByModule).map(
+                          ([moduleName, permissions]) => {
+                            const moduleKey = `${role.id}:${moduleName}`;
+                            const moduleExpanded =
+                              searching || expandedModules.includes(moduleKey);
+
+                            const moduleActive = isSuperadmin
+                              ? permissions.length
+                              : permissions.filter((permission) =>
+                                  role.permissions.includes(permission.key)
+                                ).length;
+
+                            return (
+                              <div
+                                key={moduleKey}
+                                className="overflow-hidden rounded-xl border border-gray-200"
+                              >
+                                {/* ENCABEZADO DEL MÓDULO */}
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpandedModule(moduleKey)}
+                                  aria-expanded={moduleExpanded}
+                                  className="flex w-full items-center justify-between gap-3 bg-gray-50 px-4 py-3 text-left transition hover:bg-gray-100"
+                                >
+                                  <div>
+                                    <h3 className="text-sm font-bold text-gray-700">
+                                      {moduleName}
+                                    </h3>
+                                    <p className="mt-0.5 text-xs text-gray-500">
+                                      {moduleActive} de {permissions.length} permisos activos
+                                    </p>
+                                  </div>
+
+                                  {moduleExpanded ? (
+                                    <ChevronUp size={18} className="text-gray-500" />
+                                  ) : (
+                                    <ChevronDown size={18} className="text-gray-500" />
+                                  )}
+                                </button>
+
+                                {/* PERMISOS DEL MÓDULO */}
+                                {moduleExpanded && (
+                                  <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-3">
+                                    {permissions.map((permission) => {
+                                      const checked =
+                                        isSuperadmin ||
+                                        role.permissions.includes(permission.key);
+
+                                      return (
+                                        <label
+                                          key={permission.key}
+                                          className={`flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 ${
+                                            permission.parent ? "ml-2" : ""
+                                          }`}
+                                        >
+                                          <span className="min-w-0">
+                                            <span className="block text-sm font-semibold text-gray-800">
+                                              {permission.label}
+                                            </span>
+                                            <span className="block text-xs text-gray-500">
+                                              {permission.description}
+                                            </span>
+                                          </span>
+
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            disabled={
+                                              isSuperadmin ||
+                                              savingRoleId === role.id
+                                            }
+                                            onChange={() =>
+                                              toggleRolePermission(role, permission.key)
+                                            }
+                                            className="peer sr-only"
+                                          />
+                                          <span
+                                            aria-hidden="true"
+                                            className={`relative h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors after:block after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform ${
+                                              checked ? "bg-blue-600 after:translate-x-5" : "bg-slate-300"
+                                            } ${
+                                              isSuperadmin || savingRoleId === role.id
+                                                ? "opacity-60"
+                                                : "peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2"
+                                            }`}
+                                          />
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      ) : (
+      <>
       {/* BUSCADOR Y FILTRO */}
       <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(260px,1fr)_180px] md:items-end">
@@ -463,6 +930,8 @@ export default function Usuarios() {
                       </button>
                       <button
                         onClick={async () => {
+                          if (resettingUserId) return;
+                          setResettingUserId(u.id);
                           try {
                             const res = await resetPassword(u.id);
                             const temp =
@@ -484,13 +953,16 @@ export default function Usuarios() {
                               description: "No se pudo resetear la contraseña",
                               type: "warning",
                             });
+                          } finally {
+                            setResettingUserId(null);
                           }
                         }}
-                        className="inline-flex h-11 items-center justify-center gap-1 rounded-xl bg-yellow-100 text-sm font-semibold text-yellow-700 hover:bg-yellow-200"
+                        disabled={resettingUserId === u.id}
+                        className="inline-flex h-11 items-center justify-center gap-1 rounded-xl bg-yellow-100 text-sm font-semibold text-yellow-700 hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-60"
                         title="Resetear contraseña"
                       >
-                        <Key size={16} />
-                        <span className="hidden sm:inline">Reset</span>
+                        {resettingUserId === u.id ? <Loader2 size={16} className="animate-spin" /> : <Key size={16} />}
+                        <span className="hidden sm:inline">{resettingUserId === u.id ? "..." : "Reset"}</span>
                       </button>
                     </div>
                   )}
@@ -582,6 +1054,8 @@ export default function Usuarios() {
                             </button>
                             <button
                               onClick={async () => {
+                                if (resettingUserId) return;
+                                setResettingUserId(u.id);
                                 try {
                                   const res = await resetPassword(u.id);
                                   // esperar { tempPassword }
@@ -609,12 +1083,15 @@ export default function Usuarios() {
                                       "No se pudo resetear la contraseña",
                                     type: "warning",
                                   });
+                                } finally {
+                                  setResettingUserId(null);
                                 }
                               }}
-                              className="w-11 h-11 rounded-xl bg-yellow-100 text-yellow-700 flex items-center justify-center hover:bg-yellow-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                              disabled={resettingUserId === u.id}
+                              className="w-11 h-11 rounded-xl bg-yellow-100 text-yellow-700 flex items-center justify-center hover:bg-yellow-200 transition-all duration-200 hover:scale-105 shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
                               title="Resetear contraseña"
                             >
-                              <Key size={18} />
+                              {resettingUserId === u.id ? <Loader2 size={18} className="animate-spin" /> : <Key size={18} />}
                             </button>
                           </div>
                         )}
@@ -695,6 +1172,76 @@ export default function Usuarios() {
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {roleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">
+                  Administracion de acceso
+                </p>
+                <h2 className="mt-1 text-xl font-bold text-slate-900">
+                  {roleEditing ? "Editar rol" : "Crear nuevo rol"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {roleEditing
+                    ? "El cambio conserva todos los permisos actuales."
+                    : "El rol comenzara sin permisos para asignarlos de forma controlada."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRoleModalOpen(false)}
+                className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
+                title="Cerrar"
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Identificador del rol
+                </label>
+                <input
+                  value={roleName}
+                  onChange={(event) => setRoleName(event.target.value.toLowerCase())}
+                  placeholder="ejemplo: compras"
+                  autoFocus
+                  className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Usa letras minusculas, numeros, guion o guion bajo.
+                </p>
+              </div>
+
+              <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setRoleModalOpen(false)}
+                  disabled={roleSaving}
+                  className="h-11 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleRoleSave()}
+                  disabled={roleSaving || !roleName.trim()}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {roleSaving && <Loader2 size={16} className="animate-spin" />}
+                  {roleEditing ? "Guardar cambios" : "Crear rol"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL CONFIRMAR ELIMINAR */}
       {usuarioAEliminar && (

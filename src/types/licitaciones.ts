@@ -10,6 +10,12 @@ export type OportunidadEstado =
   | "no_se_realizara"
   | "vencida";
 
+export type OportunidadFiltroEstado =
+  | OportunidadEstado
+  | "cotizacion_pendiente"
+  | "modificacion_cotizacion"
+  | "por_subir";
+
 export type OportunidadPayment =
   | "credito_15"
   | "credito_30"
@@ -139,7 +145,7 @@ export interface OportunidadFilters {
   tipo: "todos" | OportunidadTipo;
   empresa: string;
   ejecutivo: string;
-  estado: "todos" | OportunidadEstado;
+  estado: "todos" | OportunidadFiltroEstado;
   categoria: string;
   vigenciaDesde: string;
   vigenciaHasta: string;

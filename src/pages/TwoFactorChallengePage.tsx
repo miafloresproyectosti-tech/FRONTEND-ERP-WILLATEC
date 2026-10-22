@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import { twoFactorChallengeRequest } from "../services/auth.service";
 import { useAuth } from "../AuthContext";
-import { getDefaultRouteByRole } from "../utils/roleRoutes";
 import { normalizeRole } from "../utils/permissions";
 
 export default function TwoFactorChallengePage() {
@@ -58,10 +57,11 @@ export default function TwoFactorChallengePage() {
         result.email || email,
         normalizedRole,
         result.last_login_at,
-        result.two_factor_enabled
+        result.two_factor_enabled,
+        result.permissions
       );
 
-      navigate(getDefaultRouteByRole(normalizedRole));
+      navigate("/");
     } catch {
       setError("Codigo invalido o expirado");
     } finally {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
@@ -100,6 +100,7 @@ interface ProductoForm {
   categoria_id: number;
   stock: string;
   precio_referencial: string;
+  precio_venta: string;
   moneda_id: string;
   descripcion: string;
   imagen: string;
@@ -172,6 +173,7 @@ const mapProducto = (producto: Producto): ProductoUI => ({
   stock_reservado: producto.stock_reservado ?? 0,
   stock_disponible: producto.stock_disponible ?? producto.stock,
   precio_referencial: String(producto.precio_referencial),
+  precio_venta: String(producto.precio_venta ?? producto.precio_referencial ?? ""),
   moneda_id: String(producto.moneda_id || 2),
   moneda: producto.moneda ?? null,
   descripcion: producto.descripcion ?? "",
@@ -380,7 +382,7 @@ const convertExternalItemValue = (
 
 export default function Productos() {
   const { addNotification, showToast } = useNotifications();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const navigate = useNavigate();
 
   const [productos, setProductos] = useState<ProductoUI[]>([]);
@@ -390,6 +392,8 @@ export default function Productos() {
   const [itemsPerPage, setItemsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
+  const productosRequestRef = useRef(0);
+  const externosRequestRef = useRef(0);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"stock" | "externos">("stock");
   const [productosMeta, setProductosMeta] = useState({
@@ -443,6 +447,7 @@ export default function Productos() {
       categoria_id: 1,
       stock: "",
       precio_referencial: "",
+      precio_venta: "",
       descripcion: "",
       imagen: "",
       activo: "true",
@@ -503,7 +508,10 @@ export default function Productos() {
   const userRole = normalizeRole(user?.role);
   const canUseExternalProducts =
     userRole !== "SOPORTE" && userRole !== "LOGISTICA";
-  const canManageInternalProducts = userRole !== "VENTAS";
+  const canManageInternalProducts =
+    hasPermission("productos.crear") ||
+    hasPermission("productos.editar") ||
+    hasPermission("productos.eliminar");
   const canManageWooCommerce =
     userRole === "SUPERADMIN" ||
     userRole === "ADMIN" ||
@@ -582,6 +590,7 @@ export default function Productos() {
 
   const fetchProductos = useCallback(
     async (page = currentPage, search = debouncedSearchTerm) => {
+      const requestId = ++productosRequestRef.current;
       try {
         setLoading(true);
         const response = await getProductosPaginated({
@@ -589,6 +598,7 @@ export default function Productos() {
           search,
           perPage: itemsPerPage,
         });
+        if (requestId !== productosRequestRef.current) return;
         setProductos(response.data.map(mapProducto));
         setProductosMeta({
           current_page: response.current_page,
@@ -608,7 +618,7 @@ export default function Productos() {
           route: "/productos",
         });
       } finally {
-        setLoading(false);
+        if (requestId === productosRequestRef.current) setLoading(false);
       }
     },
     [addNotification, currentPage, debouncedSearchTerm, itemsPerPage],
@@ -622,9 +632,11 @@ export default function Productos() {
 
   const fetchExternalItems = useCallback(
     async (page = 1, search = searchTerm, perPage = externalPerPage) => {
+      const requestId = ++externosRequestRef.current;
       try {
         setExternalLoading(true);
         const response = await getExternalItems(page, search, perPage);
+        if (requestId !== externosRequestRef.current) return;
         setExternalItems(response.data.map((item) => item));
         setExternalMeta(response.meta);
       } catch (error) {
@@ -637,7 +649,7 @@ export default function Productos() {
           route: "/productos",
         });
       } finally {
-        setExternalLoading(false);
+        if (requestId === externosRequestRef.current) setExternalLoading(false);
       }
     },
     [addNotification, externalPerPage, searchTerm],
@@ -890,6 +902,7 @@ export default function Productos() {
       categoria_id: producto.categoria_id || 1,
       stock: String(producto.stock_actual ?? producto.stock ?? ""),
       precio_referencial: String(producto.precio_referencial || ""),
+      precio_venta: String(producto.precio_venta ?? producto.precio_referencial ?? ""),
       descripcion: producto.descripcion || "",
       imagen: producto.imagen || "",
       activo: producto.activo ? "true" : "false",
@@ -1139,6 +1152,7 @@ export default function Productos() {
   const handleGuardar = async () => {
     const stockNum = parseInt(productoSeleccionado.stock, 10);
     const precioNum = parseFloat(productoSeleccionado.precio_referencial);
+    const precioVentaNum = parseFloat(productoSeleccionado.precio_venta);
     const series = productoSeleccionado.series_text
       .split(/\r?\n/)
       .map((serie) => serie.trim())
@@ -1164,29 +1178,30 @@ export default function Productos() {
       nombre: productoSeleccionado.nombre,
       marca: productoSeleccionado.marca,
       modelo: productoSeleccionado.modelo,
-      serie: productoSeleccionado.serie || series[0] || "",
-      series,
       factura_numero: productoSeleccionado.factura_numero,
       ubicacion_almacen: productoSeleccionado.ubicacion_almacen,
       codigo: productoSeleccionado.codigo,
       descripcion: productoSeleccionado.descripcion || "",
       imagen: productoSeleccionado.imagen || undefined,
       precio_referencial: isNaN(precioNum) ? 0 : precioNum,
+      precio_venta: isNaN(precioVentaNum) ? 0 : precioVentaNum,
       moneda_id: Number(productoSeleccionado.moneda_id || 2),
       unidad_medida: productoSeleccionado.unidad_medida || "unidad",
       activo: productoSeleccionado.activo === "true",
       estado: productoSeleccionado.estado,
       tipo_producto: "stock",
       controla_stock: true,
-      stock_minimo: 0,
-      costo_unitario: isNaN(precioNum) ? 0 : precioNum,
-      precio_venta: isNaN(precioNum) ? 0 : precioNum,
       categoria_id: productoSeleccionado.categoria_id,
     };
 
     if (!modoEdicion) {
+      payload.serie = productoSeleccionado.serie || series[0] || "";
+      payload.series = series;
       payload.stock_actual = isNaN(stockNum) ? 0 : stockNum;
       payload.stock = isNaN(stockNum) ? 0 : stockNum;
+      payload.stock_minimo = 0;
+      payload.costo_unitario = isNaN(precioNum) ? 0 : precioNum;
+      payload.precio_venta = isNaN(precioVentaNum) ? 0 : precioVentaNum;
     }
 
     try {
@@ -3811,6 +3826,7 @@ export default function Productos() {
                   <input
                     type="number"
                     value={productoSeleccionado.stock}
+                    disabled={modoEdicion}
                     onChange={(e) =>
                       setProductoSeleccionado({
                         ...productoSeleccionado,
@@ -3818,6 +3834,26 @@ export default function Productos() {
                       })
                     }
                     placeholder="Cantidad"
+                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-gray-500 uppercase">
+                    Precio de venta
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={productoSeleccionado.precio_venta}
+                    onChange={(e) =>
+                      setProductoSeleccionado({
+                        ...productoSeleccionado,
+                        precio_venta: e.target.value,
+                      })
+                    }
+                    placeholder="Precio de venta"
                     className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
                   />
                 </div>
@@ -3902,6 +3938,7 @@ export default function Productos() {
                   </label>
                   <textarea
                     value={productoSeleccionado.series_text}
+                    disabled={modoEdicion}
                     onChange={(e) =>
                       setProductoSeleccionado({
                         ...productoSeleccionado,
@@ -3915,11 +3952,14 @@ export default function Productos() {
                     }
                     rows={4}
                     placeholder="Una serie por linea. Ej: ABC123"
-                    className="w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200"
+                    className={`w-full px-3 py-2.5 text-xs rounded-lg border border-gray-200 ${
+                      modoEdicion ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""
+                    }`}
                   />
                   <p className="text-[11px] text-gray-500">
-                    Si compras varias unidades del mismo modelo, escribe una
-                    serie por linea. Puede quedar vacio.
+                    {modoEdicion
+                      ? "Las series se gestionan desde Kardex para conservar el historial."
+                      : "Si compras varias unidades del mismo modelo, escribe una serie por linea. Puede quedar vacio."}
                   </p>
                 </div>
 

@@ -7,7 +7,6 @@ import {
 } from "../services/auth.service";
 import { useNotifications } from "../NotificationContext";
 import { useAuth } from "../AuthContext";
-import { getDefaultRouteByRole } from "../utils/roleRoutes";
 import { normalizeRole } from "../utils/permissions";
 
 export default function ChangePasswordPage() {
@@ -56,10 +55,10 @@ export default function ChangePasswordPage() {
       );
 
       if (storedEmail) {
-        const { role, id, last_login_at, two_factor_enabled } =
+        const { role, id, last_login_at, two_factor_enabled, permissions } =
           await loginRequest(storedEmail, password);
         nextRole = normalizeRole(role);
-        login(id, storedEmail, nextRole, last_login_at, two_factor_enabled);
+        login(id, storedEmail, nextRole, last_login_at, two_factor_enabled, permissions);
       } else {
         const me = await meRequest();
         const role =
@@ -74,7 +73,8 @@ export default function ChangePasswordPage() {
           email,
           nextRole,
           me.data?.last_login_at || null,
-          !!me.data?.two_factor_confirmed_at
+          !!me.data?.two_factor_confirmed_at,
+          me.data?.roles?.[0]?.permissions?.map((permission: any) => permission.name)
         );
       }
 
@@ -85,7 +85,7 @@ export default function ChangePasswordPage() {
       });
       sessionStorage.removeItem("temp_user_email");
       sessionStorage.removeItem("temp_user_id");
-      navigate(getDefaultRouteByRole(nextRole));
+      navigate("/");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Error al cambiar contrasena";

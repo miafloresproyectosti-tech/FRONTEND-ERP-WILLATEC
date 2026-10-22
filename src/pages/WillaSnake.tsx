@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
-import { useAuth } from "../AuthContext";
+import { getSnakeScores, saveSnakeScore, type SnakeScore } from "../services/snake.service";
 
 type Cell = { x: number; y: number };
-type Score = { name: string; score: number; date: string };
-
 const SIZE = 16;
-const KEY = "willatec_secret_snake_scores";
 
 const same = (a: Cell, b: Cell) => a.x === b.x && a.y === b.y;
 const randomFood = (snake: Cell[]) => {
@@ -18,18 +15,35 @@ const randomFood = (snake: Cell[]) => {
 };
 
 export default function WillaSnake() {
-  const { user } = useAuth();
   const [snake, setSnake] = useState<Cell[]>([{ x: 8, y: 8 }]);
   const [food, setFood] = useState<Cell>({ x: 5, y: 5 });
   const [dir, setDir] = useState<Cell>({ x: 1, y: 0 });
   const [running, setRunning] = useState(false);
   const [gameOver, setGameOver] = useState(false);
-  const [scores, setScores] = useState<Score[]>([]);
+  const [scores, setScores] = useState<SnakeScore[]>([]);
+  const [scoresLoading, setScoresLoading] = useState(true);
+  const [scoresError, setScoresError] = useState("");
   const dirRef = useRef(dir);
+  const scoreSubmittedRef = useRef(false);
   const score = snake.length - 1;
 
   useEffect(() => {
-    setScores(JSON.parse(localStorage.getItem(KEY) || "[]"));
+    let cancelled = false;
+
+    getSnakeScores()
+      .then((data) => {
+        if (!cancelled) setScores(data);
+      })
+      .catch(() => {
+        if (!cancelled) setScoresError("No se pudo cargar la tabla global.");
+      })
+      .finally(() => {
+        if (!cancelled) setScoresLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -62,11 +76,12 @@ export default function WillaSnake() {
         if (crashed) {
           setRunning(false);
           setGameOver(true);
-          const nextScores = [...scores, { name: user?.name || user?.email || "Usuario", score: current.length - 1, date: new Date().toLocaleString("es-PE") }]
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 10);
-          setScores(nextScores);
-          localStorage.setItem(KEY, JSON.stringify(nextScores));
+          if (!scoreSubmittedRef.current) {
+            scoreSubmittedRef.current = true;
+            void saveSnakeScore(current.length - 1)
+              .then(setScores)
+              .catch(() => setScoresError("No se pudo guardar el puntaje."));
+          }
           return current;
         }
         const ate = same(head, food);
@@ -77,7 +92,7 @@ export default function WillaSnake() {
       });
     }, 130);
     return () => window.clearInterval(id);
-  }, [food, gameOver, running, scores, user?.email, user?.name]);
+  }, [food, gameOver, running]);
 
   const cells = useMemo(() => Array.from({ length: SIZE * SIZE }, (_, i) => ({ x: i % SIZE, y: Math.floor(i / SIZE) })), []);
   const reset = () => {
@@ -87,6 +102,7 @@ export default function WillaSnake() {
     setDir({ x: 1, y: 0 });
     setGameOver(false);
     setRunning(false);
+    scoreSubmittedRef.current = false;
   };
 
   return (
@@ -115,13 +131,15 @@ export default function WillaSnake() {
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
         <h2 className="mb-3 text-lg font-bold text-slate-900 dark:text-white">Tabla de records</h2>
         <div className="space-y-2">
-          {scores.map((item, index) => (
-            <div key={`${item.name}-${item.date}-${index}`} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm dark:bg-slate-900">
+          {scoresLoading && <p className="text-sm text-slate-500">Cargando records...</p>}
+          {!scoresLoading && scoresError && <p className="text-sm text-red-600">{scoresError}</p>}
+          {!scoresLoading && !scoresError && scores.map((item, index) => (
+            <div key={`${item.id}-${index}`} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm dark:bg-slate-900">
               <span className="font-semibold">{index + 1}. {item.name}</span>
               <span className="font-bold text-blue-600 dark:text-blue-300">{item.score}</span>
             </div>
           ))}
-          {scores.length === 0 && <p className="text-sm text-slate-500">Aun no hay puntajes.</p>}
+          {!scoresLoading && !scoresError && scores.length === 0 && <p className="text-sm text-slate-500">Aun no hay puntajes.</p>}
         </div>
       </section>
     </div>

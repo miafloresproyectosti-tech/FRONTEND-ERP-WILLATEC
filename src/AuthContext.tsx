@@ -8,7 +8,7 @@ import {
 
 import { logoutRequest, meRequest } from "./services/auth.service";
 import type { UserRole } from "./types/roles";
-import { normalizeRole, rolePermissions } from "./utils/permissions";
+import { normalizeRole } from "./utils/permissions";
 
 interface User {
   id: number;
@@ -17,6 +17,7 @@ interface User {
   name: string;
   last_login_at?: string | null;
   two_factor_enabled?: boolean;
+  permissions?: string[];
 }
 
 interface AuthContextType {
@@ -26,7 +27,8 @@ interface AuthContextType {
     email: string,
     role: string,
     lastLoginAt?: string | null,
-    twoFactorEnabled?: boolean
+    twoFactorEnabled?: boolean,
+    permissions?: string[]
   ) => void;
   logout: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
@@ -45,7 +47,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     roleStr: string,
     lastLoginAt?: string | null,
-    twoFactorEnabled = false
+    twoFactorEnabled = false,
+    permissions?: string[]
   ) => {
     const role = normalizeRole(roleStr);
     const name =
@@ -59,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name,
       last_login_at: lastLoginAt || new Date().toISOString(),
       two_factor_enabled: twoFactorEnabled,
+      permissions,
     };
 
     setUser(userData);
@@ -96,8 +100,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const role = normalizeRole(user.role);
     if (role === "SUPERADMIN") return true;
 
-    const permissions = rolePermissions[role] || [];
-    return permissions.includes(permission);
+    // Configuracion es accesible para todos los usuarios autenticados;
+    // la vista restringe internamente los apartados administrativos.
+    if (permission === "configuracion") return true;
+
+    const permissions =
+    user.permissions ?? [];
+
+    if (permissions.includes("*")) return true;
+    // Cada acción exige su permiso exacto.
+    if (permission.includes(".")) {
+      return permissions.includes(permission);
+    }
+
+    // Permiso general de módulo.
+    return (
+      permissions.includes(permission) ||
+      permissions.some((item) => item.startsWith(`${permission}.`))
+    );
   };
 
   useEffect(() => {
@@ -128,6 +148,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ? normalizeRole(backendUser.roles[0].name)
             : parsed.role
         ;
+        
+        const extractPermissions = (value: unknown): string[] => {
+          if (!Array.isArray(value)) return [];
+
+          return value
+            .map((permission) => {
+              if (typeof permission === "string") {
+                return permission;
+              }
+
+              if (
+                permission &&
+                typeof permission === "object" &&
+                "name" in permission &&
+                typeof permission.name === "string"
+              ) {
+                return permission.name;
+              }
+
+              return null;
+            })
+            .filter((permission): permission is string => Boolean(permission));
+        };
+
+        const backendPermissions = Array.from(
+          new Set([
+            ...extractPermissions(backendUser?.permissions),
+            ...extractPermissions(backendUser?.roles?.[0]?.permissions),
+          ])
+        );
+
 
         const userData: User = {
           id: backendUser?.id ?? parsed.id,
@@ -141,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           two_factor_enabled:
             Boolean(backendUser?.two_factor_confirmed_at) ||
             Boolean(parsed.two_factor_enabled),
+          permissions: backendPermissions ?? [],
         };
 
         if (!cancelled) {

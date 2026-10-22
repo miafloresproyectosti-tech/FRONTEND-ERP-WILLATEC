@@ -107,6 +107,7 @@ export default function Hosting() {
   const [renewing, setRenewing] = useState(false);
   const [cotizacionNumero, setCotizacionNumero] = useState("");
   const [linkingCotizacion, setLinkingCotizacion] = useState(false);
+  const [unlinkingCotizacionId, setUnlinkingCotizacionId] = useState<number | null>(null);
   const [cotizacionSearch, setCotizacionSearch] = useState("");
   const [cotizacionesEncontradas, setCotizacionesEncontradas] = useState<Cotizacion[]>([]);
   const [cotizacionesLoading, setCotizacionesLoading] = useState(false);
@@ -610,14 +611,17 @@ const handleCotizacionSelect = (cotizacion: Cotizacion) => {
   };
 
   const handleUnlinkCotizacion = async (cotizacionId: number) => {
-    if (!viewModal) return;
+    if (!viewModal || unlinkingCotizacionId) return;
 
     try {
+      setUnlinkingCotizacionId(cotizacionId);
       const updated = await unlinkHostingCotizacion(viewModal.id, cotizacionId);
       updateHostingEnLista(updated);
     } catch (error) {
       console.error("Error al desenlazar cotizacion:", error);
       alert("No se pudo desenlazar la cotización.");
+    } finally {
+      setUnlinkingCotizacionId(null);
     }
   };
 
@@ -2038,7 +2042,8 @@ const handleCotizacionSelect = (cotizacion: Cotizacion) => {
                                     void handleUnlinkCotizacion(cotizacion.id);
                                   }
                                 }}
-                                className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+                                disabled={unlinkingCotizacionId === cotizacion.id}
+                                className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 Desenlazar
                               </button>

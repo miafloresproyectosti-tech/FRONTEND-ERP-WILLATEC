@@ -6,7 +6,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import api from "./services/api";
 
 interface RefreshContextType {
   refreshing: boolean;
@@ -28,36 +27,7 @@ export function RefreshProvider({ children }: { children: ReactNode }) {
 
     refreshingRef.current = true;
     setRefreshing(true);
-    setRefreshCount((count) => count + 1);
-    window.dispatchEvent(
-      new CustomEvent("erp:refresh", {
-        detail: { source: "manual", timestamp: Date.now() },
-      })
-    );
-
-    try {
-      await api.get("/erp/refresh", {
-        headers: { "Cache-Control": "no-store" },
-      });
-    } catch (error) {
-      console.debug("Refresh backend sync no disponible:", error);
-    }
-
-    const timestamp = Date.now();
-    setLastSync(new Date().toISOString());
-    window.dispatchEvent(
-      new CustomEvent("erp:refreshed", {
-        detail: { source: "manual", timestamp },
-      })
-    );
-
-    window.setTimeout(
-      () => {
-        refreshingRef.current = false;
-        setRefreshing(false);
-      },
-      800
-    );
+    window.location.reload();
   }, []);
 
   return (

@@ -7,7 +7,7 @@ import { getActiveClientesSearchCached, type Cliente } from '../services/cliente
 import { getExternalItems, getProductosPaginated, type Producto } from "../services/producto.service";
 import { getPlantillas } from '../services/plantilla.service';
 import { getPlataformas } from '../services/plataforma.service';
-import { getUsers, type User as ApiUser } from '../services/usuario.service';
+import { getCotizacionEjecutivos, type CotizacionEjecutivo } from '../services/cotizacion.service';
 import { recalcularItems } from "../utils/recalcularItems";
 import { isPlantillaAlquiler } from "../utils/plantillas";
 import { CotizacionResumen } from '../components/cotizaciones/CotizacionResumen';
@@ -15,18 +15,20 @@ import { CotizacionGeneralForm } from '../components/cotizaciones/CotizacionGene
 import { CotizacionItemsTable } from '../components/cotizaciones/CotizacionItemsTable';
 import type { ItemForm } from '../types/cotizaciones.type';
 import { normalizeStorageImageUrl } from '../utils/storageImage';
-import { normalizeRole, rolePermissions } from '../utils/permissions';
+import { normalizeRole } from '../utils/permissions';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { ExportModal } from '../components/cotizaciones/modals/ExportModal';
 import { ItemTypeModal } from '../components/cotizaciones/modals/ItemTypeModal';
 import { ProductModal } from '../components/cotizaciones/modals/ProductModal';
 import { ItemFormModal } from '../components/cotizaciones/modals/ItemFormModal';
 import { CostosModal } from '../components/cotizaciones/modals/CostosModal';
+import { CotizacionCambiosModal} from '../components/cotizaciones/modals/CotizacionCambiosModal';
 import {
   getCotizacion,
   createCotizacion,
   updateCotizacion,
   enviarCotizacionRevision,
+  cancelarRevisionCotizacion,
   aprobarCotizacion,
   rechazarCotizacion,
   getCotizacionHistorial,
@@ -35,8 +37,10 @@ import {
   getCotizacionModificacion,
   updateCotizacionModificacion,
   enviarModificacionRevision,
+  cancelarModificacionCotizacion,
   aprobarModificacionCotizacion,
   rechazarModificacionCotizacion,
+  getCotizacionesCount,
   reorderCotizacionItems,
   // deleteItem,
   exportarCotizacionPdf,
@@ -72,6 +76,12 @@ import {
   Eye,
   Download,
   FileText,
+  GitCompareArrows,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  MessageSquareText,
+  RotateCcw,
 } from 'lucide-react';
 
 const ESTADO_COTIZACION_APROBADA_ID = 4;
@@ -261,7 +271,7 @@ export function CotizacionDetail() {
   const navigate = useNavigate();
   const { id, modificacionId } = useParams<{ id: string; modificacionId: string }>();
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const { showToast, addNotification } = useNotifications();
 
   const isModificationMode = Boolean(modificacionId);
@@ -347,6 +357,8 @@ export function CotizacionDetail() {
   const [formaPago, setFormaPago] = useState('AL CONTADO');
   const [adelanto, setAdelanto] = useState(false);
   const [adelantoPorcentaje, setAdelantoPorcentaje] = useState('');
+  const [cuotaMensual, setCuotaMensual] = useState(false);
+  const [cuotaMensualMeses, setCuotaMensualMeses] = useState(12);
   const [entregaProvincia, setEntregaProvincia] = useState(false);
   const [entregaDestino, setEntregaDestino] = useState('');
   const [entregaMultidestino, setEntregaMultidestino] = useState(false);
@@ -376,7 +388,7 @@ export function CotizacionDetail() {
   const debouncedProductosSearchTerm = useDebouncedValue(productosSearchTerm, 350);
   const [productosLoading, setProductosLoading] = useState(false);
   const [productosTotal, setProductosTotal] = useState(0);
-  const [usuarios, setUsuarios] = useState<ApiUser[]>([]);
+  const [usuarios, setUsuarios] = useState<CotizacionEjecutivo[]>([]);
   const [externalItemSuggestions, setExternalItemSuggestions] = useState<ItemForm[]>([]);
   const multidestinoMissingDestinoWarnedRef = useRef(false);
 
@@ -466,11 +478,18 @@ export function CotizacionDetail() {
   const [comentarioReenvioRevision, setComentarioReenvioRevision] = useState('');
   const [showSolicitudModificacionModal, setShowSolicitudModificacionModal] = useState(false);
   const [motivoModificacion, setMotivoModificacion] = useState('');
+  const [versionOrigenId, setVersionOrigenId] = useState<number | null>(null);
+  const [cargandoVersiones, setCargandoVersiones] = useState(false);
   const [solicitandoModificacion, setSolicitandoModificacion] = useState(false);
   const [modificacion, setModificacion] = useState<CotizacionModificacion | null>(null);
   const [versionesInfo, setVersionesInfo] = useState<CotizacionVersionesResponse | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<CotizacionVersion | null>(null);
+  const [comparacionVersion, setComparacionVersion] = useState<{anterior: CotizacionVersion, nueva: CotizacionVersion} | null>(null);
+  const [showCambiosModal, setShowCambiosModal] = useState(false);
+  const [modificacionCompararId, setModificacionCompararId] = useState<number | null>(null);
+  const [historialExpandido, setHistorialExpandido] = useState(true)
   const [comentarioRevisionModificacion, setComentarioRevisionModificacion] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const [estadoCotizacionId, setEstadoCotizacionId] = useState<number>(1);
 
@@ -596,10 +615,8 @@ export function CotizacionDetail() {
   // Verificar permisos del usuario actual sobre la cotización
   const userRole = normalizeRole(user?.role);
   const isSuperAdmin = userRole === 'SUPERADMIN';
-  const canOpenOportunidades =
-    rolePermissions[userRole]?.includes('*') ||
-    rolePermissions[userRole]?.includes('licitaciones');
-  const canCreateCotizacion = ['SUPERADMIN', 'VENTAS'].includes(userRole);
+  const canOpenOportunidades = hasPermission('licitaciones');
+  const canCreateCotizacion = hasPermission('cotizaciones.crear');
   const currentEstadoCotizacionId = Number(estadoCotizacionId);
   const currentDelegadoId = delegadoId === null || delegadoId === undefined ? null : Number(delegadoId);
   const currentDelegadoCotizacionId =
@@ -650,6 +667,17 @@ export function CotizacionDetail() {
     currentEstadoCotizacionId === 1 &&
     canEditCotizacion
   );
+  const canCancelCotizacionReview = Boolean(
+    currentCotizacionId &&
+    currentEstadoCotizacionId === 2 &&
+    canEditCotizacion
+  );
+  const canCancelModificacion = Boolean(
+    isModificationMode &&
+    canEditModificacion &&
+    modificacion &&
+    ['borrador', 'en_revision'].includes(modificacion.estado)
+  );
   const canReviewCotizacion = Boolean(
     currentEstadoCotizacionId === 2 &&
     user &&
@@ -657,6 +685,24 @@ export function CotizacionDetail() {
   );
   const shouldReturnToPendingReview = isSuperAdmin || userRole === 'ADMIN';
   const pendingReviewPath = '/cotizaciones?estado=pendientes_revision';
+  const navigateAfterReview = async () => {
+    if (!shouldReturnToPendingReview) return false;
+
+    try {
+      const pendingCount = await getCotizacionesCount(
+        { pendienteRevision: true },
+        { force: true },
+      );
+      navigate(pendingCount > 0 ? pendingReviewPath : '/cotizaciones', {
+        replace: true,
+      });
+    } catch (error) {
+      console.error('No se pudo validar pendientes de aprobacion:', error);
+      navigate(pendingReviewPath, { replace: true });
+    }
+
+    return true;
+  };
   const canChangeReviewEstado = Boolean(
     user && (isSuperAdmin || currentDelegadoId === Number(user.id))
   );
@@ -815,6 +861,8 @@ export function CotizacionDetail() {
     const porcentajeAdelanto = source.adelanto_porcentaje ?? baseCotizacion?.adelanto_porcentaje ?? null;
     setAdelanto(Boolean(source.adelanto ?? baseCotizacion?.adelanto ?? false));
     setAdelantoPorcentaje(porcentajeAdelanto ? String(porcentajeAdelanto) : '');
+    setCuotaMensual(Boolean(source.cuota_mensual ?? baseCotizacion?.cuota_mensual ?? false));
+    setCuotaMensualMeses(Number(source.cuota_mensual_meses ?? baseCotizacion?.cuota_mensual_meses ?? 12) || 12);
     setEntregaProvincia(Boolean(source.entrega_provincia ?? baseCotizacion?.entrega_provincia ?? false));
     setEntregaDestino(source.entrega_destino ?? baseCotizacion?.entrega_destino ?? '');
     setEntregaMultidestino(Boolean(source.entrega_multidestino ?? baseCotizacion?.entrega_multidestino ?? false));
@@ -842,6 +890,24 @@ export function CotizacionDetail() {
     applyEditablePayload(snapshotPayload, cotizacion);
     setEstadoCotizacionId(Number((snapshotCotizacion as any).estado_cotizacion_id || ESTADO_COTIZACION_APROBADA_ID));
   };
+
+  const handleVerCambiosVersion = (version: CotizacionVersion) => {
+    if(!versionesInfo) return;
+
+    const anterior = versionesInfo.versiones.find(
+      (item) => Number(item.version_number) === Number(version.version_number) - 1
+    );
+
+    if (!anterior){
+      alert('No existe una versión anterior para comparar.');
+      return;
+    }
+
+    setComparacionVersion({
+      anterior,
+      nueva: version,
+    })
+  }
 
   const handleVolverVersionVigente = () => {
     setSelectedVersion(null);
@@ -1012,7 +1078,22 @@ export function CotizacionDetail() {
 
     setItemForm(prev => {
       const destinosCalculados = itemCalculado.destinos_entrega || prev.destinos_entrega || [];
-      const destinosChanged = JSON.stringify(prev.destinos_entrega || []) !== JSON.stringify(destinosCalculados);
+      // Conserva el texto que se esta editando. El calculador normaliza internamente
+      // el destino para agrupar costos, pero no debe borrar espacios del input.
+      const destinosConValoresCalculados = (prev.destinos_entrega || []).map((destino, index) => {
+        const calculado = destinosCalculados[index];
+        if (!calculado) return destino;
+
+        return {
+          ...destino,
+          costo_unitario: calculado.costo_unitario,
+          precio_venta: calculado.precio_venta,
+          subtotal: calculado.subtotal,
+          costo_total: calculado.costo_total,
+          ganancia: calculado.ganancia,
+        };
+      });
+      const destinosChanged = JSON.stringify(prev.destinos_entrega || []) !== JSON.stringify(destinosConValoresCalculados);
       const nextValues = {
         costo_unitario: Number(itemCalculado.costo_unitario || 0),
         costo_total: Number(itemCalculado.costo_total || 0),
@@ -1032,7 +1113,7 @@ export function CotizacionDetail() {
       return {
         ...prev,
         ...nextValues,
-        ...(destinosChanged ? { destinos_entrega: destinosCalculados } : {}),
+        ...(destinosChanged ? { destinos_entrega: destinosConValoresCalculados } : {}),
       };
     });
   }, [
@@ -1060,6 +1141,7 @@ export function CotizacionDetail() {
     monto: 0,
     descripcion: '',
     destino_entrega: '',
+    imagen_evidencia: null as string | null,
   });
 
   const handleOpenNewItem = () => {
@@ -1109,7 +1191,7 @@ export function CotizacionDetail() {
   useEffect(() => {
     const fetchUsuarios = async () => {
       try {
-        const data = await getUsers();
+        const data = await getCotizacionEjecutivos();
         setUsuarios(data);
       } catch (error) {
         console.warn('Error al cargar usuarios:', error);
@@ -1300,6 +1382,8 @@ export function CotizacionDetail() {
       setFormaPago(data.forma_pago || 'AL CONTADO');
       setAdelanto(Boolean(data.adelanto));
       setAdelantoPorcentaje(data.adelanto_porcentaje ? String(data.adelanto_porcentaje) : '');
+      setCuotaMensual(Boolean(data.cuota_mensual));
+      setCuotaMensualMeses(Number(data.cuota_mensual_meses) || 12);
       setEntregaProvincia(Boolean(data.entrega_provincia));
       setEntregaDestino(data.entrega_destino || '');
       setEntregaMultidestino(Boolean(data.entrega_multidestino));
@@ -1314,15 +1398,25 @@ export function CotizacionDetail() {
       const historialData = data.historial || data.cotizacion_historial || [];
       setHistorial(historialData);
       if (Number(data.estado_cotizacion_id) === ESTADO_COTIZACION_APROBADA_ID) {
+        setCargandoVersiones(true);
         try {
           const versionData = await getCotizacionVersiones(currentCotizacionId);
           setVersionesInfo(versionData);
+          setVersionOrigenId(
+            versionData.versiones.find((version) => Number(version.version_number) === Number(versionData.version_vigente))?.id
+              || versionData.versiones[versionData.versiones.length - 1]?.id
+              || null,
+          );
         } catch (versionError) {
           console.warn('No se pudo cargar versiones de la cotizacion', versionError);
           setVersionesInfo(null);
+          setVersionOrigenId(null);
+        } finally {
+          setCargandoVersiones(false);
         }
       } else {
         setVersionesInfo(null);
+        setVersionOrigenId(null);
       }
       setLoading(false);
 
@@ -1442,6 +1536,12 @@ export function CotizacionDetail() {
 
     setIsSendingReview(true);
     try {
+      if (!isModificationMode && !isCotizacionReadOnly && currentCotizacionId) {
+        const updated = await updateCotizacion(currentCotizacionId, buildCotizacionPayload());
+        setCotizacion(updated);
+        setLoadedCotizacionUpdatedAt(updated.updated_at || null);
+      }
+
       const data = await enviarCotizacionRevision(cotizacionId, comentarioReenvioRevision);
       const historialApi = await getCotizacionHistorial(cotizacionId);
 
@@ -1469,6 +1569,39 @@ export function CotizacionDetail() {
       } as any);
     } finally {
       setIsSendingReview(false);
+    }
+  };
+
+  const handleCancelarRevision = async () => {
+    const cotizacionId = cotizacion?.id || currentCotizacionId;
+    if (!cotizacionId || !canCancelCotizacionReview || isCancelling) return;
+
+    if (!window.confirm('La cotizacion volvera a Borrador y dejara de estar pendiente de aprobacion. Deseas continuar?')) {
+      return;
+    }
+
+    const motivo = window.prompt('Motivo de la cancelacion (opcional):') || '';
+    setIsCancelling(true);
+    try {
+      const data = await cancelarRevisionCotizacion(cotizacionId, motivo);
+      setCotizacion(data);
+      setEstadoCotizacionId(Number(data.estado_cotizacion_id || 1));
+      setHistorial(await getCotizacionHistorial(cotizacionId));
+      showToast({
+        title: 'Envio cancelado',
+        description: 'La cotizacion volvio a Borrador.',
+        type: 'success',
+        duration: 4000,
+      } as any);
+    } catch (error: any) {
+      showToast({
+        title: 'No se pudo cancelar',
+        description: error?.response?.data?.message || 'La cotizacion ya no esta en revision.',
+        type: 'error',
+        duration: 5000,
+      } as any);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -1516,8 +1649,7 @@ export function CotizacionDetail() {
         } as any);
       }
 
-      if (shouldReturnToPendingReview) {
-        navigate(pendingReviewPath, { replace: true });
+      if (await navigateAfterReview()) {
         return;
       }
 
@@ -1596,8 +1728,7 @@ export function CotizacionDetail() {
         } as any);
       }
 
-      if (shouldReturnToPendingReview) {
-        navigate(pendingReviewPath, { replace: true });
+      if (await navigateAfterReview()) {
         return;
       }
 
@@ -1624,6 +1755,16 @@ export function CotizacionDetail() {
 
     if (!cotizacionId || !canRequestModificacion || solicitandoModificacion) return;
 
+    if (!versionOrigenId) {
+      showToast({
+        title: 'Selecciona una version',
+        description: 'Debes elegir la version que servira como base de la modificacion.',
+        type: 'warning',
+        duration: 4000,
+      } as any);
+      return;
+    }
+
     if (!motivo) {
       showToast({
         title: 'Motivo requerido',
@@ -1636,7 +1777,7 @@ export function CotizacionDetail() {
 
     setSolicitandoModificacion(true);
     try {
-      const nuevaModificacion = await solicitarModificacionCotizacion(cotizacionId, motivo);
+      const nuevaModificacion = await solicitarModificacionCotizacion(cotizacionId, motivo, versionOrigenId);
       setShowSolicitudModificacionModal(false);
       setMotivoModificacion('');
       showToast({
@@ -1665,12 +1806,16 @@ export function CotizacionDetail() {
     try {
       const payload = buildCotizacionPayload();
       await updateCotizacionModificacion(currentModificacionId, payload);
-      const updated = await enviarModificacionRevision(currentModificacionId, comentarioReenvioRevision);
+      const response = await enviarModificacionRevision(currentModificacionId, comentarioReenvioRevision);
+      const updated = response.modificacion;
+      const autoaprobada = response.message?.toLowerCase().includes('automatic') ?? false;
       setComentarioReenvioRevision('');
       setModificacion(updated);
       showToast({
-        title: 'Modificacion enviada',
-        description: 'La propuesta fue enviada para revision.',
+        title: autoaprobada ? 'Modificacion autoaprobada' : 'Modificacion enviada',
+        description: autoaprobada
+          ? 'La propuesta fue aprobada automaticamente porque no altera montos.'
+          : 'La propuesta fue enviada para revision.',
         type: 'success',
         duration: 4000,
       } as any);
@@ -1684,6 +1829,36 @@ export function CotizacionDetail() {
       } as any);
     } finally {
       setIsSendingReview(false);
+    }
+  };
+
+  const handleCancelarModificacion = async () => {
+    if (!currentModificacionId || !canCancelModificacion || isCancelling) return;
+
+    if (!window.confirm('Se cancelara solo esta modificacion. La cotizacion y su version vigente quedaran intactas. Deseas continuar?')) {
+      return;
+    }
+
+    const motivo = window.prompt('Motivo de la cancelacion (opcional):') || '';
+    setIsCancelling(true);
+    try {
+      await cancelarModificacionCotizacion(currentModificacionId, motivo);
+      showToast({
+        title: 'Modificacion cancelada',
+        description: 'La version vigente de la cotizacion se mantuvo intacta.',
+        type: 'success',
+        duration: 4000,
+      } as any);
+      navigate(`/cotizaciones/${modificacion?.cotizacion_id || currentCotizacionId}/view`);
+    } catch (error: any) {
+      showToast({
+        title: 'No se pudo cancelar',
+        description: error?.response?.data?.message || 'La modificacion ya no esta pendiente.',
+        type: 'error',
+        duration: 5000,
+      } as any);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -1702,7 +1877,9 @@ export function CotizacionDetail() {
         type: 'success',
         duration: 4000,
       } as any);
-      navigate(`/cotizaciones/${data.cotizacion.id}/view`);
+      if (!(await navigateAfterReview())) {
+        navigate(`/cotizaciones/${data.cotizacion.id}/view`);
+      }
     } catch (error: any) {
       showToast({
         title: 'Error al aprobar modificacion',
@@ -1738,7 +1915,9 @@ export function CotizacionDetail() {
         type: 'warning',
         duration: 4000,
       } as any);
-      navigate(`/cotizaciones/${updated.cotizacion_id}/view`);
+      if (!(await navigateAfterReview())) {
+        navigate(`/cotizaciones/${updated.cotizacion_id}/view`);
+      }
     } catch (error: any) {
       showToast({
         title: 'Error al rechazar modificacion',
@@ -1956,6 +2135,9 @@ export function CotizacionDetail() {
       forma_pago: formaPago,
       adelanto: adelanto,
       adelanto_porcentaje: adelanto ? adelantoPorcentajeValue : null,
+      cuota_mensual: cuotaMensual,
+      // La columna es NOT NULL: cuando no hay cuota, conservamos un valor neutro.
+      cuota_mensual_meses: Math.max(1, Number(cuotaMensualMeses) || 12),
       entrega_provincia: entregaProvincia,
       entrega_destino: entregaProvincia ? entregaDestino.trim() : '',
       entrega_multidestino: entregaMultidestino,
@@ -2452,6 +2634,7 @@ export function CotizacionDetail() {
                 monto: Number(costoForm.monto),
                 descripcion: costoForm.descripcion || '',
                 destino_entrega: entregaMultidestino ? costoForm.destino_entrega || '' : '',
+                imagen_evidencia: costoForm.imagen_evidencia || null,
               }
             : costo
         )
@@ -2475,6 +2658,7 @@ export function CotizacionDetail() {
         descripcion: costoForm.descripcion || '',
 
         destino_entrega: entregaMultidestino ? costoForm.destino_entrega || '' : '',
+        imagen_evidencia: costoForm.imagen_evidencia || null,
       };
 
       setCostos((prev) => [...prev, nuevoCosto]);
@@ -2493,6 +2677,7 @@ export function CotizacionDetail() {
       monto: 0,
       descripcion: '',
       destino_entrega: '',
+      imagen_evidencia: null,
     });
   };
 
@@ -2519,6 +2704,7 @@ export function CotizacionDetail() {
       monto: Number(costo.monto || 0),
       descripcion: costo.descripcion || '',
       destino_entrega: costo.destino_entrega || '',
+      imagen_evidencia: costo.imagen_evidencia || null,
     });
   };
 
@@ -2530,6 +2716,7 @@ export function CotizacionDetail() {
       monto: 0,
       descripcion: '',
       destino_entrega: '',
+      imagen_evidencia: null,
     });
   };
 
@@ -3225,7 +3412,12 @@ export function CotizacionDetail() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="font-semibold text-blue-900">
-                Propuesta V{modificacion.version_number} - {modificacion.estado.replace('_', ' ')}
+                Propuesta V{modificacion.version_number}
+                {versionesInfo?.versiones.find((version) => Number(version.id) === Number(modificacion.original_version_id)) && (
+                  <span className="ml-1 text-blue-700">
+                    (tomada desde V{versionesInfo.versiones.find((version) => Number(version.id) === Number(modificacion.original_version_id))?.version_number})
+                  </span>
+                )} - {modificacion.estado.replace('_', ' ')}
               </p>
               <p className="text-sm text-blue-700">{modificacion.motivo}</p>
               {modificacion.comentario_revision?.trim() && (
@@ -3435,6 +3627,11 @@ export function CotizacionDetail() {
             setAdelanto={setAdelanto}
             adelantoPorcentaje={adelantoPorcentaje}
             setAdelantoPorcentaje={setAdelantoPorcentaje}
+            cuotaMensual={cuotaMensual}
+            setCuotaMensual={setCuotaMensual}
+            cuotaMensualMeses={cuotaMensualMeses}
+            setCuotaMensualMeses={setCuotaMensualMeses}
+            totalCotizacion={Number(resumen.total || 0)}
             entregaProvincia={entregaProvincia}
             setEntregaProvincia={setEntregaProvincia}
             entregaDestino={entregaDestino}
@@ -3576,113 +3773,322 @@ export function CotizacionDetail() {
           )}
 
           {versionesInfo && (
-            <div className="bg-white rounded-xl shadow-sm border p-6 text-gray-900">
-              <h2 className="text-base font-semibold text-gray-800 mb-3">
-                Versiones
-              </h2>
-              <div className="space-y-2">
-                {versionesInfo.versiones.map((version) => (
-                  <button
-                    key={version.id}
-                    type="button"
-                    onClick={() => handleSelectVersion(version)}
-                    className={`w-full flex items-center justify-between rounded-lg border px-3 py-2 text-sm text-left transition ${
-                      selectedVersion?.id === version.id
-                        ? 'border-slate-900 bg-slate-900 text-white'
-                        : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 p-5">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
+                    <History className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">
+                      Historial de versiones
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      {versionesInfo.versiones.length} versiones registradas
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setHistorialExpandido(!historialExpandido)}
+                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                  aria-label={historialExpandido ? "Contraer historial" : "Expandir historial"}
+                >
+                  {historialExpandido
+                    ? <ChevronUp className="h-5 w-5" />
+                    : <ChevronDown className="h-5 w-5" />}
+                </button>
+              </div>
+
+              {historialExpandido && (
+                  <div
+                    className="
+                      max-h-[560px]
+                      overflow-y-auto
+                      overscroll-contain
+                      space-y-3
+                      p-4
+                      scrollbar-thin
+                      scrollbar-thumb-slate-300
+                      scrollbar-track-transparent
+                    "
+                  >
+            {[...versionesInfo.versiones]
+              .sort((a, b) => Number(b.version_number) - Number(a.version_number))
+              .map((version) => {
+                const vigente =
+                  Number(version.version_number) ===
+                  Number(versionesInfo.version_vigente);
+
+            const seleccionada = selectedVersion?.id === version.id;
+
+            const modificacion = versionesInfo.modificaciones.find(
+              (item) =>
+                Number(item.version_number) === Number(version.version_number) &&
+                item.estado === "aprobada"
+            );
+
+            const autoaprobada =
+              modificacion?.comentario_revision
+                ?.toLowerCase()
+                .includes("aprobacion automatica") ?? false;
+
+            return (
+              <div
+                key={version.id}
+                className={`rounded-xl border p-4 transition ${
+                  seleccionada
+                    ? "border-blue-400 bg-blue-50/60"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-slate-900">
+                    {version.numero_version}
+                    {modificacion && (
+                      <span className="ml-1 font-medium text-slate-600">
+                        (tomada desde V{versionesInfo.versiones.find((item) => Number(item.id) === Number(modificacion.original_version_id))?.version_number || 1})
+                      </span>
+                    )}
+                  </h3>
+
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                      vigente
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-slate-100 text-slate-600"
                     }`}
                   >
-                    <span className={`font-medium ${selectedVersion?.id === version.id ? 'text-white' : 'text-gray-700'}`}>
-                      {version.numero_version}
+                    {vigente ? "Vigente" : "Histórica"}
+                  </span>
+                </div>
+
+                {modificacion && (
+                  <div className="mt-3 space-y-2">
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                        autoaprobada
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-blue-50 text-blue-700"
+                      }`}
+                    >
+                      {autoaprobada
+                        ? "Autoaprobada"
+                        : "Aprobación manual"}
                     </span>
-                    <span className={`text-xs ${selectedVersion?.id === version.id ? 'text-slate-200' : 'text-gray-500'}`}>
-                      {Number(version.version_number) === Number(versionesInfo.version_vigente) ? 'Vigente' : 'Historica'}
-                    </span>
-                  </button>
-                ))}
-                {versionesInfo.modificaciones.map((item) => (
+
+                    <p className="text-sm text-slate-700">
+                      {modificacion.motivo}
+                    </p>
+
+                    <p className="text-xs text-slate-500">
+                      Solicitante:{" "}
+                      {[
+                        modificacion.solicitante?.nombres,
+                        modificacion.solicitante?.apellidos,
+                      ].filter(Boolean).join(" ") ||
+                        modificacion.solicitante?.email ||
+                        "No identificado"}
+                    </p>
+
+                    {modificacion.comentario_revision?.trim() && (
+                      <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                        <span className="font-semibold">Revisión: </span>
+                        {modificacion.comentario_revision}
+                      </div>
+                    )}
+
+                    {modificacion.comentario_reenvio_revision?.trim() && (
+                      <p className="text-xs text-slate-500">
+                        Reenvío: {modificacion.comentario_reenvio_revision}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {version.approved_at && (
+                  <p className="mt-3 text-xs text-slate-400">
+                    {new Date(version.approved_at).toLocaleString("es-PE")}
+                  </p>
+                )}
+
+                <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
                   <button
-                    key={`mod-${item.id}`}
                     type="button"
-                    onClick={() => guardedNavigate(`/cotizaciones/modificaciones/${item.id}/edit`)}
-                    className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-left transition hover:border-amber-300 hover:bg-amber-100"
+                    onClick={() => handleSelectVersion(version)}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    <Eye className="mr-1 inline h-4 w-4" />
+                    Ver versión
+                  </button>
+
+                  {Number(version.version_number) > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleVerCambiosVersion(version)}
+                      className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+                    >
+                      <GitCompareArrows className="mr-1 inline h-4 w-4" />
+                      Ver cambios
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {versionesInfo.modificaciones
+                .filter((item) => item.estado !== "aprobada")
+                .map((item) => (
+                  <div
+                    key={`mod-${item.id}`}
+                    className="rounded-xl border border-amber-200 bg-amber-50/60 p-4"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-amber-900">Propuesta V{item.version_number}</span>
-                      <span className="text-xs text-amber-700">{item.estado.replace('_', ' ')}</span>
+                      <h3 className="text-sm font-bold text-amber-900">
+                        Propuesta V{item.version_number}
+                        {versionesInfo.versiones.find((version) => Number(version.id) === Number(item.original_version_id)) && (
+                          <span className="ml-1 font-medium">
+                            (tomada desde V{versionesInfo.versiones.find((version) => Number(version.id) === Number(item.original_version_id))?.version_number})
+                          </span>
+                        )}
+                      </h3>
+                      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+                        {item.estado.replace("_", " ")}
+                      </span>
                     </div>
-                    <p className="text-xs text-amber-700 mt-1 line-clamp-2">{item.motivo}</p>
+
+                    <p className="mt-2 text-sm text-slate-700">
+                      {item.motivo}
+                    </p>
+
                     {item.comentario_revision?.trim() && (
-                      <p className="text-xs text-amber-900 mt-2 line-clamp-2">
-                        Revision: {item.comentario_revision}
+                      <p className="mt-2 text-xs text-slate-600">
+                        Revisión: {item.comentario_revision}
                       </p>
                     )}
+
                     {item.comentario_reenvio_revision?.trim() && (
-                      <p className="text-xs text-amber-900 mt-1 line-clamp-2">
-                        Reenvio: {item.comentario_reenvio_revision}
+                      <p className="mt-1 text-xs text-slate-600">
+                        Reenvío: {item.comentario_reenvio_revision}
                       </p>
                     )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
-          {(comentariosRevision.length > 0 || comentariosRevisionModificaciones.length > 0) && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
-              <h2 className="text-base font-semibold text-amber-900 mb-3">
-                Comentarios de revision
-              </h2>
-              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                {comentariosRevisionModificaciones.map((revision) => (
-                  <div
-                    key={`mod-revision-${revision.id}`}
-                    className="bg-white border border-amber-100 rounded-lg p-3"
-                  >
-                    <p className="text-xs font-medium text-amber-800">
-                      Propuesta V{revision.version_number} - {revision.estado.replace('_', ' ')}
-                    </p>
-                    {revision.comentario_revision?.trim() && (
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap mt-2">
-                        {revision.comentario_revision}
-                      </p>
-                    )}
-                    {revision.comentario_reenvio_revision?.trim() && (
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap mt-2">
-                        Reenvio: {revision.comentario_reenvio_revision}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap items-center justify-between gap-2 mt-3 text-xs text-gray-400">
-                      <span>Por: {revision.revisor?.nombres || revision.revisor?.email || 'Revisor no identificado'}</span>
-                      {(revision.reviewed_at || revision.submitted_at) && (
-                        <span>{new Date(revision.reviewed_at || revision.submitted_at || '').toLocaleString('es-PE')}</span>
-                      )}
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          guardedNavigate(
+                            `/cotizaciones/modificaciones/${item.id}/edit`
+                          )
+                        }
+                        className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                      >
+                        Ver propuesta
+                      </button>
                     </div>
                   </div>
                 ))}
-                {comentariosRevision.map((movimiento) => (
-                  <div
-                    key={movimiento.id}
-                    className="bg-white border border-amber-100 rounded-lg p-3"
-                  >
-                    <p className="text-xs font-medium text-amber-800">
-                      {estadoLabels[movimiento.estado_anterior_id || 0] || 'Sin estado'} {'->'} {estadoLabels[movimiento.estado_nuevo_id] || 'Estado actualizado'}
-                    </p>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap mt-2">
-                      {movimiento.comentario}
-                    </p>
-                    <div className="flex flex-wrap items-center justify-between gap-2 mt-3 text-xs text-gray-400">
-                      <span>Por: {getNombreUsuarioHistorial(movimiento)}</span>
-                      {movimiento.created_at && (
-                        <span>{new Date(movimiento.created_at).toLocaleString('es-PE')}</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
+          {comentariosRevision.length > 0 && (
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              {/* Encabezado */}
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-indigo-50 p-2.5 text-indigo-600">
+                    <History className="h-5 w-5" />
+                  </div>
+
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">
+                      Historial de aprobaciones
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Decisiones y observaciones de la cotización
+                    </p>
+                  </div>
+                </div>
+
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                  {comentariosRevision.length}
+                </span>
+              </div>
+
+              {/* Movimientos */}
+              <div className="space-y-0 px-5 py-4">
+                {[...comentariosRevision]
+                  .sort(
+                    (a, b) =>
+                      new Date(b.created_at || 0).getTime() -
+                      new Date(a.created_at || 0).getTime()
+                  )
+                  .map((movimiento, index, lista) => {
+                    const estadoAnterior =
+                      estadoLabels[movimiento.estado_anterior_id || 0] ||
+                      "Sin estado";
+
+                    const estadoNuevo =
+                      estadoLabels[movimiento.estado_nuevo_id] ||
+                      "Estado actualizado";
+
+                    const esUltimo = index === lista.length - 1;
+
+                    return (
+                      <div key={movimiento.id} className="relative flex gap-3 pb-5 last:pb-0">
+                        {/* Línea vertical */}
+                        {!esUltimo && (
+                          <div className="absolute bottom-0 left-[15px] top-8 w-px bg-slate-200" />
+                        )}
+
+                        {/* Indicador */}
+                        <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-indigo-100 bg-indigo-50 text-indigo-600">
+                          <History className="h-4 w-4" />
+                        </div>
+
+                        {/* Contenido */}
+                        <div className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-slate-800">
+                              {estadoAnterior} → {estadoNuevo}
+                            </p>
+
+                            {movimiento.created_at && (
+                              <span className="text-[11px] text-slate-400">
+                                {new Date(movimiento.created_at).toLocaleString("es-PE")}
+                              </span>
+                            )}
+                          </div>
+
+                          {movimiento.comentario?.trim() && (
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+                              {movimiento.comentario}
+                            </p>
+                          )}
+
+                          <div className="mt-3 flex items-center gap-2 border-t border-slate-200 pt-2">
+                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-700">
+                              {getNombreUsuarioHistorial(movimiento)
+                                .trim()
+                                .charAt(0)
+                                .toUpperCase() || "U"}
+                            </div>
+
+                            <span className="text-xs text-slate-500">
+                              {getNombreUsuarioHistorial(movimiento)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
           {isModificationMode && canReviewModificacion && (
             <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3 text-gray-900">
               <h2 className="text-base font-semibold text-gray-800">Revision de modificacion</h2>
@@ -3736,11 +4142,29 @@ export function CotizacionDetail() {
                 >
                   {isSendingReview ? (
                     <>
-                      <Loader2 className="w-5 h-5 animate-spin" /> Enviando...
+                      <Loader2 className="w-5 h-5 animate-spin" /> Guardando y enviando...
                     </>
                   ) : (
                     <>
-                      <Send className="w-5 h-5" /> Enviar para aprobación
+                      <Send className="w-5 h-5" /> Guardar y enviar a aprobación
+                    </>
+                  )}
+                </button>
+              )}
+
+              {canCancelCotizacionReview && (
+                <button
+                  onClick={handleCancelarRevision}
+                  disabled={isCancelling || isApproving || isRejecting}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isCancelling ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" /> Cancelando...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-5 h-5" /> Cancelar envio a revision
                     </>
                   )}
                 </button>
@@ -3856,11 +4280,29 @@ export function CotizacionDetail() {
                 >
                   {isSendingReview ? (
                     <>
-                      <Loader2 className="w-5 h-5 animate-spin" /> Enviando...
+                      <Loader2 className="w-5 h-5 animate-spin" /> Guardando y enviando...
                     </>
                   ) : (
                     <>
-                      <Send className="w-5 h-5" /> Enviar a revision
+                      <Send className="w-5 h-5" /> Guardar y enviar a revision
+                    </>
+                  )}
+                </button>
+              )}
+
+              {canCancelModificacion && (
+                <button
+                  onClick={handleCancelarModificacion}
+                  disabled={isCancelling || saving || isSendingReview}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isCancelling ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" /> Cancelando...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-5 h-5" /> Cancelar modificacion
                     </>
                   )}
                 </button>
@@ -3874,11 +4316,29 @@ export function CotizacionDetail() {
                 >
                   {isSendingReview ? (
                     <>
-                      <Loader2 className="w-5 h-5 animate-spin" /> Enviando...
+                      <Loader2 className="w-5 h-5 animate-spin" /> Guardando y enviando...
                     </>
                   ) : (
                     <>
-                      <Send className="w-5 h-5" /> Enviar para aprobación
+                      <Send className="w-5 h-5" /> Guardar y enviar a aprobación
+                    </>
+                  )}
+                </button>
+              )}
+
+              {!isModificationMode && canCancelCotizacionReview && (
+                <button
+                  onClick={handleCancelarRevision}
+                  disabled={isCancelling || saving || isApproving || isRejecting}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isCancelling ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" /> Cancelando...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-5 h-5" /> Cancelar envio a revision
                     </>
                   )}
                 </button>
@@ -4080,12 +4540,83 @@ export function CotizacionDetail() {
 
       {/* 5. Modal Delegación */}
       {showSolicitudModificacionModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
-            <h3 className="text-xl font-bold mb-4">Solicitar modificacion</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-xl font-bold text-slate-900">Solicitar modificacion</h3>
             <p className="text-sm text-gray-600 mb-4">
-              La cotizacion aprobada no se editara directamente. Se creara una propuesta para revision.
+              Selecciona la version desde la que deseas iniciar los cambios y explica el motivo.
             </p>
+            <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Version base</p>
+                  <p className="text-xs text-slate-500">Se mostraran los cambios y motivos registrados.</p>
+                </div>
+                {cargandoVersiones && <Loader2 className="h-5 w-5 animate-spin text-blue-600" />}
+              </div>
+              {cargandoVersiones ? (
+                <div className="py-6 text-center text-sm text-slate-500">Cargando versiones...</div>
+              ) : versionesInfo?.versiones?.length ? (
+                <div className="grid max-h-72 gap-2 overflow-y-auto pr-1">
+                  {[...versionesInfo.versiones]
+                    .sort((a, b) => Number(b.version_number) - Number(a.version_number))
+                    .map((version) => {
+                      const versionModificacion = versionesInfo.modificaciones.find((item) => Number(item.version_number) === Number(version.version_number));
+                      const sourceVersion = versionModificacion
+                        ? versionesInfo.versiones.find((item) => Number(item.id) === Number(versionModificacion.original_version_id))
+                        : null;
+                      const selected = Number(versionOrigenId) === Number(version.id);
+
+                      return (
+                        <button
+                          key={version.id}
+                          type="button"
+                          onClick={() => setVersionOrigenId(version.id)}
+                          className={`w-full rounded-xl border p-3 text-left transition ${selected ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-blue-300'}`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-bold text-slate-900">{version.numero_version}</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {sourceVersion ? `Tomada desde ${sourceVersion.numero_version}` : version.notas || 'Version inicial aprobada'}
+                              </p>
+                            </div>
+                            <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${selected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                              {selected ? 'Seleccionada' : 'Elegir'}
+                            </span>
+                          </div>
+                          {versionModificacion?.motivo && (
+                            <p className="mt-2 line-clamp-2 text-xs text-slate-600">Motivo: {versionModificacion.motivo}</p>
+                          )}
+                          {version.approved_at && <p className="mt-2 text-[11px] text-slate-400">Aprobada: {new Date(version.approved_at).toLocaleString('es-PE')}</p>}
+                          {Number(version.version_number) > 1 && (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleVerCambiosVersion(version);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleVerCambiosVersion(version);
+                                }
+                              }}
+                              className="mt-2 inline-flex text-xs font-semibold text-blue-700 hover:text-blue-900"
+                            >
+                              Ver cambios de esta version
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                </div>
+              ) : (
+                <p className="py-4 text-sm text-amber-700">No hay versiones disponibles para seleccionar.</p>
+              )}
+            </div>
             <textarea
               value={motivoModificacion}
               onChange={(e) => setMotivoModificacion(e.target.value)}
@@ -4104,10 +4635,10 @@ export function CotizacionDetail() {
               </button>
               <button
                 onClick={handleSolicitarModificacion}
-                disabled={solicitandoModificacion}
+                disabled={solicitandoModificacion || cargandoVersiones || !versionOrigenId || !versionesInfo?.versiones?.length}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {solicitandoModificacion ? 'Creando...' : 'Crear propuesta'}
+                {solicitandoModificacion ? 'Creando propuesta...' : 'Crear propuesta'}
               </button>
             </div>
           </div>
@@ -4247,6 +4778,14 @@ export function CotizacionDetail() {
         onClose={() => setShowExportModal(false)}
         onExportPdf={handleExportarPdf}
         exportandoPdf={exportandoPdf}
+      />
+
+      <CotizacionCambiosModal
+        abierto={comparacionVersion !== null}
+        cerrar={()=> setComparacionVersion(null)}
+        anterior={comparacionVersion?.anterior ?? null}
+        nueva={comparacionVersion?.nueva ?? null}
+        verFinanzas= {canViewGanancia}
       />
 
     </div>

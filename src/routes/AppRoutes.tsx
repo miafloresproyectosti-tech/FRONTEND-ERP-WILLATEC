@@ -10,6 +10,8 @@ import ChangePasswordPage from "../pages/ChangePasswordPage";
 import TwoFactorChallengePage from "../pages/TwoFactorChallengePage";
 import NotAuthorized from "../pages/NotAuthorized";
 
+import { useAuth } from "../AuthContext";
+
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const Clientes = lazy(() => import("../pages/Clientes"));
 const Productos = lazy(() => import("../pages/Productos"));
@@ -51,6 +53,42 @@ import ControlPagoFacturasClientesPage from "../pages/administracion/control-pag
 // 🆕 CONTROL PAGO PROVEEDORES
 import ControlPagoProveedores from "../pages/administracion/control-pagos/ControlPagosProveedoresPage";
 
+
+function HomeRedirect() {
+  const { user, loading, hasPermission } = useAuth();
+
+  if (loading) return null;
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const destinations = [
+    { permission: "cotizaciones", path: "/cotizaciones" },
+    { permission: "dashboard", path: "/dashboard" },
+    { permission: "licitaciones", path: "/seguimiento-licitaciones" },
+    { permission: "clientes", path: "/clientes" },
+    { permission: "productos", path: "/productos" },
+    { permission: "ordenes_compra", path: "/ordenes-compra" },
+    { permission: "inventario", path: "/inventario/movimientos" },
+    { permission: "servicios", path: "/servicios/licencias" },
+    { permission: "usuarios", path: "/usuarios" },
+    { permission: "configuracion", path: "/configuracion" },
+    { permission: "auditoria", path: "/auditoria" },
+  ];
+
+  const destination = destinations.find(({ permission }) =>
+    hasPermission(permission)
+  );
+
+  if (!destination) {
+    return <Navigate to="/not-authorized" replace />;
+  }
+
+  return <Navigate to={destination.path} replace />;
+}
+
+
 export default function AppRoutes() {
   return (
     <BrowserRouter>
@@ -72,15 +110,18 @@ export default function AppRoutes() {
           }
         >
 
-          {/* DASHBOARD */}
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute requiredRole="SUPERADMIN">
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
+        {/* REDIRECCIÓN INICIAL */}
+        <Route path="/" element={<HomeRedirect />} />
+
+        {/* DASHBOARD */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute requiredPermission="dashboard">
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
 
           <Route path="/not-authorized" element={<NotAuthorized />} />
 
@@ -244,8 +285,23 @@ export default function AppRoutes() {
           )}
 
           {/* ADMIN */}
-          <Route path="/usuarios" element={<ProtectedRoute requiredRoles={["SUPERADMIN", "ADMIN"]}><Usuarios /></ProtectedRoute>} />
-          <Route path="/configuracion" element={<ProtectedRoute requiredRoles={["SUPERADMIN", "ADMIN"]}><Configuracion /></ProtectedRoute>} />
+          <Route
+            path="/usuarios"
+            element={
+              <ProtectedRoute requiredPermission="usuarios">
+                <Usuarios />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/configuracion"
+            element={
+              <ProtectedRoute requiredPermission="configuracion">
+                <Configuracion />
+              </ProtectedRoute>
+            }
+          />
           {featureFlags.controlAdm && (
             <>
               <Route
@@ -289,7 +345,7 @@ export default function AppRoutes() {
           <Route
             path="/woocommerce/pedidos"
             element={
-              <ProtectedRoute requiredRoles={["SUPERADMIN", "ADMIN", "LOGISTICA"]}>
+              <ProtectedRoute requiredPermission="woocommerce">
                 <WooCommercePedidos />
               </ProtectedRoute>
             }
@@ -379,7 +435,7 @@ export default function AppRoutes() {
         </Route>
 
         {/* REDIRECCIÓN GLOBAL */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<HomeRedirect />} />
 
         </Routes>
       </Suspense>

@@ -1,17 +1,13 @@
 import { type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../../AuthContext";
-import type { UserRole } from "../../types/roles";
-import { normalizeRole } from "../../utils/permissions";
 
 interface Props {
   children: ReactNode;
   requiredPermission?: string;
-  requiredRole?: UserRole;
-  requiredRoles?: UserRole[];
 }
 
-export function ProtectedRoute({ children, requiredPermission, requiredRole, requiredRoles }: Props) {
+export function ProtectedRoute({ children, requiredPermission }: Props) {
   const { user, hasPermission, loading } = useAuth();
 
   if (loading) {
@@ -22,18 +18,12 @@ export function ProtectedRoute({ children, requiredPermission, requiredRole, req
     return <Navigate to="/login" replace />;
   }
 
-  const currentRole = normalizeRole(user.role);
-
-  if (requiredRole && currentRole !== requiredRole) {
-    return <Navigate to="/not-authorized" replace />;
-  }
-
-  if (requiredRoles && !requiredRoles.includes(currentRole)) {
-    return <Navigate to="/not-authorized" replace />;
-  }
-
-  if (requiredPermission && !hasPermission(requiredPermission)) {
-    return <Navigate to="/not-authorized" replace />;
+  // Las rutas con permiso dinámico se autorizan
+  // por permiso, independientemente del rol.
+  if (requiredPermission) {
+    return hasPermission(requiredPermission)
+      ? <>{children}</>
+      : <Navigate to="/not-authorized" replace />;
   }
 
   return <>{children}</>;

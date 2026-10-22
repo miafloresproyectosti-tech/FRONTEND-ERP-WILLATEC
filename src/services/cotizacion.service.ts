@@ -137,6 +137,7 @@ export interface CotizacionCostosAdicional {
   monto: number;
   descripcion: string;
   destino_entrega?: string | null;
+  imagen_evidencia?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -163,7 +164,7 @@ export interface CotizacionHistorial {
   };
 }
 
-export type EstadoModificacion = "borrador" | "en_revision" | "aprobada" | "rechazada";
+export type EstadoModificacion = "borrador" | "en_revision" | "aprobada" | "rechazada" | "cancelada";
 
 export interface UserLite {
   id: number;
@@ -191,6 +192,8 @@ export interface Cotizacion {
   forma_pago?: string;
   adelanto?: boolean;
   adelanto_porcentaje?: number | string | null;
+  cuota_mensual?: boolean;
+  cuota_mensual_meses?: number | null;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
   entrega_multidestino?: boolean;
@@ -318,6 +321,8 @@ export interface CreateCotizacionData {
   forma_pago?: string;
   adelanto?: boolean;
   adelanto_porcentaje?: number | null;
+  cuota_mensual?: boolean;
+  cuota_mensual_meses?: number | null;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
   entrega_multidestino?: boolean;
@@ -342,6 +347,8 @@ export interface UpdateCotizacionData {
   forma_pago?: string;
   adelanto?: boolean;
   adelanto_porcentaje?: number | null;
+  cuota_mensual?: boolean;
+  cuota_mensual_meses?: number | null;
   entrega_provincia?: boolean;
   entrega_destino?: string | null;
   entrega_multidestino?: boolean;
@@ -496,10 +503,19 @@ function buildCotizacionFormData(data: any): FormData {
 }
 
 function prepareCotizacionData(data: any): any {
-  if (!Array.isArray(data.items)) return data;
+  const cuotaMensualMeses = Math.max(
+    1,
+    Number(data.cuota_mensual_meses) || 12,
+  );
+  const normalizedData = {
+    ...data,
+    cuota_mensual_meses: cuotaMensualMeses,
+  };
+
+  if (!Array.isArray(data.items)) return normalizedData;
 
   return {
-    ...data,
+    ...normalizedData,
     items: data.items.map((item: any) => {
       const imageSource = item.imagen || item.imagen_path || item.imagen_url;
       const imagePathSource = item.imagen_path || imageSource;
@@ -521,6 +537,9 @@ function prepareCotizacionData(data: any): any {
 export interface AddCostoData {
   tipo: string;
   monto: number;
+  descripcion?: string;
+  destino_entrega?: string;
+  imagen_evidencia?: string | null;
 }
 
 export interface Plantilla{
@@ -551,6 +570,15 @@ export interface GetCotizacionesParams {
   fechaHasta?: string;
 }
 
+export interface CotizacionEjecutivo {
+  id: number;
+  nombres: string;
+  apellidos: string;
+  email: string;
+  activo: boolean;
+  roles: Array<{ id: number; name: string }>;
+}
+
 const COTIZACIONES_COUNT_CACHE_PREFIX = "cotizaciones:count:";
 const COTIZACIONES_PENDIENTES_REVISION_CACHE_PREFIX = "cotizaciones:pendientes-revision:";
 const COTIZACIONES_COUNT_TTL_MS = 30_000;
@@ -579,6 +607,11 @@ export async function getCotizaciones(
     console.error("Error al obtener cotizaciones:", error);
     throw error;
   }
+}
+
+export async function getCotizacionEjecutivos(): Promise<CotizacionEjecutivo[]> {
+  const response = await api.get<CotizacionEjecutivo[]>('/cotizaciones/ejecutivos');
+  return Array.isArray(response.data) ? response.data : [];
 }
 
 export async function getCotizacionesPaginated({
@@ -820,6 +853,17 @@ export async function enviarCotizacionRevision(id: number, comentario?: string):
   }
 }
 
+export async function cancelarRevisionCotizacion(
+  id: number,
+  motivo?: string,
+): Promise<Cotizacion> {
+  const response = await api.patch(`/cotizaciones/${id}/cancelar-revision`, {
+    ...(motivo?.trim() ? { motivo: motivo.trim() } : {}),
+  });
+  clearCotizacionesReadCache();
+  return response.data?.cotizacion || response.data?.data || response.data;
+}
+
 export async function aprobarCotizacion(id: number): Promise<Cotizacion> {
   try {
     const response = await api.patch(`/cotizaciones/${id}/aprobar`, {
@@ -903,10 +947,12 @@ export async function getCotizacionVersiones(
 export async function solicitarModificacionCotizacion(
   cotizacionId: number,
   motivo: string,
+  versionId: number,
 ): Promise<CotizacionModificacion> {
   try {
     const response = await api.post(`/cotizaciones/${cotizacionId}/solicitar-modificacion`, {
       motivo,
+      version_id: versionId,
     });
     return response.data?.modificacion || response.data?.data || response.data;
   } catch (error) {
@@ -961,18 +1007,29 @@ export async function updateCotizacionModificacion(
 export async function enviarModificacionRevision(
   modificacionId: number,
   comentarioReenvioRevision?: string,
-): Promise<CotizacionModificacion> {
+): Promise<{ message?: string; modificacion: CotizacionModificacion }> {
   try {
     const response = await api.patch(`/cotizaciones/modificaciones/${modificacionId}/enviar-revision`, {
       ...(comentarioReenvioRevision?.trim()
         ? { comentario_reenvio_revision: comentarioReenvioRevision.trim() }
         : {}),
     });
-    return response.data?.modificacion || response.data?.data || response.data;
+    return response.data;
   } catch (error) {
     console.error("Error al enviar modificacion a revision:", error);
     throw error;
   }
+}
+
+export async function cancelarModificacionCotizacion(
+  modificacionId: number,
+  motivo?: string,
+): Promise<CotizacionModificacion> {
+  const response = await api.patch(`/cotizaciones/modificaciones/${modificacionId}/cancelar`, {
+    ...(motivo?.trim() ? { motivo: motivo.trim() } : {}),
+  });
+  clearCotizacionesReadCache();
+  return response.data?.modificacion || response.data?.data || response.data;
 }
 
 export async function aprobarModificacionCotizacion(

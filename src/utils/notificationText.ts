@@ -32,6 +32,7 @@ export const getNotificationTitle = (notification: DatabaseNotification) => {
   if (action === "modificacion_solicitada") return "Solicitud de modificacion";
   if (action === "modificacion_en_revision") return "Modificacion enviada a revision";
   if (action === "modificacion_aprobada") return "Version aprobada";
+  if (action === "modificacion_autoaprobada") return "Modificacion autoaprobada";
   if (action === "modificacion_rechazada") return "Version rechazada";
   if (action === "oc_recibida_registrada") return "OC recibida registrada";
   if (action === "oc_emitida_registrada") return "OC emitida";
@@ -99,6 +100,14 @@ export const getNotificationDescription = (notification: DatabaseNotification) =
       : `La version${version} de ${target} fue aprobada.`;
   }
 
+  if (action === "modificacion_autoaprobada"){
+    const version = notification.data.version_number ? `V${notification.data.version_number}` : "";
+
+    const motivo = typeof notification.data.motivo === "string" ? notification.data.motivo.trim() : "";
+
+    return `${actor || "Un usuario"} realizó una modificación en ${target}. La versión ${version} fue aprobada automáticamente. ${motivo ? `Motivo: ${motivo}.`: ""}`;
+  }
+
   if (action === "modificacion_rechazada") {
     const version = notification.data.version_number ? ` V${notification.data.version_number}` : "";
     const reason = typeof notification.data.reason === "string" && notification.data.reason.trim()
@@ -138,7 +147,9 @@ export const getNotificationTone = (notification: DatabaseNotification) => {
 
   if (action === "aprobada") return "success";
   if (action === "modificacion_aprobada") return "success";
+  if (action === "modificacion_autoaprobada") return "success";
   if (action === "oc_recibida_registrada" || action === "oc_emitida_registrada") return "success";
+  if (action === "oportunidad_por_vencer" || action === "oportunidad_vencida") return "warning";
   if (
     action === "rechazada" ||
     action === "modificacion_solicitada" ||

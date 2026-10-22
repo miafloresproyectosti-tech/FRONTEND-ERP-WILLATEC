@@ -50,6 +50,11 @@ interface Props {
   setAdelanto: (v: boolean) => void;
   adelantoPorcentaje: string;
   setAdelantoPorcentaje: (v: string) => void;
+  cuotaMensual: boolean;
+  setCuotaMensual: (v: boolean) => void;
+  cuotaMensualMeses: number;
+  setCuotaMensualMeses: (v: number) => void;
+  totalCotizacion: number;
 
   entregaProvincia: boolean;
   setEntregaProvincia: (v: boolean) => void;
@@ -104,6 +109,11 @@ export function CotizacionGeneralForm({
   setAdelanto,
   adelantoPorcentaje,
   setAdelantoPorcentaje,
+  cuotaMensual,
+  setCuotaMensual,
+  cuotaMensualMeses,
+  setCuotaMensualMeses,
+  totalCotizacion,
   entregaProvincia,
   setEntregaProvincia,
   entregaDestino,
@@ -329,6 +339,33 @@ export function CotizacionGeneralForm({
                       />
                       <span className="text-sm font-semibold text-gray-600">%</span>
                     </div>
+                  </div>
+                )}
+                <label className="mt-3 flex items-center gap-3 text-sm font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    disabled={disabled}
+                    checked={cuotaMensual}
+                    onChange={(e) => setCuotaMensual(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  ¿Hay cuota mensual?
+                </label>
+                {cuotaMensual && (
+                  <div className="mt-2 space-y-2 rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
+                    <label className="flex items-center justify-between gap-3">
+                      <span>Periodo de cuota (meses)</span>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={cuotaMensualMeses}
+                        disabled={disabled}
+                        onChange={(e) => setCuotaMensualMeses(Math.max(1, Number(e.target.value) || 1))}
+                        className="h-8 w-24 rounded-md border border-blue-200 bg-white px-2 text-right text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                    </label>
+                    <p>Cuota calculada: {(totalCotizacion / Math.max(1, cuotaMensualMeses || 1)).toFixed(2)} (total dividido entre {cuotaMensualMeses || 1} meses).</p>
                   </div>
                 )}
               </div>

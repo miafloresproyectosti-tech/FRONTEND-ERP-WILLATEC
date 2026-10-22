@@ -62,15 +62,16 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const dropdownTimeoutRef = useRef<number | null>(null);
   const logoClickRef = useRef({ count: 0, timer: 0 });
 
-  const canSeeCommercialGroup =
-    user?.role === "SUPERADMIN" || user?.role === "ADMIN";
   const showCommercialGroup =
-    canSeeCommercialGroup &&
     (hasPermission("cotizaciones") ||
       hasPermission("licitaciones") ||
       hasPermission("ordenes_compra") ||
       hasPermission("productos") ||
-      hasPermission("clientes"));
+      hasPermission("clientes") ||
+      hasPermission("proveedores") ||
+      hasPermission("woocommerce"));
+  const useGroupedNavigation = user?.role === "SUPERADMIN" || user?.role === "ADMIN";
+  const showRoleSpecificNavigation = false;
 
   const isActive = (path: string) => location.pathname === path;
   const closeMobile = () => {
@@ -264,8 +265,8 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
           {/* MENU */}
           <nav className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
             {/* DASHBOARD */}
-            {user?.role === "SUPERADMIN" && (
-              <Link to="/" onClick={closeMobile} className={itemClass("/")}>
+            {hasPermission("dashboard") && (
+              <Link to="/dashboard" onClick={closeMobile} className={itemClass("/dashboard")}>
                 <Home size={20} />
                 <span className="font-medium">Dashboard</span>
               </Link>
@@ -284,7 +285,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             )}
 
             {/* ✅ SUPERADMIN Y ADMIN */}
-            {showCommercialGroup && (
+            {showCommercialGroup && useGroupedNavigation && (
               // CARPETA COMERCIAL
               <div className="mt-2">
                 <button
@@ -353,15 +354,17 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     )}
 
                     {/* WOOCOMMERCE PEDIDOS */}
-                    <Link
-                      to="/woocommerce/pedidos"
-                      onClick={closeMobile}
-                      className={subItemClass("/woocommerce/pedidos")}
-                    >
-                      <ShoppingBag size={18} />
-                      WooCommerce
-                      <NotificationBadge count={notificationCount("ordenes")} />
-                    </Link>
+                    {hasPermission("woocommerce") && (
+                      <Link
+                        to="/woocommerce/pedidos"
+                        onClick={closeMobile}
+                        className={subItemClass("/woocommerce/pedidos")}
+                      >
+                        <ShoppingBag size={18} />
+                        WooCommerce
+                        <NotificationBadge count={notificationCount("ordenes")} />
+                      </Link>
+                    )}
 
                     {/* CLIENTES */}
                     {hasPermission("clientes") && (
@@ -380,8 +383,49 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </div>
             )}
 
+            {/* NAVEGACION DIRECTA PARA ROLES OPERATIVOS */}
+            {showCommercialGroup && !useGroupedNavigation && (
+              <>
+                {hasPermission("productos") && (
+                  <Link to="/productos" onClick={closeMobile} className={itemClass("/productos")}>
+                    <Package size={20} />
+                    <span className="font-medium">Productos</span>
+                    <NotificationBadge count={notificationCount("inventario")} />
+                  </Link>
+                )}
+                {hasPermission("clientes") && (
+                  <Link to="/clientes" onClick={closeMobile} className={itemClass("/clientes")}>
+                    <UserCheck size={20} />
+                    <span className="font-medium">Clientes</span>
+                    <NotificationBadge count={notificationCount("usuarios")} />
+                  </Link>
+                )}
+                {hasPermission("cotizaciones") && (
+                  <Link to="/cotizaciones" onClick={closeMobile} className={itemClass("/cotizaciones")}>
+                    <FileText size={20} />
+                    <span className="font-medium">Cotizaciones</span>
+                    <NotificationBadge count={notificationCount("cotizaciones")} />
+                  </Link>
+                )}
+                {hasPermission("ordenes_compra") && (
+                  <Link to="/ordenes-compra" onClick={closeMobile} className={itemClass("/ordenes-compra")}>
+                    <ShoppingCart size={20} />
+                    <span className="font-medium">Ordenes de Compra</span>
+                    <NotificationBadge count={notificationCount("ordenes")} />
+                  </Link>
+                )}
+                {hasPermission("woocommerce") && (
+                  <Link to="/woocommerce/pedidos" onClick={closeMobile} className={itemClass("/woocommerce/pedidos")}>
+                    <ShoppingBag size={20} />
+                    <span className="font-medium">WooCommerce</span>
+                    <NotificationBadge count={notificationCount("ordenes")} />
+                  </Link>
+                )}
+              </>
+            )}
+
             {/* ✅ VENTAS NORMAL */}
-            {user?.role === "VENTAS" && (
+            {showRoleSpecificNavigation && user?.role === "VENTAS" && (
               <>
                 <Link
                   to="/productos"
@@ -425,7 +469,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </>
             )}
 
-            {user?.role === "SOPORTE" && (
+            {showRoleSpecificNavigation && user?.role === "SOPORTE" && (
               <Link
                 to="/productos"
                 onClick={closeMobile}
@@ -437,7 +481,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </Link>
             )}
 
-            {user?.role === "LOGISTICA" && (
+            {showRoleSpecificNavigation && user?.role === "LOGISTICA" && (
               <>
                 <Link
                   to="/productos"
@@ -471,7 +515,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </>
             )}
 
-            {user?.role === "CONTABILIDAD" && (
+            {showRoleSpecificNavigation && user?.role === "CONTABILIDAD" && (
               <>
                 <Link
                   to="/cotizaciones"
@@ -618,7 +662,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </div>
             )}
 
-            {hasPermission("servicios") && (
+            {hasPermission("servicios") && useGroupedNavigation && (
               <div className="mt-2">
                 <button
                   type="button"
@@ -665,6 +709,21 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                   </div>
                 )}
               </div>
+            )}
+
+            {hasPermission("servicios") && !useGroupedNavigation && (
+              <>
+                <Link to="/servicios/licencias" onClick={closeMobile} className={itemClass("/servicios/licencias")}>
+                  <KeyRound size={20} />
+                  <span className="font-medium">Licencias</span>
+                  <NotificationBadge count={notificationCount("servicios")} />
+                </Link>
+                <Link to="/servicios/hosting" onClick={closeMobile} className={itemClass("/servicios/hosting")}>
+                  <Server size={20} />
+                  <span className="font-medium">Hosting</span>
+                  <NotificationBadge count={notificationCount("servicios")} />
+                </Link>
+              </>
             )}
 
             {featureFlags.soporteTi && hasPermission("soporte_ti") && (
@@ -794,7 +853,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </Link>
             )}
 
-            {hasPermission("inventario") && user?.role === "SUPERADMIN" && (
+            {hasPermission("inventario") && (
               <Link
                 to="/inventario/movimientos"
                 onClick={closeMobile}
