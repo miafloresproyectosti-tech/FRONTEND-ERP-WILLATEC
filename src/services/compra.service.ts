@@ -41,7 +41,24 @@ export interface CompraItem {
     requerimiento?: {
       id: number;
       numero?: string;
+      oc_recibida?: {
+        id: number;
+        numero?: string;
+        cotizacion_id?: number | null;
+        cliente_nombre?: string | null;
+        cotizacion?: {
+          id: number;
+          numero?: string | null;
+        } | null;
+      } | null;
     };
+  } | null;
+  oc_emitida_item?: {
+    id: number;
+    oc_emitida?: {
+      id: number;
+      numero?: string;
+    } | null;
   } | null;
 }
 

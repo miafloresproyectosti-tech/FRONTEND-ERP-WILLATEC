@@ -61,6 +61,23 @@ export interface CuentaPorCobrar {
   moneda?: any;
 }
 
+export interface Banco { id: number; nombre: string; activo: boolean; }
+export interface Cheque {
+  id: number;
+  banco_id: number;
+  numero: string;
+  proveedor_id?: number | null;
+  monto: number | string;
+  fecha_emision: string;
+  fecha_cheque: string;
+  fecha_entrega?: string | null;
+  fecha_cobro?: string | null;
+  estado: "registrado" | "entregado" | "cobrado" | "anulado" | "devuelto";
+  observacion?: string | null;
+  banco?: Banco;
+  proveedor?: any;
+}
+
 const normalizePagination = <T>(payload: any): Pagination<T> => ({
   data: Array.isArray(payload?.data) ? payload.data : [],
   current_page: Number(payload?.current_page || 1),
@@ -172,4 +189,42 @@ export async function getAlertasOperativas() {
     data: Array<{ codigo: string; titulo: string; total: number }>;
     total_alertas: number;
   };
+}
+
+export async function getBancos() {
+  const response = await api.get("/contabilidad/cheques/bancos");
+  return response.data as Banco[];
+}
+
+export async function createBanco(nombre: string) {
+  const response = await api.post("/contabilidad/cheques/bancos", { nombre });
+  return response.data as Banco;
+}
+
+export async function getCheques(filters: Record<string, any> = {}) {
+  const response = await api.get("/contabilidad/cheques", { params: {
+    page: filters.page, per_page: filters.perPage, buscar: filters.search || undefined,
+    estado: filters.estado && filters.estado !== "todos" ? filters.estado : undefined,
+  }});
+  return normalizePagination<Cheque>(response.data);
+}
+
+export async function createCheque(payload: Record<string, any>) {
+  const response = await api.post("/contabilidad/cheques", payload);
+  return response.data as Cheque;
+}
+
+export async function updateChequeStatus(id: number, payload: Record<string, any>) {
+  const response = await api.patch(`/contabilidad/cheques/${id}/estado`, payload);
+  return response.data as Cheque;
+}
+
+export async function uploadChequeEvidence(id: number, file: File) {
+  const form = new FormData(); form.append("evidencia", file);
+  const response = await api.post(`/contabilidad/cheques/${id}/evidencia`, form, { headers: { "Content-Type": "multipart/form-data" } });
+  return response.data as Cheque;
+}
+
+export async function deleteCheque(id: number) {
+  await api.delete(`/contabilidad/cheques/${id}`);
 }

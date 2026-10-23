@@ -73,6 +73,10 @@ export interface RequerimientoCompra {
     numero?: string;
     cliente_nombre?: string | null;
     cotizacion_id?: number | null;
+    cotizacion?: {
+      id: number;
+      numero?: string | null;
+    } | null;
   } | null;
   estado: RequerimientoEstado;
   prioridad: RequerimientoPrioridad;

@@ -65,8 +65,10 @@ export function CompraFormModal({
   onClose,
   onCreated,
 }: CompraFormModalProps) {
-  const { user } = useAuth();
-  const canAuthorizeOverpurchase = ["SUPERADMIN", "ADMIN"].includes(user?.role || "");
+  const { user, hasPermission } = useAuth();
+  const canAuthorizeOverpurchase =
+    ["SUPERADMIN", "ADMIN"].includes(user?.role || "") ||
+    hasPermission("compras.sobrecompra");
   const canManageCredit = ["SUPERADMIN", "ADMIN"].includes(user?.role || "");
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [proveedorSearch, setProveedorSearch] = useState("");
@@ -298,49 +300,18 @@ export function CompraFormModal({
       return;
     }
 
-    const compraItems = validItems.flatMap((item) => {
-      if (
-        item.requerimiento_compra_item_id &&
-        item.cantidadMaxima !== undefined &&
-        item.cantidad > item.cantidadMaxima + 0.00001
-      ) {
-        const cantidadRequerimiento = item.cantidadMaxima;
-        const cantidadExtra = item.cantidad - item.cantidadMaxima;
-
-        return [
-          {
-            requerimiento_compra_item_id: item.requerimiento_compra_item_id || null,
-            producto_id: item.producto_id || null,
-            producto_externo_id: item.producto_externo_id || null,
-            descripcion: item.descripcion,
-            cantidad: cantidadRequerimiento,
-            costo_unitario_estimado: item.costo_unitario_estimado,
-            moneda_id: item.moneda_id || monedaId,
-          },
-          {
-            requerimiento_compra_item_id: null,
-            producto_id: item.producto_id || null,
-            producto_externo_id: item.producto_externo_id || null,
-            descripcion: `${item.descripcion} - adicional para stock`,
-            cantidad: cantidadExtra,
-            costo_unitario_estimado: item.costo_unitario_estimado,
-            moneda_id: item.moneda_id || monedaId,
-          },
-        ];
-      }
-
-      return [
-        {
-          requerimiento_compra_item_id: item.requerimiento_compra_item_id || null,
-          producto_id: item.producto_id || null,
-          producto_externo_id: item.producto_externo_id || null,
-          descripcion: item.descripcion,
-          cantidad: item.cantidad,
-          costo_unitario_estimado: item.costo_unitario_estimado,
-          moneda_id: item.moneda_id || monedaId,
-        },
-      ];
-    });
+    // La validacion y separacion del excedente debe hacerla el backend.
+    // Si el frontend separa primero el item adicional, se pierde la relacion
+    // con el requerimiento y una sobrecompra podria evadir la autorizacion.
+    const compraItems = validItems.map((item) => ({
+      requerimiento_compra_item_id: item.requerimiento_compra_item_id || null,
+      producto_id: item.producto_id || null,
+      producto_externo_id: item.producto_externo_id || null,
+      descripcion: item.descripcion,
+      cantidad: item.cantidad,
+      costo_unitario_estimado: item.costo_unitario_estimado,
+      moneda_id: item.moneda_id || monedaId,
+    }));
 
     const payload: CompraPayload = {
       proveedor_id: selectedProveedor.id,

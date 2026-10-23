@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Eye, HandCoins, Loader2, Search, XCircle } from "lucide-react";
 import { useAuth } from "../AuthContext";
 
@@ -16,6 +17,7 @@ const money = (value: unknown, symbol = "S/") => `${symbol} ${Number(value || 0)
 
 export default function CuentasPorPagar() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const canWrite = ["SUPERADMIN", "ADMIN", "CONTABILIDAD"].includes(user?.role || "");
   const [rows, setRows] = useState<CuentaPorPagar[]>([]);
   const [detail, setDetail] = useState<CuentaPorPagar | null>(null);
@@ -131,6 +133,15 @@ export default function CuentasPorPagar() {
       {(paying || detail) && <Modal title={paying ? "Registrar pago" : `Detalle CxP #${detail?.id}`} onClose={() => { setPaying(null); setDetail(null); }}>
         {paying ? <div className="space-y-3"><div className="rounded-xl bg-slate-50 p-3 text-sm"><span className="text-slate-500">Saldo disponible</span><p className="text-lg font-bold text-slate-900">{money(paying.saldo, paying.moneda?.simbolo || "S/")}</p></div><label className="block text-sm font-medium">Monto<input type="number" min="0.01" step="0.01" max={Number(paying.saldo)} value={monto} onChange={(e) => setMonto(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" /></label><label className="block text-sm font-medium">Referencia<input value={referencia} onChange={(e) => setReferencia(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" placeholder="N.° de operación (opcional)" /></label><button disabled={saving || !monto} onClick={savePayment} className="w-full rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Guardando..." : "Guardar pago"}</button></div> : <div className="space-y-2">{(detail?.pagos || []).length === 0 ? <p className="text-sm text-slate-500">Aún no hay pagos registrados.</p> : (detail?.pagos || []).map((p: any) => <div key={p.id} className="rounded-xl border p-3 text-sm">{money(p.monto, detail?.moneda?.simbolo || "S/")} - {p.referencia || "Sin referencia"} - {labelize(p.estado)}</div>)}</div>}
       </Modal>}
+      {detail && canWrite && !["pagada", "anulada"].includes(detail.estado) && (
+        <button
+          type="button"
+          onClick={() => navigate(`/contabilidad/cheques?cuenta_por_pagar_id=${detail.id}`)}
+          className="fixed bottom-5 right-5 z-[60] rounded-xl bg-blue-700 px-4 py-3 text-sm font-semibold text-white shadow-xl hover:bg-blue-800"
+        >
+          Registrar cheque para esta CxP
+        </button>
+      )}
     </div>
   );
 }

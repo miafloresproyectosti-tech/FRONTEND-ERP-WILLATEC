@@ -35,6 +35,7 @@ const Proveedores = lazy(() => import("../pages/Proveedores"));
 const Comprobantes = lazy(() => import("../pages/Comprobantes"));
 const CuentasPorPagar = lazy(() => import("../pages/CuentasPorPagar"));
 const CuentasPorCobrar = lazy(() => import("../pages/CuentasPorCobrar"));
+const Cheques = lazy(() => import("../pages/Cheques"));
 const AlertasOperativas = lazy(() => import("../pages/AlertasOperativas"));
 const Notificaciones = lazy(() => import("../pages/Notificaciones"));
 const WooCommercePedidos = lazy(() => import("../pages/WooCommercePedidos"));
@@ -49,9 +50,7 @@ import DashboardSoporte from "../modules/helpdesk/DashboardSoporte";
 import Tickets from "../modules/helpdesk/Tickets";
 import EquipoGarantia from "../modules/helpdesk/EquipoGarantia";
 
-import ControlPagoFacturasClientesPage from "../pages/administracion/control-pagos/ControlPagoFacturasClientesPage";
 // 🆕 CONTROL PAGO PROVEEDORES
-import ControlPagoProveedores from "../pages/administracion/control-pagos/ControlPagosProveedoresPage";
 
 
 function HomeRedirect() {
@@ -302,26 +301,8 @@ export default function AppRoutes() {
               </ProtectedRoute>
             }
           />
-          {featureFlags.controlAdm && (
-            <>
-              <Route
-                path="/administracion/control-pagos/facturas-clientes"
-                element={
-                  <ProtectedRoute requiredPermission="control_pagos">
-                    <ControlPagoFacturasClientesPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/administracion/control-pagos/pagos-proveedores"
-                element={
-                  <ProtectedRoute requiredPermission="control_pagos">
-                    <ControlPagoProveedores />
-                  </ProtectedRoute>
-                }
-              />
-            </>
-          )}
+          <Route path="/administracion/control-pagos/facturas-clientes" element={<Navigate to="/contabilidad/cuentas-por-cobrar" replace />} />
+          <Route path="/administracion/control-pagos/pagos-proveedores" element={<Navigate to="/contabilidad/cuentas-por-pagar" replace />} />
 
           {/* AUDITORÍA */}
           <Route
@@ -419,6 +400,15 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute requiredPermission="contabilidad">
                 <CuentasPorCobrar />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/contabilidad/cheques"
+            element={
+              <ProtectedRoute requiredPermission="contabilidad">
+                <Cheques />
               </ProtectedRoute>
             }
           />

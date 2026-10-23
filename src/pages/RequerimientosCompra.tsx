@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
+  BarChart3,
   CheckSquare,
+  CircleAlert,
   Eye,
   Loader2,
+  PackageCheck,
   PackagePlus,
   Plus,
   RefreshCw,
@@ -110,6 +114,8 @@ const itemToCompraDraft = (requerimiento: RequerimientoCompra, item: Requerimien
 export default function RequerimientosCompra() {
   const requestId = useRef(0);
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const canWrite = ["SUPERADMIN", "ADMIN", "LOGISTICA", "VENTAS"].includes(user?.role || "");
 
   const [rows, setRows] = useState<RequerimientoCompra[]>([]);
@@ -137,7 +143,20 @@ export default function RequerimientosCompra() {
     items: [{ descripcion: "", cantidad_requerida: 1 }],
   });
 
-  const selectedList = useMemo(() => Object.values(selectedItems), [selectedItems]);
+  const summary = useMemo(() => rows.reduce(
+    (result, row) => {
+      const items = row.items || [];
+      const requerida = items.reduce((sum, item) => sum + numberValue(item.cantidad_requerida), 0);
+      const comprada = items.reduce((sum, item) => sum + numberValue(item.cantidad_comprada), 0);
+      result.requerida += requerida;
+      result.comprada += comprada;
+      result.pendiente += Math.max(0, requerida - comprada);
+      result.urgentes += row.prioridad === "urgente" && row.estado !== "cancelado" ? 1 : 0;
+      result.abiertos += ["pendiente", "en_gestion", "parcialmente_comprado"].includes(row.estado) ? 1 : 0;
+      return result;
+    },
+    { requerida: 0, comprada: 0, pendiente: 0, urgentes: 0, abiertos: 0 },
+  ), [rows]);
 
   const fetchRows = async () => {
     const currentRequest = ++requestId.current;
@@ -200,6 +219,13 @@ export default function RequerimientosCompra() {
       setDetailLoadingId(null);
     }
   };
+
+  useEffect(() => {
+    const requerimientoId = Number(searchParams.get("requerimiento_id"));
+    if (!requerimientoId || loading) return;
+    const row = rows.find((item) => item.id === requerimientoId);
+    if (row) void openDetail(row);
+  }, [rows, loading, searchParams]);
 
   const toggleItem = (requerimiento: RequerimientoCompra, item: RequerimientoCompraItem) => {
     const saldo = itemSaldoCompra(item);
@@ -350,17 +376,31 @@ export default function RequerimientosCompra() {
                 <Plus size={18} />
                 Nuevo requerimiento
               </button>
-              <button
-                type="button"
-                onClick={() => openCompraWithItems(selectedList)}
-                disabled={selectedList.length === 0}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-              >
-                <PackagePlus size={18} />
-                Crear compra ({selectedList.length})
-              </button>
             </div>
           )}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+            <div className="flex items-center justify-between text-blue-700"><span className="text-xs font-bold uppercase tracking-wide">Requerimientos abiertos</span><BarChart3 size={18} /></div>
+            <p className="mt-2 text-2xl font-bold text-slate-900">{summary.abiertos}</p>
+            <p className="text-xs text-slate-500">Pendientes, en gestión o parciales</p>
+          </div>
+          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+            <div className="flex items-center justify-between text-amber-700"><span className="text-xs font-bold uppercase tracking-wide">Saldo por comprar</span><PackageCheck size={18} /></div>
+            <p className="mt-2 text-2xl font-bold text-slate-900">{summary.pendiente}</p>
+            <p className="text-xs text-slate-500">De {summary.requerida} unidades requeridas</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+            <div className="flex items-center justify-between text-emerald-700"><span className="text-xs font-bold uppercase tracking-wide">Comprado</span><CheckSquare size={18} /></div>
+            <p className="mt-2 text-2xl font-bold text-slate-900">{summary.comprada}</p>
+            <p className="text-xs text-slate-500">Unidades ya comprometidas en compras</p>
+          </div>
+          <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+            <div className="flex items-center justify-between text-red-700"><span className="text-xs font-bold uppercase tracking-wide">Atención prioritaria</span><CircleAlert size={18} /></div>
+            <p className="mt-2 text-2xl font-bold text-slate-900">{summary.urgentes}</p>
+            <p className="text-xs text-slate-500">Requerimientos urgentes abiertos</p>
+          </div>
         </div>
 
         <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_180px_180px_120px]">
@@ -423,7 +463,7 @@ export default function RequerimientosCompra() {
 
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-[1120px] w-full text-sm">
+            <table className="min-w-[980px] w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Numero</th>
@@ -433,17 +473,14 @@ export default function RequerimientosCompra() {
                   <th className="px-4 py-3">Fecha</th>
                   <th className="px-4 py-3">Solicitado por</th>
                   <th className="px-4 py-3">Items</th>
-                  <th className="px-4 py-3 text-right">Cant. requerida</th>
-                  <th className="px-4 py-3 text-right">Comprada</th>
-                  <th className="px-4 py-3 text-right">Recibida</th>
-                  <th className="px-4 py-3 text-right">Saldo compra</th>
+                  <th className="px-4 py-3">Seguimiento</th>
                   <th className="sticky right-0 bg-slate-50 px-4 py-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading && (
                   <tr>
-                    <td colSpan={12} className="px-4 py-10 text-center text-slate-500">
+                    <td colSpan={9} className="px-4 py-10 text-center text-slate-500">
                       <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin" />
                       Cargando requerimientos...
                     </td>
@@ -460,7 +497,29 @@ export default function RequerimientosCompra() {
                     return (
                       <tr key={row.id} className="align-top hover:bg-slate-50/80">
                         <td className="px-4 py-3 font-semibold text-slate-900">{row.numero}</td>
-                        <td className="px-4 py-3">{labelize(row.origen_tipo)}</td>
+                        <td className="px-4 py-3">
+                          <span className="block">{labelize(row.origen_tipo)}</span>
+                          {row.oc_recibida?.numero && (
+                            <span className="mt-1 block text-xs text-slate-500">
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/ordenes-compra/recibidas/${row.oc_recibida?.id}`)}
+                                className="text-blue-700 hover:underline"
+                              >
+                                OC cliente: {row.oc_recibida.numero}
+                              </button>
+                            </span>
+                          )}
+                          {row.oc_recibida?.cotizacion_id && (
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/cotizaciones/${row.oc_recibida?.cotizacion_id}/view`)}
+                              className="block text-xs text-blue-700 hover:underline"
+                            >
+                              Cotización {row.oc_recibida.cotizacion?.numero || `#${row.oc_recibida.cotizacion_id}`}
+                            </button>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <span className={`rounded-full px-2 py-1 text-xs font-semibold ${prioridadClasses[row.prioridad] || prioridadClasses.normal}`}>
                             {labelize(row.prioridad)}
@@ -477,25 +536,15 @@ export default function RequerimientosCompra() {
                           <div className="space-y-2">
                             {items.slice(0, 3).map((item) => {
                               const saldoItem = itemSaldoCompra(item);
-                              const key = `${row.id}-${item.id}`;
                               return (
-                                <label key={item.id} className="flex items-start gap-2">
-                                  {canWrite && (
-                                    <input
-                                      type="checkbox"
-                                      checked={Boolean(selectedItems[key])}
-                                      disabled={saldoItem <= 0 || row.estado === "cancelado"}
-                                      onChange={() => toggleItem(row, item)}
-                                      className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-600"
-                                    />
-                                  )}
+                                <div key={item.id} className="flex items-start gap-2">
                                   <span className="min-w-0">
                                     <span className="block truncate font-medium text-slate-800" title={item.descripcion}>
                                       {item.descripcion}
                                     </span>
                                     <span className="text-xs text-slate-500">Saldo compra: {saldoItem}</span>
                                   </span>
-                                </label>
+                                </div>
                               );
                             })}
                             {items.length > 3 && (
@@ -509,10 +558,26 @@ export default function RequerimientosCompra() {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-right tabular-nums">{requerida}</td>
-                        <td className="px-4 py-3 text-right tabular-nums">{comprada}</td>
-                        <td className="px-4 py-3 text-right tabular-nums">{recibida}</td>
-                        <td className="px-4 py-3 text-right font-semibold tabular-nums text-slate-900">{saldo}</td>
+                        <td className="px-4 py-3">
+                          <div className="grid min-w-[260px] grid-cols-4 gap-2 text-center text-xs">
+                            <div className="rounded-lg bg-slate-50 px-2 py-2">
+                              <span className="block text-slate-400">Requerida</span>
+                              <strong className="mt-1 block text-slate-800">{requerida}</strong>
+                            </div>
+                            <div className="rounded-lg bg-blue-50 px-2 py-2">
+                              <span className="block text-blue-600">Comprada</span>
+                              <strong className="mt-1 block text-blue-800">{comprada}</strong>
+                            </div>
+                            <div className="rounded-lg bg-emerald-50 px-2 py-2">
+                              <span className="block text-emerald-600">Recibida</span>
+                              <strong className="mt-1 block text-emerald-800">{recibida}</strong>
+                            </div>
+                            <div className="rounded-lg bg-amber-50 px-2 py-2">
+                              <span className="block text-amber-600">Saldo</span>
+                              <strong className="mt-1 block text-amber-800">{saldo}</strong>
+                            </div>
+                          </div>
+                        </td>
                         <td className="sticky right-0 bg-white px-4 py-3 text-right shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">
                           <button
                             type="button"
@@ -528,7 +593,7 @@ export default function RequerimientosCompra() {
                   })}
                 {!loading && rows.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="px-4 py-10 text-center text-slate-500">
+                    <td colSpan={9} className="px-4 py-10 text-center text-slate-500">
                       No se encontraron requerimientos.
                     </td>
                   </tr>
@@ -580,35 +645,6 @@ export default function RequerimientosCompra() {
         </div>
       </div>
 
-      {selectedList.length > 0 && (
-        <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-3xl -translate-x-1/2 rounded-2xl border border-blue-200 bg-white p-3 shadow-2xl">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2 text-sm text-slate-700">
-              <CheckSquare className="h-5 w-5 text-blue-700" />
-              {selectedList.length} item(s) seleccionados para compra
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedItems({})}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                Limpiar
-              </button>
-              {canWrite && (
-                <button
-                  type="button"
-                  onClick={() => openCompraWithItems(selectedList)}
-                  className="rounded-xl bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800"
-                >
-                  Crear compra
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {selectedDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/50 p-3 backdrop-blur-sm">
           <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
@@ -648,10 +684,34 @@ export default function RequerimientosCompra() {
               </div>
             </div>
             <div className="max-h-[70vh] overflow-y-auto p-5">
-              <div className="mb-4 grid gap-3 sm:grid-cols-3">
+              <div className="mb-4 grid gap-3 sm:grid-cols-4">
                 <div className="rounded-xl bg-slate-50 p-3">
                   <p className="text-xs font-semibold uppercase text-slate-500">OC cliente</p>
-                  <p className="mt-1 font-semibold text-slate-800">{selectedDetail.oc_recibida?.numero || "-"}</p>
+                  {selectedDetail.oc_recibida?.id ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/ordenes-compra/recibidas/${selectedDetail.oc_recibida?.id}`)}
+                      className="mt-1 font-semibold text-blue-700 hover:underline"
+                    >
+                      {selectedDetail.oc_recibida.numero || "Ver OC"}
+                    </button>
+                  ) : (
+                    <p className="mt-1 font-semibold text-slate-800">-</p>
+                  )}
+                </div>
+                <div className="rounded-xl bg-blue-50 p-3">
+                  <p className="text-xs font-semibold uppercase text-blue-600">Cotización origen</p>
+                  {selectedDetail.oc_recibida?.cotizacion_id ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/cotizaciones/${selectedDetail.oc_recibida?.cotizacion_id}/view`)}
+                      className="mt-1 font-semibold text-blue-800 hover:underline"
+                    >
+                      {selectedDetail.oc_recibida.cotizacion?.numero || `#${selectedDetail.oc_recibida.cotizacion_id}`}
+                    </button>
+                  ) : (
+                    <p className="mt-1 font-semibold text-slate-800">-</p>
+                  )}
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3">
                   <p className="text-xs font-semibold uppercase text-slate-500">Prioridad</p>

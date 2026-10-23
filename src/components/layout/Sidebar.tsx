@@ -50,7 +50,6 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const [commercialOpen, setCommercialOpen] = useState(true);
   const [servicesOpen, setServicesOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
-  const [administrationOpen, setAdministrationOpen] = useState(false);
   const [purchasesOpen, setPurchasesOpen] = useState(true);
   const [accountingOpen, setAccountingOpen] = useState(true);
   const [seguimientoOpen, setSeguimientoOpen] = useState(true);
@@ -580,15 +579,6 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     </Link>
 
                     <Link
-                      to="/compras/recepciones"
-                      onClick={closeMobile}
-                      className={subItemClass("/compras/recepciones")}
-                    >
-                      <Package size={18} />
-                      Recepciones
-                    </Link>
-
-                    <Link
                       to="/operaciones/alertas"
                       onClick={closeMobile}
                       className={subItemClass("/operaciones/alertas")}
@@ -656,6 +646,15 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     >
                       <Landmark size={18} />
                       CxC / Cobros
+                    </Link>
+
+                    <Link
+                      to="/contabilidad/cheques"
+                      onClick={closeMobile}
+                      className={subItemClass("/contabilidad/cheques")}
+                    >
+                      <HandCoins size={18} />
+                      Cheques
                     </Link>
                   </div>
                 )}
@@ -773,54 +772,6 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     >
                       <ShieldCheck size={18} />
                       Equipo / Garantia
-                    </Link>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {featureFlags.controlAdm && hasPermission("control_pagos") && (
-              <div className="mt-2">
-                <button
-                  type="button"
-                  onClick={() => setAdministrationOpen(!administrationOpen)}
-                  className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-gray-300 transition hover:bg-gray-900 hover:text-white"
-                >
-                  <div className="flex items-center gap-3">
-                    <Landmark size={20} />
-                    <span className="font-medium uppercase">Control ADM</span>
-                  </div>
-
-                  <ChevronDown
-                    size={18}
-                    className={`transition-transform ${
-                      administrationOpen ? "rotate-180" : ""
-                    }`}
-                  />
-                </button>
-
-                {administrationOpen && (
-                  <div className="ml-2 mt-1.5 flex flex-col gap-1 border-l border-gray-800 pl-2">
-                    <Link
-                      to="/administracion/control-pagos/facturas-clientes"
-                      onClick={closeMobile}
-                      className={subItemClass(
-                        "/administracion/control-pagos/facturas-clientes"
-                      )}
-                    >
-                      <Receipt size={18} />
-                      Pago Facturas Clientes
-                    </Link>
-
-                    <Link
-                      to="/administracion/control-pagos/pagos-proveedores"
-                      onClick={closeMobile}
-                      className={subItemClass(
-                        "/administracion/control-pagos/pagos-proveedores"
-                      )}
-                    >
-                      <HandCoins size={18} />
-                      Pagos Proveedores
                     </Link>
                   </div>
                 )}

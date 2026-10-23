@@ -126,6 +126,11 @@ export interface OcRecibida {
   items_count?: number | string;
   total_items?: number | string;
   items?: OcRecibidaItem[];
+  requerimientos_compra?: Array<{
+    id: number;
+    estado?: string;
+    items?: Array<{ id: number; oc_recibida_item_id?: number | null }>;
+  }>;
   created_at?: string;
   updated_at?: string;
 }
@@ -562,6 +567,17 @@ export async function asociarProductoInternoOcRecibida(
 ) {
   const response = await api.patch(`/oc-recibidas/${ocId}/items/${itemId}/asociar-producto`, {
     producto_id: productoId,
+  });
+
+  return response.data;
+}
+
+export async function generarRequerimientoCompraDesdeOc(
+  ocId: number | string,
+  prioridad: "baja" | "normal" | "alta" | "urgente" = "normal",
+) {
+  const response = await api.post(`/oc-recibidas/${ocId}/requerimientos/generar`, {
+    prioridad,
   });
 
   return response.data;

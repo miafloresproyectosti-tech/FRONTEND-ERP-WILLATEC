@@ -48,6 +48,7 @@ import {
   getOcRecibida,
   getOcRecibidaPreview,
   getOcRecibidas,
+  generarRequerimientoCompraDesdeOc,
   updateOcRecibidaItems,
   updateOcEmitida,
   uploadOcEmitidaDocumentos,
@@ -641,7 +642,7 @@ const hasOcDocument = (oc: OcEmitida | OcRecibida, key: string) =>
   Boolean(toDocumentUrl(pickDocumentValue(oc as any, key)));
 
 export default function OrdenesCompraPage() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const { addNotification, showToast } = useNotifications();
   const [searchParams, setSearchParams] = useSearchParams();
   const { ocId } = useParams();
@@ -717,6 +718,7 @@ export default function OrdenesCompraPage() {
   const [associatingProduct, setAssociatingProduct] = useState<number | null>(
     null,
   );
+  const [generatingRequirementId, setGeneratingRequirementId] = useState<number | null>(null);
 
   const debouncedCotizacionId = useDebouncedValue(cotizacionId, 600);
   const debouncedProductSearch = useDebouncedValue(productSearch, 400);
@@ -1946,6 +1948,29 @@ export default function OrdenesCompraPage() {
     }
   };
 
+  const handleGenerateRequirement = async (oc: OcRecibida) => {
+    try {
+      setGeneratingRequirementId(oc.id);
+      const response = await generarRequerimientoCompraDesdeOc(oc.id);
+      const detail = (await getOcRecibida(oc.id)) as OcRecibida;
+      setSelectedOc(detail);
+      showToast({
+        title: "Requerimiento generado",
+        description: response?.message || "Se generó el requerimiento con los faltantes reales de la OC.",
+        type: "success",
+      });
+      void loadRecibidas(recibidasPagination.page);
+    } catch (error) {
+      showToast({
+        title: "No se pudo generar el requerimiento",
+        description: getErrorMessage(error, "No hay faltantes pendientes o ya existe un requerimiento activo para esta OC."),
+        type: "warning",
+      });
+    } finally {
+      setGeneratingRequirementId(null);
+    }
+  };
+
   const handleDownloadEmitidaPdf = async (oc: OcEmitida) => {
     try {
       await downloadOcEmitidaPdf(oc.id, `${getOcLabel(oc)}.pdf`);
@@ -2959,6 +2984,9 @@ export default function OrdenesCompraPage() {
           onSelectSerie={handleSelectOcItemSeries}
           onSelectAllSeries={handleSelectAllOcItemSeries}
           onAssociateProduct={openAssociateProductModal}
+          canGenerateRequirement={hasPermission("ordenes_compra.requerimientos")}
+          generatingRequirement={generatingRequirementId === selectedOc.id}
+          onGenerateRequirement={handleGenerateRequirement}
         />
       )}
 
@@ -4337,6 +4365,9 @@ function DetailModal({
   onSelectSerie,
   onSelectAllSeries,
   onAssociateProduct,
+  canGenerateRequirement,
+  generatingRequirement,
+  onGenerateRequirement,
 }: {
   oc: OcEmitida | OcRecibida;
   loading: boolean;
@@ -4354,6 +4385,9 @@ function DetailModal({
   onSelectSerie: (itemId: number, serieId: number) => void;
   onSelectAllSeries: (itemId: number, serieIds: number[]) => void;
   onAssociateProduct: (oc: OcRecibida, item: OcRecibidaItem) => void;
+  canGenerateRequirement: boolean;
+  generatingRequirement: boolean;
+  onGenerateRequirement: (oc: OcRecibida) => void;
 }) {
   const isEmitida = "proveedor" in oc;
   const items = oc.items || [];
@@ -4373,6 +4407,36 @@ function DetailModal({
               Cargando detalle completo...
             </div>
           )}
+          {!isEmitida &&
+            canGenerateRequirement &&
+            !(oc as OcRecibida).requerimientos_compra?.some(
+              (requirement) => requirement.estado !== "cancelado",
+            ) && (
+              <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-semibold text-amber-900">
+                    Esta OC todavía no tiene un requerimiento de compra activo.
+                  </p>
+                  <p className="mt-1 text-xs text-amber-800">
+                    Genera uno solo con los ítems que aún no tienen stock suficiente.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onGenerateRequirement(oc as OcRecibida)}
+                  disabled={generatingRequirement}
+                  title="Generar requerimiento de compra con los faltantes reales de esta OC"
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {generatingRequirement ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <ClipboardCheck size={16} />
+                  )}
+                  {generatingRequirement ? "Generando..." : "Generar requerimiento por faltantes"}
+                </button>
+              </div>
+            )}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
             <InfoTile
               icon={<FileText size={18} />}
@@ -4542,6 +4606,19 @@ function DetailModal({
                     const hasProductoInterno = Boolean(
                       (item as OcRecibidaItem).cotizacion_item?.producto_id,
                     );
+                    const hasRequirementForItem =
+                      !isEmitida &&
+                      Boolean(
+                        (oc as OcRecibida).requerimientos_compra?.some(
+                          (requirement) =>
+                            requirement.estado !== "cancelado" &&
+                            requirement.items?.some(
+                              (requirementItem) =>
+                                Number(requirementItem.oc_recibida_item_id) ===
+                                Number(item.id),
+                            ),
+                        ),
+                      );
 
                     return (
                       <tr
@@ -4550,7 +4627,7 @@ function DetailModal({
                       >
                         <td className="px-4 py-3">
                           <div>{itemDescription(item)}</div>
-                          {!isEmitida && !hasProductoInterno && (
+                          {!isEmitida && !hasProductoInterno && !hasRequirementForItem && (
                             <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
                               <p className="font-semibold">
                                 Sin producto interno asociado

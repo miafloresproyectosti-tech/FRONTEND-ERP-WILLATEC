@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   Ban,
   CheckCircle2,
   Eye,
   Loader2,
-  Plus,
   RefreshCw,
   Search,
   ShoppingBag,
+  X,
 } from "lucide-react";
 
-import { CompraFormModal } from "../components/compras/CompraFormModal";
 import { useAuth } from "../AuthContext";
 import {
   cancelarCompra,
@@ -21,6 +21,7 @@ import {
   type Compra,
   type CompraItem,
 } from "../services/compra.service";
+import { confirmarRecepcionCompra, createRecepcionCompra, getRecepcionCompra } from "../services/recepcionCompra.service";
 
 const perPageOptions = [5, 10, 25, 50, 100];
 
@@ -81,9 +82,17 @@ const formatMoney = (value: unknown, compra?: Compra | null) =>
 const itemSubtotal = (item: CompraItem) =>
   numberValue(item.cantidad) * numberValue(item.costo_unitario_estimado);
 
+const hasPendingReception = (compra: Compra) =>
+  (compra.items || []).some(
+    (item) =>
+      item.estado !== "cancelado" &&
+      numberValue(item.cantidad) - numberValue(item.cantidad_recibida) > 0,
+  );
+
 export default function Compras() {
   const requestId = useRef(0);
   const { user } = useAuth();
+  const navigate = useNavigate();
   const canWrite = ["SUPERADMIN", "ADMIN", "LOGISTICA", "VENTAS"].includes(user?.role || "");
 
   const [rows, setRows] = useState<Compra[]>([]);
@@ -99,7 +108,10 @@ export default function Compras() {
   const [total, setTotal] = useState(0);
   const [selectedDetail, setSelectedDetail] = useState<Compra | null>(null);
   const [detailLoadingId, setDetailLoadingId] = useState<number | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [receptionLoadingId, setReceptionLoadingId] = useState<number | null>(null);
+  const [receiveModal, setReceiveModal] = useState<Compra | null>(null);
+  const [receiveQuantities, setReceiveQuantities] = useState<Record<number, number>>({});
+  const [pendingAction, setPendingAction] = useState<{ compra: Compra; action: "confirmar" | "cancelar" } | null>(null);
 
   const fetchRows = async () => {
     const currentRequest = ++requestId.current;
@@ -144,13 +156,12 @@ export default function Compras() {
   };
 
   const runAction = async (compra: Compra, action: "confirmar" | "cancelar") => {
-    const message =
-      action === "confirmar"
-        ? "Confirmar esta compra? Esto no ingresara stock; quedara pendiente de recepcion."
-        : "Cancelar esta compra?";
+    setPendingAction({ compra, action });
+  };
 
-    if (!window.confirm(message)) return;
-
+  const executeAction = async () => {
+    if (!pendingAction) return;
+    const { compra, action } = pendingAction;
     setActionLoading(`${action}-${compra.id}`);
     setError("");
     try {
@@ -165,6 +176,73 @@ export default function Compras() {
       );
     } finally {
       setActionLoading(null);
+      setPendingAction(null);
+    }
+  };
+
+  const openReceiveModal = async (compra: Compra) => {
+    setReceptionLoadingId(compra.id);
+    setError("");
+    try {
+      const detail = await getCompra(compra.id);
+      if (!hasPendingReception(detail)) return;
+      setReceiveModal(detail);
+      setReceiveQuantities(
+        Object.fromEntries(
+          (detail.items || []).map((item) => [
+            item.id,
+            Math.max(numberValue(item.cantidad) - numberValue(item.cantidad_recibida), 0),
+          ]),
+        ),
+      );
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "No se pudo cargar la recepcion.");
+    } finally {
+      setReceptionLoadingId(null);
+    }
+  };
+
+  const confirmReception = async () => {
+    if (!receiveModal) return;
+    const pendingItems = (receiveModal.items || [])
+      .map((item) => ({
+        compra_item_id: item.id,
+        producto_id: item.producto_id,
+        descripcion: item.descripcion,
+        cantidad: Number(receiveQuantities[item.id] || 0),
+        costo_unitario_provisional: item.costo_unitario_estimado,
+        moneda_id: item.moneda_id || receiveModal.moneda_id,
+      }))
+      .filter((item) => item.cantidad > 0);
+
+    if (pendingItems.length === 0) {
+      setError("Indica al menos una cantidad recibida mayor que cero.");
+      return;
+    }
+
+    setReceptionLoadingId(receiveModal.id);
+    setError("");
+    try {
+      const draft = await createRecepcionCompra(receiveModal.id, { items: pendingItems });
+      const draftDetail = draft.items?.length ? draft : await getRecepcionCompra(draft.id);
+      await confirmarRecepcionCompra(draftDetail.id, {
+        items: (draftDetail.items || []).map((item: any) => ({
+          recepcion_item_id: item.id,
+          cantidad: Number(item.cantidad || 0),
+        })),
+      });
+      setReceiveModal(null);
+      setReceiveQuantities({});
+      await fetchRows();
+      if (selectedDetail?.id === receiveModal.id) setSelectedDetail(await getCompra(receiveModal.id));
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message ||
+          Object.values(err?.response?.data?.errors || {})?.flat()?.[0]?.toString() ||
+          "No se pudo confirmar la recepcion.",
+      );
+    } finally {
+      setReceptionLoadingId(null);
     }
   };
 
@@ -180,16 +258,9 @@ export default function Compras() {
             </p>
           </div>
 
-          {canWrite && (
-            <button
-              type="button"
-              onClick={() => setModalOpen(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-800"
-            >
-              <Plus size={18} />
-              Nueva compra
-            </button>
-          )}
+          <p className="text-sm font-semibold text-slate-500">
+            Las compras se generan desde los requerimientos.
+          </p>
         </div>
 
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -261,6 +332,7 @@ export default function Compras() {
                 <tr>
                   <th className="px-4 py-3">Numero</th>
                   <th className="px-4 py-3">Proveedor</th>
+                  <th className="px-4 py-3">Trazabilidad</th>
                   <th className="px-4 py-3">Fecha</th>
                   <th className="px-4 py-3">Modalidad</th>
                   <th className="px-4 py-3">Estado</th>
@@ -273,7 +345,7 @@ export default function Compras() {
               <tbody className="divide-y divide-slate-100">
                 {loading && (
                   <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-10 text-center text-slate-500">
                       <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin" />
                       Cargando compras...
                     </td>
@@ -284,6 +356,24 @@ export default function Compras() {
                     <tr key={compra.id} className="hover:bg-slate-50/80">
                       <td className="px-4 py-3 font-semibold text-slate-900">{compra.numero}</td>
                       <td className="px-4 py-3">{compra.proveedor?.nombre || "-"}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600">
+                        {compra.oc_emitida?.numero && (
+                          <button type="button" onClick={() => navigate(`/ordenes-compra/emitidas/${compra.oc_emitida?.id}`)} className="block text-left hover:text-blue-700 hover:underline">
+                            OC proveedor: <strong>{compra.oc_emitida.numero}</strong>
+                          </button>
+                        )}
+                        {compra.items?.some((item) => item.requerimiento_compra_item?.requerimiento) ? (
+                          <button type="button" onClick={() => navigate(`/compras/requerimientos?requerimiento_id=${compra.items?.find((item) => item.requerimiento_compra_item?.requerimiento)?.requerimiento_compra_item?.requerimiento?.id}`)} className="block text-left hover:text-blue-700 hover:underline">
+                            Req. {compra.items?.find((item) => item.requerimiento_compra_item?.requerimiento)?.requerimiento_compra_item?.requerimiento?.numero || "-"}
+                          </button>
+                        ) : null}
+                        {compra.items?.find((item) => item.requerimiento_compra_item?.requerimiento?.oc_recibida)?.requerimiento_compra_item?.requerimiento?.oc_recibida?.cotizacion_id && (
+                          <button type="button" onClick={() => navigate(`/cotizaciones/${compra.items?.find((item) => item.requerimiento_compra_item?.requerimiento?.oc_recibida)?.requerimiento_compra_item?.requerimiento?.oc_recibida?.cotizacion_id}/view`)} className="block text-left text-blue-700 hover:underline">
+                            Cotización {compra.items?.find((item) => item.requerimiento_compra_item?.requerimiento?.oc_recibida)?.requerimiento_compra_item?.requerimiento?.oc_recibida?.cotizacion?.numero || `#${compra.items?.find((item) => item.requerimiento_compra_item?.requerimiento?.oc_recibida)?.requerimiento_compra_item?.requerimiento?.oc_recibida?.cotizacion_id}`}
+                          </button>
+                        )}
+                        {!compra.oc_emitida?.numero && !compra.items?.some((item) => item.requerimiento_compra_item?.requerimiento) && "Compra directa"}
+                      </td>
                       <td className="px-4 py-3 text-slate-600">{formatDate(compra.fecha_compra)}</td>
                       <td className="px-4 py-3">{labelize(compra.modalidad)}</td>
                       <td className="px-4 py-3">
@@ -319,6 +409,16 @@ export default function Compras() {
                               {actionLoading === `confirmar-${compra.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 size={16} />}
                             </button>
                           )}
+                          {canWrite && ["confirmada", "parcialmente_recibida"].includes(compra.estado) && hasPendingReception(compra) && (
+                            <button
+                              type="button"
+                              onClick={() => openReceiveModal(compra)}
+                              className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-700 hover:bg-amber-100"
+                              title="Recibir cantidades pendientes"
+                            >
+                              {receptionLoadingId === compra.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingBag size={16} />}
+                            </button>
+                          )}
                           {canWrite && !["cancelada", "recibida", "parcialmente_recibida"].includes(compra.estado) && (
                             <button
                               type="button"
@@ -335,7 +435,7 @@ export default function Compras() {
                   ))}
                 {!loading && rows.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-10 text-center text-slate-500">
                       No se encontraron compras.
                     </td>
                   </tr>
@@ -387,6 +487,88 @@ export default function Compras() {
         </div>
       </div>
 
+      {receiveModal && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/50 p-3 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Recepcionar {receiveModal.numero}</h2>
+                <p className="text-sm text-slate-500">{receiveModal.proveedor?.nombre || "Proveedor"} · Indica lo que realmente llegó.</p>
+              </div>
+              <button type="button" onClick={() => setReceiveModal(null)} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" title="Cerrar">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="max-h-[62vh] overflow-y-auto p-5">
+              <div className="mb-4 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800 sm:flex-row sm:items-center sm:justify-between">
+                <span>Los items con cantidad 0 quedarán pendientes para otra recepción.</span>
+                <button
+                  type="button"
+                  onClick={() => setReceiveQuantities(Object.fromEntries((receiveModal.items || []).map((item) => [item.id, Math.max(numberValue(item.cantidad) - numberValue(item.cantidad_recibida), 0)])))}
+                  className="rounded-lg border border-blue-200 bg-white px-3 py-2 font-semibold text-blue-700 hover:bg-blue-100"
+                >
+                  Recibí todo lo pendiente
+                </button>
+              </div>
+              <div className="space-y-3">
+                {(receiveModal.items || []).filter((item) => numberValue(item.cantidad) - numberValue(item.cantidad_recibida) > 0 && item.estado !== "cancelado").map((item) => {
+                  const pendiente = Math.max(numberValue(item.cantidad) - numberValue(item.cantidad_recibida), 0);
+                  return (
+                    <div key={item.id} className="grid gap-3 rounded-xl border border-slate-200 p-4 sm:grid-cols-[1fr_150px_150px] sm:items-end">
+                      <div>
+                        <p className="font-semibold text-slate-900">{item.descripcion}</p>
+                        <p className="mt-1 text-xs text-slate-500">Comprado: {numberValue(item.cantidad)} · Ya recibido: {numberValue(item.cantidad_recibida)} · Pendiente: {pendiente}</p>
+                      </div>
+                      <div className="text-sm text-slate-500">Cantidad pendiente<strong className="mt-1 block text-slate-800">{pendiente}</strong></div>
+                      <label className="text-sm font-semibold text-slate-700">Recibida
+                        <input
+                          type="number"
+                          min="0"
+                          max={pendiente}
+                          step="0.01"
+                          value={receiveQuantities[item.id] ?? 0}
+                          onChange={(event) => setReceiveQuantities((current) => ({ ...current, [item.id]: Math.min(Math.max(Number(event.target.value) || 0, 0), pendiente) }))}
+                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        />
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => setReceiveModal(null)} disabled={receptionLoadingId === receiveModal.id} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-700 disabled:opacity-50">Cancelar</button>
+              <button type="button" onClick={confirmReception} disabled={receptionLoadingId === receiveModal.id} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 font-semibold text-white disabled:opacity-50">
+                {receptionLoadingId === receiveModal.id && <Loader2 size={17} className="animate-spin" />}
+                {receptionLoadingId === receiveModal.id ? "Registrando recepción..." : "Confirmar recepción"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingAction && (
+        <div className="fixed inset-0 z-[96] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+            <h2 className="text-lg font-bold text-slate-900">
+              {pendingAction.action === "confirmar" ? "Confirmar compra" : "Cancelar compra"}
+            </h2>
+            <p className="mt-2 text-sm text-slate-600">
+              {pendingAction.action === "confirmar"
+                ? `La compra ${pendingAction.compra.numero} quedará pendiente de recepción. El stock todavía no cambiará.`
+                : `¿Deseas cancelar la compra ${pendingAction.compra.numero}? Esta acción no ingresará productos al stock.`}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setPendingAction(null)} disabled={Boolean(actionLoading)} className="rounded-xl border border-slate-200 px-4 py-2.5 font-semibold text-slate-700 disabled:opacity-50">Volver</button>
+              <button type="button" onClick={executeAction} disabled={Boolean(actionLoading)} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-white disabled:opacity-50 ${pendingAction.action === "confirmar" ? "bg-blue-700" : "bg-red-600"}`}>
+                {actionLoading && <Loader2 size={17} className="animate-spin" />}
+                {actionLoading ? "Procesando..." : pendingAction.action === "confirmar" ? "Confirmar compra" : "Cancelar compra"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/50 p-3 backdrop-blur-sm">
           <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
@@ -406,14 +588,18 @@ export default function Compras() {
               </button>
             </div>
             <div className="max-h-[70vh] overflow-y-auto p-5">
-              <div className="mb-4 grid gap-3 sm:grid-cols-4">
+              <div className="mb-4 grid gap-3 sm:grid-cols-5">
                 <div className="rounded-xl bg-slate-50 p-3">
                   <p className="text-xs font-semibold uppercase text-slate-500">Modalidad</p>
                   <p className="mt-1 font-semibold text-slate-800">{labelize(selectedDetail.modalidad)}</p>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3">
                   <p className="text-xs font-semibold uppercase text-slate-500">OC proveedor</p>
-                  <p className="mt-1 font-semibold text-slate-800">{selectedDetail.oc_emitida?.numero || "-"}</p>
+                  {selectedDetail.oc_emitida ? (
+                    <button type="button" onClick={() => navigate(`/ordenes-compra/emitidas/${selectedDetail.oc_emitida?.id}`)} className="mt-1 font-semibold text-blue-700 hover:underline">
+                      {selectedDetail.oc_emitida.numero || "-"}
+                    </button>
+                  ) : <p className="mt-1 font-semibold text-slate-800">-</p>}
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3">
                   <p className="text-xs font-semibold uppercase text-slate-500">Fecha</p>
@@ -422,6 +608,30 @@ export default function Compras() {
                 <div className="rounded-xl bg-slate-50 p-3">
                   <p className="text-xs font-semibold uppercase text-slate-500">Total estimado</p>
                   <p className="mt-1 font-semibold text-slate-800">{formatMoney(selectedDetail.total_estimado, selectedDetail)}</p>
+                </div>
+                <div className="rounded-xl bg-blue-50 p-3">
+                  <p className="text-xs font-semibold uppercase text-blue-600">Requerimiento / cotización</p>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-semibold">
+                    {selectedDetail.items?.find((item) => item.requerimiento_compra_item?.requerimiento)?.requerimiento_compra_item?.requerimiento?.id ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/compras/requerimientos?requerimiento_id=${selectedDetail.items?.find((item) => item.requerimiento_compra_item?.requerimiento)?.requerimiento_compra_item?.requerimiento?.id}`)}
+                        className="text-blue-800 hover:underline"
+                      >
+                        {selectedDetail.items?.find((item) => item.requerimiento_compra_item?.requerimiento)?.requerimiento_compra_item?.requerimiento?.numero || "Ver requerimiento"}
+                      </button>
+                    ) : null}
+                    {selectedDetail.items?.find((item) => item.requerimiento_compra_item?.requerimiento?.oc_recibida)?.requerimiento_compra_item?.requerimiento?.oc_recibida?.cotizacion_id ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/cotizaciones/${selectedDetail.items?.find((item) => item.requerimiento_compra_item?.requerimiento?.oc_recibida)?.requerimiento_compra_item?.requerimiento?.oc_recibida?.cotizacion_id}/view`)}
+                        className="text-blue-800 hover:underline"
+                      >
+                        Cotización {selectedDetail.items.find((item) => item.requerimiento_compra_item?.requerimiento?.oc_recibida)?.requerimiento_compra_item?.requerimiento?.oc_recibida?.cotizacion?.numero || "#" + selectedDetail.items.find((item) => item.requerimiento_compra_item?.requerimiento?.oc_recibida)?.requerimiento_compra_item?.requerimiento?.oc_recibida?.cotizacion_id}
+                      </button>
+                    ) : null}
+                    {!selectedDetail.items?.some((item) => item.requerimiento_compra_item?.requerimiento) && <span>-</span>}
+                  </div>
                 </div>
               </div>
 
@@ -457,7 +667,15 @@ export default function Compras() {
                         <tr key={item.id}>
                           <td className="px-4 py-3 font-medium text-slate-800">{item.descripcion}</td>
                           <td className="px-4 py-3 text-slate-600">
-                            {item.requerimiento_compra_item?.requerimiento?.numero || "-"}
+                            {item.requerimiento_compra_item?.requerimiento ? (
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/compras/requerimientos?requerimiento_id=${item.requerimiento_compra_item?.requerimiento?.id}`)}
+                                className="text-blue-700 hover:underline"
+                              >
+                                {item.requerimiento_compra_item.requerimiento.numero || "-"}
+                              </button>
+                            ) : "-"}
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums">{numberValue(item.cantidad)}</td>
                           <td className="px-4 py-3 text-right tabular-nums">{formatMoney(item.costo_unitario_estimado, selectedDetail)}</td>
@@ -492,15 +710,6 @@ export default function Compras() {
         </div>
       )}
 
-      <CompraFormModal
-        open={modalOpen}
-        title="Nueva compra manual"
-        onClose={() => setModalOpen(false)}
-        onCreated={() => {
-          setModalOpen(false);
-          void fetchRows();
-        }}
-      />
     </div>
   );
 }

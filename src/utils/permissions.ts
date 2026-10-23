@@ -42,7 +42,11 @@ export const rolePermissions: Record<UserRole, string[]> = {
     "soporte_ti",
     "control_pagos",
     "compras",
+    "compras.recepciones",
+    "compras.sobrecompra",
     "contabilidad",
+    "contabilidad.cheques",
+    "contabilidad.bancos",
     "proveedores"
   ],
 
@@ -58,7 +62,11 @@ export const rolePermissions: Record<UserRole, string[]> = {
     "servicios",
     "control_pagos",
     "compras",
+    "compras.recepciones",
+    "compras.sobrecompra",
     "contabilidad",
+    "contabilidad.cheques",
+    "contabilidad.bancos",
     "proveedores"
   ],
 
@@ -69,6 +77,7 @@ export const rolePermissions: Record<UserRole, string[]> = {
     "productos",
     "ordenes_compra",
     "compras",
+    "compras.recepciones",
     "proveedores"
   ],
 
@@ -95,7 +104,8 @@ export const rolePermissions: Record<UserRole, string[]> = {
   LOGISTICA: [
     "productos",
     "inventario",
-    "compras"
+    "compras",
+    "compras.recepciones"
   ],
 
   CONTABILIDAD: [
@@ -103,6 +113,8 @@ export const rolePermissions: Record<UserRole, string[]> = {
     "ordenes_compra",
     "compras",
     "contabilidad",
+    "contabilidad.cheques",
+    "contabilidad.bancos",
     "proveedores"
   ]
 };
