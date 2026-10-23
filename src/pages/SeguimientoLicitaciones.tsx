@@ -148,13 +148,16 @@ const getOpportunityFilterStatus = (opportunity: Oportunidad): OportunidadFiltro
     return "modificacion_cotizacion";
   }
 
-  if (opportunity.cotizaciones.some((quote) =>
+  const hasQuotes = opportunity.cotizaciones.length > 0;
+  const allQuotesApproved = hasQuotes && opportunity.cotizaciones.every((quote) =>
     String(quote.estado || "")
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .includes("aprob"),
-  )) {
+  );
+
+  if (allQuotesApproved) {
     return "por_subir";
   }
 
@@ -1283,8 +1286,10 @@ export default function SeguimientoLicitaciones() {
 
   const canManageOpportunityQuote = (item: Oportunidad) => {
     if (!user?.id || !hasPermission("cotizaciones.crear")) return false;
-    if (item.estado !== "en_atencion") return false;
-    if (item.cotizacionId || item.cotizacionNumero || item.cotizaciones.length > 0) return false;
+    if (isClosedOpportunity(item.estado)) return false;
+    if (item.tipo === "privado" && !["en_atencion", "cotizacion_generada"].includes(item.estado)) return false;
+    if (item.tipo !== "privado" && item.estado !== "en_atencion") return false;
+    if (item.tipo !== "privado" && (item.cotizacionId || item.cotizacionNumero || item.cotizaciones.length > 0)) return false;
 
     return Number(item.asignadoA ?? item.ejecutivo?.id ?? 0) === Number(user.id);
   };
@@ -1295,6 +1300,18 @@ export default function SeguimientoLicitaciones() {
 
     if (item.tipo === "licitacion") {
       return currentRole === "LICITACIONES" || isOpportunityCreator(item);
+    }
+
+    if (item.tipo === "privado") {
+      const allQuotesApproved = item.cotizaciones.length > 0 && item.cotizaciones.every((quote) =>
+        String(quote.estado || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .includes("aprob"),
+      );
+
+      if (!allQuotesApproved) return false;
     }
 
     if (currentRole === "VENTAS" && isOpportunityCreator(item)) return true;

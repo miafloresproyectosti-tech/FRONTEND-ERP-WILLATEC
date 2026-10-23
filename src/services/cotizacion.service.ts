@@ -916,6 +916,17 @@ export async function deleteCotizacion(id: number): Promise<void> {
   }
 }
 
+export async function duplicarCotizacion(id: number): Promise<Cotizacion> {
+  try {
+    const response = await api.post(`/cotizaciones/${id}/duplicar`);
+    clearCotizacionesReadCache();
+    return response.data?.cotizacion || response.data?.data || response.data;
+  } catch (error) {
+    console.error("Error al duplicar cotizacion:", error);
+    throw error;
+  }
+}
+
 export async function delegarCotizacion(
   id: number,
   delegadoCotizacionId: number,

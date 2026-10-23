@@ -1,5 +1,6 @@
 import {
   CheckCircle2,
+  Eye,
   ExternalLink,
   FileDown,
   FileText,
@@ -115,6 +116,7 @@ export function OportunidadDetailDrawer({
   const [presentationFile, setPresentationFile] = useState<File | null>(null);
   const [presentationError, setPresentationError] = useState("");
   const [viewsModalOpen, setViewsModalOpen] = useState(false);
+  const [linkedQuotesExpanded, setLinkedQuotesExpanded] = useState(false);
 
   if (!opportunity) return null;
 
@@ -132,7 +134,7 @@ export function OportunidadDetailDrawer({
     opportunity.cotizaciones.find((item) => item.cotizacionId)?.cotizacionId ||
     "";
   const canShowQuoteDecision =
-    canManageOpportunity && !locked && !hasLinkedQuote;
+    canManageOpportunity && !locked && (opportunity.tipo === "privado" || !hasLinkedQuote);
   const presentationLabel =
     opportunity.tipo === "licitacion"
       ? "Marcar como subido"
@@ -416,7 +418,7 @@ export function OportunidadDetailDrawer({
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                {opportunity.estado === "en_atencion" && onMarkQuoteDone && (
+                {(opportunity.tipo === "privado" || opportunity.estado === "en_atencion") && onMarkQuoteDone && (
                   <button
                     type="button"
                     onClick={onMarkQuoteDone}
@@ -426,14 +428,16 @@ export function OportunidadDetailDrawer({
                     Vincular Cotizacion
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={onGenerateQuote}
-                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
-                >
-                  <FileText size={18} />
-                  Generar Cotizacion
-                </button>
+                {!hasLinkedQuote && (
+                  <button
+                    type="button"
+                    onClick={onGenerateQuote}
+                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
+                  >
+                    <FileText size={18} />
+                    Generar Cotizacion
+                  </button>
+                )}
                 {onReleaseOpportunity && (
                   <button
                     type="button"
@@ -799,9 +803,22 @@ export function OportunidadDetailDrawer({
 
           {opportunity.cotizaciones.length > 0 && (
             <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-              <h3 className="mb-3 font-bold text-slate-900 dark:text-white">
-                Cotizaciones creadas
-              </h3>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-bold text-slate-900 dark:text-white">
+                  Cotizaciones enlazadas ({opportunity.cotizaciones.length})
+                </h3>
+                {opportunity.cotizaciones.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setLinkedQuotesExpanded((current) => !current)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                  >
+                    <Eye size={15} />
+                    {linkedQuotesExpanded ? "Ocultar cotizaciones" : "Ver cotizaciones enlazadas"}
+                  </button>
+                )}
+              </div>
+              {(opportunity.cotizaciones.length === 1 || linkedQuotesExpanded) && (
               <div className="space-y-2">
                 {opportunity.cotizaciones.map((item) => (
                   <div
@@ -890,6 +907,7 @@ export function OportunidadDetailDrawer({
                   </div>
                 ))}
               </div>
+              )}
             </section>
           )}
         </div>
