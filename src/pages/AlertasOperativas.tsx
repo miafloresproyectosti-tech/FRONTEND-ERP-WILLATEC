@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowRight, Loader2, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { getAlertasOperativas } from "../services/contabilidad.service";
 
@@ -8,13 +9,14 @@ const toneByCode: Record<string, string> = {
   cxc_vencida: "border-red-200 bg-red-50 text-red-800",
   compra_confirmada_sin_recepcion: "border-amber-200 bg-amber-50 text-amber-800",
   compra_parcialmente_recibida: "border-amber-200 bg-amber-50 text-amber-800",
+  compra_sin_comprobante: "border-red-200 bg-red-50 text-red-800",
   documento_cliente_pendiente: "border-blue-200 bg-blue-50 text-blue-800",
   recepcion_sin_factura_proveedor: "border-orange-200 bg-orange-50 text-orange-800",
   comprobante_observado: "border-orange-200 bg-orange-50 text-orange-800",
 };
 
 export default function AlertasOperativas() {
-  const [items, setItems] = useState<Array<{ codigo: string; titulo: string; total: number }>>([]);
+  const [items, setItems] = useState<Array<{ codigo: string; titulo: string; total: number; action_url?: string; severidad?: string }>>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -24,8 +26,9 @@ export default function AlertasOperativas() {
     setError("");
     try {
       const response = await getAlertasOperativas();
-      setItems(response.data || []);
-      setTotal(response.total_alertas || 0);
+      const active = (response.data || []).filter((item) => item.total > 0);
+      setItems(active);
+      setTotal(active.reduce((sum, item) => sum + item.total, 0));
     } catch (err: any) {
       setError(err?.response?.data?.message || "No se pudieron cargar las alertas.");
     } finally {
@@ -72,14 +75,14 @@ export default function AlertasOperativas() {
               <Loader2 className="mx-auto mb-2 animate-spin" /> Cargando...
             </div>
           ) : (
-            items.map((item) => (
-              <div key={item.codigo} className={`rounded-2xl border p-5 shadow-sm ${toneByCode[item.codigo] || "border-slate-200 bg-white text-slate-800"}`}>
-                <p className="text-sm font-semibold uppercase opacity-70">{item.codigo.replace(/_/g, " ")}</p>
+            items.length === 0 ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-emerald-800">No hay pendientes operativos.</div> : items.map((item) => (
+              <Link key={item.codigo} to={item.action_url || "/operaciones/alertas"} className={`rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${toneByCode[item.codigo] || "border-slate-200 bg-white text-slate-800"}`}>
+                <p className="text-sm font-semibold uppercase opacity-70">{item.titulo}</p>
                 <div className="mt-3 flex items-end justify-between gap-4">
-                  <h2 className="text-base font-bold">{item.titulo}</h2>
-                  <span className="text-3xl font-bold">{item.total}</span>
+                  <h2 className="text-base font-bold">{item.total} pendiente(s)</h2>
+                  <ArrowRight size={20} />
                 </div>
-              </div>
+              </Link>
             ))
           )}
         </div>

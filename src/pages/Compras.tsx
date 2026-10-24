@@ -22,6 +22,7 @@ import {
   type CompraItem,
 } from "../services/compra.service";
 import { confirmarRecepcionCompra, createRecepcionCompra, getRecepcionCompra } from "../services/recepcionCompra.service";
+import AlertasOperativasSummary from "../components/contabilidad/AlertasOperativasSummary";
 
 const perPageOptions = [5, 10, 25, 50, 100];
 
@@ -266,6 +267,8 @@ export default function Compras() {
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <strong>COMPRA CONFIRMADA:</strong> pendiente de recepcion. No significa producto recibido ni stock actualizado.
         </div>
+
+        <AlertasOperativasSummary codes={["compra_sin_comprobante", "recepcion_sin_factura_proveedor", "compra_confirmada_sin_recepcion"]} />
 
         <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_180px_180px_120px]">
           <div className="relative">

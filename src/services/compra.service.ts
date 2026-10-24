@@ -70,6 +70,8 @@ export interface Compra {
     id: number;
     nombre: string;
     ruc?: string | null;
+    tiene_credito?: boolean;
+    dias_credito?: number;
   } | null;
   oc_emitida_id?: number | null;
   oc_emitida?: {

@@ -4,6 +4,7 @@ import { Ban, Eye, FileSearch, Loader2, ReceiptText, Search, Upload, XCircle } f
 import {
   anularComprobante,
   createComprobante,
+  createManualComprobante,
   generarCuentaPorCobrar,
   generarCuentaPorPagar,
   getComprobante,
@@ -11,7 +12,9 @@ import {
   previewXmlComprobante,
   type Comprobante,
 } from "../services/contabilidad.service";
+import { getCompras, type Compra } from "../services/compra.service";
 import { useAuth } from "../AuthContext";
+import AlertasOperativasSummary from "../components/contabilidad/AlertasOperativasSummary";
 
 const perPageOptions = [5, 10, 25, 50, 100];
 const estados = ["todos", "registrado", "anulado"];
@@ -19,10 +22,26 @@ const operaciones = ["todos", "compra", "venta"];
 const labelize = (value?: string | null) => (value || "-").replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 const money = (value: unknown, symbol = "S/") =>
   `${symbol} ${Number(value || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const addDays = (date: string, days: number) => {
+  if (!date || !Number.isFinite(days)) return "";
+  const result = new Date(`${date}T00:00:00`);
+  result.setDate(result.getDate() + days);
+  return result.toLocaleDateString("es-PE");
+};
+const formatAmountInput = (value: string) => {
+  const clean = value.replace(/[^\d.]/g, "");
+  if (!clean) return "";
+  const [integerPart, ...decimalParts] = clean.split(".");
+  const integer = (integerPart || "0").replace(/^0+(?=\d)/, "");
+  const formattedInteger = Number(integer || 0).toLocaleString("en-US");
+  const decimal = decimalParts.join("").slice(0, 2);
+  return clean.includes(".") ? `${formattedInteger}.${decimal}` : formattedInteger;
+};
+const amountForRequest = (value: string) => value.replace(/,/g, "");
 
 export default function Comprobantes() {
-  const { user } = useAuth();
-  const canWrite = ["SUPERADMIN", "ADMIN", "CONTABILIDAD"].includes(user?.role || "");
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("contabilidad.comprobantes") || hasPermission("contabilidad");
   const [rows, setRows] = useState<Comprobante[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -38,6 +57,14 @@ export default function Comprobantes() {
   const [xmlPreview, setXmlPreview] = useState<any>(null);
   const [selectedLinkId, setSelectedLinkId] = useState("");
   const [generatedIds, setGeneratedIds] = useState<Set<number>>(new Set());
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualPurchases, setManualPurchases] = useState<Compra[]>([]);
+  const [manualForm, setManualForm] = useState({ compra_id: "", tipo_comprobante: "FACTURA", serie: "", numero: "", fecha_emision: new Date().toISOString().slice(0, 10), fecha_vencimiento: "", subtotal: "", igv: "", total: "", moneda_id: "", observacion: "" });
+  const [manualFile, setManualFile] = useState<File | null>(null);
+  const selectedManualPurchase = manualPurchases.find((purchase) => String(purchase.id) === manualForm.compra_id);
+  const selectedProvider = selectedManualPurchase?.proveedor;
+  const creditDays = Number(selectedProvider?.dias_credito || 0);
   const requestId = useRef(0);
 
   const fetchRows = async () => {
@@ -63,6 +90,44 @@ export default function Comprobantes() {
     const timer = window.setTimeout(fetchRows, 250);
     return () => window.clearTimeout(timer);
   }, [page, perPage, search, estado, tipoOperacion]);
+
+  const openManual = async () => {
+    setManualOpen(true);
+    setManualLoading(true);
+    setError("");
+    try {
+      const response = await getCompras({ perPage: 100 });
+      setManualPurchases(response.data);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "No se pudieron cargar las compras para el comprobante manual.");
+    } finally {
+      setManualLoading(false);
+    }
+  };
+
+  const saveManual = async () => {
+    if (!manualForm.compra_id || !manualFile) {
+      setError("Selecciona una compra y adjunta el PDF de la factura.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const payload = new FormData();
+      Object.entries(manualForm).forEach(([key, value]) => {
+        if (value !== "") payload.append(key, ["subtotal", "igv", "total"].includes(key) ? amountForRequest(value) : value);
+      });
+      payload.append("archivo", manualFile);
+      await createManualComprobante(payload);
+      setManualOpen(false);
+      setManualFile(null);
+      await fetchRows();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || Object.values(err?.response?.data?.errors || {})?.flat()?.[0]?.toString() || "No se pudo registrar el comprobante PDF.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handlePreviewXml = async (file?: File) => {
     if (!file) return;
@@ -161,12 +226,16 @@ export default function Comprobantes() {
             <h1 className="text-2xl font-bold text-slate-900">Comprobantes y XML</h1>
             <p className="text-sm text-slate-500">Registra documentos tributarios sin afectar stock ni cuentas hasta generarlas.</p>
           </div>
-          {canWrite && <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white">
-            {saving ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
-            Preview XML
-            <input type="file" accept=".xml,text/xml" className="hidden" onChange={(e) => { handlePreviewXml(e.target.files?.[0]); e.currentTarget.value = ""; }} />
-          </label>}
+          {canWrite && <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={openManual} className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><Upload size={18} /> Registrar PDF/manual</button>
+            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white">
+              {saving ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
+              Preview XML
+              <input type="file" accept=".xml,text/xml" className="hidden" onChange={(e) => { handlePreviewXml(e.target.files?.[0]); e.currentTarget.value = ""; }} />
+            </label>
+          </div>}
         </div>
+        <AlertasOperativasSummary codes={["compra_sin_comprobante", "recepcion_sin_factura_proveedor"]} />
 
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
@@ -237,6 +306,35 @@ export default function Comprobantes() {
         </div>
       </div>
 
+      {manualOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between"><div><h2 className="text-lg font-bold text-slate-900">Registrar comprobante manual</h2><p className="text-sm text-slate-500">Usa esta opción cuando el proveedor solo entrega PDF.</p></div><button type="button" onClick={() => setManualOpen(false)}><XCircle /></button></div>
+            {manualLoading ? <div className="flex items-center justify-center gap-2 py-10 text-slate-500"><Loader2 className="animate-spin" /> Cargando compras...</div> : <div className="grid gap-3 sm:grid-cols-2">
+              <label className="sm:col-span-2 text-sm font-semibold">Compra<select value={manualForm.compra_id} onChange={(e) => setManualForm((current) => ({ ...current, compra_id: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal"><option value="">Selecciona una compra...</option>{manualPurchases.filter((purchase) => !["borrador", "cancelada"].includes(purchase.estado)).map((purchase) => <option key={purchase.id} value={purchase.id}>{purchase.numero} · {purchase.proveedor?.nombre || "Sin proveedor"} · {purchase.total_estimado}</option>)}</select></label>
+              <label className="text-sm font-semibold">Tipo<select value={manualForm.tipo_comprobante} onChange={(e) => setManualForm((current) => ({ ...current, tipo_comprobante: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal"><option>FACTURA</option><option>BOLETA</option></select></label>
+              <label className="text-sm font-semibold">Moneda<select value={manualForm.moneda_id} onChange={(e) => setManualForm((current) => ({ ...current, moneda_id: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal"><option value="">Usar moneda de la compra</option><option value="1">PEN</option><option value="2">USD</option></select></label>
+              <label className="text-sm font-semibold">Serie<input value={manualForm.serie} onChange={(e) => setManualForm((current) => ({ ...current, serie: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" placeholder="F001" /></label>
+              <label className="text-sm font-semibold">Número<input value={manualForm.numero} onChange={(e) => setManualForm((current) => ({ ...current, numero: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" placeholder="000123" /></label>
+              <label className="text-sm font-semibold">Fecha emisión<input type="date" value={manualForm.fecha_emision} onChange={(e) => setManualForm((current) => ({ ...current, fecha_emision: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" /></label>
+              <label className="text-sm font-semibold">Fecha vencimiento <span className="font-normal text-slate-500">(opcional)</span><input type="date" value={manualForm.fecha_vencimiento} onChange={(e) => setManualForm((current) => ({ ...current, fecha_vencimiento: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" /><span className="mt-1 block text-xs font-normal text-slate-500">Déjala vacía si el PDF no indica vencimiento.</span></label>
+              {selectedManualPurchase && <div className="sm:col-span-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs text-blue-900">
+                {selectedProvider?.tiene_credito
+                  ? <>Este proveedor tiene crédito a <strong>{creditDays} días</strong>. Si no indicas una fecha en la factura, la CxP usará como fecha esperada el <strong>{addDays(manualForm.fecha_emision, creditDays)}</strong>.</>
+                  : <>Este proveedor está configurado como <strong>pago al contado</strong>. Si no indicas vencimiento, la CxP quedará con vencimiento el mismo día de emisión.</>}
+                <span className="mt-1 block text-blue-700">La fecha del cheque se registra aparte y no modifica la fecha de la factura.</span>
+              </div>}
+              <label className="text-sm font-semibold">Subtotal<input type="text" inputMode="decimal" value={manualForm.subtotal} onChange={(e) => setManualForm((current) => ({ ...current, subtotal: formatAmountInput(e.target.value) }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" placeholder="0.00" /></label>
+              <label className="text-sm font-semibold">IGV<input type="text" inputMode="decimal" value={manualForm.igv} onChange={(e) => setManualForm((current) => ({ ...current, igv: formatAmountInput(e.target.value) }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" placeholder="0.00" /></label>
+              <label className="text-sm font-semibold">Total<input type="text" inputMode="decimal" value={manualForm.total} onChange={(e) => setManualForm((current) => ({ ...current, total: formatAmountInput(e.target.value) }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" placeholder="0.00" /></label>
+              <label className="text-sm font-semibold">PDF de factura<input type="file" accept="application/pdf,.pdf" onChange={(e) => setManualFile(e.target.files?.[0] || null)} className="mt-1 block w-full rounded-xl border px-3 py-2 text-sm font-normal" /></label>
+              <label className="sm:col-span-2 text-sm font-semibold">Observación<textarea value={manualForm.observacion} onChange={(e) => setManualForm((current) => ({ ...current, observacion: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" rows={3} /></label>
+            </div>}
+            <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setManualOpen(false)} disabled={saving} className="rounded-xl border px-4 py-2.5 font-semibold text-slate-700">Cancelar</button><button type="button" onClick={saveManual} disabled={saving || manualLoading} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 font-semibold text-white disabled:opacity-50">{saving && <Loader2 size={17} className="animate-spin" />}{saving ? "Registrando..." : "Guardar comprobante"}</button></div>
+          </div>
+        </div>
+      )}
+
       {xmlPreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
@@ -283,6 +381,7 @@ export default function Comprobantes() {
               <button onClick={() => setDetail(null)}><XCircle /></button>
             </div>
             <div className="space-y-2">
+              {detail.archivo_url && <a href={detail.archivo_url} target="_blank" rel="noreferrer" className="mb-3 inline-flex rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100">Ver PDF adjunto</a>}
               {(detail.items || []).map((item) => (
                 <div key={item.id} className="rounded-xl border p-3 text-sm">
                   <p className="font-semibold">{item.descripcion}</p>

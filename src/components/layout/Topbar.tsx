@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowRight,
   Bell,
   Briefcase,
@@ -37,6 +39,7 @@ import {
   getNotificationTone,
   getNotificationTitle,
 } from "../../utils/notificationText";
+import { getAlertasOperativas } from "../../services/contabilidad.service";
 
 interface TopbarProps {
   onNotificationClick?: (route: string) => void;
@@ -337,6 +340,7 @@ export default function Topbar({
   const [notificationsError, setNotificationsError] = useState<string | null>(
     null
   );
+  const [operationalAlertCount, setOperationalAlertCount] = useState(0);
   const [openNotificationSections, setOpenNotificationSections] = useState<Set<NotificationSectionKey>>(
     () => new Set(["cotizaciones"])
   );
@@ -349,6 +353,30 @@ export default function Topbar({
   const notificationPreferencesRef = useRef<NotificationPreferences>(defaultNotificationPreferences);
   const { refreshing, refresh } = useRefresh();
   const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadOperationalAlerts = () => {
+      getAlertasOperativas()
+        .then((response) => {
+          if (!cancelled) setOperationalAlertCount((response.data || []).reduce((sum, item) => sum + Math.max(0, Number(item.total || 0)), 0));
+        })
+        .catch(() => {
+          if (!cancelled) setOperationalAlertCount(0);
+        });
+    };
+
+    loadOperationalAlerts();
+    const intervalId = window.setInterval(loadOperationalAlerts, NOTIFICATION_POLL_INTERVAL_MS);
+    const handleRefresh = () => loadOperationalAlerts();
+    window.addEventListener("erp:refreshed", handleRefresh);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("erp:refreshed", handleRefresh);
+    };
+  }, []);
 
   const unreadCount = notifications.filter(
     (notification) => !notification.read_at
@@ -635,6 +663,20 @@ export default function Topbar({
             <RefreshCcw size={20} />
           )}
         </button>
+
+        <Link
+          to="/operaciones/alertas"
+          className="relative rounded-2xl border border-amber-200 bg-amber-50 p-2.5 text-amber-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-100"
+          title="Alertas operativas"
+          aria-label="Alertas operativas"
+        >
+          <AlertTriangle size={20} />
+          {operationalAlertCount > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
+              {operationalAlertCount > 99 ? "99+" : operationalAlertCount}
+            </span>
+          )}
+        </Link>
 
         <div className="relative" ref={dropdownRef}>
           <button

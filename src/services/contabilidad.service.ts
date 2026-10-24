@@ -30,18 +30,22 @@ export interface Comprobante {
   cuenta_por_cobrar_id?: number | null;
   cuenta_por_pagar?: { id: number } | null;
   cuenta_por_cobrar?: { id: number } | null;
+  archivo_path?: string | null;
+  archivo_url?: string | null;
 }
 
 export interface CuentaPorPagar {
   id: number;
-  comprobante_id: number;
-  comprobante?: Comprobante;
+  comprobante_id: number | null;
+  comprobante?: Comprobante | null;
+  compra?: { id: number; numero?: string; proveedor?: any } | null;
   proveedor?: any;
   total: number | string;
   monto_pagado: number | string;
   saldo: number | string;
   estado: string;
   fecha_vencimiento?: string | null;
+  fecha_vencimiento_origen?: "comprobante" | "credito_proveedor" | "contado" | "sin_fecha";
   pagos?: any[];
   moneda?: any;
 }
@@ -76,6 +80,8 @@ export interface Cheque {
   observacion?: string | null;
   banco?: Banco;
   proveedor?: any;
+  aplicaciones?: Array<{ cuenta_por_pagar_id?: number; compra_id?: number; monto_aplicado?: number | string }>;
+  cuentas_por_pagar?: Array<{ id: number; compra?: { numero?: string } | null; comprobante?: { serie?: string; numero?: string } | null }>;
 }
 
 const normalizePagination = <T>(payload: any): Pagination<T> => ({
@@ -108,6 +114,13 @@ export async function getComprobante(id: number | string) {
 
 export async function createComprobante(payload: any) {
   const response = await api.post("/contabilidad/comprobantes", payload);
+  return response.data as Comprobante;
+}
+
+export async function createManualComprobante(payload: FormData) {
+  const response = await api.post("/contabilidad/comprobantes/manual", payload, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
   return response.data as Comprobante;
 }
 
@@ -186,7 +199,7 @@ export async function registrarCobro(cuentaId: number | string, payload: any) {
 export async function getAlertasOperativas() {
   const response = await api.get("/operaciones/alertas");
   return response.data as {
-    data: Array<{ codigo: string; titulo: string; total: number }>;
+    data: Array<{ codigo: string; titulo: string; total: number; action_url?: string; severidad?: "urgent" | "warning" | "info" }>;
     total_alertas: number;
   };
 }

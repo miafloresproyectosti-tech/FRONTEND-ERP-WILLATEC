@@ -15,8 +15,8 @@ const labelize = (value?: string | null) => (value || "-").replace(/_/g, " ").re
 const money = (value: unknown, symbol = "S/") => `${symbol} ${Number(value || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function CuentasPorCobrar() {
-  const { user } = useAuth();
-  const canWrite = ["SUPERADMIN", "ADMIN", "CONTABILIDAD"].includes(user?.role || "");
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("contabilidad.cxc") || hasPermission("contabilidad");
   const [rows, setRows] = useState<CuentaPorCobrar[]>([]);
   const [detail, setDetail] = useState<CuentaPorCobrar | null>(null);
   const [loading, setLoading] = useState(false);
