@@ -122,6 +122,16 @@ export const toggleUserStatus = async (id: number): Promise<User> => {
   return response.data;
 };
 
+export const deactivateUser = async (id: number) => {
+  const response = await api.patch(`/users/${id}/desactivar`);
+  return response.data;
+};
+
+export const activateUser = async (id: number) => {
+  const response = await api.patch(`/users/${id}/activar`);
+  return response.data;
+};
+
 export const getRoles = async (): Promise<RoleCatalogItem[]> => {
   return cachedRequest(
     "catalog:roles",

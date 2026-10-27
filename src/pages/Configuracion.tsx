@@ -19,6 +19,7 @@ import {
   getTwoFactorQrRequest,
   confirmTwoFactorRequest,
   disableTwoFactorRequest,
+  getTwoFactorRecoveryCodesRequest,
   changePasswordRequest,
   getSuperadminSecurityQuestionsRequest,
   updateSuperadminSecurityQuestionsRequest,
@@ -86,6 +87,11 @@ export default function Configuracion() {
   const [enabling2FA, setEnabling2FA] = useState(false);
   const [confirming2FA, setConfirming2FA] = useState(false);
   const [disabling2FA, setDisabling2FA] = useState(false);
+  const [showRecoveryVerification, setShowRecoveryVerification] =
+    useState(false);
+  const [recoveryPassword, setRecoveryPassword] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [loadingRecoveryCodes, setLoadingRecoveryCodes] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
@@ -673,6 +679,38 @@ ${recoveryCodes.join("\n")}
     URL.revokeObjectURL(url);
   };
 
+  const revealRecoveryCodes = async () => {
+    if (!recoveryPassword || recoveryCode.length !== 6) return;
+
+    try {
+      setLoadingRecoveryCodes(true);
+      const data = await getTwoFactorRecoveryCodesRequest(
+        recoveryPassword,
+        recoveryCode,
+      );
+      setRecoveryCodes(data.recovery_codes || []);
+      setRecoveryPassword("");
+      setRecoveryCode("");
+      setShowRecoveryVerification(false);
+      showToast({
+        title: "Códigos verificados",
+        description: "Se muestran únicamente los códigos de recuperación que aún están disponibles.",
+        type: "success",
+      });
+    } catch (error: unknown) {
+      const message = (
+        error as { response?: { data?: { message?: string } } }
+      )?.response?.data?.message;
+      showToast({
+        title: "No se pudieron mostrar los códigos",
+        description: message || "Verifica tu contraseña y el código de la aplicación.",
+        type: "error",
+      });
+    } finally {
+      setLoadingRecoveryCodes(false);
+    }
+  };
+
   const renderTabContent = () => {
     switch (activeTab) {
       case "empresa":
@@ -1115,6 +1153,13 @@ ${recoveryCodes.join("\n")}
                   >
                     {disabling2FA ? "Desactivando..." : "Desactivar"}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowRecoveryVerification((current) => !current)}
+                    className="border border-slate-300 bg-white px-4 py-2 rounded-xl text-slate-700 hover:bg-slate-50"
+                  >
+                    Ver códigos guardados
+                  </button>
                 </div>
               ) : (
                 <button
@@ -1124,6 +1169,55 @@ ${recoveryCodes.join("\n")}
                 >
                   {enabling2FA ? "Activando..." : "Activar 2FA"}
                 </button>
+              )}
+
+              {twoFactorEnabled && showRecoveryVerification && (
+                <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <h3 className="font-semibold text-blue-900">
+                    Verificar identidad
+                  </h3>
+                  <p className="mt-1 text-sm text-blue-800">
+                    Ingresa tu contraseña y el código actual de tu aplicación autenticadora.
+                    Esto no genera códigos nuevos ni recupera los que ya fueron usados.
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <input
+                      type="password"
+                      value={recoveryPassword}
+                      onChange={(event) => setRecoveryPassword(event.target.value)}
+                      placeholder="Contraseña actual"
+                      autoComplete="current-password"
+                      className="rounded-xl border border-blue-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={recoveryCode}
+                      onChange={(event) =>
+                        setRecoveryCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                      }
+                      placeholder="Código 2FA de 6 dígitos"
+                      className="rounded-xl border border-blue-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="mt-3 flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowRecoveryVerification(false)}
+                      className="rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-800"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={revealRecoveryCodes}
+                      disabled={loadingRecoveryCodes || !recoveryPassword || recoveryCode.length !== 6}
+                      className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {loadingRecoveryCodes ? "Verificando..." : "Mostrar códigos"}
+                    </button>
+                  </div>
+                </div>
               )}
 
               {!twoFactorEnabled && qr && (

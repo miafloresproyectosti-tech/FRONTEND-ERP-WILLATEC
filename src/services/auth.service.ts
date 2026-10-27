@@ -178,3 +178,14 @@ export const disableTwoFactorRequest = async (password: string) => {
   });
   return response.data;
 };
+
+export const getTwoFactorRecoveryCodesRequest = async (
+  password: string,
+  code: string,
+) => {
+  const response = await api.post("/two-factor/recovery-codes", {
+    password,
+    code,
+  });
+  return response.data as { recovery_codes: string[] };
+};

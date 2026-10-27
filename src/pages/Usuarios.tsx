@@ -13,6 +13,7 @@ import {
   Key,
   ShieldCheck,
   Users as UsersIcon,
+  Power,
 } from "lucide-react";
 import { useAuth } from "../AuthContext";
 import {
@@ -21,6 +22,8 @@ import {
   createUser,
   updateUser,
   deleteUser,
+  deactivateUser,
+  activateUser,
   resetPassword,
   getRolesPermissionsConfig,
   updateRolePermissions,
@@ -295,6 +298,43 @@ export default function Usuarios() {
   const handleEliminar = (usuario: User) => {
     if (user?.role !== "SUPERADMIN") return;
     setUsuarioAEliminar(usuario);
+  };
+
+  const handleCambiarEstado = async (usuario: User) => {
+    if (user?.role !== "SUPERADMIN") return;
+
+    const activar = usuario.status === "inactivo";
+    const confirmed = window.confirm(
+      activar
+        ? `¿Activar nuevamente a ${usuario.name}?`
+        : `¿Desactivar a ${usuario.name}? Ya no podrá iniciar sesión.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      setSaving(true);
+      if (activar) {
+        await activateUser(usuario.id);
+      } else {
+        await deactivateUser(usuario.id);
+      }
+      await loadUsers();
+      showToast({
+        title: activar ? "Usuario activado" : "Usuario desactivado",
+        description: activar
+          ? "El usuario podrá volver a ingresar al sistema."
+          : "El usuario quedó inactivo y no podrá iniciar sesión.",
+        type: "success",
+      });
+    } catch (error) {
+      showToast({
+        title: "No se pudo cambiar el estado",
+        description: "Verifica tus permisos e inténtalo nuevamente.",
+        type: "error",
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmarEliminar = async () => {
@@ -911,7 +951,7 @@ export default function Usuarios() {
                   </div>
 
                   {canAddUser && (
-                    <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
+                    <div className="mt-4 grid grid-cols-4 gap-2 border-t border-gray-100 pt-3">
                       <button
                         onClick={() => handleEditar(u)}
                         className="inline-flex h-11 items-center justify-center gap-1 rounded-xl bg-blue-100 text-sm font-semibold text-blue-700 hover:bg-blue-200"
@@ -919,6 +959,20 @@ export default function Usuarios() {
                       >
                         <Pencil size={16} />
                         <span className="hidden sm:inline">Editar</span>
+                      </button>
+                      <button
+                        onClick={() => void handleCambiarEstado(u)}
+                        className={`inline-flex h-11 items-center justify-center gap-1 rounded-xl text-sm font-semibold ${
+                          u.status === "activo"
+                            ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                            : "bg-green-100 text-green-700 hover:bg-green-200"
+                        }`}
+                        title={u.status === "activo" ? "Desactivar usuario" : "Activar usuario"}
+                      >
+                        <Power size={16} />
+                        <span className="hidden sm:inline">
+                          {u.status === "activo" ? "Desactivar" : "Activar"}
+                        </span>
                       </button>
                       <button
                         onClick={() => handleEliminar(u)}
@@ -1043,6 +1097,18 @@ export default function Usuarios() {
                               title="Editar"
                             >
                               <Pencil size={18} />
+                            </button>
+
+                            <button
+                              onClick={() => void handleCambiarEstado(u)}
+                              className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-sm ${
+                                u.status === "activo"
+                                  ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                                  : "bg-green-100 text-green-700 hover:bg-green-200"
+                              }`}
+                              title={u.status === "activo" ? "Desactivar usuario" : "Activar usuario"}
+                            >
+                              <Power size={18} />
                             </button>
 
                             <button
