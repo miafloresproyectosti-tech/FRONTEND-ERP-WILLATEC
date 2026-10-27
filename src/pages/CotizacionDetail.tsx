@@ -2626,7 +2626,7 @@ export function CotizacionDetail() {
     if (!user?.role) return false;
     if (isModificationMode) return false;
 
-    return currentEstadoCotizacionId === 4;
+    return [4, 6].includes(currentEstadoCotizacionId);
   };
 
   const handleAddCosto = async () => {
