@@ -2159,6 +2159,11 @@ export function CotizacionDetail() {
       costos_adicionales: costos,
     };
 
+    // Toda cotización nueva debe conservar el vínculo con su oportunidad.
+    if (!isEditing && !isModificationMode && hasOpportunityContext) {
+      payload.oportunidad_id = Number(opportunityContext.id);
+    }
+
     // Incluir delegado_id solo si el usuario es SUPERADMIN
     if (user?.role === 'SUPERADMIN' && delegadoId) {
       payload.delegado_id = delegadoId;
@@ -2198,6 +2203,16 @@ export function CotizacionDetail() {
   const handleSaveCotizacion = async () => {
     if (isCotizacionReadOnly) return;
     if (saving) return;
+
+    if (!isEditing && !isModificationMode && !hasOpportunityContext) {
+      showToast({
+        title: 'Oportunidad obligatoria',
+        description: 'Selecciona o registra una oportunidad antes de crear la cotización.',
+        type: 'warning',
+        duration: 5000,
+      } as any);
+      return;
+    }
 
     if (!clienteId || !plantillaId) {
       showToast({

@@ -45,6 +45,7 @@ import {
 interface Props {
   open: boolean;
   opportunity?: Oportunidad | null;
+  initialTipo?: OportunidadTipo;
   userName: string;
   onClose: () => void;
   onSubmit: (data: OportunidadFormData) => void | Promise<void>;
@@ -108,6 +109,7 @@ const tipoCardConfig: Record<
 export function OportunidadFormModal({
   open,
   opportunity,
+  initialTipo,
   userName,
   onClose,
   onSubmit,
@@ -125,7 +127,7 @@ export function OportunidadFormModal({
     if (!open) return;
 
     if (!opportunity) {
-      setForm(emptyForm());
+      setForm({ ...emptyForm(), tipo: initialTipo || "licitacion" });
       setErrors({});
       setShowTdrPreview(false);
       setSubmitting(false);
@@ -157,14 +159,14 @@ export function OportunidadFormModal({
     setShowTdrPreview(false);
     setSubmitting(false);
     setValidationSummary("");
-  }, [open, opportunity]);
+  }, [initialTipo, open, opportunity]);
 
   const selectedTipo = form.tipo;
   const showMainAttachment = true;
   const attachmentLabels =
     selectedTipo === "privado"
       ? {
-          field: "Guia / solicitud del cliente",
+          field: "Guia / solicitud del cliente (opcional)",
           loaded:
             "Documento cargado. Puedes previsualizarlo, descargarlo, reemplazarlo o pegar otra captura.",
           upload: "Subir, arrastrar o pegar guia/documento",
@@ -267,7 +269,7 @@ export function OportunidadFormModal({
       ...form,
     };
     const validation = validateOportunidad(normalized, {
-      requireTdr: !opportunity,
+      requireTdr: !opportunity && normalized.tipo === "licitacion",
     });
     setErrors(validation);
     const validationMessages = Object.values(validation).filter(Boolean);

@@ -61,6 +61,7 @@ import type {
   OportunidadFilters,
   OportunidadFormData,
   OportunidadFiltroEstado,
+  OportunidadTipo,
   OportunidadSortKey,
   SortDirection,
 } from "../types/licitaciones";
@@ -236,6 +237,7 @@ export default function SeguimientoLicitaciones() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [modalOpen, setModalOpen] = useState(false);
+  const [newOpportunityType, setNewOpportunityType] = useState<OportunidadTipo>("privado");
   const [editing, setEditing] = useState<Oportunidad | null>(null);
   const [editingLoadingId, setEditingLoadingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -578,6 +580,20 @@ export default function SeguimientoLicitaciones() {
       cancelled = true;
     };
   }, [selectedId]);
+
+  useEffect(() => {
+    const action = searchParams.get("accion");
+    if (action !== "nueva" || !canCreateOpportunity) return;
+
+    const tipo = searchParams.get("tipo") === "wherex" ? "wherex" : "privado";
+    setNewOpportunityType(tipo);
+    setEditing(null);
+    setModalOpen(true);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("accion");
+    nextParams.delete("tipo");
+    setSearchParams(nextParams, { replace: true });
+  }, [canCreateOpportunity, searchParams, setSearchParams]);
 
   useEffect(() => {
     const oportunidadId = searchParams.get("oportunidad_id");
@@ -2038,6 +2054,7 @@ export default function SeguimientoLicitaciones() {
       <OportunidadFormModal
         open={modalOpen}
         opportunity={editing}
+        initialTipo={newOpportunityType}
         userName={userName}
         onClose={() => { setModalOpen(false); setEditing(null); }}
         onSubmit={handleSave}

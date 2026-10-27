@@ -20,6 +20,8 @@ import {
   Users,
   LayoutGrid,
   List,
+  Briefcase,
+  Globe2,
 } from "lucide-react";
 
 import { useAuth } from "../AuthContext";
@@ -34,6 +36,8 @@ import {
 } from "../services/cotizacion.service";
 import type { User as ApiUser } from "../services/usuario.service";
 import type { CotizacionEjecutivo } from "../services/cotizacion.service";
+import { getOportunidades, saveOportunidad } from "../services/licitaciones.service";
+import type { Oportunidad } from "../types/licitaciones";
 import { formatMoney } from "../utils/formatNumber";
 import { getPaginationItems } from "../utils/pagination";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
@@ -268,6 +272,11 @@ export default function Cotizaciones() {
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
   const [deletingCotizacionId, setDeletingCotizacionId] = useState<number | null>(null);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [opportunityModalOpen, setOpportunityModalOpen] = useState(false);
+  const [opportunitySearch, setOpportunitySearch] = useState("");
+  const [opportunityOptions, setOpportunityOptions] = useState<Oportunidad[]>([]);
+  const [loadingOpportunities, setLoadingOpportunities] = useState(false);
+  const [assigningOpportunityId, setAssigningOpportunityId] = useState<string | null>(null);
   const paginationItems = getPaginationItems(currentPage, totalPages);
 
   useEffect(() => {
@@ -343,6 +352,114 @@ export default function Cotizaciones() {
   const userRole = user?.role?.toUpperCase();
   const canReviewCotizaciones = userRole === "SUPERADMIN" || userRole === "ADMIN";
   const canCreateCotizacion = userRole === "SUPERADMIN" || userRole === "VENTAS";
+
+  const openNewCotizacionFlow = async () => {
+    setOpportunityModalOpen(true);
+    setOpportunitySearch("");
+    try {
+      setLoadingOpportunities(true);
+      setOpportunityOptions(await getOportunidades());
+    } catch {
+      setOpportunityOptions([]);
+      addNotificationRef.current({
+        title: "No se pudieron cargar las oportunidades",
+        description: "Puedes registrarla directamente desde este selector.",
+        type: "warning",
+        icon: "Package",
+        route: "/cotizaciones",
+      });
+    } finally {
+      setLoadingOpportunities(false);
+    }
+  };
+
+  const startCotizacionFromOpportunity = async (opportunity: Oportunidad) => {
+    let selectedOpportunity = opportunity;
+    const assignedUserId = Number(opportunity.asignadoA ?? opportunity.ejecutivo?.id ?? 0);
+
+    if (opportunity.estado === "sin_atender" && assignedUserId === 0) {
+      if (!user?.id) return;
+
+      const now = new Date().toISOString();
+      setAssigningOpportunityId(opportunity.id);
+
+      try {
+        selectedOpportunity = await saveOportunidad({
+          ...opportunity,
+          ejecutivo: {
+            id: user.id,
+            nombre: user.name,
+            email: user.email,
+          },
+          asignadoA: user.id,
+          asignadoEn: now,
+          asignadoPor: user.name,
+          esNueva: false,
+          estado: "en_atencion",
+          modificadoEn: now,
+          modificadoPor: user.name,
+          historial: [
+            {
+              id: `hist-${Date.now()}`,
+              fecha: now,
+              usuario: user.name,
+              tipo: "responsable",
+              descripcion: `Oportunidad asignada a ${user.name}.`,
+            },
+            ...opportunity.historial,
+          ],
+        });
+      } catch {
+        addNotificationRef.current({
+          title: "No se pudo asignar la oportunidad",
+          description: "La cotización no se abrió para evitar un vínculo con otro usuario.",
+          type: "warning",
+          icon: "UserCheck",
+          route: "/cotizaciones",
+        });
+        return;
+      } finally {
+        setAssigningOpportunityId(null);
+      }
+    }
+
+    const params = new URLSearchParams({
+      oportunidad_id: selectedOpportunity.id,
+      oportunidad_tipo: selectedOpportunity.tipo,
+      oportunidad_empresa: selectedOpportunity.empresa,
+      oportunidad_requerimiento: selectedOpportunity.requerimiento,
+      oportunidad_vigencia: selectedOpportunity.vigencia,
+      oportunidad_categoria: selectedOpportunity.categoria || "",
+      oportunidad_forma_pago: selectedOpportunity.formaPago || "",
+      oportunidad_destino_entrega: selectedOpportunity.destinoEntrega || "",
+      oportunidad_observacion: selectedOpportunity.observacion || "",
+      oportunidad_comentarios: selectedOpportunity.comentariosGenerales || "",
+      oportunidad_wherex_id: selectedOpportunity.wherexId || "",
+      oportunidad_wherex_url: selectedOpportunity.wherexUrl || "",
+    });
+    setOpportunityModalOpen(false);
+    navigate(`/cotizaciones/new?${params.toString()}`);
+  };
+
+  const filteredOpportunityOptions = opportunityOptions.filter((opportunity) => {
+    const assignedUserId = Number(opportunity.asignadoA ?? opportunity.ejecutivo?.id ?? 0);
+    const currentUserId = Number(user?.id || 0);
+    const isSelectableState = ["sin_atender", "en_atencion"].includes(opportunity.estado)
+      || (opportunity.tipo === "privado" && opportunity.estado === "cotizacion_generada");
+    const isAvailableOpportunity = opportunity.estado === "sin_atender" && assignedUserId === 0;
+    const isAssignedToCurrentUser = currentUserId > 0 && assignedUserId === currentUserId;
+
+    // Solo se puede iniciar una cotización desde una oportunidad abierta y vigente.
+    if (!isSelectableState || (!isAvailableOpportunity && !isAssignedToCurrentUser)) {
+      return false;
+    }
+
+    const query = opportunitySearch.trim().toLowerCase();
+    if (!query) return true;
+    return [opportunity.empresa, opportunity.requerimiento, opportunity.tipo, opportunity.cotizacionNumero]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
   const canCreateOcForAnyCotizacion = ["SUPERADMIN", "ADMIN", "CONTABILIDAD"].includes(userRole || "");
 
   // ✅ BADGES
@@ -635,7 +752,7 @@ export default function Cotizaciones() {
       {/* BOTÓN */}
       {canCreateCotizacion && (
         <button
-          onClick={() => navigate("/cotizaciones/new")}
+          onClick={() => void openNewCotizacionFlow()}
           className="flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
         >
           <Plus size={20} />
@@ -1372,6 +1489,116 @@ export default function Cotizaciones() {
                 <p className="mt-1 text-sm text-blue-700">
                   Crear una orden para proveedor.
                 </p>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {opportunityModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+            <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-blue-700">
+                    <Briefcase size={19} />
+                    <span className="text-xs font-bold uppercase tracking-wide">Paso obligatorio</span>
+                  </div>
+                  <h2 className="mt-1 text-xl font-bold text-slate-900 dark:text-white">
+                    Selecciona una oportunidad
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Toda cotización debe quedar enlazada a una oportunidad para mantener la trazabilidad.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOpportunityModalOpen(false)}
+                  className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                  title="Cerrar"
+                >
+                  <X size={19} />
+                </button>
+              </div>
+
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <input
+                  value={opportunitySearch}
+                  onChange={(event) => setOpportunitySearch(event.target.value)}
+                  placeholder="Buscar empresa, requerimiento o tipo..."
+                  className="h-11 min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                />
+                <button
+                  type="button"
+                  onClick={() => navigate("/seguimiento-licitaciones?accion=nueva&tipo=privado")}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
+                >
+                  <Plus size={16} /> Registrar privada
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/seguimiento-licitaciones?accion=nueva&tipo=wherex")}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-4 text-sm font-semibold text-orange-700 hover:bg-orange-100"
+                >
+                  <Globe2 size={16} /> Registrar Wherex
+                </button>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              {loadingOpportunities ? (
+                <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 p-10 text-sm text-slate-500 dark:border-slate-800">
+                  <Loader2 size={18} className="animate-spin text-blue-600" /> Cargando oportunidades...
+                </div>
+              ) : filteredOpportunityOptions.length > 0 ? (
+                <div className="space-y-2">
+                  {filteredOpportunityOptions.map((opportunity) => (
+                    <button
+                      key={opportunity.id}
+                      type="button"
+                      onClick={() => void startCotizacionFromOpportunity(opportunity)}
+                      disabled={Boolean(assigningOpportunityId)}
+                      className="w-full rounded-2xl border border-slate-200 p-4 text-left transition hover:border-blue-400 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60 dark:border-slate-800 dark:hover:bg-slate-900"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className={`rounded-xl p-2 ${opportunity.tipo === "wherex" ? "bg-orange-100 text-orange-700" : "bg-emerald-100 text-emerald-700"}`}>
+                          {opportunity.tipo === "wherex" ? <Globe2 size={18} /> : <Briefcase size={18} />}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center gap-2 font-semibold text-slate-900 dark:text-white">
+                            {assigningOpportunityId === opportunity.id && <Loader2 size={15} className="animate-spin text-blue-600" />}
+                            <span className="truncate">{opportunity.empresa || "Sin empresa"}</span>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                              {opportunity.tipo === "wherex" ? "Wherex" : opportunity.tipo === "licitacion" ? "Licitación" : "Privada"}
+                            </span>
+                          </span>
+                          <span className="mt-1 block line-clamp-2 text-sm text-slate-600 dark:text-slate-300">
+                            {opportunity.requerimiento || "Sin requerimiento"}
+                          </span>
+                          <span className="mt-2 block text-xs text-slate-400">
+                            Estado: {opportunity.estado.replaceAll("_", " ")}
+                          </span>
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700">
+                  <p className="font-semibold text-slate-700 dark:text-slate-200">No hay oportunidades disponibles</p>
+                  <p className="mt-1 text-sm text-slate-500">Solo se muestran oportunidades abiertas disponibles para tu usuario. Las privadas con cotización generada también permiten agregar otra.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end border-t border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+              <button
+                type="button"
+                onClick={() => setOpportunityModalOpen(false)}
+                className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+              >
+                Cancelar
               </button>
             </div>
           </div>
