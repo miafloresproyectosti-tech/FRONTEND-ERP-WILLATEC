@@ -17,6 +17,11 @@ export interface OcPagination<T> {
   total?: number;
   from?: number;
   to?: number;
+  summary?: {
+    total?: number;
+    documentos_pendientes?: number;
+    atendidas?: number;
+  };
 }
 
 export interface OcPreviewItem {
@@ -252,6 +257,7 @@ export interface OcListParams {
   search?: string;
   estado?: string;
   proveedor?: string;
+  userId?: number | string;
   perPage?: number;
 }
 
@@ -271,6 +277,7 @@ const normalizeList = <T>(payload: any): OcPagination<T> => {
     total: source?.total ?? rows.length,
     from: source?.from ?? (rows.length ? 1 : 0),
     to: source?.to ?? rows.length,
+    summary: source?.summary,
   };
 };
 
@@ -441,6 +448,7 @@ export async function getOcRecibidas(params: OcListParams = {}) {
       page: params.page,
       search: params.search || undefined,
       estado: params.estado && params.estado !== "todos" ? params.estado : undefined,
+      user_id: params.userId || undefined,
       per_page: params.perPage,
     },
   });
@@ -558,6 +566,7 @@ export async function getOcEmitidas(params: OcListParams = {}) {
       page: params.page,
       search: params.search || undefined,
       proveedor: params.proveedor || undefined,
+      user_id: params.userId || undefined,
       estado: params.estado && params.estado !== "todos" ? params.estado : undefined,
       per_page: params.perPage,
     },

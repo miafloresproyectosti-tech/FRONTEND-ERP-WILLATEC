@@ -14,6 +14,7 @@ import {
   PackageSearch,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   Upload,
   X,
@@ -24,6 +25,7 @@ import {
   actualizarMovimientoDocumento,
   registrarEntradaKardex,
   registrarSalidaKardex,
+  revertirInventarioMovimiento,
   type InventarioMovimiento,
   type InventarioMovimientoFilters,
   type InventarioMovimientoPagination,
@@ -40,6 +42,7 @@ const tipoOptions = [
   { value: "reserva", label: "Reserva" },
   { value: "liberacion_reserva", label: "Liberacion de reserva" },
   { value: "devolucion", label: "Devolucion" },
+  { value: "reverso", label: "Reverso de salida" },
   { value: "ajuste_manual", label: "Ajuste manual" },
   { value: "sincronizacion_woocommerce", label: "WooCommerce" },
 ];
@@ -221,7 +224,7 @@ const getTipoLabel = (tipo: string) =>
   tipoOptions.find((option) => option.value === tipo)?.label || tipo;
 
 const getTipoBadge = (tipo: string) => {
-  if (["entrada", "devolucion", "sincronizacion_woocommerce"].includes(tipo)) {
+  if (["entrada", "devolucion", "reverso", "sincronizacion_woocommerce"].includes(tipo)) {
     return "bg-emerald-50 text-emerald-700 border-emerald-200";
   }
 
@@ -315,7 +318,9 @@ export default function InventarioMovimientos() {
   const [savingEntrada, setSavingEntrada] = useState(false);
   const [savingSalida, setSavingSalida] = useState(false);
   const [savingDocumentoMovimiento, setSavingDocumentoMovimiento] = useState(false);
+  const [savingReversion, setSavingReversion] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [entradaModalOpen, setEntradaModalOpen] = useState(false);
   const [salidaModalOpen, setSalidaModalOpen] = useState(false);
   const [entradaProductoSearch, setEntradaProductoSearch] = useState("");
@@ -344,6 +349,10 @@ export default function InventarioMovimientos() {
   });
   const [factura, setFactura] = useState<File | null>(null);
   const [documentoMovimientoModal, setDocumentoMovimientoModal] = useState<InventarioMovimiento | null>(null);
+  const [reversionModal, setReversionModal] = useState<InventarioMovimiento | null>(null);
+  const [reversionMotivo, setReversionMotivo] = useState("");
+  const [reversionMensaje, setReversionMensaje] = useState<string | null>(null);
+  const [reversionError, setReversionError] = useState<string | null>(null);
   const [facturaPosterior, setFacturaPosterior] = useState<File | null>(null);
   const [documentoMovimientoForm, setDocumentoMovimientoForm] = useState({
     documento_numero: "",
@@ -998,6 +1007,53 @@ export default function InventarioMovimientos() {
     }
   };
 
+  const canRevertirMovimiento = (movimiento: InventarioMovimiento) =>
+    movimiento.tipo_movimiento === "salida" && movimiento.origen === "salida_manual";
+
+  const openReversionModal = (movimiento: InventarioMovimiento) => {
+    setReversionModal(movimiento);
+    setReversionMotivo("");
+    setReversionMensaje(null);
+    setReversionError(null);
+    setError(null);
+    setNotice(null);
+  };
+
+  const handleRevertirMovimiento = async () => {
+    if (!reversionModal) return;
+
+    const motivo = reversionMotivo.trim();
+    if (motivo.length < 5) {
+      setReversionError("Indica un motivo de al menos 5 caracteres para revertir la salida.");
+      return;
+    }
+
+    try {
+      setSavingReversion(true);
+      setReversionError(null);
+      const response = await revertirInventarioMovimiento(reversionModal.id, motivo);
+      setReversionMotivo("");
+      await Promise.all([loadMovimientos(), getProductosInventario().then(setProductos)]);
+      setReversionMensaje(`${response.message} La salida original queda auditada y el stock vuelve a estar disponible para las reservas vigentes.`);
+    } catch (requestError) {
+      console.error("Error al revertir salida de Kardex:", requestError);
+      const responseData = (requestError as {
+        response?: {
+          data?: {
+            message?: string;
+            errors?: Record<string, string[]>;
+          };
+        };
+      })?.response?.data;
+      const validationMessage = responseData?.errors
+        ? Object.values(responseData.errors).flat()[0]
+        : null;
+      setReversionError(validationMessage || responseData?.message || "No se pudo revertir la salida. Verifica el permiso y que no haya sido revertida antes.");
+    } finally {
+      setSavingReversion(false);
+    }
+  };
+
   const canActualizarDocumentoMovimiento = (movimiento: InventarioMovimiento) =>
     ["entrada", "devolucion"].includes(movimiento.tipo_movimiento);
 
@@ -1239,6 +1295,12 @@ export default function InventarioMovimientos() {
           {error}
         </div>
       )}
+      {notice && (
+        <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{notice}</span>
+        </div>
+      )}
 
       {proveedoresModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -1418,13 +1480,24 @@ export default function InventarioMovimientos() {
                       Factura
                     </button>
                   )}
+                  {canRevertirMovimiento(movimiento) && (
+                    <button
+                      type="button"
+                      onClick={() => openReversionModal(movimiento)}
+                      className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 text-sm font-semibold text-amber-800 hover:bg-amber-100"
+                      title="Revertir salida y restaurar stock"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      Revertir salida
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        <div className="hidden overflow-x-auto lg:block">
+        <div className="hidden max-h-[calc(100vh-18rem)] min-h-[320px] overflow-auto lg:block">
           <table className="w-full min-w-[1720px] table-fixed divide-y divide-gray-200 text-sm">
             <colgroup>
               <col className="w-[130px]" />
@@ -1439,7 +1512,7 @@ export default function InventarioMovimientos() {
               <col className="w-[260px]" />
               <col className="w-[96px]" />
             </colgroup>
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+            <thead className="sticky top-0 z-30 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-3 py-3">Fecha</th>
                 <th className="px-3 py-3">Producto</th>
@@ -1451,7 +1524,7 @@ export default function InventarioMovimientos() {
                 <th className="px-3 py-3">Garantia</th>
                 <th className="px-3 py-3">Usuario</th>
                 <th className="px-3 py-3">Observacion</th>
-                <th className="px-3 py-3 text-center">Acciones</th>
+                <th className="sticky right-0 z-40 border-l border-gray-200 bg-gray-50 px-3 py-3 text-center shadow-[-6px_0_10px_-8px_rgba(15,23,42,0.35)]">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -1470,7 +1543,7 @@ export default function InventarioMovimientos() {
                 </tr>
               ) : (
                 movimientos.map((movimiento) => (
-                  <tr key={movimiento.id} className="align-top hover:bg-gray-50">
+                  <tr key={movimiento.id} className="group align-top hover:bg-gray-50">
                     <td className="whitespace-nowrap px-3 py-3 text-xs text-gray-700">
                       {formatDate(movimiento.created_at)}
                     </td>
@@ -1579,7 +1652,7 @@ export default function InventarioMovimientos() {
                         {[movimiento.origen, movimiento.referencia_tipo, movimiento.referencia_id].filter(Boolean).join(" / ")}
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-center">
+                    <td className="sticky right-0 z-20 border-l border-gray-200 bg-white px-3 py-3 text-center shadow-[-6px_0_10px_-8px_rgba(15,23,42,0.35)] group-hover:bg-gray-50">
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           type="button"
@@ -1597,6 +1670,16 @@ export default function InventarioMovimientos() {
                             title="Adjuntar o actualizar factura"
                           >
                             <Upload className="h-4 w-4" />
+                          </button>
+                        )}
+                        {canRevertirMovimiento(movimiento) && (
+                          <button
+                            type="button"
+                            onClick={() => openReversionModal(movimiento)}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-800 shadow-sm transition hover:bg-amber-100 hover:scale-105"
+                            title="Revertir salida y restaurar stock"
+                          >
+                            <RotateCcw className="h-4 w-4" />
                           </button>
                         )}
                       </div>
@@ -2312,6 +2395,109 @@ export default function InventarioMovimientos() {
                 <p className="text-xs font-semibold uppercase text-gray-400">Proveedor / Observacion</p>
                 <p className="mt-1 text-sm text-gray-700">{[getProveedorLabel(selectedMovimiento), selectedMovimiento.observacion].filter(Boolean).join(" - ") || "-"}</p>
               </div>
+
+              {canRevertirMovimiento(selectedMovimiento) && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-sm font-semibold text-amber-900">¿La salida se registró por error?</p>
+                  <p className="mt-1 text-xs text-amber-800">Puedes revertirla con un motivo obligatorio. Se restaurará el stock y las series quedarán disponibles nuevamente.</p>
+                  <button
+                    type="button"
+                    onClick={() => openReversionModal(selectedMovimiento)}
+                    className="mt-3 inline-flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Revertir esta salida
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reversionModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 sm:p-4">
+          <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex shrink-0 items-start justify-between border-b border-gray-200 px-4 py-4 sm:px-5">
+              <div className="min-w-0 pr-3">
+                <h2 className="text-lg font-bold text-gray-900">Revertir salida de Kardex</h2>
+                <p className="mt-1 truncate text-xs text-gray-500">{getProductLabel(reversionModal)} · Movimiento #{reversionModal.id}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !savingReversion && setReversionModal(null)}
+                disabled={savingReversion}
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                aria-label="Cerrar"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
+              {reversionError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm font-semibold text-red-700">
+                  {reversionError}
+                </div>
+              )}
+              {reversionMensaje && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-800">
+                  {reversionMensaje}
+                </div>
+              )}
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                {reversionMensaje
+                  ? "La operación terminó correctamente. Puedes cerrar este modal; el Kardex ya fue actualizado."
+                  : `Esta acción creará un movimiento inverso, devolverá ${formatNumber(reversionModal.cantidad)} unidad(es) al stock y restaurará las series asociadas. La salida original no se elimina.`}
+              </div>
+              <div className="grid grid-cols-2 gap-3 rounded-xl bg-gray-50 p-3 text-xs sm:grid-cols-3">
+                <div><p className="text-gray-500">Stock antes</p><p className="mt-1 font-bold text-gray-800">{formatNumber(reversionModal.stock_antes)}</p></div>
+                <div><p className="text-gray-500">Cantidad salida</p><p className="mt-1 font-bold text-red-700">{formatNumber(reversionModal.cantidad)}</p></div>
+                <div><p className="text-gray-500">Series</p><p className="mt-1 font-bold text-gray-800">{getMovimientoSeries(reversionModal).length || "Sin series"}</p></div>
+              </div>
+              {getMovimientoSeries(reversionModal).length > 0 && (
+                <div className="rounded-xl border border-gray-100 p-3">
+                  <p className="text-xs font-semibold uppercase text-gray-400">Series que se restaurarán</p>
+                  <div className="mt-2 flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">
+                    {getMovimientoSeries(reversionModal).map((serie) => (
+                      <span key={serie.id ?? serie.serie} className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">{serie.serie || `Serie #${serie.id}`}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <label className="block text-sm font-semibold text-gray-700">
+                Motivo de la reversión <span className="text-red-600">*</span>
+                <textarea
+                  value={reversionMotivo}
+                  onChange={(event) => setReversionMotivo(event.target.value)}
+                  disabled={savingReversion || Boolean(reversionMensaje)}
+                  rows={4}
+                  maxLength={500}
+                  placeholder="Ej. Se registró como salida manual, pero correspondía a una venta."
+                  className="mt-1 w-full resize-y rounded-xl border border-gray-200 px-3 py-2 text-sm font-normal text-gray-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 disabled:bg-gray-50"
+                />
+                <span className="mt-1 block text-right text-xs font-normal text-gray-400">{reversionMotivo.length}/500</span>
+              </label>
+            </div>
+
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-gray-200 px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
+              <button
+                type="button"
+                onClick={() => setReversionModal(null)}
+                disabled={savingReversion}
+                className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 sm:w-auto"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleRevertirMovimiento}
+                disabled={savingReversion || Boolean(reversionMensaje) || reversionMotivo.trim().length < 5}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+              >
+                {savingReversion ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                {savingReversion ? "Revirtiendo..." : "Confirmar reversión"}
+              </button>
             </div>
           </div>
         </div>

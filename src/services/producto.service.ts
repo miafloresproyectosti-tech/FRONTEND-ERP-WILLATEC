@@ -77,6 +77,15 @@ export interface ProductoSerie {
     fecha_salida?: string | null;
     oc_recibida_id?: number | string | null;
     cotizacion_item_id?: number | string | null;
+    oc_recibida?: {
+        id?: number;
+        numero?: string | null;
+    } | null;
+    cotizacion_item?: {
+        id?: number;
+        descripcion?: string | null;
+        codigo?: string | null;
+    } | null;
 }
 
 export interface CotizacionItem {

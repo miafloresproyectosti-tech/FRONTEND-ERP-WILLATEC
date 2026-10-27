@@ -300,3 +300,14 @@ export async function actualizarMovimientoDocumento(
 
   return response.data;
 }
+
+export async function revertirInventarioMovimiento(
+  movimientoId: number,
+  motivo: string,
+): Promise<{ message: string; movimiento: InventarioMovimiento }> {
+  const response = await api.post(`/inventario/movimientos/${movimientoId}/revertir`, {
+    motivo,
+  });
+
+  return response.data;
+}

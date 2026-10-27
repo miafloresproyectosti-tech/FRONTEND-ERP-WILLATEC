@@ -2253,6 +2253,15 @@ export default function Productos() {
                       canManageInternalProducts ? (
                         <div className="grid grid-cols-2 gap-2">
                           <button
+                            type="button"
+                            onClick={() => setProductoDetalleModal(item)}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                            title="Ver detalle del producto"
+                          >
+                            <Eye size={16} />
+                            Ver detalle
+                          </button>
+                          <button
                             onClick={() => handleEditar(item)}
                             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-100 text-sm font-semibold text-blue-700 hover:bg-blue-200"
                             title="Editar producto"
@@ -2576,6 +2585,14 @@ export default function Productos() {
                           <td className="bg-white px-3 py-5">
                             {canManageInternalProducts ? (
                               <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setProductoDetalleModal(item)}
+                                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 shadow-sm transition hover:bg-slate-200 hover:scale-105"
+                                  title="Ver detalle del producto"
+                                >
+                                  <Eye size={18} />
+                                </button>
                                 {canManageWooCommerce &&
                                   (() => {
                                     const wooMapping =
@@ -3290,17 +3307,40 @@ export default function Productos() {
                             <div>{serie.fecha_salida || "-"}</div>
                             {serie.oc_recibida_id ||
                             serie.cotizacion_item_id ? (
-                              <div className="text-xs text-gray-500">
-                                {[
-                                  serie.oc_recibida_id
-                                    ? `OC #${serie.oc_recibida_id}`
-                                    : null,
-                                  serie.cotizacion_item_id
-                                    ? `Item #${serie.cotizacion_item_id}`
-                                    : null,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" / ")}
+                              <div className="space-y-1 text-xs text-gray-500">
+                                {serie.oc_recibida_id && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      navigate(
+                                        `/ordenes-compra/recibidas/${serie.oc_recibida_id}`,
+                                      )
+                                    }
+                                    className="block font-semibold text-blue-700 hover:text-blue-900 hover:underline"
+                                    title="Abrir la orden de compra recibida"
+                                  >
+                                    OC {serie.oc_recibida?.numero || "(sin número)"}
+                                  </button>
+                                )}
+                                {serie.cotizacion_item_id && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      serie.oc_recibida_id &&
+                                      navigate(
+                                        `/ordenes-compra/recibidas/${serie.oc_recibida_id}`,
+                                      )
+                                    }
+                                    disabled={!serie.oc_recibida_id}
+                                    className="block max-w-[260px] text-left text-gray-600 hover:text-blue-700 hover:underline disabled:cursor-default disabled:hover:text-gray-600 disabled:hover:no-underline"
+                                    title="Item asociado a esta orden de compra"
+                                  >
+                                    Item: {serie.cotizacion_item?.descripcion || "Sin descripción"}
+                                    {serie.cotizacion_item?.codigo
+                                      ? ` (${serie.cotizacion_item.codigo})`
+                                      : ""}
+                                  </button>
+                                )}
                               </div>
                             ) : serie.fecha_salida &&
                               getSerieSalidaMotivoLabel(serie.estado) ? (

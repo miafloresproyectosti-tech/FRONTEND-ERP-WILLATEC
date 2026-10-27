@@ -68,7 +68,8 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
       hasPermission("proveedores") ||
       hasPermission("woocommerce"));
   const useGroupedNavigation = user?.role === "SUPERADMIN" || user?.role === "ADMIN";
-  const showRoleSpecificNavigation = false;
+  const isLogistica = user?.role === "LOGISTICA";
+  const showRoleSpecificNavigation = isLogistica;
 
   const isActive = (path: string) => location.pathname === path;
   const closeMobile = () => {
@@ -262,14 +263,14 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
           {/* MENU */}
           <nav className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
             {/* DASHBOARD */}
-            {hasPermission("dashboard") && (
+            {hasPermission("dashboard") && !isLogistica && (
               <Link to="/dashboard" onClick={closeMobile} className={itemClass("/dashboard")}>
                 <Home size={20} />
                 <span className="font-medium">Dashboard</span>
               </Link>
             )}
 
-            {hasPermission("licitaciones") && (
+            {hasPermission("licitaciones") && !isLogistica && (
               <Link
                 to="/seguimiento-licitaciones"
                 onClick={closeMobile}
@@ -282,7 +283,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             )}
 
             {/* ✅ SUPERADMIN Y ADMIN */}
-            {showCommercialGroup && useGroupedNavigation && (
+            {showCommercialGroup && useGroupedNavigation && !isLogistica && (
               // CARPETA COMERCIAL
               <div className="mt-2">
                 <button
@@ -381,7 +382,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             )}
 
             {/* NAVEGACION DIRECTA PARA ROLES OPERATIVOS */}
-            {showCommercialGroup && !useGroupedNavigation && (
+            {showCommercialGroup && !useGroupedNavigation && !isLogistica && (
               <>
                 {hasPermission("productos") && (
                   <Link to="/productos" onClick={closeMobile} className={itemClass("/productos")}>
@@ -501,6 +502,16 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 </Link>
 
                 <Link
+                  to="/ordenes-compra"
+                  onClick={closeMobile}
+                  className={itemClass("/ordenes-compra")}
+                >
+                  <ShoppingCart size={20} />
+                  <span className="font-medium">Ordenes de Compra</span>
+                  <NotificationBadge count={notificationCount("ordenes")} />
+                </Link>
+
+                <Link
                   to="/woocommerce/pedidos"
                   onClick={closeMobile}
                   className={itemClass("/woocommerce/pedidos")}
@@ -536,7 +547,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </>
             )}
 
-            {hasPermission("servicios") && useGroupedNavigation && (
+            {hasPermission("servicios") && useGroupedNavigation && !isLogistica && (
               <div className="mt-2">
                 <button
                   type="button"
@@ -585,7 +596,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </div>
             )}
 
-            {hasPermission("servicios") && !useGroupedNavigation && (
+            {hasPermission("servicios") && !useGroupedNavigation && !isLogistica && (
               <>
                 <Link to="/servicios/licencias" onClick={closeMobile} className={itemClass("/servicios/licencias")}>
                   <KeyRound size={20} />
@@ -600,7 +611,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </>
             )}
 
-            {featureFlags.soporteTi && hasPermission("soporte_ti") && (
+            {featureFlags.soporteTi && hasPermission("soporte_ti") && !isLogistica && (
               <div className="mt-2">
                 <button
                   type="button"
@@ -653,7 +664,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </div>
             )}
 
-            {featureFlags.controlAdm && hasPermission("control_pagos") && (
+            {featureFlags.controlAdm && hasPermission("control_pagos") && !isLogistica && (
               <div className="mt-2">
                 <button
                   type="button"
@@ -702,7 +713,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             )}
 
             {/* USUARIOS */}
-            {hasPermission("usuarios") && (
+            {hasPermission("usuarios") && !isLogistica && (
               <Link
                 to="/usuarios"
                 onClick={closeMobile}
@@ -715,7 +726,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             )}
 
             {/* AUDITORIA */}
-            {hasPermission("auditoria") && (
+            {hasPermission("auditoria") && !isLogistica && (
               <Link
                 to="/auditoria"
                 onClick={closeMobile}
@@ -727,7 +738,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               </Link>
             )}
 
-            {hasPermission("inventario") && (
+            {hasPermission("inventario") && !isLogistica && (
               <Link
                 to="/inventario/movimientos"
                 onClick={closeMobile}

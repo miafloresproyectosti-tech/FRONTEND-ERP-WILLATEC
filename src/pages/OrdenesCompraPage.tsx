@@ -66,7 +66,11 @@ import {
   type Producto,
 } from "../services/producto.service";
 import { useAuth } from "../AuthContext";
-import { getCotizacion } from "../services/cotizacion.service";
+import {
+  getCotizacion,
+  getCotizacionEjecutivos,
+  type CotizacionEjecutivo,
+} from "../services/cotizacion.service";
 import {
   createProveedor,
   getProveedores,
@@ -651,8 +655,22 @@ export default function OrdenesCompraPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [estadoFilter, setEstadoFilter] = useState("todos");
   const [proveedorFilter, setProveedorFilter] = useState("");
+  const [ejecutivoFilter, setEjecutivoFilter] = useState("todos");
+  const [ejecutivoOptions, setEjecutivoOptions] = useState<CotizacionEjecutivo[]>(
+    [],
+  );
   const [emitidas, setEmitidas] = useState<OcEmitida[]>([]);
   const [recibidas, setRecibidas] = useState<OcRecibida[]>([]);
+  const [emitidasSummary, setEmitidasSummary] = useState({
+    total: 0,
+    documentosPendientes: 0,
+    atendidas: 0,
+  });
+  const [recibidasSummary, setRecibidasSummary] = useState({
+    total: 0,
+    documentosPendientes: 0,
+    atendidas: 0,
+  });
   const [emitidasPagination, setEmitidasPagination] =
     useState<PaginationState>(emptyPagination);
   const [recibidasPagination, setRecibidasPagination] =
@@ -1080,10 +1098,16 @@ export default function OrdenesCompraPage() {
           search: searchTerm,
           estado: estadoFilter,
           proveedor: proveedorFilter,
+          userId: ejecutivoFilter === "todos" ? undefined : ejecutivoFilter,
           perPage,
         });
         if (requestId !== emitidasRequestRef.current) return;
         setEmitidas(response.data);
+        setEmitidasSummary({
+          total: response.summary?.total ?? response.total ?? 0,
+          documentosPendientes: response.summary?.documentos_pendientes ?? 0,
+          atendidas: response.summary?.atendidas ?? 0,
+        });
         setEmitidasPagination({
           page: response.current_page || page,
           totalPages: response.last_page || 1,
@@ -1109,6 +1133,7 @@ export default function OrdenesCompraPage() {
       estadoFilter,
       perPage,
       proveedorFilter,
+      ejecutivoFilter,
       searchTerm,
       showToast,
     ],
@@ -1123,10 +1148,16 @@ export default function OrdenesCompraPage() {
           page,
           search: searchTerm,
           estado: estadoFilter,
+          userId: ejecutivoFilter === "todos" ? undefined : ejecutivoFilter,
           perPage,
         });
         if (requestId !== recibidasRequestRef.current) return;
         setRecibidas(response.data);
+        setRecibidasSummary({
+          total: response.summary?.total ?? response.total ?? 0,
+          documentosPendientes: response.summary?.documentos_pendientes ?? 0,
+          atendidas: response.summary?.atendidas ?? 0,
+        });
         setRecibidasPagination({
           page: response.current_page || page,
           totalPages: response.last_page || 1,
@@ -1147,8 +1178,48 @@ export default function OrdenesCompraPage() {
         if (requestId === recibidasRequestRef.current) setLoading(false);
       }
     },
-    [estadoFilter, perPage, recibidasPagination.page, searchTerm, showToast],
+    [
+      estadoFilter,
+      ejecutivoFilter,
+      perPage,
+      recibidasPagination.page,
+      searchTerm,
+      showToast,
+    ],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEjecutivos = async () => {
+      try {
+        const users = await getCotizacionEjecutivos();
+        const options = users
+          .filter((item) => item.activo !== false)
+          .filter((item) => {
+            const roles = (item.roles || []).map((role) =>
+              String(role.name).toUpperCase(),
+            );
+            return roles.length === 0 || roles.some((role) => ["VENTAS", "SUPERADMIN"].includes(role));
+          })
+          .sort((a, b) => {
+            const nameA = `${a.nombres || ""} ${a.apellidos || ""}`.trim() || a.email || "";
+            const nameB = `${b.nombres || ""} ${b.apellidos || ""}`.trim() || b.email || "";
+            return nameA.localeCompare(nameB);
+          });
+
+        if (!cancelled) setEjecutivoOptions(options);
+      } catch (error) {
+        console.warn("No se pudo cargar el filtro de ejecutivos de OC:", error);
+      }
+    };
+
+    void loadEjecutivos();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1205,12 +1276,16 @@ export default function OrdenesCompraPage() {
   ]);
 
   useEffect(() => {
-    if (activeTab === "emitidas") {
-      void loadEmitidas(1);
-    } else {
-      void loadRecibidas(1);
-    }
-  }, [activeTab, estadoFilter, perPage, proveedorFilter, searchTerm]);
+    // Los cards necesitan el resumen de ambas bandejas, aunque solo una esté visible.
+    void Promise.all([loadEmitidas(1), loadRecibidas(1)]);
+  }, [
+    activeTab,
+    estadoFilter,
+    ejecutivoFilter,
+    perPage,
+    proveedorFilter,
+    searchTerm,
+  ]);
 
   useEffect(() => {
     const queryCotizacionId = searchParams.get("cotizacion");
@@ -2157,32 +2232,28 @@ export default function OrdenesCompraPage() {
         <SummaryCard
           icon={<Send size={22} />}
           label="OC emitidas"
-          value={emitidasPagination.total}
+          value={emitidasSummary.total}
           tone="blue"
         />
         <SummaryCard
           icon={<ClipboardCheck size={22} />}
           label="OC recibidas"
-          value={recibidasPagination.total}
+          value={recibidasSummary.total}
           tone="emerald"
         />
         <SummaryCard
           icon={<AlertTriangle size={22} />}
           label="Doc. pendientes"
           value={
-            [...emitidas, ...recibidas].filter(
-              (oc) => oc.documentos_completos === false,
-            ).length
+            emitidasSummary.documentosPendientes +
+            recibidasSummary.documentosPendientes
           }
           tone="amber"
         />
         <SummaryCard
           icon={<CheckCircle size={22} />}
           label="Atendidas"
-          value={
-            [...emitidas, ...recibidas].filter((oc) => oc.estado === "atendido")
-              .length
-          }
+          value={emitidasSummary.atendidas + recibidasSummary.atendidas}
           tone="slate"
         />
       </div>
@@ -2216,7 +2287,7 @@ export default function OrdenesCompraPage() {
             />
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap xl:flex-nowrap">
             {activeTab === "emitidas" && (
               <input
                 value={proveedorFilter}
@@ -2241,6 +2312,21 @@ export default function OrdenesCompraPage() {
                       ? estadoEmitidaLabels
                       : estadoRecibidaLabels)[estado]
                   }
+                </option>
+              ))}
+            </select>
+            <select
+              value={ejecutivoFilter}
+              onChange={(event) => setEjecutivoFilter(event.target.value)}
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white sm:w-56"
+              title="Filtrar órdenes de compra por ejecutivo"
+            >
+              <option value="todos">Todos los ejecutivos</option>
+              {ejecutivoOptions.map((ejecutivo) => (
+                <option key={ejecutivo.id} value={ejecutivo.id}>
+                  {`${ejecutivo.nombres || ""} ${ejecutivo.apellidos || ""}`.trim() ||
+                    ejecutivo.email ||
+                    `Usuario #${ejecutivo.id}`}
                 </option>
               ))}
             </select>
@@ -3481,6 +3567,12 @@ function EmitidasTable({
                   <p className="mt-1 truncate text-sm">
                     <CotizacionLink oc={oc} />
                   </p>
+                  <p
+                    className="mt-1 line-clamp-2 text-xs text-slate-500"
+                    title={getCotizacionTitulo(oc)}
+                  >
+                    {getCotizacionTitulo(oc)}
+                  </p>
                 </div>
                 <EstadoBadge estado={oc.estado} labels={estadoEmitidaLabels} />
               </div>
@@ -3591,6 +3683,12 @@ function EmitidasTable({
                   </td>
                   <td className="px-5 py-4">
                     <CotizacionLink oc={oc} />
+                    <p
+                      className="mt-1 max-w-[260px] line-clamp-2 text-xs text-slate-500"
+                      title={getCotizacionTitulo(oc)}
+                    >
+                      {getCotizacionTitulo(oc)}
+                    </p>
                   </td>
                   <td className="px-5 py-4">{oc.proveedor || "N/A"}</td>
                   <td className="px-5 py-4">
@@ -3702,6 +3800,12 @@ function RecibidasTable({
                   </p>
                   <p className="mt-1 truncate text-sm">
                     <CotizacionLink oc={oc} />
+                  </p>
+                  <p
+                    className="mt-1 line-clamp-2 text-xs text-slate-500"
+                    title={getCotizacionTitulo(oc)}
+                  >
+                    {getCotizacionTitulo(oc)}
                   </p>
                 </div>
                 <EstadoBadge estado={oc.estado} labels={estadoRecibidaLabels} />
@@ -3861,6 +3965,12 @@ function RecibidasTable({
                   </td>
                   <td className="px-5 py-4">
                     <CotizacionLink oc={oc} />
+                    <p
+                      className="mt-1 max-w-[260px] line-clamp-2 text-xs text-slate-500"
+                      title={getCotizacionTitulo(oc)}
+                    >
+                      {getCotizacionTitulo(oc)}
+                    </p>
                   </td>
                   <td className="px-5 py-4">
                     <span className="inline-flex items-center gap-2">
