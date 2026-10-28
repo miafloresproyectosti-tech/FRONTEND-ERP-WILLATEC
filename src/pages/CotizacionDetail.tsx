@@ -2973,7 +2973,7 @@ export function CotizacionDetail() {
   };
 
   const handleDuplicarCotizacion = async () => {
-    if (!currentCotizacionId || duplicandoCotizacion) return;
+    if (!currentCotizacionId) return;
 
     guardedNavigate(`/cotizaciones?duplicar=${currentCotizacionId}`);
   };

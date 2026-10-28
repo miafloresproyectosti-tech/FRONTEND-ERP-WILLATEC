@@ -235,7 +235,7 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
 
 export default function Cotizaciones() {
   const { user } = useAuth();
-  const { addNotification } = useNotifications();
+  const { addNotification, showToast } = useNotifications();
   const addNotificationRef = useRef(addNotification);
 
   const navigate = useNavigate();
