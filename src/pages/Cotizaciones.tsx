@@ -28,6 +28,7 @@ import { useAuth } from "../AuthContext";
 import { useNotifications } from "../NotificationContext";
 import {
   deleteCotizacion,
+  duplicarCotizacion,
   getCotizacionesCount,
   getCotizacionesPaginated,
   getCotizacionEjecutivos,
@@ -276,6 +277,9 @@ export default function Cotizaciones() {
   const [opportunitySearch, setOpportunitySearch] = useState("");
   const [opportunityOptions, setOpportunityOptions] = useState<Oportunidad[]>([]);
   const [loadingOpportunities, setLoadingOpportunities] = useState(false);
+  const [duplicateSourceId, setDuplicateSourceId] = useState<number | null>(null);
+  const [duplicatingFromOpportunity, setDuplicatingFromOpportunity] = useState(false);
+  const [opportunityStatusFilter, setOpportunityStatusFilter] = useState<"todos" | "sin_atender" | "en_atencion" | "cotizacion_generada">("todos");
   const [assigningOpportunityId, setAssigningOpportunityId] = useState<string | null>(null);
   const paginationItems = getPaginationItems(currentPage, totalPages);
 
@@ -356,6 +360,7 @@ export default function Cotizaciones() {
   const openNewCotizacionFlow = async () => {
     setOpportunityModalOpen(true);
     setOpportunitySearch("");
+    setOpportunityStatusFilter("todos");
     try {
       setLoadingOpportunities(true);
       setOpportunityOptions(await getOportunidades());
@@ -372,6 +377,19 @@ export default function Cotizaciones() {
       setLoadingOpportunities(false);
     }
   };
+
+  useEffect(() => {
+    const duplicateParam = searchParams.get("duplicar");
+    const sourceId = duplicateParam ? Number(duplicateParam) : 0;
+
+    if (!Number.isInteger(sourceId) || sourceId <= 0) {
+      setDuplicateSourceId(null);
+      return;
+    }
+
+    setDuplicateSourceId(sourceId);
+    void openNewCotizacionFlow();
+  }, [searchParams]);
 
   const startCotizacionFromOpportunity = async (opportunity: Oportunidad) => {
     let selectedOpportunity = opportunity;
@@ -423,6 +441,35 @@ export default function Cotizaciones() {
       }
     }
 
+    if (duplicateSourceId) {
+      setDuplicatingFromOpportunity(true);
+      try {
+        const duplicada = await duplicarCotizacion(duplicateSourceId, selectedOpportunity.id);
+        showToast({
+          title: "Cotización duplicada",
+          description: `${duplicada.numero} fue creada en borrador y enlazada a la oportunidad seleccionada.`,
+          type: "success",
+          duration: 5000,
+        } as any);
+        setOpportunityModalOpen(false);
+        setDuplicateSourceId(null);
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete("duplicar");
+        setSearchParams(nextParams, { replace: true });
+        navigate(`/cotizaciones/${duplicada.id}/edit`);
+      } catch (error: any) {
+        showToast({
+          title: "No se pudo duplicar la cotización",
+          description: error?.response?.data?.message || "Ocurrió un error al crear la copia.",
+          type: "error",
+          duration: 5000,
+        } as any);
+      } finally {
+        setDuplicatingFromOpportunity(false);
+      }
+      return;
+    }
+
     const params = new URLSearchParams({
       oportunidad_id: selectedOpportunity.id,
       oportunidad_tipo: selectedOpportunity.tipo,
@@ -441,6 +488,16 @@ export default function Cotizaciones() {
     navigate(`/cotizaciones/new?${params.toString()}`);
   };
 
+  const closeOpportunityModal = () => {
+    setOpportunityModalOpen(false);
+    if (duplicateSourceId) {
+      setDuplicateSourceId(null);
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("duplicar");
+      setSearchParams(nextParams, { replace: true });
+    }
+  };
+
   const filteredOpportunityOptions = opportunityOptions.filter((opportunity) => {
     const assignedUserId = Number(opportunity.asignadoA ?? opportunity.ejecutivo?.id ?? 0);
     const currentUserId = Number(user?.id || 0);
@@ -454,12 +511,28 @@ export default function Cotizaciones() {
       return false;
     }
 
+    if (opportunityStatusFilter !== "todos" && opportunity.estado !== opportunityStatusFilter) {
+      return false;
+    }
+
     const query = opportunitySearch.trim().toLowerCase();
     if (!query) return true;
     return [opportunity.empresa, opportunity.requerimiento, opportunity.tipo, opportunity.cotizacionNumero]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query));
   });
+
+  const opportunityStatusLabel = (estado: Oportunidad["estado"]) => ({
+    sin_atender: "Sin atender",
+    en_atencion: "En atención",
+    cotizacion_generada: "Cotización generada",
+  } as Record<string, string>)[estado] || estado.replaceAll("_", " ");
+
+  const opportunityStatusClass = (estado: Oportunidad["estado"]) => ({
+    sin_atender: "border-amber-200 bg-amber-50 text-amber-700",
+    en_atencion: "border-blue-200 bg-blue-50 text-blue-700",
+    cotizacion_generada: "border-violet-200 bg-violet-50 text-violet-700",
+  } as Record<string, string>)[estado] || "border-slate-200 bg-slate-50 text-slate-600";
   const canCreateOcForAnyCotizacion = ["SUPERADMIN", "ADMIN", "CONTABILIDAD"].includes(userRole || "");
 
   // ✅ BADGES
@@ -1506,7 +1579,7 @@ export default function Cotizaciones() {
                     <span className="text-xs font-bold uppercase tracking-wide">Paso obligatorio</span>
                   </div>
                   <h2 className="mt-1 text-xl font-bold text-slate-900 dark:text-white">
-                    Selecciona una oportunidad
+                    {duplicateSourceId ? "Selecciona la oportunidad para la copia" : "Selecciona una oportunidad"}
                   </h2>
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                     Toda cotización debe quedar enlazada a una oportunidad para mantener la trazabilidad.
@@ -1514,7 +1587,7 @@ export default function Cotizaciones() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setOpportunityModalOpen(false)}
+                  onClick={closeOpportunityModal}
                   className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
                   title="Cerrar"
                 >
@@ -1544,6 +1617,22 @@ export default function Cotizaciones() {
                   <Globe2 size={16} /> Registrar Wherex
                 </button>
               </div>
+              <div className="mt-3 flex items-center gap-2">
+                <label htmlFor="opportunity-status-filter" className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Estado
+                </label>
+                <select
+                  id="opportunity-status-filter"
+                  value={opportunityStatusFilter}
+                  onChange={(event) => setOpportunityStatusFilter(event.target.value as typeof opportunityStatusFilter)}
+                  className="h-9 min-w-0 rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  <option value="todos">Todos los estados</option>
+                  <option value="sin_atender">Sin atender</option>
+                  <option value="en_atencion">En atención</option>
+                  <option value="cotizacion_generada">Cotización generada</option>
+                </select>
+              </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
@@ -1558,7 +1647,7 @@ export default function Cotizaciones() {
                       key={opportunity.id}
                       type="button"
                       onClick={() => void startCotizacionFromOpportunity(opportunity)}
-                      disabled={Boolean(assigningOpportunityId)}
+                      disabled={Boolean(assigningOpportunityId) || duplicatingFromOpportunity}
                       className="w-full rounded-2xl border border-slate-200 p-4 text-left transition hover:border-blue-400 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60 dark:border-slate-800 dark:hover:bg-slate-900"
                     >
                       <div className="flex items-start gap-3">
@@ -1567,7 +1656,7 @@ export default function Cotizaciones() {
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="flex flex-wrap items-center gap-2 font-semibold text-slate-900 dark:text-white">
-                            {assigningOpportunityId === opportunity.id && <Loader2 size={15} className="animate-spin text-blue-600" />}
+                            {(assigningOpportunityId === opportunity.id || duplicatingFromOpportunity) && <Loader2 size={15} className="animate-spin text-blue-600" />}
                             <span className="truncate">{opportunity.empresa || "Sin empresa"}</span>
                             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                               {opportunity.tipo === "wherex" ? "Wherex" : opportunity.tipo === "licitacion" ? "Licitación" : "Privada"}
@@ -1576,8 +1665,8 @@ export default function Cotizaciones() {
                           <span className="mt-1 block line-clamp-2 text-sm text-slate-600 dark:text-slate-300">
                             {opportunity.requerimiento || "Sin requerimiento"}
                           </span>
-                          <span className="mt-2 block text-xs text-slate-400">
-                            Estado: {opportunity.estado.replaceAll("_", " ")}
+                          <span className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[11px] font-semibold ${opportunityStatusClass(opportunity.estado)}`}>
+                            {opportunityStatusLabel(opportunity.estado)}
                           </span>
                         </span>
                       </div>
@@ -1595,7 +1684,7 @@ export default function Cotizaciones() {
             <div className="flex justify-end border-t border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
               <button
                 type="button"
-                onClick={() => setOpportunityModalOpen(false)}
+                onClick={closeOpportunityModal}
                 className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
               >
                 Cancelar

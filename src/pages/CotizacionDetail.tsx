@@ -27,7 +27,6 @@ import {
   getCotizacion,
   createCotizacion,
   updateCotizacion,
-  duplicarCotizacion,
   enviarCotizacionRevision,
   cancelarRevisionCotizacion,
   aprobarCotizacion,
@@ -282,7 +281,6 @@ export function CotizacionDetail() {
   const isEditing = !isModificationMode && id !== 'new' && id !== undefined;
   const currentCotizacionId = id && !isModificationMode ? parseInt(id) : null;
   const [exportandoPdf, setExportandoPdf] = useState(false);
-  const [duplicandoCotizacion, setDuplicandoCotizacion] = useState(false);
 
   // ====== STATE MANAGEMENT ======
   const [loading, setLoading] = useState(isEditing || isModificationMode);
@@ -2977,24 +2975,7 @@ export function CotizacionDetail() {
   const handleDuplicarCotizacion = async () => {
     if (!currentCotizacionId || duplicandoCotizacion) return;
 
-    setDuplicandoCotizacion(true);
-    try {
-      const duplicada = await duplicarCotizacion(currentCotizacionId);
-      showToast({
-        title: 'Cotizacion duplicada',
-        description: `${duplicada.numero} fue creada en borrador a partir de ${cotizacion?.numero || `#${currentCotizacionId}`}.`,
-        type: 'success',
-      } as any);
-      navigate(`/cotizaciones/${duplicada.id}/edit`);
-    } catch (error: any) {
-      showToast({
-        title: 'No se pudo duplicar la cotizacion',
-        description: error?.response?.data?.message || 'Ocurrio un error al crear la copia.',
-        type: 'error',
-      } as any);
-    } finally {
-      setDuplicandoCotizacion(false);
-    }
+    guardedNavigate(`/cotizaciones?duplicar=${currentCotizacionId}`);
   };
 
   // ====== HELPERS ======
@@ -4267,12 +4248,11 @@ export function CotizacionDetail() {
               {canCreateCotizacion && currentCotizacionId && (
                 <button
                   onClick={handleDuplicarCotizacion}
-                  disabled={duplicandoCotizacion}
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
                   title="Crear una nueva cotizacion independiente a partir de esta"
                 >
-                  {duplicandoCotizacion ? <Loader2 className="w-5 h-5 animate-spin" /> : <Copy className="w-5 h-5" />}
-                  {duplicandoCotizacion ? 'Duplicando...' : 'Duplicar cotizacion'}
+                  <Copy className="w-5 h-5" />
+                  Duplicar cotizacion
                 </button>
               )}
 

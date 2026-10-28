@@ -294,6 +294,31 @@ export function OportunidadFormModal({
     update("vigencia", toDatetimeLocalValue(date));
   };
 
+  const quickVigenciaValue = (kind: "hoy" | "manana" | "dos-dias") => {
+    const date = new Date();
+
+    if (kind === "manana") {
+      date.setDate(date.getDate() + 1);
+      date.setHours(10, 0, 0, 0);
+    } else if (kind === "dos-dias") {
+      const businessDate = addBusinessDays(date, 2);
+      businessDate.setHours(18, 0, 0, 0);
+      return toDatetimeLocalValue(businessDate);
+    } else {
+      date.setHours(17, 0, 0, 0);
+    }
+
+    return toDatetimeLocalValue(date);
+  };
+
+  const quickVigenciaClass = (kind: "hoy" | "manana" | "dos-dias") => {
+    const active = form.vigencia === quickVigenciaValue(kind);
+
+    return active
+      ? "border-blue-600 bg-blue-600 text-white shadow-sm ring-2 ring-blue-200 dark:ring-blue-900"
+      : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900";
+  };
+
   if (!open) return null;
 
   return (
@@ -399,7 +424,7 @@ export function OportunidadFormModal({
                     type="button"
                     disabled={submitting}
                     onClick={() => setVigenciaAt(new Date(), 17)}
-                    className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+                    className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${quickVigenciaClass("hoy")}`}
                   >
                     Hoy 5:00 PM
                   </button>
@@ -411,7 +436,7 @@ export function OportunidadFormModal({
                       tomorrow.setDate(tomorrow.getDate() + 1);
                       setVigenciaAt(tomorrow, 10);
                     }}
-                    className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+                    className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${quickVigenciaClass("manana")}`}
                   >
                     Mañana 10:00 AM
                   </button>
@@ -421,7 +446,7 @@ export function OportunidadFormModal({
                     onClick={() =>
                       setVigenciaAt(addBusinessDays(new Date(), 2), 18)
                     }
-                    className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+                    className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${quickVigenciaClass("dos-dias")}`}
                   >
                     +2 días 6:00 PM
                   </button>
