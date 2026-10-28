@@ -11,6 +11,7 @@ import {
   Eye,
   History,
   Italic,
+  List,
   Loader2,
   Plus,
   Trash2,
@@ -97,6 +98,7 @@ export function ItemFormModal({
     React.useState<ProductoExternoHistorialResponse | null>(null);
   const [loadedHistoryKey, setLoadedHistoryKey] = React.useState("");
   const noteTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const [noteBullet, setNoteBullet] = React.useState("*");
   const [importCalcType, setImportCalcType] = React.useState<
     "under200" | "from201to1999" | "from2000up"
   >("under200");
@@ -690,6 +692,31 @@ export function ItemFormModal({
     }, 0);
   };
 
+  const applyNoteBullet = () => {
+    if (readOnly) return;
+
+    const textarea = noteTextareaRef.current;
+    const currentValue = itemForm.nota || "";
+    const selectionStart = textarea?.selectionStart ?? currentValue.length;
+    const selectionEnd = textarea?.selectionEnd ?? currentValue.length;
+    const lineStart = currentValue.lastIndexOf("\n", Math.max(0, selectionStart - 1)) + 1;
+    const nextBreak = currentValue.indexOf("\n", selectionEnd);
+    const lineEnd = nextBreak === -1 ? currentValue.length : nextBreak;
+    const selectedLines = currentValue.slice(lineStart, lineEnd);
+    const nextLines = selectedLines
+      .split("\n")
+      .map((line) => line.trim() ? `${noteBullet} ${line.replace(/^\s*(?:[*\-•›+]\s+)?/, "")}` : line)
+      .join("\n");
+    const nextValue = `${currentValue.slice(0, lineStart)}${nextLines}${currentValue.slice(lineEnd)}`;
+
+    setItemForm({ ...itemForm, nota: nextValue });
+
+    window.setTimeout(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(lineStart, lineStart + nextLines.length);
+    }, 0);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -890,6 +917,26 @@ export function ItemFormModal({
                         title="Subrayado"
                       >
                         <Underline className="h-4 w-4" />
+                      </button>
+                      <select
+                        value={noteBullet}
+                        onChange={(event) => setNoteBullet(event.target.value)}
+                        className="ml-1 h-8 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500"
+                        title="Seleccionar viñeta"
+                      >
+                        <option value="*">* Viñeta</option>
+                        <option value="-">- Guion</option>
+                        <option value="•">• Punto</option>
+                        <option value="›">› Flecha</option>
+                        <option value="+">+ Más</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={applyNoteBullet}
+                        className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs text-gray-600 hover:bg-white hover:text-gray-900"
+                        title="Aplicar viñeta a la línea actual o seleccionada"
+                      >
+                        <List className="h-4 w-4" /> Aplicar
                       </button>
                       <span className="ml-2 text-[10px] text-gray-400">
                         Selecciona texto y aplica formato

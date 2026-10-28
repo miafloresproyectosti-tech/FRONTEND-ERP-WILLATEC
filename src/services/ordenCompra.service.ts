@@ -188,6 +188,7 @@ export interface OcEmitida {
   proveedor_correo?: string | null;
   fecha_emision?: string;
   observaciones?: string | null;
+  mostrar_referencia_cotizacion?: boolean;
   moneda?: string | null;
   factura_path?: string | null;
   factura_uploaded_by?: number | string | null;
@@ -236,6 +237,7 @@ export interface CreateOcEmitidaPayload {
   moneda?: string;
   fecha_emision: string;
   observaciones?: string;
+  mostrar_referencia_cotizacion?: boolean;
   items: Array<{
     cotizacion_item_id: number;
     cantidad: number;

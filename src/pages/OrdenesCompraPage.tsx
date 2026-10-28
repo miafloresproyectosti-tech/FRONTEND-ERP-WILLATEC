@@ -691,6 +691,7 @@ export default function OrdenesCompraPage() {
   const [monedaOc, setMonedaOc] = useState("PEN");
   const [fecha, setFecha] = useState(today);
   const [observaciones, setObservaciones] = useState("");
+  const [mostrarReferenciaCotizacion, setMostrarReferenciaCotizacion] = useState(true);
   const [recibidaItems, setRecibidaItems] = useState<RecibidaDraftItem[]>([]);
   const [emitidaItems, setEmitidaItems] = useState<EmitidaDraftItem[]>([]);
   const [ordenCompraCliente, setOrdenCompraCliente] = useState<File | null>(
@@ -1406,6 +1407,7 @@ export default function OrdenesCompraPage() {
     setMonedaOc("PEN");
     setFecha(today);
     setObservaciones("");
+    setMostrarReferenciaCotizacion(true);
     setRecibidaItems([]);
     setEmitidaItems([]);
     setOrdenCompraCliente(null);
@@ -1659,6 +1661,7 @@ export default function OrdenesCompraPage() {
         moneda: monedaOc,
         fecha_emision: fecha,
         observaciones,
+        mostrar_referencia_cotizacion: mostrarReferenciaCotizacion,
         items,
       };
       const response = editingEmitidaId
@@ -1899,6 +1902,7 @@ export default function OrdenesCompraPage() {
       setMonedaOc(String(detail.moneda || "PEN").toUpperCase());
       setFecha(detail.fecha_emision || today);
       setObservaciones(detail.observaciones || "");
+      setMostrarReferenciaCotizacion(detail.mostrar_referencia_cotizacion !== false);
       setEmitidaItems(detailItems);
       setPreview({
         cotizacion: {
@@ -2943,6 +2947,23 @@ export default function OrdenesCompraPage() {
                     ? ` - ${preview.cotizacion.cliente_nombre}`
                     : ""}
                 </div>
+              )}
+
+              {modalMode === "emitir" && (
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={mostrarReferenciaCotizacion}
+                    onChange={(event) => setMostrarReferenciaCotizacion(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>
+                    <span className="block font-semibold">Mostrar cliente y cotización en el PDF</span>
+                    <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                      Si lo desmarcas, el PDF de esta OC no incluirá ese apartado.
+                    </span>
+                  </span>
+                </label>
               )}
 
               {modalMode === "recibir" ? (
