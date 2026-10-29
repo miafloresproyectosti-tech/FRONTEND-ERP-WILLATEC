@@ -437,13 +437,14 @@ export default function SeguimientoLicitaciones() {
 
     const executiveId = Number(item.asignadoA ?? item.ejecutivo?.id ?? 0);
     if (!executiveId || executiveId === Number(user.id)) return false;
-    if (!isAttentionOpportunity(item)) return false;
 
+    // Esta bandeja muestra toda la cartera de otros ejecutivos,
+    // independientemente del estado actual de la oportunidad.
     // Ventas no consulta el modulo Usuarios; si el catalogo de ejecutivos
     // no esta disponible, una oportunidad asignada a otro usuario se considera
-    // atendida por ventas y no se oculta de esta bandeja.
+    // parte de la cartera compartida y no se oculta.
     return salesExecutiveIds.size <= 1 || salesExecutiveIds.has(executiveId);
-  }, [isAttentionOpportunity, salesExecutiveIds, user?.id]);
+  }, [salesExecutiveIds, user?.id]);
 
   const scopedOpportunities = useMemo(() => {
     if (isSalesRole) {
