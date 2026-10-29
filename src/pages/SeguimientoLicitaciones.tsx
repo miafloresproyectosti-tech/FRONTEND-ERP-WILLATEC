@@ -1092,13 +1092,25 @@ export default function SeguimientoLicitaciones() {
     if (!selected || unlinkingQuoteId) return;
     const quote = selected.cotizaciones.find((item) => item.id === relacionId);
     if (!quote) return;
-    if (!window.confirm(`Desvincular la cotizacion ${quote.numero}?`)) return;
+    const estadoCotizacion = normalizeText(quote.estado || "");
+    const puedeLiberarBorradorVencido = selected.estado === "vencida" && estadoCotizacion.includes("borrador");
+    const mensaje = puedeLiberarBorradorVencido
+      ? `La cotizacion ${quote.numero} esta en borrador y la oportunidad vencio. Se liberara para reutilizarla. Continuar?`
+      : `Desvincular la cotizacion ${quote.numero}?`;
+
+    if (!window.confirm(mensaje)) return;
 
     setUnlinkingQuoteId(relacionId);
     try {
       const detail = await deleteCotizacionRelacionada(selected.id, relacionId);
       syncSelectedOpportunity(detail);
-      showToast({ title: "Cotizacion desvinculada", description: "La oportunidad quedo actualizada.", type: "success" });
+      showToast({
+        title: "Cotizacion desvinculada",
+        description: puedeLiberarBorradorVencido
+          ? "La cotizacion quedo disponible para reutilizarse."
+          : "La oportunidad quedo actualizada.",
+        type: "success",
+      });
       await loadData();
     } catch (error) {
       const response = error as { response?: { data?: { message?: string } }; message?: string };
@@ -2102,11 +2114,21 @@ export default function SeguimientoLicitaciones() {
         unlinkingQuoteId={unlinkingQuoteId}
         canUnlinkQuote={(relacionId) => {
           const quote = selected?.cotizaciones.find((item) => item.id === relacionId);
+          const quoteEstado = normalizeText(quote?.estado || "");
+          const isDraftOnExpiredOpportunity = Boolean(
+            selected?.estado === "vencida" && quoteEstado.includes("borrador")
+          );
+          const isAssignedExecutive = Boolean(
+            selected && Number(selected.asignadoA ?? selected.ejecutivo?.id ?? 0) === Number(user?.id)
+          );
+
           return Boolean(
             quote &&
               hasPermission("licitaciones.cotizaciones") &&
               ["vinculada", "generada"].includes(quote.origen || "vinculada") &&
-              (currentRole === "SUPERADMIN" || isCreatedByCurrentUser(quote.creadoPor, quote.creadoPorId))
+              (currentRole === "SUPERADMIN" ||
+                isCreatedByCurrentUser(quote.creadoPor, quote.creadoPorId) ||
+                (isDraftOnExpiredOpportunity && isAssignedExecutive))
           );
         }}
         onUnlinkQuote={(relacionId) => void handleUnlinkQuote(relacionId)}

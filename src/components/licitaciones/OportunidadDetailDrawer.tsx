@@ -820,7 +820,12 @@ export function OportunidadDetailDrawer({
               </div>
               {(opportunity.cotizaciones.length === 1 || linkedQuotesExpanded) && (
               <div className="space-y-2">
-                {opportunity.cotizaciones.map((item) => (
+                {opportunity.cotizaciones.map((item) => {
+                  const isDraftOnExpiredOpportunity =
+                    opportunity.estado === "vencida" &&
+                    String(item.estado || "").toLowerCase().includes("borrador");
+
+                  return (
                   <div
                     key={item.id}
                     className="flex flex-col gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between"
@@ -895,17 +900,20 @@ export function OportunidadDetailDrawer({
                           onClick={() => onUnlinkQuote(item.id)}
                           disabled={unlinkingQuoteId === item.id}
                           className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                          title="Desvincular cotizacion"
+                          title={isDraftOnExpiredOpportunity ? "Liberar cotizacion para reutilizar" : "Desvincular cotizacion"}
                         >
                           <Unlink size={15} />
                           {unlinkingQuoteId === item.id
                             ? "Quitando..."
-                            : "Desvincular"}
+                            : isDraftOnExpiredOpportunity
+                              ? "Liberar para reutilizar"
+                              : "Desvincular"}
                         </button>
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               )}
             </section>
