@@ -9,6 +9,7 @@ import LoginPage from "../pages/LoginPage";
 import ChangePasswordPage from "../pages/ChangePasswordPage";
 import TwoFactorChallengePage from "../pages/TwoFactorChallengePage";
 import NotAuthorized from "../pages/NotAuthorized";
+import SystemStatusPage from "../components/SystemStatusPage";
 
 import { useAuth } from "../AuthContext";
 
@@ -355,7 +356,7 @@ export default function AppRoutes() {
         </Route>
 
         {/* REDIRECCIÓN GLOBAL */}
-        <Route path="*" element={<HomeRedirect />} />
+        <Route path="*" element={<SystemStatusPage kind="not-found" />} />
 
         </Routes>
       </Suspense>

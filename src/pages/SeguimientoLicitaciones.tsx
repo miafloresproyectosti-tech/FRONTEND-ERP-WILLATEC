@@ -112,6 +112,13 @@ const LICITACIONES_STATE_PRIORITY: Record<OportunidadEstado, number> = {
   vencida: 1,
 };
 
+const SUPERADMIN_ACTIVE_STATE_PRIORITY: Record<string, number> = {
+  en_atencion: 0,
+  cotizacion_pendiente: 1,
+  modificacion_cotizacion: 2,
+  por_subir: 3,
+};
+
 const SORT_LABELS: Record<OportunidadSortKey, string> = {
   empresa: "Empresa",
   vigencia: "Vigencia",
@@ -182,7 +189,9 @@ const OPPORTUNITY_EXECUTIVE_ROLES = new Set(["VENTAS", "SUPERADMIN"]);
 
 const SUPERADMIN_BANDEJAS = [
   { key: "disponibles", label: "Oportunidades Disponibles" },
+  { key: "mis", label: "Asignadas a mí" },
   { key: "en_atencion", label: "Oportunidades en Atencion" },
+  { key: "atendidas", label: "Oportunidades Atendidas" },
   { key: "finalizadas", label: "Oportunidades Finalizadas" },
 ] as const;
 
@@ -287,7 +296,7 @@ export default function SeguimientoLicitaciones() {
   const canCreateOpportunity = hasPermission("licitaciones.crear");
   const canOpenCotizaciones = hasPermission("cotizaciones");
   const [activeBandeja, setActiveBandeja] = useState<string>(
-    currentRole === "VENTAS" ? "disponibles" : currentRole === "SUPERADMIN" ? "disponibles" : "todas"
+    currentRole === "VENTAS" ? "disponibles" : currentRole === "SUPERADMIN" ? "mis" : "todas"
   );
 
   const loadData = useCallback(async (options?: { silent?: boolean }) => {
@@ -413,8 +422,10 @@ export default function SeguimientoLicitaciones() {
   }, [user?.email, user?.id, userName]);
 
   const isAttentionOpportunity = useCallback((item: Oportunidad) => (
-    item.estado === "en_atencion" || item.estado === "atendido" || item.estado === "cotizacion_generada"
+    item.estado === "en_atencion" || item.estado === "cotizacion_generada"
   ), []);
+
+  const isAttendedOpportunity = useCallback((item: Oportunidad) => item.estado === "atendido", []);
 
   const salesExecutiveIds = useMemo(
     () => new Set(ejecutivos.map((ejecutivo) => Number(ejecutivo.id)).filter(Boolean)),
@@ -443,7 +454,9 @@ export default function SeguimientoLicitaciones() {
 
     if (currentRole === "SUPERADMIN") {
       if (activeBandeja === "disponibles") return opportunities.filter(isAvailableOpportunity);
+      if (activeBandeja === "mis") return opportunities.filter(isMyOpportunity);
       if (activeBandeja === "en_atencion") return opportunities.filter(isAttentionOpportunity);
+      if (activeBandeja === "atendidas") return opportunities.filter(isAttendedOpportunity);
       if (activeBandeja === "finalizadas") return opportunities.filter((item) => isClosedOpportunity(item.estado));
       return opportunities;
     }
@@ -458,7 +471,7 @@ export default function SeguimientoLicitaciones() {
 
       return hasNoExecutive || executiveId === user?.id;
     });
-  }, [activeBandeja, currentRole, isAssignedToOtherSalesExecutive, isAttentionOpportunity, isAvailableOpportunity, isLicitacionesRole, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
+  }, [activeBandeja, currentRole, isAssignedToOtherSalesExecutive, isAttentionOpportunity, isAttendedOpportunity, isAvailableOpportunity, isLicitacionesRole, isManager, isMyOpportunity, isSalesRole, opportunities, user?.id]);
 
   const isUrgentOpportunity = (item: Oportunidad): boolean => {
   if (isClosedOpportunity(item.estado) || item.estado === "atendido") return false;
@@ -507,6 +520,16 @@ export default function SeguimientoLicitaciones() {
           if (dueDiff !== 0) return dueDiff;
 
           return new Date(b.creadoEn).getTime() - new Date(a.creadoEn).getTime();
+        }
+
+        if (currentRole === "SUPERADMIN" && ["mis", "en_atencion"].includes(activeBandeja)) {
+          const stateA = a.estado === "cotizacion_generada" ? getOpportunityFilterStatus(a) : a.estado;
+          const stateB = b.estado === "cotizacion_generada" ? getOpportunityFilterStatus(b) : b.estado;
+          const stateDiff = (SUPERADMIN_ACTIVE_STATE_PRIORITY[stateA] ?? 9) - (SUPERADMIN_ACTIVE_STATE_PRIORITY[stateB] ?? 9);
+          if (stateDiff !== 0) return stateDiff;
+
+          const dueDiff = new Date(a.vigencia).getTime() - new Date(b.vigencia).getTime();
+          if (dueDiff !== 0) return dueDiff;
         }
 
         if (isSalesRole && ["mis", "creadas"].includes(activeBandeja)) {
@@ -1521,6 +1544,7 @@ export default function SeguimientoLicitaciones() {
     if (key === "mis") return opportunities.filter(isMyOpportunity).length;
     if (key === "creadas") return opportunities.filter(isAssignedToOtherSalesExecutive).length;
     if (key === "en_atencion") return opportunities.filter(isAttentionOpportunity).length;
+    if (key === "atendidas") return opportunities.filter(isAttendedOpportunity).length;
     if (key === "finalizadas") return opportunities.filter((item) => isClosedOpportunity(item.estado)).length;
     return opportunities.length;
   };

@@ -12,18 +12,44 @@ import InactivityTimeout from "./components/security/InactivityTimeout";
 import { getAllHostings } from "./services/hosting.service";
 import { getAllLicencias } from "./services/licencia.service";
 import type { Hosting, Licencia } from "./types/Licencias";
+import api, { SYSTEM_STATUS_EVENT } from "./services/api";
+import SystemErrorBoundary from "./components/SystemErrorBoundary";
+import SystemStatusPage, { type SystemStatusKind } from "./components/SystemStatusPage";
 
 function App() {
   const { user } = useAuth();
   const [licencias, setLicencias] = useState<Licencia[]>([]);
   const [hostings, setHostings] = useState<Hosting[]>([]);
   const [alertasDismissed, setAlertasDismissed] = useState(false);
+  const [systemStatus, setSystemStatus] = useState<SystemStatusKind | null>(null);
 
   const esSuperadmin = user?.role === "SUPERADMIN";
   const debeMostrarAlerta =
     esSuperadmin &&
     !alertasDismissed &&
     (licencias.length > 0 || hostings.length > 0);
+
+  useEffect(() => {
+    const handleSystemStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ kind?: SystemStatusKind }>).detail;
+      if (detail?.kind) setSystemStatus(detail.kind);
+    };
+
+    window.addEventListener(SYSTEM_STATUS_EVENT, handleSystemStatus);
+    return () => window.removeEventListener(SYSTEM_STATUS_EVENT, handleSystemStatus);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const checkAvailability = () => {
+      if (document.visibilityState !== "visible") return;
+      void api.get("/user").catch(() => undefined);
+    };
+
+    const intervalId = window.setInterval(checkAvailability, 60000);
+    return () => window.clearInterval(intervalId);
+  }, [user]);
 
   useEffect(() => {
     const dismissedToday =
@@ -107,7 +133,13 @@ function App() {
                     }}
                   />
                 )}
-                <AppRoutes />
+                {systemStatus ? (
+                  <SystemStatusPage kind={systemStatus} />
+                ) : (
+                  <SystemErrorBoundary>
+                    <AppRoutes />
+                  </SystemErrorBoundary>
+                )}
             </NotificationProvider>
           </CotizacionesProvider>
         </AuditProvider>
