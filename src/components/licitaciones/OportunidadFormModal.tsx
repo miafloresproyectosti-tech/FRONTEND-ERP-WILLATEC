@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
   type ClipboardEvent,
   type DragEvent,
@@ -120,11 +121,24 @@ export function OportunidadFormModal({
   const [showTdrPreview, setShowTdrPreview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [validationSummary, setValidationSummary] = useState("");
+  const wasOpen = useRef(false);
+  const loadedOpportunityId = useRef<string | null>(null);
 
   const title = opportunity ? "Editar oportunidad" : "Nueva oportunidad";
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      wasOpen.current = false;
+      loadedOpportunityId.current = null;
+      return;
+    }
+
+    const opportunityId = opportunity?.id || null;
+    const shouldInitialize = !wasOpen.current || loadedOpportunityId.current !== opportunityId;
+    if (!shouldInitialize) return;
+
+    wasOpen.current = true;
+    loadedOpportunityId.current = opportunityId;
 
     if (!opportunity) {
       setForm({ ...emptyForm(), tipo: initialTipo || "licitacion" });
@@ -265,11 +279,28 @@ export function OportunidadFormModal({
   const submit = async () => {
     if (submitting) return;
 
-    const normalized = {
+    const normalized: OportunidadFormData = {
       ...form,
+      empresa: String(form.empresa ?? "").trim(),
+      requerimiento: String(form.requerimiento ?? "").trim(),
+      categoria: String(form.categoria ?? "").trim(),
+      vigencia: String(form.vigencia ?? "").trim(),
+      garantia: String(form.garantia ?? "").trim(),
+      plazo: String(form.plazo ?? "").trim(),
+      carpetaServidor: String(form.carpetaServidor ?? "").trim(),
+      observacion: String(form.observacion ?? "").trim(),
+      destinoEntrega: String(form.destinoEntrega ?? "").trim(),
+      wherexId: String(form.wherexId ?? "").trim(),
+      wherexUrl: String(form.wherexUrl ?? "").trim(),
+      comentariosGenerales: String(form.comentariosGenerales ?? "").trim(),
+      cotizacionId: String(form.cotizacionId ?? "").trim(),
+      cotizacionNumero: String(form.cotizacionNumero ?? "").trim(),
     };
     const validation = validateOportunidad(normalized, {
       requireTdr: !opportunity && normalized.tipo === "licitacion",
+      requireFutureVigencia:
+        !opportunity ||
+        normalized.vigencia !== toDatetimeLocalValue(new Date(opportunity.vigencia)),
     });
     setErrors(validation);
     const validationMessages = Object.values(validation).filter(Boolean);

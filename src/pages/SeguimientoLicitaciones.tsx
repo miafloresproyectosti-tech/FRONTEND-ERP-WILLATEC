@@ -963,7 +963,7 @@ export default function SeguimientoLicitaciones() {
     const hasQuote = Boolean(item.cotizacionId || item.cotizacionNumero || item.cotizaciones.length > 0);
 
     return (
-      hasPermission("licitaciones.eliminar") &&
+      hasPermission("licitaciones") &&
       isOpportunityCreator(item) &&
       item.estado === "sin_atender" &&
       isAvailableOpportunity(item) &&

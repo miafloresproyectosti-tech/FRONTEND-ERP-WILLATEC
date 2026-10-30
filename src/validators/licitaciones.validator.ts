@@ -4,19 +4,27 @@ export type OportunidadValidationErrors = Partial<Record<keyof OportunidadFormDa
 
 export const validateOportunidad = (
   data: OportunidadFormData,
-  options: { requireTdr?: boolean } = {}
+  options: { requireTdr?: boolean; requireFutureVigencia?: boolean } = {}
 ) => {
   const errors: OportunidadValidationErrors = {};
+  const text = (value: unknown) => String(value ?? "").trim();
 
-  if (!data.empresa.trim()) errors.empresa = "Empresa obligatoria";
-  if (!data.requerimiento.trim()) errors.requerimiento = "Requerimiento obligatorio";
-  if (!data.categoria.trim()) errors.categoria = "Categoria obligatoria";
+  if (!text(data.empresa)) errors.empresa = "Empresa obligatoria";
+  if (!text(data.requerimiento)) errors.requerimiento = "Requerimiento obligatorio";
+  if (!text(data.categoria)) errors.categoria = "Categoria obligatoria";
   if (!data.estado) errors.estado = "Estado obligatorio";
-  if (!data.vigencia) errors.vigencia = "Vigencia obligatoria";
+  if (!text(data.vigencia)) errors.vigencia = "Vigencia obligatoria";
+  else if (
+    options.requireFutureVigencia &&
+    (!Number.isFinite(new Date(text(data.vigencia)).getTime()) ||
+      new Date(text(data.vigencia)).getTime() <= Date.now())
+  ) {
+    errors.vigencia = "La vigencia debe ser posterior a la fecha y hora actual";
+  }
 
   if (data.tipo === "licitacion") {
-    if (!data.garantia.trim()) errors.garantia = "Garantia obligatoria";
-    if (!data.plazo.trim()) errors.plazo = "Plazo obligatorio";
+    if (!text(data.garantia)) errors.garantia = "Garantia obligatoria";
+    if (!text(data.plazo)) errors.plazo = "Plazo obligatorio";
     if (options.requireTdr !== false && !data.tdr) errors.tdr = "TDR obligatorio";
   }
 
@@ -26,7 +34,7 @@ export const validateOportunidad = (
 
   if (data.tipo === "wherex") {
     if (!data.formaPago) errors.formaPago = "Forma de pago obligatoria";
-    if (!data.wherexUrl.trim()) errors.wherexUrl = "Enlace obligatorio";
+    if (!text(data.wherexUrl)) errors.wherexUrl = "Enlace obligatorio";
   }
 
   return errors;
