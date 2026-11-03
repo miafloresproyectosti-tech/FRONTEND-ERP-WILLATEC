@@ -1,6 +1,7 @@
 import React from "react";
 import type {
   ImportacionCalculoTipo,
+  ImportacionCalculo,
   ItemForm,
 } from "../../../types/cotizaciones.type";
 import {
@@ -38,6 +39,25 @@ const getImportCalculationType = (
   if (amount < 200) return "under200";
   if (amount < 2000) return "from201to1999";
   return "from2000up";
+};
+
+const isImportCalculationType = (
+  value: unknown,
+): value is ImportacionCalculoTipo =>
+  value === "under200" || value === "from201to1999" || value === "from2000up";
+
+const parseImportCalculation = (
+  value: ImportacionCalculo | string | null | undefined,
+): ImportacionCalculo | null => {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+
+  try {
+    const parsed = JSON.parse(value) as ImportacionCalculo;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
 };
 
 interface Props {
@@ -135,7 +155,7 @@ export function ItemFormModal({
 
   if (!open) return null;
 
-  const importCalc = itemForm.importacion_calculo ?? null;
+  const importCalc = parseImportCalculation(itemForm.importacion_calculo);
   const hasImportCalc = Boolean(importCalc);
   const showImportCalcControls = itemForm.disponibilidad_tipo === "importacion";
   const isImportCalcReadOnly = readOnly && hasImportCalc;
@@ -250,7 +270,7 @@ export function ItemFormModal({
       agenteAduanero: 300,
       impuestoRate: 0.25,
     },
-  }[importCalcType];
+  }[isImportCalculationType(importCalcType) ? importCalcType : "under200"];
   const importCalcValues = (() => {
     const precioProducto = calcNumber(importCalcForm.precioProducto);
     const unidades = Math.max(0, calcNumber(importCalcForm.unidades));
@@ -340,7 +360,13 @@ export function ItemFormModal({
   };
   const handleOpenImportCalculation = () => {
     if (importCalc) {
-      setImportCalcType(importCalc.tipo as ImportacionCalculoTipo);
+      const savedType = isImportCalculationType(importCalc.tipo)
+        ? importCalc.tipo
+        : getImportCalculationType(
+            importCalc.precio_producto ?? itemForm.costo_base,
+            importCalc.unidades ?? itemForm.cantidad,
+          );
+      setImportCalcType(savedType);
       setImportCalcForm({
         precioProducto: String(importCalc.precio_producto ?? ""),
         unidades: String(importCalc.unidades ?? itemForm.cantidad ?? 1),
