@@ -328,15 +328,17 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
 
                     {/* ORDENES */}
                     {hasPermission("ordenes_compra") && (
-                      <Link
-                        to="/ordenes-compra"
-                        onClick={closeMobile}
-                        className={subItemClass("/ordenes-compra")}
-                      >
-                        <ShoppingCart size={18} />
-                        Ordenes de Compra
-                        <NotificationBadge count={notificationCount("ordenes")} />
-                      </Link>
+                      <>
+                        <Link
+                          to="/ordenes-compra"
+                          onClick={closeMobile}
+                          className={subItemClass("/ordenes-compra")}
+                        >
+                          <ShoppingCart size={18} />
+                          Ordenes de Compra
+                          <NotificationBadge count={notificationCount("ordenes")} />
+                        </Link>
+                      </>
                     )}
 
                     {/* PRODUCTOS */}
@@ -407,11 +409,13 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                   </Link>
                 )}
                 {hasPermission("ordenes_compra") && (
-                  <Link to="/ordenes-compra" onClick={closeMobile} className={itemClass("/ordenes-compra")}>
-                    <ShoppingCart size={20} />
-                    <span className="font-medium">Ordenes de Compra</span>
-                    <NotificationBadge count={notificationCount("ordenes")} />
-                  </Link>
+                  <>
+                    <Link to="/ordenes-compra" onClick={closeMobile} className={itemClass("/ordenes-compra")}>
+                      <ShoppingCart size={20} />
+                      <span className="font-medium">Ordenes de Compra</span>
+                      <NotificationBadge count={notificationCount("ordenes")} />
+                    </Link>
+                  </>
                 )}
                 {hasPermission("woocommerce") && (
                   <Link to="/woocommerce/pedidos" onClick={closeMobile} className={itemClass("/woocommerce/pedidos")}>
@@ -576,6 +580,15 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     >
                       <ShoppingBag size={18} />
                       Compras
+                    </Link>
+
+                    <Link
+                      to="/compras/sobrecompras"
+                      onClick={closeMobile}
+                      className={subItemClass("/compras/sobrecompras")}
+                    >
+                      <ShieldCheck size={18} />
+                      Sobrecompras
                     </Link>
 
                     <Link

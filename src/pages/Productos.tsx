@@ -1191,6 +1191,7 @@ export default function Productos() {
       estado: productoSeleccionado.estado,
       tipo_producto: "stock",
       controla_stock: true,
+      controla_series: series.length > 0 || Boolean((productoSeleccionado as any).controla_series),
       categoria_id: productoSeleccionado.categoria_id,
     };
 

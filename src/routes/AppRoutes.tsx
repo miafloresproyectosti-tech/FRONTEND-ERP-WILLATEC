@@ -31,6 +31,7 @@ const OrdenCompraDetail = lazy(() => import("../pages/OrdenCompraDetail"));
 const RequerimientosCompra = lazy(() => import("../pages/RequerimientosCompra"));
 const Compras = lazy(() => import("../pages/Compras"));
 const RecepcionesCompra = lazy(() => import("../pages/RecepcionesCompra"));
+const SolicitudesSobrecompra = lazy(() => import("../pages/SolicitudesSobrecompra"));
 const Proveedores = lazy(() => import("../pages/Proveedores"));
 const Comprobantes = lazy(() => import("../pages/Comprobantes"));
 const CuentasPorPagar = lazy(() => import("../pages/CuentasPorPagar"));
@@ -367,6 +368,9 @@ export default function AppRoutes() {
               </ProtectedRoute>
             }
           />
+
+          <Route path="/ordenes-compra/atenciones" element={<Navigate to="/ordenes-compra" replace />} />
+          <Route path="/compras/sobrecompras" element={<ProtectedRoute requiredPermission="compras"><SolicitudesSobrecompra /></ProtectedRoute>} />
 
           <Route
             path="/proveedores"

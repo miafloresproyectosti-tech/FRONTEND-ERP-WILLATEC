@@ -15,6 +15,8 @@ export interface RecepcionCompra {
   compra?: any;
   proveedor?: any;
   fecha_recepcion?: string | null;
+  guia_remision_numero?: string | null;
+  factura_proveedor_numero?: string | null;
   estado: "borrador" | "confirmada" | "cancelada";
   observacion?: string | null;
   items_count?: number;

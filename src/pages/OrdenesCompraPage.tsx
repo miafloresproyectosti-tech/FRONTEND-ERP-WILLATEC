@@ -78,6 +78,7 @@ import {
 import { formatMoney } from "../utils/formatNumber";
 import { getPaginationItems } from "../utils/pagination";
 import PageSizeSelect from "../components/ui/PageSizeSelect";
+import OcAtencionesPanel from "../components/ordenes-compra/OcAtencionesPanel";
 
 type ActiveTab = "emitidas" | "recibidas";
 type ModalMode = "emitir" | "recibir" | null;
@@ -3807,11 +3808,7 @@ function RecibidasTable({
                           <input
                             type="checkbox"
                             checked={Boolean(item.entregado)}
-                            disabled={
-                              updatingItemOc === oc.id ||
-                              !canEditOc(oc) ||
-                              !item.comprado
-                            }
+                            disabled
                             onChange={(event) =>
                               onToggleItem(
                                 oc,
@@ -3948,11 +3945,7 @@ function RecibidasTable({
                               <input
                                 type="checkbox"
                                 checked={Boolean(item.entregado)}
-                                disabled={
-                                  updatingItemOc === oc.id ||
-                                  !canEditOc(oc) ||
-                                  !item.comprado
-                                }
+                                disabled
                                 onChange={(event) =>
                                   onToggleItem(
                                     oc,
@@ -4546,6 +4539,7 @@ function DetailModal({
               )}
             </div>
           </div>
+          {!isEmitida && <OcAtencionesPanel oc={oc as OcRecibida} />}
           <div className="rounded-xl border border-gray-200 dark:border-slate-800">
             <div className="border-b border-gray-200 p-4 font-semibold text-slate-800 dark:border-slate-800 dark:text-white">
               Items
@@ -4804,12 +4798,7 @@ function DetailModal({
                                 <input
                                   type="checkbox"
                                   checked={Boolean(item.entregado)}
-                                  disabled={
-                                    updatingItemOc === oc.id ||
-                                    !canEditOc ||
-                                    !item.comprado ||
-                                    itemHasSoldSeries
-                                  }
+                                  disabled
                                   onChange={(event) =>
                                     onToggleItem(
                                       oc as OcRecibida,

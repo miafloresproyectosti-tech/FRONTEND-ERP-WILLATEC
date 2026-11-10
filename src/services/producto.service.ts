@@ -27,6 +27,7 @@ export interface Producto {
     estado?: "nuevo" | "usado";
     tipo_producto?: "stock" | "servicio" | "externo" | "personalizado";
     controla_stock?: boolean;
+    controla_series?: boolean;
     stock_actual?: number | string | null;
     stock_reservado?: number | string | null;
     stock_disponible?: number | string | null;
@@ -244,6 +245,7 @@ export interface ProductoPayload {
     estado: "nuevo" | "usado";
     tipo_producto: "stock" | "servicio" | "externo" | "personalizado";
     controla_stock: boolean;
+    controla_series?: boolean;
     stock_actual?: number;
     stock_minimo?: number;
     costo_unitario?: number;
@@ -545,6 +547,7 @@ function buildFormData(payload: ProductoPayload): FormData {
     });
         formData.append("activo", payload.activo ? "1" : "0");
         formData.append("controla_stock", payload.controla_stock ? "1" : "0");
+        formData.append("controla_series", payload.controla_series ? "1" : "0");
 
             // Solo adjunta imagen si es base64 nueva
             if (payload.imagen?.startsWith("data:")) {

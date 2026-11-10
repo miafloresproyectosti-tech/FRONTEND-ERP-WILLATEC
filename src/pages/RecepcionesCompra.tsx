@@ -37,12 +37,15 @@ export default function RecepcionesCompra() {
   const [detail, setDetail] = useState<RecepcionCompra | null>(null);
   const [detailQuantities, setDetailQuantities] = useState<Record<number, number>>({});
   const [detailSeries, setDetailSeries] = useState<Record<number, string>>({});
+  const [receptionMeta, setReceptionMeta] = useState({ fecha_recepcion: new Date().toISOString().slice(0, 10), guia_remision_numero: "", factura_proveedor_numero: "", observacion: "" });
   const [modalOpen, setModalOpen] = useState(false);
   const [compraSearch, setCompraSearch] = useState("");
   const [comprasDisponibles, setComprasDisponibles] = useState<Compra[]>([]);
   const [loadingCompras, setLoadingCompras] = useState(false);
   const [compra, setCompra] = useState<Compra | null>(null);
   const [saving, setSaving] = useState(false);
+  const [modalError, setModalError] = useState("");
+  const [actionId, setActionId] = useState<number | null>(null);
 
   const fetchRows = async () => {
     const currentRequest = ++requestId.current;
@@ -75,6 +78,12 @@ export default function RecepcionesCompra() {
       Object.fromEntries((row.items || []).map((item: any) => [Number(item.id), Number(item.cantidad || 0)])),
     );
     setDetailSeries(Object.fromEntries((row.items || []).map((item: any) => [Number(item.id), ""])));
+    setReceptionMeta({
+      fecha_recepcion: String(row.fecha_recepcion || new Date().toISOString().slice(0, 10)).slice(0, 10),
+      guia_remision_numero: row.guia_remision_numero || "",
+      factura_proveedor_numero: row.factura_proveedor_numero || "",
+      observacion: row.observacion || "",
+    });
   };
 
   const loadComprasDisponibles = async () => {
@@ -102,11 +111,11 @@ export default function RecepcionesCompra() {
 
   const selectCompra = async (id: number | string) => {
     setSaving(true);
-    setError("");
+    setModalError("");
     try {
       setCompra(await getCompra(id));
     } catch (err: any) {
-      setError(err?.response?.data?.message || "No se pudo cargar la compra.");
+      setModalError(err?.response?.data?.message || "No se pudo cargar la compra.");
     } finally {
       setSaving(false);
     }
@@ -117,12 +126,13 @@ export default function RecepcionesCompra() {
     setCompra(null);
     setCompraSearch("");
     setComprasDisponibles([]);
+    setModalError("");
   };
 
   const createDraft = async () => {
     if (!compra?.id) return;
     setSaving(true);
-    setError("");
+    setModalError("");
     try {
       await createRecepcionCompra(compra.id, {
         items: (compra.items || [])
@@ -140,7 +150,7 @@ export default function RecepcionesCompra() {
       setCompra(null);
       await fetchRows();
     } catch (err: any) {
-      setError(
+      setModalError(
         err?.response?.data?.message ||
           Object.values(err?.response?.data?.errors || {})?.flat()?.[0]?.toString() ||
           "No se pudo crear la recepcion.",
@@ -153,18 +163,21 @@ export default function RecepcionesCompra() {
   const runAction = async (row: RecepcionCompra, action: "confirmar" | "cancelar") => {
     if (!window.confirm(action === "confirmar" ? "Confirmar recepcion e ingresar stock?" : "Cancelar recepcion?")) return;
     setSaving(true);
+    setActionId(row.id);
+    setModalError("");
     try {
       if (action === "confirmar") await confirmarRecepcionCompra(row.id);
       else await cancelarRecepcionCompra(row.id);
       await fetchRows();
     } catch (err: any) {
-      setError(
+      setModalError(
         err?.response?.data?.message ||
           Object.values(err?.response?.data?.errors || {})?.flat()?.[0]?.toString() ||
           "No se pudo completar la accion.",
       );
     } finally {
       setSaving(false);
+      setActionId(null);
     }
   };
 
@@ -172,9 +185,21 @@ export default function RecepcionesCompra() {
     if (!detail) return;
     if (!window.confirm("Confirmar recepcion e ingresar stock con las cantidades indicadas?")) return;
 
+    for (const item of detail.items || []) {
+      const cantidad = Number(detailQuantities[Number(item.id)] ?? item.cantidad ?? 0);
+      const series = (detailSeries[Number(item.id)] || "").split(/\r?\n|,/).map((serie) => serie.trim()).filter(Boolean);
+      if (item.producto?.controla_series && series.length !== cantidad) {
+        setModalError(`${item.descripcion}: registra exactamente ${cantidad} serie(s).`);
+        return;
+      }
+    }
+
     setSaving(true);
+    setActionId(detail.id);
+    setModalError("");
     try {
       await confirmarRecepcionCompra(detail.id, {
+        ...receptionMeta,
         items: (detail.items || []).map((item: any) => ({
           recepcion_item_id: item.id,
           cantidad: Number(detailQuantities[Number(item.id)] ?? item.cantidad ?? 0),
@@ -186,13 +211,14 @@ export default function RecepcionesCompra() {
       setDetailSeries({});
       await fetchRows();
     } catch (err: any) {
-      setError(
+      setModalError(
         err?.response?.data?.message ||
           Object.values(err?.response?.data?.errors || {})?.flat()?.[0]?.toString() ||
           "No se pudo confirmar la recepcion.",
       );
     } finally {
       setSaving(false);
+      setActionId(null);
     }
   };
 
@@ -295,6 +321,7 @@ export default function RecepcionesCompra() {
             </div>
 
             <div className="grid min-h-0 flex-1 gap-4 overflow-hidden p-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+              {modalError && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2">{modalError}</div>}
               <section className="flex min-h-0 flex-col rounded-2xl border border-slate-200">
                 <div className="border-b border-slate-100 p-4">
                   <div className="relative">
@@ -400,6 +427,16 @@ export default function RecepcionesCompra() {
               <button onClick={() => setDetail(null)}><XCircle /></button>
             </div>
             <p className="text-sm text-slate-500">Estado: {labelize(detail.estado)}</p>
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              Al confirmar, el stock aumentará y se creará automáticamente la entrada de Kardex. No debes registrarla nuevamente.
+            </div>
+            {modalError && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{modalError}</div>}
+            {detail.estado === "borrador" && <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-semibold uppercase text-slate-500">Fecha de recepción<input type="date" value={receptionMeta.fecha_recepcion} onChange={(e) => setReceptionMeta((current) => ({ ...current, fecha_recepcion: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-900" /></label>
+              <label className="text-xs font-semibold uppercase text-slate-500">Guía de remisión del proveedor<input value={receptionMeta.guia_remision_numero} onChange={(e) => setReceptionMeta((current) => ({ ...current, guia_remision_numero: e.target.value }))} placeholder="Ej. T001-000123" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-900" /></label>
+              <label className="text-xs font-semibold uppercase text-slate-500">Factura del proveedor<input value={receptionMeta.factura_proveedor_numero} onChange={(e) => setReceptionMeta((current) => ({ ...current, factura_proveedor_numero: e.target.value }))} placeholder="Ej. F001-000456" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-900" /></label>
+              <label className="text-xs font-semibold uppercase text-slate-500">Observación<input value={receptionMeta.observacion} onChange={(e) => setReceptionMeta((current) => ({ ...current, observacion: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-900" /></label>
+            </div>}
             <div className="mt-4 space-y-2">
               {(detail.items || []).map((item: any) => (
                 <div key={item.id} className="rounded-xl border border-slate-200 p-3 text-sm">
@@ -431,7 +468,7 @@ export default function RecepcionesCompra() {
                   </div>
                   {detail.estado === "borrador" && (
                     <label className="mt-3 block text-xs font-semibold uppercase text-slate-500">
-                      Series (opcional, una por línea)
+                      Series {item.producto?.controla_series ? "(obligatorias)" : "(opcional, una por línea)"}
                       <textarea
                         value={detailSeries[Number(item.id)] || ""}
                         onChange={(event) => setDetailSeries((current) => ({ ...current, [Number(item.id)]: event.target.value }))}
@@ -451,8 +488,8 @@ export default function RecepcionesCompra() {
                   Cancelar recepcion
                 </button>
                 <button onClick={confirmDetailReception} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 size={16} />}
-                  Confirmar cantidades
+                  {actionId === detail.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 size={16} />}
+                  {actionId === detail.id ? "Ingresando al Kardex..." : "Confirmar e ingresar al Kardex"}
                 </button>
               </div>
             )}

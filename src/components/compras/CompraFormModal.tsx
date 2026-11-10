@@ -10,6 +10,7 @@ import {
 import { getOcEmitidas, type OcEmitida } from "../../services/ordenCompra.service";
 import { createProveedor, getProveedores, updateProveedor, type Proveedor } from "../../services/proveedor.service";
 import { useAuth } from "../../AuthContext";
+import { createSolicitudSobrecompra, getSolicitudesSobrecompra, type SolicitudSobrecompra } from "../../services/sobrecompra.service";
 
 export interface CompraDraftItem {
   key: string;
@@ -83,6 +84,9 @@ export function CompraFormModal({
   const [fechaCompra, setFechaCompra] = useState(today);
   const [observacion, setObservacion] = useState("");
   const [autorizarSobrecompra, setAutorizarSobrecompra] = useState(false);
+  const [justificacionSobrecompra, setJustificacionSobrecompra] = useState("");
+  const [solicitudesAprobadas, setSolicitudesAprobadas] = useState<SolicitudSobrecompra[]>([]);
+  const [requestSuccess, setRequestSuccess] = useState("");
   const [items, setItems] = useState<CompraDraftItem[]>([]);
   const [ocEmitidas, setOcEmitidas] = useState<OcEmitida[]>([]);
   const [selectedOcId, setSelectedOcId] = useState("");
@@ -118,6 +122,9 @@ export function CompraFormModal({
           ],
     );
     setAutorizarSobrecompra(false);
+    setJustificacionSobrecompra("");
+    setRequestSuccess("");
+    void getSolicitudesSobrecompra("aprobada").then(setSolicitudesAprobadas).catch(() => setSolicitudesAprobadas([]));
     setProveedorSearch("");
     setProveedorRuc("");
     setSelectedProveedor(null);
@@ -320,9 +327,36 @@ export function CompraFormModal({
       fecha_compra: fechaCompra || null,
       moneda_id: monedaId,
       observacion: observacion.trim() || null,
-      autorizar_sobrecompra: canAuthorizeOverpurchase && autorizarSobrecompra,
+      autorizar_sobrecompra: false,
       items: compraItems,
     };
+
+    const hasOverpurchase = validItems.some((item) => item.requerimiento_compra_item_id && item.cantidadMaxima !== undefined && item.cantidad > item.cantidadMaxima);
+    const approvedRequest = solicitudesAprobadas.find((request) => {
+      if (request.utilizado_en || Number(request.payload_compra.proveedor_id) !== Number(payload.proveedor_id)) return false;
+      const approved = request.payload_compra.items.map((item) => `${Number(item.requerimiento_compra_item_id || 0)}:${Number(item.cantidad)}`).sort().join("|");
+      const current = payload.items.map((item) => `${Number(item.requerimiento_compra_item_id || 0)}:${Number(item.cantidad)}`).sort().join("|");
+      return approved === current;
+    });
+
+    if (hasOverpurchase && !approvedRequest) {
+      if (justificacionSobrecompra.trim().length < 10) {
+        setError("Explica en al menos 10 caracteres por qué se necesita la sobrecompra.");
+        return;
+      }
+      setSaving(true);
+      try {
+        const request = await createSolicitudSobrecompra(justificacionSobrecompra.trim(), payload);
+        setRequestSuccess(`${request.numero} enviada. Un administrador debe aprobarla antes de crear la compra.`);
+      } catch (err: any) {
+        setError(err?.response?.data?.message || "No se pudo enviar la solicitud de sobrecompra.");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    if (approvedRequest) payload.solicitud_sobrecompra_id = approvedRequest.id;
 
     setSaving(true);
     try {
@@ -364,6 +398,7 @@ export function CompraFormModal({
               <span>{error}</span>
             </div>
           )}
+          {requestSuccess && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">{requestSuccess}</div>}
 
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <strong>Mensaje operativo:</strong> una compra confirmada significa pendiente de recepcion. El stock y Kardex se moveran recien en Fase 5 con recepciones.
@@ -502,11 +537,18 @@ export function CompraFormModal({
                 rows={2}
               />
             </div>
-            {canAuthorizeOverpurchase && (
+            {false && canAuthorizeOverpurchase && (
               <label className="lg:col-span-4 flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                 <input type="checkbox" checked={autorizarSobrecompra} onChange={(event) => setAutorizarSobrecompra(event.target.checked)} className="mt-0.5 h-4 w-4" />
                 <span><strong>Autorizar sobrecompra excepcional</strong><br />Permite comprar más que el saldo requerido; el excedente ingresará como stock adicional.</span>
               </label>
+            )}
+            {items.some((item) => item.requerimiento_compra_item_id && item.cantidadMaxima !== undefined && Number(item.cantidad) > Number(item.cantidadMaxima)) && (
+              <div className="lg:col-span-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <label className="text-sm font-semibold text-amber-900">Justificación obligatoria de sobrecompra</label>
+                <textarea value={justificacionSobrecompra} onChange={(event) => setJustificacionSobrecompra(event.target.value)} rows={3} placeholder="Motivo, cantidad adicional y uso previsto..." className="mt-2 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm" />
+                <p className="mt-1 text-xs text-amber-700">Al guardar se enviará una solicitud al Admin/Superadmin. La compra solo se creará después de su aprobación.</p>
+              </div>
             )}
             {selectedProveedor && (
               <div className="lg:col-span-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
