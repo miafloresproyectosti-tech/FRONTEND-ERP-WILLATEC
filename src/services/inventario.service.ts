@@ -50,6 +50,18 @@ export interface InventarioMovimiento {
   fecha_documento?: string | null;
   proveedor?: string | null;
   proveedor_id?: number | string | null;
+  cliente_id?: number | string | null;
+  cliente_nombre?: string | null;
+  cliente_ruc?: string | null;
+  receptor_nombre?: string | null;
+  destino_area_sede?: string | null;
+  motivo_detalle?: string | null;
+  cliente_destino?: {
+    id?: number;
+    nombre?: string | null;
+    ruc?: string | null;
+    estado?: string | null;
+  } | null;
   proveedor_catalogo?: {
     id?: number;
     nombre?: string | null;
@@ -157,6 +169,23 @@ export interface RegistrarSalidaKardexPayload {
   observacion?: string;
   producto_serie_ids?: number[];
   documento?: File | null;
+}
+
+export interface RegistrarSalidaPartnerItem {
+  producto_id: number;
+  cantidad: number;
+  producto_serie_ids?: number[];
+}
+
+export interface RegistrarSalidaPartnerPayload {
+  cliente_id: number;
+  motivo_detalle: string;
+  receptor_nombre?: string;
+  destino_area_sede?: string;
+  observacion?: string;
+  documento_numero?: string;
+  documento?: File | null;
+  items: RegistrarSalidaPartnerItem[];
 }
 
 export interface ActualizarMovimientoDocumentoPayload {
@@ -279,6 +308,29 @@ export async function registrarSalidaKardex(payload: RegistrarSalidaKardexPayloa
     { headers: { "Content-Type": "multipart/form-data" } },
   );
 
+  return response.data;
+}
+
+export async function registrarSalidaPartner(payload: RegistrarSalidaPartnerPayload) {
+  const formData = new FormData();
+  formData.append("cliente_id", String(payload.cliente_id));
+  formData.append("motivo_detalle", payload.motivo_detalle);
+  if (payload.receptor_nombre) formData.append("receptor_nombre", payload.receptor_nombre);
+  if (payload.destino_area_sede) formData.append("destino_area_sede", payload.destino_area_sede);
+  if (payload.observacion) formData.append("observacion", payload.observacion);
+  if (payload.documento_numero) formData.append("documento_numero", payload.documento_numero);
+  payload.items.forEach((item, index) => {
+    formData.append(`items[${index}][producto_id]`, String(item.producto_id));
+    formData.append(`items[${index}][cantidad]`, String(item.cantidad));
+    item.producto_serie_ids?.forEach((id, serieIndex) => {
+      formData.append(`items[${index}][producto_serie_ids][${serieIndex}]`, String(id));
+    });
+  });
+  if (payload.documento) formData.append("documento", payload.documento);
+
+  const response = await api.post("/productos/registrar-salida-partner", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
   return response.data;
 }
 

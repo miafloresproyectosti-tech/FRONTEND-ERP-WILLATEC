@@ -251,6 +251,22 @@ export function ItemFormModal({
     "w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-1 focus:ring-blue-400 outline-none bg-white";
   const calcNumber = (value: string | number | null | undefined) =>
     Number(value || 0);
+  const formatEditableAmount = (value: string | number | null | undefined) => {
+    if (value === null || value === undefined || value === "") return "";
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) return "";
+    return numericValue.toLocaleString("en-US", {
+      useGrouping: true,
+      maximumFractionDigits: 2,
+    });
+  };
+  const parseEditableAmount = (value: string) => {
+    const normalized = value.replace(/,/g, "").replace(/[^0-9.]/g, "");
+    const [whole, ...decimalParts] = normalized.split(".");
+    const decimal = decimalParts.join("").slice(0, 2);
+    const parsed = Number(decimalParts.length ? `${whole}.${decimal}` : whole);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
   const calcConfig = {
     under200: {
       label: "IMPORTACIÓN MENOS DE $200",
@@ -1320,17 +1336,16 @@ export function ItemFormModal({
                 <div className="flex gap-1">
                   <input
                     className={`${inp} flex-1`}
-                    type="number"
+                    type="text"
                     disabled={readOnly}
-                    value={itemForm.costo_base?.toString() ?? ""}
+                  value={formatEditableAmount(itemForm.costo_base)}
                     onChange={(e) =>
                       setItemForm({
                         ...itemForm,
-                        costo_base: e.target.value
-                          ? parseFloat(e.target.value)
-                          : 0,
+                      costo_base: parseEditableAmount(e.target.value),
                       })
                     }
+                  inputMode="decimal"
                   />
                   {showImportCalcControls && (
                     <button
@@ -1371,7 +1386,7 @@ export function ItemFormModal({
                     setItemForm({
                       ...itemForm,
                       disponibilidad_tipo: e.target.value as any,
-                      disponibilidad_dias: e.target.value === "stock" ? 4 : 25,
+                      disponibilidad_dias: e.target.value === "stock" ? 3 : 25,
                     })
                   }
                 >

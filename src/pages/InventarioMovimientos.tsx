@@ -25,12 +25,14 @@ import {
   actualizarMovimientoDocumento,
   registrarEntradaKardex,
   registrarSalidaKardex,
+  registrarSalidaPartner,
   revertirInventarioMovimiento,
   type InventarioMovimiento,
   type InventarioMovimientoFilters,
   type InventarioMovimientoPagination,
   type ProductoInventarioOption,
 } from "../services/inventario.service";
+import { getActiveClientesSearchCached, type Cliente } from "../services/cliente.service";
 import { createProveedor, getProveedores, type Proveedor } from "../services/proveedor.service";
 import { createProducto, type ProductoPayload } from "../services/producto.service";
 import { normalizeStorageImageUrl } from "../utils/storageImage";
@@ -89,7 +91,15 @@ const salidaMotivoOptions = [
   { value: "prestamo", label: "Prestamo" },
   { value: "garantia", label: "Garantia" },
   { value: "otro", label: "Otro" },
+  { value: "salida_partner", label: "Salida sin OC / Transferencia a empresa" },
 ];
+
+type PartnerSalidaItem = {
+  producto_id: number;
+  cantidad: number;
+  nombre: string;
+  series: number[];
+};
 
 const emptyMeta: InventarioMovimientoPagination = {
   current_page: 1,
@@ -368,6 +378,16 @@ export default function InventarioMovimientos() {
   });
   const [salidaSerieIds, setSalidaSerieIds] = useState<number[]>([]);
   const [salidaDocumento, setSalidaDocumento] = useState<File | null>(null);
+  const [partnerItems, setPartnerItems] = useState<PartnerSalidaItem[]>([]);
+  const [partnerClientSearch, setPartnerClientSearch] = useState("");
+  const [partnerClientResults, setPartnerClientResults] = useState<Cliente[]>([]);
+  const [partnerClient, setPartnerClient] = useState<Cliente | null>(null);
+  const [partnerClientResultsOpen, setPartnerClientResultsOpen] = useState(false);
+  const [loadingPartnerClients, setLoadingPartnerClients] = useState(false);
+  const [partnerRecipient, setPartnerRecipient] = useState("");
+  const [partnerDestination, setPartnerDestination] = useState("");
+  const [partnerReason, setPartnerReason] = useState("");
+  const [partnerReasonPreset, setPartnerReasonPreset] = useState("");
   const [nuevoProveedor, setNuevoProveedor] = useState({
     nombre: "",
     ruc: "",
@@ -445,6 +465,7 @@ export default function InventarioMovimientos() {
     [salidaSerieSearch, salidaSeriesDisponibles],
   );
   const salidaRequiereSeries = salidaSeriesDisponibles.length > 0;
+  const salidaEsPartner = salidaForm.motivo === "salida_partner";
 
   const filteredEntradaProductos = useMemo(() => {
     const term = entradaProductoSearch.trim().toLowerCase();
@@ -668,6 +689,34 @@ export default function InventarioMovimientos() {
   }, [salidaForm.producto_id, salidaModalOpen, salidaProductoSearch]);
 
   useEffect(() => {
+    const term = partnerClientSearch.trim();
+    if (!salidaModalOpen || !salidaEsPartner || term.length < 2 || partnerClient) {
+      setPartnerClientResults([]);
+      setLoadingPartnerClients(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timeout = window.setTimeout(async () => {
+      try {
+        setLoadingPartnerClients(true);
+        const results = await getActiveClientesSearchCached(term, 25);
+        if (!cancelled) setPartnerClientResults(results);
+      } catch (requestError) {
+        console.error("Error al buscar clientes destino:", requestError);
+        if (!cancelled) setPartnerClientResults([]);
+      } finally {
+        if (!cancelled) setLoadingPartnerClients(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [partnerClient, partnerClientSearch, salidaEsPartner, salidaModalOpen]);
+
+  useEffect(() => {
     getProveedores()
       .then(setProveedores)
       .catch((requestError) => {
@@ -727,6 +776,35 @@ export default function InventarioMovimientos() {
         ? current.filter((id) => id !== serieId)
         : [...current, serieId],
     );
+  };
+
+  const addPartnerItem = () => {
+    const productoId = Number(salidaForm.producto_id);
+    const cantidad = Number(salidaForm.cantidad);
+    if (!productoId || cantidad <= 0 || !selectedSalidaProducto) {
+      setError("Selecciona un producto y una cantidad valida.");
+      return;
+    }
+    if (salidaRequiereSeries && (!Number.isInteger(cantidad) || salidaSerieIds.length !== cantidad)) {
+      setError("Selecciona una serie por cada unidad que sale.");
+      return;
+    }
+    if (cantidad > Number(selectedSalidaProducto.stock_disponible ?? selectedSalidaProducto.stock_actual ?? 0)) {
+      setError("La cantidad supera el stock disponible del producto.");
+      return;
+    }
+    setPartnerItems((current) => [...current, {
+      producto_id: productoId,
+      cantidad,
+      nombre: selectedSalidaProducto.nombre,
+      series: [...salidaSerieIds],
+    }]);
+    setSalidaForm((current) => ({ ...current, producto_id: "", cantidad: "" }));
+    setSalidaProductoSearch("");
+    setSalidaProductosBusqueda([]);
+    setSalidaSerieIds([]);
+    setSalidaSerieSearch("");
+    setError(null);
   };
 
   const handleProductoEntradaChange = (productoId: string) => {
@@ -945,6 +1023,58 @@ export default function InventarioMovimientos() {
   };
 
   const handleRegistrarSalida = async () => {
+    if (salidaEsPartner) {
+      if (!partnerClient) {
+        setError("Selecciona la empresa destino.");
+        return;
+      }
+      if (!partnerReason.trim()) {
+        setError("Indica el motivo detallado de la salida sin OC.");
+        return;
+      }
+      if (partnerItems.length === 0) {
+        setError("Agrega al menos un producto a la transferencia.");
+        return;
+      }
+
+      try {
+        setSavingSalida(true);
+        setError(null);
+        await registrarSalidaPartner({
+          cliente_id: partnerClient.id,
+          motivo_detalle: partnerReason.trim(),
+          receptor_nombre: partnerRecipient.trim() || undefined,
+          destino_area_sede: partnerDestination.trim() || undefined,
+          observacion: salidaForm.observacion,
+          documento_numero: salidaForm.documento_numero,
+          documento: salidaDocumento,
+          items: partnerItems.map((item) => ({
+            producto_id: item.producto_id,
+            cantidad: item.cantidad,
+            producto_serie_ids: item.series,
+          })),
+        });
+        setSalidaModalOpen(false);
+        setPartnerItems([]);
+        setPartnerClient(null);
+        setPartnerClientSearch("");
+        setPartnerReason("");
+        setPartnerReasonPreset("");
+        setPartnerRecipient("");
+        setPartnerDestination("");
+        setSalidaForm({ producto_id: "", cantidad: "", motivo: "uso_interno", documento_numero: "", fecha_documento: today, observacion: "" });
+        setSalidaDocumento(null);
+        await loadMovimientos();
+        setNotice("Transferencia registrada correctamente y stock actualizado.");
+      } catch (requestError) {
+        console.error("Error al registrar transferencia a empresa:", requestError);
+        setError("No se pudo registrar la transferencia. Revisa stock, series y datos obligatorios.");
+      } finally {
+        setSavingSalida(false);
+      }
+      return;
+    }
+
     const productoId = Number(salidaForm.producto_id);
     const cantidad = Number(salidaForm.cantidad);
 
@@ -990,6 +1120,13 @@ export default function InventarioMovimientos() {
         observacion: "",
       });
       setSalidaSerieIds([]);
+      setPartnerItems([]);
+      setPartnerClient(null);
+      setPartnerClientSearch("");
+      setPartnerReason("");
+      setPartnerReasonPreset("");
+      setPartnerRecipient("");
+      setPartnerDestination("");
       setSalidaProductoSearch("");
       setSalidaProductosBusqueda([]);
       setSalidaProductoResultsOpen(false);
@@ -1648,6 +1785,12 @@ export default function InventarioMovimientos() {
                       <span className="line-clamp-2" title={movimiento.observacion || ""}>
                         {[getProveedorLabel(movimiento), movimiento.observacion].filter(Boolean).join(" - ") || "-"}
                       </span>
+                      {movimiento.referencia_tipo === "salida_partner" && (
+                        <div className="mt-1 text-xs font-semibold text-amber-700">
+                          Destino: {movimiento.cliente_nombre || movimiento.cliente_destino?.nombre || "-"}
+                          {movimiento.motivo_detalle ? ` / ${movimiento.motivo_detalle}` : ""}
+                        </div>
+                      )}
                       <div className="mt-1 truncate text-xs text-gray-400">
                         {[movimiento.origen, movimiento.referencia_tipo, movimiento.referencia_id].filter(Boolean).join(" / ")}
                       </div>
@@ -2396,6 +2539,19 @@ export default function InventarioMovimientos() {
                 <p className="mt-1 text-sm text-gray-700">{[getProveedorLabel(selectedMovimiento), selectedMovimiento.observacion].filter(Boolean).join(" - ") || "-"}</p>
               </div>
 
+              {selectedMovimiento.referencia_tipo === "salida_partner" && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 sm:col-span-2">
+                  <p className="text-xs font-semibold uppercase text-amber-700">Transferencia a empresa sin OC</p>
+                  <div className="mt-2 grid grid-cols-1 gap-2 text-sm text-gray-700 sm:grid-cols-2">
+                    <p><span className="font-semibold">Destino:</span> {selectedMovimiento.cliente_nombre || selectedMovimiento.cliente_destino?.nombre || "-"}</p>
+                    <p><span className="font-semibold">RUC:</span> {selectedMovimiento.cliente_ruc || selectedMovimiento.cliente_destino?.ruc || "-"}</p>
+                    <p><span className="font-semibold">Recibe:</span> {selectedMovimiento.receptor_nombre || "-"}</p>
+                    <p><span className="font-semibold">Área / sede:</span> {selectedMovimiento.destino_area_sede || "-"}</p>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-700"><span className="font-semibold">Motivo:</span> {selectedMovimiento.motivo_detalle || "-"}</p>
+                </div>
+              )}
+
               {canRevertirMovimiento(selectedMovimiento) && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
                   <p className="text-sm font-semibold text-amber-900">¿La salida se registró por error?</p>
@@ -2623,6 +2779,101 @@ export default function InventarioMovimientos() {
             </div>
 
             <div className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto px-5 py-4 md:grid-cols-2">
+              {salidaEsPartner && (
+                <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+                  <div className="mb-3">
+                    <p className="text-sm font-bold text-amber-900">Transferencia a empresa sin OC</p>
+                    <p className="text-xs text-amber-800">Selecciona la empresa y agrega todos los productos que saldrán en una sola operación.</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <label className="relative text-sm font-semibold text-gray-700 md:col-span-2">
+                      Empresa destino
+                      <div className="relative mt-1">
+                        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                        <input
+                          value={partnerClient ? `${partnerClient.nombre} (${partnerClient.ruc || "sin RUC"})` : partnerClientSearch}
+                          onChange={(event) => {
+                            setPartnerClient(null);
+                            setPartnerClientSearch(event.target.value);
+                            setPartnerClientResultsOpen(true);
+                          }}
+                          onFocus={() => setPartnerClientResultsOpen(true)}
+                          onBlur={() => window.setTimeout(() => setPartnerClientResultsOpen(false), 120)}
+                          placeholder="Buscar cliente activo por nombre o RUC"
+                          className="w-full rounded-lg border border-amber-200 bg-white py-2 pl-9 pr-3 text-sm font-normal text-gray-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                        />
+                        {partnerClientResultsOpen && (
+                          <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl">
+                            {loadingPartnerClients && <div className="px-3 py-3 text-xs font-semibold text-blue-700">Buscando clientes...</div>}
+                            {!loadingPartnerClients && partnerClientResults.map((cliente) => (
+                              <button
+                                key={cliente.id}
+                                type="button"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => {
+                                  setPartnerClient(cliente);
+                                  setPartnerClientSearch(cliente.nombre);
+                                  setPartnerClientResultsOpen(false);
+                                }}
+                                className="flex w-full items-center justify-between border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-blue-50"
+                              >
+                                <span className="font-semibold text-gray-800">{cliente.nombre}</span>
+                                <span className="text-xs text-gray-500">{cliente.ruc || "Sin RUC"}</span>
+                              </button>
+                            ))}
+                            {!loadingPartnerClients && partnerClientSearch.trim().length >= 2 && partnerClientResults.length === 0 && (
+                              <div className="px-3 py-3 text-center text-xs text-gray-500">No se encontraron clientes activos.</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                    <div className="rounded-lg border border-white bg-white px-3 py-2 text-sm text-gray-600">
+                      <span className="block text-xs font-semibold uppercase text-gray-400">RUC / identificación</span>
+                      <span className="font-bold text-gray-800">{partnerClient?.ruc || "Se completa al seleccionar"}</span>
+                    </div>
+                    <label className="text-sm font-semibold text-gray-700">
+                      Persona que recibe (opcional)
+                      <input value={partnerRecipient} onChange={(event) => setPartnerRecipient(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-normal outline-none" />
+                    </label>
+                    <label className="text-sm font-semibold text-gray-700">
+                      Área o sede (opcional)
+                      <input value={partnerDestination} onChange={(event) => setPartnerDestination(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-normal outline-none" />
+                    </label>
+                    <label className="text-sm font-semibold text-gray-700 md:col-span-2">
+                      Motivo detallado (obligatorio)
+                      <div className="mt-1 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                        <select
+                          value={partnerReasonPreset}
+                          onChange={(event) => { setPartnerReasonPreset(event.target.value); if (event.target.value) setPartnerReason(event.target.value); }}
+                          className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-normal outline-none"
+                        >
+                          <option value="">Seleccionar motivo frecuente...</option>
+                          <option value="Transferencia a empresa partner para operación comercial.">Transferencia a empresa partner</option>
+                          <option value="Entrega de equipos para apoyo operativo o técnico.">Apoyo operativo o técnico</option>
+                          <option value="Envío de equipos para coordinación interempresarial.">Coordinación interempresarial</option>
+                        </select>
+                        <input value={partnerReason} onChange={(event) => setPartnerReason(event.target.value)} placeholder="Escribe o ajusta la justificación" className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-normal outline-none" />
+                      </div>
+                    </label>
+                    {partnerItems.length > 0 && (
+                      <div className="md:col-span-2 rounded-lg border border-amber-100 bg-white p-3">
+                        <p className="mb-2 text-xs font-bold uppercase text-gray-500">Productos agregados</p>
+                        <div className="space-y-2">
+                          {partnerItems.map((item, index) => (
+                            <div key={`${item.producto_id}-${index}`} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-sm">
+                              <span className="min-w-0 truncate font-semibold text-gray-800">{item.nombre}</span>
+                              <span className="shrink-0 text-gray-600">{formatNumber(item.cantidad)} un.</span>
+                              <button type="button" onClick={() => setPartnerItems((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="shrink-0 rounded-md p-1 text-red-500 hover:bg-red-50" title="Quitar producto"><X className="h-4 w-4" /></button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <label className="text-sm font-semibold text-gray-600 md:col-span-2">
                 Producto
                 <div className="relative mt-1">
@@ -2823,6 +3074,11 @@ export default function InventarioMovimientos() {
                   onChange={(event) => handleSalidaChange("cantidad", event.target.value)}
                   className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
                 />
+                {salidaEsPartner && (
+                  <button type="button" onClick={addPartnerItem} className="mt-2 inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">
+                    <Plus className="h-4 w-4" /> Agregar producto a la transferencia
+                  </button>
+                )}
               </label>
 
               <label className="text-sm font-semibold text-gray-600">
@@ -2834,15 +3090,22 @@ export default function InventarioMovimientos() {
                 />
               </label>
 
-              <label className="text-sm font-semibold text-gray-600">
-                Fecha documento
-                <input
-                  type="date"
-                  value={salidaForm.fecha_documento}
-                  onChange={(event) => handleSalidaChange("fecha_documento", event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
-                />
-              </label>
+              {!salidaEsPartner ? (
+                <label className="text-sm font-semibold text-gray-600">
+                  Fecha documento
+                  <input
+                    type="date"
+                    value={salidaForm.fecha_documento}
+                    onChange={(event) => handleSalidaChange("fecha_documento", event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none"
+                  />
+                </label>
+              ) : (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                  <span className="block text-xs font-semibold uppercase text-blue-500">Fecha de salida</span>
+                  Se registrará automáticamente al guardar.
+                </div>
+              )}
 
               <label className="text-sm font-semibold text-gray-600 md:col-span-2">
                 Archivo documento
