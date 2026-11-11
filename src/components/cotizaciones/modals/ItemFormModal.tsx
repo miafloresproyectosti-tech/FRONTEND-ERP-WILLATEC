@@ -128,9 +128,26 @@ export function ItemFormModal({
     pesoTotal: "",
   });
   const [applyMarginToAll, setApplyMarginToAll] = React.useState<Record<number, boolean>>({});
+  const [costBaseInput, setCostBaseInput] = React.useState("");
+  const [costBaseFocused, setCostBaseFocused] = React.useState(false);
+  const [providerPriceInputs, setProviderPriceInputs] = React.useState<Record<number, string>>({});
 
   React.useEffect(() => {
     if (open) setApplyMarginToAll({});
+  }, [open, editingItem?.id]);
+
+  React.useEffect(() => {
+    if (!open || costBaseFocused) return;
+    setCostBaseInput(formatEditableAmount(itemForm.costo_base));
+  }, [open, editingItem?.id, itemForm.costo_base, costBaseFocused]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const nextPrices: Record<number, string> = {};
+    (itemForm.proveedores || []).forEach((proveedor, index) => {
+      nextPrices[index] = formatEditableAmount(proveedor.precio);
+    });
+    setProviderPriceInputs(nextPrices);
   }, [open, editingItem?.id]);
 
   React.useEffect(() => {
@@ -260,12 +277,36 @@ export function ItemFormModal({
       maximumFractionDigits: 2,
     });
   };
+  const formatEditableInput = (value: string) => {
+    const normalized = value.replace(/,/g, "").replace(/[^0-9.]/g, "");
+    const firstDotIndex = normalized.indexOf(".");
+    const hasDecimalPoint = firstDotIndex >= 0;
+    const whole = hasDecimalPoint ? normalized.slice(0, firstDotIndex) : normalized;
+    const decimal = hasDecimalPoint
+      ? normalized.slice(firstDotIndex + 1).replace(/\./g, "").slice(0, 2)
+      : "";
+    const formattedWhole = whole ? Number(whole).toLocaleString("en-US") : "0";
+    return `${formattedWhole}${hasDecimalPoint ? `.${decimal}` : ""}`;
+  };
   const parseEditableAmount = (value: string) => {
     const normalized = value.replace(/,/g, "").replace(/[^0-9.]/g, "");
     const [whole, ...decimalParts] = normalized.split(".");
     const decimal = decimalParts.join("").slice(0, 2);
     const parsed = Number(decimalParts.length ? `${whole}.${decimal}` : whole);
     return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const handleCostBaseInputChange = (value: string) => {
+    const formatted = formatEditableInput(value);
+    setCostBaseInput(formatted);
+    setItemForm({
+      ...itemForm,
+      costo_base: parseEditableAmount(formatted),
+    });
+  };
+  const handleProviderPriceInputChange = (index: number, value: string) => {
+    const formatted = formatEditableInput(value);
+    setProviderPriceInputs((current) => ({ ...current, [index]: formatted }));
+    updateProveedor(index, "precio", value.trim() ? parseEditableAmount(formatted) : null);
   };
   const calcConfig = {
     under200: {
@@ -1338,14 +1379,17 @@ export function ItemFormModal({
                     className={`${inp} flex-1`}
                     type="text"
                     disabled={readOnly}
-                  value={formatEditableAmount(itemForm.costo_base)}
-                    onChange={(e) =>
-                      setItemForm({
-                        ...itemForm,
-                      costo_base: parseEditableAmount(e.target.value),
-                      })
-                    }
-                  inputMode="decimal"
+                    value={costBaseFocused ? costBaseInput : formatEditableAmount(itemForm.costo_base)}
+                    onFocus={() => {
+                      setCostBaseFocused(true);
+                      setCostBaseInput(formatEditableAmount(itemForm.costo_base));
+                    }}
+                    onBlur={() => {
+                      setCostBaseFocused(false);
+                      setCostBaseInput(formatEditableAmount(itemForm.costo_base));
+                    }}
+                    onChange={(e) => handleCostBaseInputChange(e.target.value)}
+                    inputMode="decimal"
                   />
                   {showImportCalcControls && (
                     <button
@@ -1503,19 +1547,19 @@ export function ItemFormModal({
                           `Precio (${monedaId === 1 ? "S/." : "$"})`,
                           <input
                             className={inp}
-                            type="number"
-                            step="0.01"
+                            type="text"
                             disabled={readOnly}
-                            value={proveedor.precio?.toString() ?? ""}
-                            onChange={(e) =>
-                              updateProveedor(
-                                index,
-                                "precio",
-                                e.target.value
-                                  ? parseFloat(e.target.value)
-                                  : null,
-                              )
-                            }
+                            value={providerPriceInputs[index] ?? formatEditableAmount(proveedor.precio)}
+                            onFocus={() => setProviderPriceInputs((current) => ({
+                              ...current,
+                              [index]: formatEditableAmount(proveedor.precio),
+                            }))}
+                            onBlur={() => setProviderPriceInputs((current) => ({
+                              ...current,
+                              [index]: formatEditableAmount(proveedor.precio),
+                            }))}
+                            onChange={(e) => handleProviderPriceInputChange(index, e.target.value)}
+                            inputMode="decimal"
                           />,
                         )}
                         {field(
