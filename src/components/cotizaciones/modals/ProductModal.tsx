@@ -81,6 +81,17 @@ export function ProductModal({
               const precioProducto = getProductPrice(producto);
               const simboloProducto = getProductMoneySymbol(producto);
               const codigoMonedaProducto = producto.moneda?.codigo || (Number(producto.moneda_id) === 2 ? "USD" : "PEN");
+              const estadoProducto = String(producto.estado || "").toLowerCase();
+              const estadoLabel = estadoProducto === "nuevo"
+                ? "Nuevo"
+                : estadoProducto === "usado"
+                  ? "Usado"
+                  : "Estado no informado";
+              const estadoClass = estadoProducto === "nuevo"
+                ? "bg-blue-50 text-blue-700 ring-blue-200"
+                : estadoProducto === "usado"
+                  ? "bg-violet-50 text-violet-700 ring-violet-200"
+                  : "bg-slate-100 text-slate-600 ring-slate-200";
 
               return (
                 <div
@@ -89,9 +100,14 @@ export function ProductModal({
                   className="flex items-center justify-between gap-3 p-4 border rounded-lg hover:bg-blue-50 cursor-pointer group transition-all"
                 >
                   <div className="min-w-0">
-                    <p className="font-bold text-gray-800 group-hover:text-blue-700">
-                      {producto.nombre}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-bold text-gray-800 group-hover:text-blue-700">
+                        {producto.nombre}
+                      </p>
+                      <span className={`rounded-full px-2 py-1 text-[11px] font-bold ring-1 ${estadoClass}`}>
+                        {estadoLabel}
+                      </span>
+                    </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
                       <span className="font-semibold text-slate-700">
                         Precio: {formatMoney(precioProducto, simboloProducto)} {codigoMonedaProducto} sin IGV

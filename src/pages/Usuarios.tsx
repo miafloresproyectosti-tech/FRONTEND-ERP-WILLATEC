@@ -12,6 +12,8 @@ import {
   Loader2,
   Key,
   ShieldCheck,
+  ShieldAlert,
+  Download,
   Users as UsersIcon,
   Power,
 } from "lucide-react";
@@ -25,6 +27,8 @@ import {
   deactivateUser,
   activateUser,
   resetPassword,
+  resetUserTwoFactor,
+  regenerateUserRecoveryCodes,
   getRolesPermissionsConfig,
   updateRolePermissions,
   createRole,
@@ -57,6 +61,9 @@ interface User {
   telefono?: string;
   dni?: string;
   cargo?: string;
+  twoFactorEnabled: boolean;
+  requiresPasswordChange: boolean;
+  lastLoginAt?: string | null;
 }
 
 export default function Usuarios() {
@@ -101,6 +108,13 @@ export default function Usuarios() {
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [savingRoleId, setSavingRoleId] = useState<number | null>(null);
   const [resettingUserId, setResettingUserId] = useState<number | null>(null);
+  const [securityTarget, setSecurityTarget] = useState<User | null>(null);
+  const [securityAction, setSecurityAction] = useState<"reset_2fa" | "recovery_codes">("reset_2fa");
+  const [securityPassword, setSecurityPassword] = useState("");
+  const [securityCode, setSecurityCode] = useState("");
+  const [securityReason, setSecurityReason] = useState("");
+  const [securityLoading, setSecurityLoading] = useState(false);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [permissionSearch, setPermissionSearch] = useState("");
   const [expandedRoles, setExpandedRoles] = useState<number[]>([]);
   const [expandedModules, setExpandedModules] = useState<string[]>([]);
@@ -160,6 +174,9 @@ export default function Usuarios() {
         telefono: apiUser.profile?.telefono || "",
         dni: apiUser.profile?.dni || "",
         cargo: apiUser.profile?.cargo || "",
+        twoFactorEnabled: Boolean(apiUser.two_factor_enabled ?? apiUser.two_factor_confirmed_at),
+        requiresPasswordChange: Boolean(apiUser.requires_password_change),
+        lastLoginAt: apiUser.last_login_at || null,
       }));
       setUsers(formattedUsers);
     } catch (error) {
@@ -443,6 +460,53 @@ export default function Usuarios() {
   };
 
   const canAddUser = user?.role === "SUPERADMIN";
+
+  const openSecurityModal = (usuario: User, action: "reset_2fa" | "recovery_codes") => {
+    setSecurityTarget(usuario);
+    setSecurityAction(action);
+    setSecurityPassword("");
+    setSecurityCode("");
+    setSecurityReason("");
+    setRecoveryCodes([]);
+  };
+
+  const closeSecurityModal = () => {
+    setSecurityTarget(null);
+    setRecoveryCodes([]);
+  };
+
+  const handleSecurityAction = async () => {
+    if (!securityTarget || !securityPassword || securityCode.length !== 6 || !securityReason.trim()) return;
+    setSecurityLoading(true);
+    try {
+      const payload = { password: securityPassword, code: securityCode, motivo: securityReason.trim() };
+      if (securityAction === "reset_2fa") {
+        await resetUserTwoFactor(securityTarget.id, payload);
+        showToast({ title: "2FA restablecido", description: "El usuario debera configurarlo nuevamente al iniciar sesion.", type: "success" });
+        await loadUsers();
+        closeSecurityModal();
+      } else {
+        const response = await regenerateUserRecoveryCodes(securityTarget.id, payload);
+        setRecoveryCodes(response.recovery_codes || []);
+        showToast({ title: "Codigos regenerados", description: "Descargalos o entregalos al usuario ahora. No volveran a mostrarse.", type: "success" });
+      }
+    } catch (error: any) {
+      showToast({ title: "No se pudo completar la accion", description: error?.response?.data?.message || "Verifica la contrasena, el codigo 2FA y el motivo.", type: "error" });
+    } finally {
+      setSecurityLoading(false);
+    }
+  };
+
+  const downloadRecoveryCodes = () => {
+    if (!recoveryCodes.length) return;
+    const blob = new Blob([recoveryCodes.join("\n")], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `codigos-2fa-${securityTarget?.email || "usuario"}.txt`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
   const filteredPermissionsCatalog = permissionsCatalog.filter((permission) => {
     const term = permissionSearch.trim().toLowerCase();
     if (!term) return true;
@@ -950,6 +1014,17 @@ export default function Usuarios() {
                     <p className="mt-1 font-medium text-gray-700">{u.role}</p>
                   </div>
 
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                    <span className={`rounded-full border px-2.5 py-1 ${u.twoFactorEnabled ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                      {u.twoFactorEnabled ? "2FA activo" : "2FA pendiente"}
+                    </span>
+                    {u.requiresPasswordChange && (
+                      <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-orange-700">
+                        Cambio de contrasena pendiente
+                      </span>
+                    )}
+                  </div>
+
                   {canAddUser && (
                     <div className="mt-4 grid grid-cols-4 gap-2 border-t border-gray-100 pt-3">
                       <button
@@ -1017,6 +1092,15 @@ export default function Usuarios() {
                       >
                         {resettingUserId === u.id ? <Loader2 size={16} className="animate-spin" /> : <Key size={16} />}
                         <span className="hidden sm:inline">{resettingUserId === u.id ? "..." : "Reset"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openSecurityModal(u, "reset_2fa")}
+                        className="inline-flex h-11 items-center justify-center gap-1 rounded-xl bg-indigo-100 text-sm font-semibold text-indigo-700 hover:bg-indigo-200"
+                        title="Gestionar seguridad y 2FA"
+                      >
+                        <ShieldAlert size={16} />
+                        <span className="hidden sm:inline">2FA</span>
                       </button>
                     </div>
                   )}
@@ -1086,6 +1170,16 @@ export default function Usuarios() {
                         >
                           {u.status}
                         </span>
+                        <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-semibold">
+                          <span className={`rounded-full border px-2 py-0.5 ${u.twoFactorEnabled ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                            {u.twoFactorEnabled ? "2FA activo" : "2FA pendiente"}
+                          </span>
+                          {u.requiresPasswordChange && (
+                            <span className="rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-orange-700">
+                              Cambio de contrasena pendiente
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="sticky right-0 bg-white px-6 py-5 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)]">
@@ -1158,6 +1252,14 @@ export default function Usuarios() {
                               title="Resetear contraseña"
                             >
                               {resettingUserId === u.id ? <Loader2 size={18} className="animate-spin" /> : <Key size={18} />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openSecurityModal(u, "reset_2fa")}
+                              className="w-11 h-11 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center hover:bg-indigo-200 transition-all duration-200 hover:scale-105 shadow-sm"
+                              title="Gestionar seguridad y 2FA"
+                            >
+                              <ShieldAlert size={18} />
                             </button>
                           </div>
                         )}
@@ -1346,6 +1448,57 @@ export default function Usuarios() {
                 ) : (
                   "Eliminar"
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {securityTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-950">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Seguridad del usuario</p>
+                <h3 className="mt-1 text-xl font-bold text-slate-900 dark:text-white">{securityTarget.name}</h3>
+                <p className="text-sm text-slate-500">Accion protegida con tus credenciales de superadmin.</p>
+              </div>
+              <button type="button" onClick={closeSecurityModal} disabled={securityLoading} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50" title="Cerrar"><X size={19} /></button>
+            </div>
+            <div className="space-y-4 py-4">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Accion
+                <select value={securityAction} onChange={(event) => { setSecurityAction(event.target.value as "reset_2fa" | "recovery_codes"); setRecoveryCodes([]); }} className="mt-1.5 h-11 w-full rounded-xl border border-slate-300 px-3 font-normal outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900">
+                  <option value="reset_2fa">Restablecer 2FA</option>
+                  <option value="recovery_codes">Regenerar codigos de recuperacion</option>
+                </select>
+              </label>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Tu contrasena
+                <input type="password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-slate-300 px-3 font-normal outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900" autoComplete="current-password" />
+              </label>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Tu codigo 2FA
+                <input inputMode="numeric" maxLength={6} value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, "").slice(0, 6))} className="mt-1.5 h-11 w-full rounded-xl border border-slate-300 px-3 font-normal tracking-[0.3em] outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900" placeholder="000000" />
+              </label>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Motivo obligatorio
+                <textarea value={securityReason} onChange={(event) => setSecurityReason(event.target.value)} rows={3} placeholder="Ej. El usuario cambio de celular y perdio acceso al autenticador." className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900" />
+              </label>
+              {recoveryCodes.length > 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  <p className="font-bold">Codigos nuevos: guardalos ahora</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-sm">{recoveryCodes.map((code) => <span key={code} className="rounded-lg bg-white px-3 py-2 text-center">{code}</span>)}</div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => void navigator.clipboard?.writeText(recoveryCodes.join("\n"))} className="rounded-lg border border-amber-300 px-3 py-2 font-semibold hover:bg-amber-100">Copiar codigos</button>
+                    <button type="button" onClick={downloadRecoveryCodes} className="inline-flex items-center gap-2 rounded-lg border border-amber-300 px-3 py-2 font-semibold hover:bg-amber-100">
+                      <Download size={15} /> Descargar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+              <button type="button" onClick={closeSecurityModal} disabled={securityLoading} className="h-11 rounded-xl border border-slate-300 px-4 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancelar</button>
+              <button type="button" onClick={() => void handleSecurityAction()} disabled={securityLoading || !securityPassword || securityCode.length !== 6 || !securityReason.trim()} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
+                {securityLoading && <Loader2 size={16} className="animate-spin" />}
+                {securityAction === "reset_2fa" ? "Restablecer 2FA" : "Regenerar codigos"}
               </button>
             </div>
           </div>

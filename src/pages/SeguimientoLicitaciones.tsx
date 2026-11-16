@@ -29,6 +29,7 @@ import {
   MOTIVOS_PERDIDA,
   MOTIVOS_VENCIMIENTO,
   OPORTUNIDAD_ESTADOS,
+  MOTIVOS_CIERRE_ENCARGADO,
   OPORTUNIDAD_TIPOS,
 } from "../constants/licitaciones";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
@@ -39,6 +40,7 @@ import {
   deleteArchivoOportunidad,
   deleteCotizacionRelacionada,
   deleteOportunidad,
+  getOportunidadArchivo,
   getOportunidad,
   getOportunidades,
   getLicitacionEjecutivos,
@@ -99,6 +101,7 @@ const MIS_OPORTUNIDADES_ACTIVE_RANK: Record<OportunidadEstado, number> = {
   perdida: 4,
   no_se_realizara: 4,
   vencida: 4,
+  cerrada: 4,
 };
 
 const LICITACIONES_STATE_PRIORITY: Record<OportunidadEstado, number> = {
@@ -110,6 +113,7 @@ const LICITACIONES_STATE_PRIORITY: Record<OportunidadEstado, number> = {
   perdida: 1,
   no_se_realizara: 1,
   vencida: 1,
+  cerrada: 1,
 };
 
 const SUPERADMIN_ACTIVE_STATE_PRIORITY: Record<string, number> = {
@@ -282,6 +286,9 @@ export default function SeguimientoLicitaciones() {
   const [releasingQuote, setReleasingQuote] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   const loadRequestRef = useRef(0);
+  const visibleLoadRequestRef = useRef<number | null>(null);
+  const dataRequestInFlightRef = useRef(false);
+  const lastExpirationAlertsRunRef = useRef(0);
   const showToastRef = useRef(showToast);
 
   useEffect(() => {
@@ -300,21 +307,41 @@ export default function SeguimientoLicitaciones() {
   );
 
   const loadData = useCallback(async (options?: { silent?: boolean }) => {
+    if (options?.silent && dataRequestInFlightRef.current) return;
+
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
-    if (!options?.silent) setLoading(true);
+    const isVisibleLoad = !options?.silent;
+    dataRequestInFlightRef.current = true;
 
-    // Mantiene el flujo de alertas, pero no bloquea la primera pintura de oportunidades.
-    void procesarAlertasVencimientoOportunidades().then(() => {
-      window.dispatchEvent(new Event(NOTIFICATIONS_UPDATED_EVENT));
-    }).catch((error) => {
-      console.warn("No se pudieron procesar alertas de vencimiento de oportunidades:", error);
-    });
+    // Una recarga silenciosa no debe tomar el control del indicador de carga
+    // inicial ni impedir que este se cierre cuando su respuesta ya llego.
+    if (isVisibleLoad) {
+      visibleLoadRequestRef.current = requestId;
+      setLoading(true);
+    }
+
+    // Mantiene el flujo de alertas sin ejecutarlo en cada refresco del listado.
+    // Las recargas silenciosas pueden ocurrir varias veces por foco o intervalo.
+    const now = Date.now();
+    if (now - lastExpirationAlertsRunRef.current >= 60_000) {
+      lastExpirationAlertsRunRef.current = now;
+      void procesarAlertasVencimientoOportunidades().then(() => {
+        window.dispatchEvent(new Event(NOTIFICATIONS_UPDATED_EVENT));
+      }).catch((error) => {
+        console.warn("No se pudieron procesar alertas de vencimiento de oportunidades:", error);
+      });
+    }
 
     try {
       const items = await getOportunidades();
 
-      if (requestId !== loadRequestRef.current) return;
+      if (requestId !== loadRequestRef.current) {
+        // Si una recarga silenciosa se adelanto, no descartes la respuesta
+        // inicial cuando la vista aun no tiene datos para mostrar.
+        setOpportunities((current) => (current.length === 0 ? items : current));
+        return;
+      }
       setOpportunities(items);
       setEjecutivos((current) => {
         const merged = new Map<number, EjecutivoAsignado>();
@@ -336,8 +363,10 @@ export default function SeguimientoLicitaciones() {
         type: "warning",
       });
     } finally {
-      if (requestId === loadRequestRef.current) {
-        if (!options?.silent) setLoading(false);
+      dataRequestInFlightRef.current = false;
+      if (isVisibleLoad && visibleLoadRequestRef.current === requestId) {
+        setLoading(false);
+        visibleLoadRequestRef.current = null;
       }
     }
   }, [user?.email, user?.id, userName]);
@@ -385,7 +414,7 @@ export default function SeguimientoLicitaciones() {
   useEffect(() => {
     const intervalId = window.setInterval(() => {
       void loadData({ silent: true });
-    }, 15000);
+    }, 60000);
 
     const refreshOnFocus = () => {
       if (document.visibilityState === "visible") void loadData({ silent: true });
@@ -571,7 +600,7 @@ export default function SeguimientoLicitaciones() {
     let cancelled = false;
     setSelectedLoading(true);
 
-    void getOportunidad(selectedId)
+    void getOportunidad(selectedId, { includeFileData: false })
       .then((detail) => {
         if (cancelled) return;
         setSelectedDetail(detail);
@@ -816,7 +845,17 @@ export default function SeguimientoLicitaciones() {
     };
 
     try {
-      const updated = await saveOportunidad(next);
+      const hydrateFile = async (file?: OportunidadArchivo) => {
+        if (!file?.id || file.dataUrl) return file;
+        return getOportunidadArchivo(file.id);
+      };
+      const hydratedTdr = await hydrateFile(next.tdr);
+      const hydratedArchivos = await Promise.all(next.archivos.map((file) => hydrateFile(file)));
+      const updated = await saveOportunidad({
+        ...next,
+        tdr: hydratedTdr,
+        archivos: hydratedArchivos.filter((file): file is OportunidadArchivo => Boolean(file)),
+      });
       setModalOpen(false);
       setEditing(null);
       syncSelectedOpportunity(updated);
@@ -896,6 +935,40 @@ export default function SeguimientoLicitaciones() {
           "No se pudo guardar el cambio. Intenta nuevamente.",
         type: "error",
       });
+    } finally {
+      setChangingEstadoId(null);
+    }
+  };
+
+  const closeOpportunityByManager = async (item: Oportunidad, reason: string) => {
+    if (changingEstadoId || isClosedOpportunity(item.estado)) return;
+    setChangingEstadoId(item.id);
+    try {
+      const now = new Date().toISOString();
+      const updated = await saveOportunidad({
+        ...item,
+        estado: "cerrada",
+        motivoCierre: reason,
+        comentarioCierre: reason,
+        modificadoEn: now,
+        modificadoPor: userName,
+        historial: [
+          {
+            id: createId("hist"),
+            fecha: now,
+            usuario: userName,
+            tipo: "cierre",
+            descripcion: `Oportunidad cerrada por encargado. Motivo: ${reason}.`,
+          },
+          ...item.historial,
+        ],
+      });
+      syncSelectedOpportunity(updated);
+      void refreshSelectedOpportunity(item.id, updated);
+      showToast({ title: "Oportunidad cerrada", description: "El cierre administrativo quedó registrado.", type: "success" });
+    } catch (error) {
+      const response = error as { response?: { data?: { message?: string } }; message?: string };
+      showToast({ title: "No se pudo cerrar", description: response.response?.data?.message || response.message || "Intenta nuevamente.", type: "error" });
     } finally {
       setChangingEstadoId(null);
     }
@@ -1000,7 +1073,9 @@ export default function SeguimientoLicitaciones() {
 
     setEditingLoadingId(item.id);
     try {
-      const detail = selectedDetail?.id === item.id ? selectedDetail : await getOportunidad(item.id);
+      const detail = selectedDetail?.id === item.id
+        ? selectedDetail
+        : await getOportunidad(item.id, { includeFileData: false });
       setOpportunities((current) =>
         current.map((opportunity) => (opportunity.id === detail.id ? { ...opportunity, ...detail } : opportunity)),
       );
@@ -2112,6 +2187,11 @@ export default function SeguimientoLicitaciones() {
           if (selected) void changeEstado(selected, estado);
         }}
         finalizingOpportunity={Boolean(selected && changingEstadoId === selected.id)}
+        canCloseOpportunity={Boolean(selected && (isLicitacionesRole || currentRole === "SUPERADMIN") && hasPermission("licitaciones.editar") && selected.tipo === "licitacion")}
+        closingOpportunity={Boolean(selected && changingEstadoId === selected.id)}
+        onCloseOpportunity={(reason) => {
+          if (selected) void closeOpportunityByManager(selected, reason);
+        }}
         canMarkProposalPresented={Boolean(selected && canMarkProposalPresented(selected))}
         presentingProposal={Boolean(selected && presentingProposalId === selected.id)}
         onMarkProposalPresented={(file) => void handleMarkProposalPresented(file)}

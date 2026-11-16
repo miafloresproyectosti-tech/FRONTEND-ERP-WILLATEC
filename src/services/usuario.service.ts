@@ -17,6 +17,10 @@ export interface User {
   email_verified_at: string | null;
   created_at: string;
   updated_at: string;
+  requires_password_change?: boolean;
+  last_login_at?: string | null;
+  two_factor_enabled?: boolean;
+  two_factor_confirmed_at?: string | null;
   profile?: {
     id: number;
     user_id: number;
@@ -191,4 +195,20 @@ export const deleteRole = async (roleId: number): Promise<void> => {
 export const resetPassword = async (id: number) => {
   const response = await api.patch(`/users/${id}/reset-password`);
   return response.data; // espera { tempPassword: string } o { message }
+};
+
+export const resetUserTwoFactor = async (
+  id: number,
+  payload: { password: string; code: string; motivo: string },
+) => {
+  const response = await api.post(`/users/${id}/security/reset-2fa`, payload);
+  return response.data;
+};
+
+export const regenerateUserRecoveryCodes = async (
+  id: number,
+  payload: { password: string; code: string; motivo: string },
+) => {
+  const response = await api.post(`/users/${id}/security/recovery-codes`, payload);
+  return response.data as { message: string; recovery_codes: string[] };
 };

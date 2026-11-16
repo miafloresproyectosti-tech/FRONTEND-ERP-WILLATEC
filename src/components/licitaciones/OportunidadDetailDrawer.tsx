@@ -20,6 +20,7 @@ import { useState, type ClipboardEvent } from "react";
 
 import {
   FORMAS_PAGO,
+  MOTIVOS_CIERRE_ENCARGADO,
   OPORTUNIDAD_ESTADOS,
   OPORTUNIDAD_TIPOS,
 } from "../../constants/licitaciones";
@@ -50,6 +51,9 @@ interface Props {
   onReleaseOpportunity?: () => void;
   onFinalizeOpportunity?: (estado: OportunidadEstado) => void;
   finalizingOpportunity?: boolean;
+  canCloseOpportunity?: boolean;
+  onCloseOpportunity?: (reason: string) => void;
+  closingOpportunity?: boolean;
   canDownloadQuotePdf?: boolean;
   downloadingQuoteId?: string | number | null;
   onDownloadQuotePdf?: (cotizacionId: string | number) => void;
@@ -84,6 +88,9 @@ export function OportunidadDetailDrawer({
   onReleaseOpportunity,
   onFinalizeOpportunity,
   finalizingOpportunity = false,
+  canCloseOpportunity = false,
+  onCloseOpportunity,
+  closingOpportunity = false,
   canDownloadQuotePdf = false,
   downloadingQuoteId = null,
   onDownloadQuotePdf,
@@ -117,6 +124,10 @@ export function OportunidadDetailDrawer({
   const [presentationError, setPresentationError] = useState("");
   const [viewsModalOpen, setViewsModalOpen] = useState(false);
   const [linkedQuotesExpanded, setLinkedQuotesExpanded] = useState(false);
+  const [closeModalOpen, setCloseModalOpen] = useState(false);
+  const [closeReasonPreset, setCloseReasonPreset] = useState("");
+  const [closeReason, setCloseReason] = useState("");
+  const [closeError, setCloseError] = useState("");
 
   if (!opportunity) return null;
 
@@ -467,6 +478,20 @@ export function OportunidadDetailDrawer({
                 )}
               </div>
             </div>
+          )}
+
+          {canCloseOpportunity && !locked && onCloseOpportunity && (
+            <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/40">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="font-semibold text-slate-900 dark:text-white">Cierre administrativo</h3>
+                  <p className="mt-1 text-sm text-slate-500">Usa esta opción para cerrar una oportunidad por un motivo de gestión.</p>
+                </div>
+                <button type="button" onClick={() => { setCloseError(""); setCloseModalOpen(true); }} className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
+                  Cerrar oportunidad
+                </button>
+              </div>
+            </section>
           )}
 
           {canMarkProposalPresented &&
@@ -1100,6 +1125,38 @@ export function OportunidadDetailDrawer({
                   Todavia no hay vistas registradas para esta oportunidad.
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {closeModalOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-950">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Cerrar oportunidad</h3>
+                <p className="mt-1 text-sm text-slate-500">La oportunidad quedará como cerrada y no se marcará como “No se realizará”.</p>
+              </div>
+              <button type="button" onClick={() => setCloseModalOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100" title="Cerrar"><X size={18} /></button>
+            </div>
+            <label className="mt-4 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+              Motivo del cierre
+              <select value={closeReasonPreset} onChange={(event) => { setCloseReasonPreset(event.target.value); if (event.target.value) setCloseReason(event.target.value); }} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none dark:border-slate-700 dark:bg-slate-900">
+                <option value="">Seleccionar motivo frecuente...</option>
+                {MOTIVOS_CIERRE_ENCARGADO.map((motivo) => <option key={motivo} value={motivo}>{motivo}</option>)}
+              </select>
+            </label>
+            <label className="mt-3 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+              Detalle
+              <textarea value={closeReason} onChange={(event) => setCloseReason(event.target.value)} rows={3} placeholder="Escribe una explicación adicional..." className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none dark:border-slate-700 dark:bg-slate-900" />
+            </label>
+            {closeError && <p className="mt-2 text-sm font-semibold text-red-600">{closeError}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setCloseModalOpen(false)} disabled={closingOpportunity} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700">Cancelar</button>
+              <button type="button" onClick={() => { const value = closeReason.trim(); if (!value) { setCloseError("Selecciona o escribe el motivo del cierre."); return; } onCloseOpportunity?.(value); setCloseModalOpen(false); }} disabled={closingOpportunity} className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                {closingOpportunity && <Loader2 className="h-4 w-4 animate-spin" />} Confirmar cierre
+              </button>
             </div>
           </div>
         </div>

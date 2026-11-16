@@ -325,6 +325,14 @@ export function OportunidadFormModal({
     update("vigencia", toDatetimeLocalValue(date));
   };
 
+  const vigenciaDate = form.vigencia.slice(0, 10);
+  const vigenciaTime = form.vigencia.slice(11, 16);
+  const updateVigenciaPart = (part: "date" | "time", value: string) => {
+    const nextDate = part === "date" ? value : vigenciaDate;
+    const nextTime = part === "time" ? value : vigenciaTime;
+    if (nextDate && nextTime) update("vigencia", `${nextDate}T${nextTime}`);
+  };
+
   const quickVigenciaValue = (kind: "hoy" | "manana" | "dos-dias") => {
     const date = new Date();
 
@@ -444,12 +452,19 @@ export function OportunidadFormModal({
 
             <Field label="Fecha y hora de vigencia" error={errors.vigencia}>
               <div className="space-y-2">
-                <input
-                  type="datetime-local"
-                  className={inputClass("vigencia")}
-                  value={form.vigencia}
-                  onChange={(event) => update("vigencia", event.target.value)}
-                />
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <label className="text-xs font-semibold text-slate-500">
+                    Fecha
+                    <input type="date" className={`mt-1 ${inputClass("vigencia")}`} value={vigenciaDate} onChange={(event) => updateVigenciaPart("date", event.target.value)} />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-500">
+                    Hora
+                    <input type="time" className={`mt-1 ${inputClass("vigencia")}`} value={vigenciaTime} onChange={(event) => updateVigenciaPart("time", event.target.value)} />
+                  </label>
+                </div>
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                  Vigencia seleccionada: <strong>{form.vigencia ? new Date(form.vigencia).toLocaleString("es-PE", { dateStyle: "full", timeStyle: "short" }) : "Sin definir"}</strong>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"

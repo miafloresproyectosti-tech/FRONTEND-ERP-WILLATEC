@@ -19,6 +19,7 @@ export const OPORTUNIDAD_ESTADOS: Record<OportunidadEstado, string> = {
   perdida: "Perdida",
   no_se_realizara: "No se realizara",
   vencida: "Vencida",
+  cerrada: "Cerrada",
 };
 
 export const ESTADOS_CIERRE: OportunidadEstado[] = [
@@ -26,6 +27,7 @@ export const ESTADOS_CIERRE: OportunidadEstado[] = [
   "perdida",
   "no_se_realizara",
   "vencida",
+  "cerrada",
 ];
 
 export const ESTADOS_BLOQUEADOS: OportunidadEstado[] = [
@@ -44,6 +46,7 @@ export const OPORTUNIDAD_ESTADO_BADGES: Record<OportunidadEstado, string> = {
   perdida: "bg-rose-100 text-rose-700 ring-rose-200",
   no_se_realizara: "bg-amber-100 text-amber-800 ring-amber-200",
   vencida: "bg-red-100 text-red-700 ring-red-200",
+  cerrada: "bg-slate-200 text-slate-800 ring-slate-300",
 };
 
 export const FORMAS_PAGO: Record<OportunidadPayment, string> = {
@@ -71,6 +74,14 @@ export const MOTIVOS_VENCIMIENTO = [
   "No se presento la propuesta.",
   "Cliente cancelo.",
   "Publicacion tardia.",
+  "Otro.",
+];
+
+export const MOTIVOS_CIERRE_ENCARGADO = [
+  "Equivocacion de fecha y/o hora.",
+  "Oportunidad vencida.",
+  "Registro duplicado.",
+  "Oportunidad creada por error.",
   "Otro.",
 ];
 

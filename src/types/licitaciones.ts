@@ -8,7 +8,8 @@ export type OportunidadEstado =
   | "ganada"
   | "perdida"
   | "no_se_realizara"
-  | "vencida";
+  | "vencida"
+  | "cerrada";
 
 export type OportunidadFiltroEstado =
   | OportunidadEstado

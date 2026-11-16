@@ -69,6 +69,8 @@ import { useAuth } from "../AuthContext";
 import {
   getCotizacion,
   getCotizacionEjecutivos,
+  getCotizacionesPaginated,
+  type Cotizacion,
   type CotizacionEjecutivo,
 } from "../services/cotizacion.service";
 import {
@@ -687,6 +689,8 @@ export default function OrdenesCompraPage() {
   const [saving, setSaving] = useState(false);
   const [editingEmitidaId, setEditingEmitidaId] = useState<number | null>(null);
   const [cotizacionId, setCotizacionId] = useState("");
+  const [cotizacionOptions, setCotizacionOptions] = useState<Cotizacion[]>([]);
+  const [cotizacionesLoading, setCotizacionesLoading] = useState(false);
   const [proveedor, setProveedor] = useState("");
   const [monedaOc, setMonedaOc] = useState("PEN");
   const [fecha, setFecha] = useState(today);
@@ -1307,6 +1311,30 @@ export default function OrdenesCompraPage() {
 
     void handleLoadPreview();
   }, [modalMode, debouncedCotizacionId]);
+
+  useEffect(() => {
+    if (!modalMode) return;
+
+    let cancelled = false;
+    setCotizacionesLoading(true);
+    void getCotizacionesPaginated({ page: 1, perPage: 100, search: "" })
+      .then((response) => {
+        if (!cancelled) setCotizacionOptions(response.data || []);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setCotizacionOptions([]);
+          console.warn("No se pudieron cargar las cotizaciones para la recepcion:", error);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCotizacionesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [modalMode]);
 
   useEffect(() => {
     if (!associationTarget) return;
@@ -2464,23 +2492,32 @@ export default function OrdenesCompraPage() {
                   Preview automático
                 </p>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Ingresa el ID de cotizaci&oacute;n y el preview se
-                  actualizar&aacute; autom&aacute;ticamente. Si necesitas forzar
-                  una recarga, usa el bot&oacute;n de actualizar.
+                  Selecciona una cotizaci&oacute;n y el preview se actualizar&aacute;
+                  autom&aacute;ticamente. Si necesitas forzar una recarga, usa
+                  el bot&oacute;n de actualizar.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-[1.3fr_0.9fr_0.8fr]">
                 <label className="space-y-2">
                   <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                    ID cotizacion
+                    Cotizaci&oacute;n
                   </span>
-                  <input
-                    type="number"
+                  <select
                     value={cotizacionId}
                     onChange={(event) => setCotizacionId(event.target.value)}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                  />
+                    disabled={cotizacionesLoading}
+                  >
+                    <option value="">
+                      {cotizacionesLoading ? "Cargando cotizaciones..." : "Selecciona una cotización..."}
+                    </option>
+                    {cotizacionOptions.map((cotizacion) => (
+                      <option key={cotizacion.id} value={cotizacion.id}>
+                        {cotizacion.numero} - {cotizacion.cliente_nombre || "Sin cliente"} - {cotizacion.titulo || "Sin título"}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="space-y-2">
                   <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
