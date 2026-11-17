@@ -94,6 +94,7 @@ export interface CotizacionItem {
     descripcion: string;
     cantidad: number;
     marca: string;
+    modelo?: string;
     codigo: string;
     unidad_medida: string;
     costo_base: number;
@@ -163,6 +164,7 @@ export interface ProductoExterno {
     descripcion: string;
     nota?: string | null;
     marca?: string | null;
+    modelo?: string | null;
     codigo?: string | null;
     unidad_medida?: string | null;
     proveedor?: string | null;
@@ -475,6 +477,7 @@ function normalizeProductoExterno(item: ProductoExterno): CotizacionItem {
         descripcion: item.descripcion || "",
         cantidad: 1,
         marca: item.marca || "",
+        modelo: item.modelo || "",
         codigo: item.codigo || "",
         unidad_medida: item.unidad_medida || "UND",
         costo_base: costoBase,

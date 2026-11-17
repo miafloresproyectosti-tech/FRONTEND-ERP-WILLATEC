@@ -17,6 +17,7 @@ export interface CotizacionItem {
   margen: number;
   nota?: string;
   marca?: string;
+  modelo?: string;
   codigo?: string;
   unidad_medida?: string;
   disponibilidad?: string;
@@ -116,6 +117,7 @@ export interface ItemFormState {
   margen: number;
   nota: string;
   marca: string;
+  modelo: string;
   codigo: string;
   unidad_medida: string;
   garantia_meses: number;

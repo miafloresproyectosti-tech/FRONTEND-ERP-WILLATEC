@@ -88,6 +88,7 @@ export type CotizacionItem ={
     margen: number;
     nota?: string;
     marca?: string;
+    modelo?: string;
     codigo?: string;
     unidad_medida?: string;
     disponibilidad?: string;
@@ -192,6 +193,7 @@ export interface ItemForm {
     margen: number;
     nota?: string;
     marca?: string;
+    modelo?: string;
     codigo?: string;
     unidad_medida?: string;
     disponibilidad?: string;

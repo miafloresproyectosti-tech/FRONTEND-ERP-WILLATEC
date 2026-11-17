@@ -885,6 +885,7 @@ export function ItemFormModal({
                             <span className="block text-[10px] text-gray-500 truncate">
                               {[
                                 suggestion.marca,
+                                suggestion.modelo && `Modelo: ${suggestion.modelo}`,
                                 suggestion.codigo,
                                 suggestion.proveedor,
                               ]
@@ -1049,7 +1050,7 @@ export function ItemFormModal({
                   )}
                 </div>,
               )}
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                 {field(
                   "Marca",
                   <input
@@ -1061,6 +1062,19 @@ export function ItemFormModal({
                       setItemForm({ ...itemForm, marca: e.target.value })
                     }
                     placeholder="Dell"
+                  />,
+                )}
+                {field(
+                  "Modelo",
+                  <input
+                    className={inp}
+                    type="text"
+                    value={itemForm.modelo || ""}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      setItemForm({ ...itemForm, modelo: e.target.value })
+                    }
+                    placeholder="Ej. H390"
                   />,
                 )}
                 {field(
