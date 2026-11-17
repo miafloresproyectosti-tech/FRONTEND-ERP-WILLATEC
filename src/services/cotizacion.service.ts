@@ -14,6 +14,7 @@ export interface CotizacionItem {
   imagen: string;
   imagen_url?: string | null;
   imagen_path?: string | null;
+  imagen_eliminada?: boolean;
   margen: number;
   nota?: string;
   marca?: string;
@@ -381,6 +382,7 @@ export interface CreateItemData {
   proveedores?: CotizacionItemProveedor[];
   imagen?: string | null;
   imagen_path?: string | null;
+  imagen_eliminada?: boolean;
   aplica_costos_adicionales?: boolean;
   destino_entrega?: string | null;
   importacion_calculo?: ImportacionCalculo | null;
@@ -526,11 +528,13 @@ function prepareCotizacionData(data: any): any {
         ...item,
         producto_externo_id: item.tipo === "externo" ? item.producto_externo_id : undefined,
         aplica_costos_adicionales: toBackendBoolean(item.aplica_costos_adicionales, true),
-        imagen: normalizeStorageImagePath(imageSource),
+        imagen: item.imagen_eliminada ? null : normalizeStorageImagePath(imageSource),
         imagen_path:
-          typeof imagePathSource === "string" && imagePathSource.startsWith("data:")
-            ? item.imagen_path || null
-            : normalizeStorageImagePath(imagePathSource),
+          item.imagen_eliminada
+            ? null
+            : typeof imagePathSource === "string" && imagePathSource.startsWith("data:")
+              ? item.imagen_path || null
+              : normalizeStorageImagePath(imagePathSource),
       };
     }),
   };

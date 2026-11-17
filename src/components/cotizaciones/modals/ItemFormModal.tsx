@@ -224,7 +224,7 @@ export function ItemFormModal({
   const handleImageFile = async (file: File) => {
     // Preview local inmediato
     readImageFile(file, (dataUrl) => {
-      setItemForm((prev) => ({ ...prev, imagen: dataUrl }));
+        setItemForm((prev) => ({ ...prev, imagen: dataUrl, imagen_eliminada: false }));
     });
 
     // Subir al servidor en segundo plano
@@ -235,7 +235,7 @@ export function ItemFormModal({
         headers: { "Content-Type": "multipart/form-data" },
       });
       // Reemplazar base64 con la URL del servidor
-      setItemForm((prev) => ({ ...prev, imagen: res.data.url }));
+      setItemForm((prev) => ({ ...prev, imagen: res.data.url, imagen_eliminada: false }));
     } catch (error) {
       console.error("Error al subir imagen", error);
       // Si falla, se queda con el base64 como fallback
@@ -953,6 +953,9 @@ export function ItemFormModal({
                             setItemForm({
                               ...itemForm,
                               imagen: "",
+                              imagen_url: null,
+                              imagen_path: null,
+                              imagen_eliminada: true,
                             });
                           }}
                           className="text-xs text-red-600 hover:underline w-full"

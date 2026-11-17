@@ -85,6 +85,7 @@ export type CotizacionItem ={
     imagen: string;
     imagen_url?: string | null;
     imagen_path?: string | null;
+    imagen_eliminada?: boolean;
     margen: number;
     nota?: string;
     marca?: string;
@@ -190,6 +191,7 @@ export interface ItemForm {
     imagen: string;
     imagen_url?: string | null;
     imagen_path?: string | null;
+    imagen_eliminada?: boolean;
     margen: number;
     nota?: string;
     marca?: string;

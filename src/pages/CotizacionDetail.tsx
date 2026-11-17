@@ -991,6 +991,7 @@ export function CotizacionDetail() {
       imagen: image,
       imagen_url: source.imagen_url || image || null,
       imagen_path: source.imagen_path || image || null,
+      imagen_eliminada: false,
     };
   };
 
@@ -2496,6 +2497,7 @@ export function CotizacionDetail() {
             imagen: itemForm.imagen || "",
             imagen_url: itemForm.imagen_url,
             imagen_path: itemForm.imagen_path,
+            imagen_eliminada: itemForm.imagen_eliminada ?? false,
             importacion_calculo: itemForm.importacion_calculo ?? null,
           }
           : item
