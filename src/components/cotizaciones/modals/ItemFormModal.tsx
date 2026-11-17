@@ -1566,7 +1566,7 @@ export function ItemFormModal({
                             className={inp}
                             type="text"
                             disabled={readOnly}
-                            value={providerPriceInputs[index] ?? formatEditableAmount(proveedor.precio)}
+                            value={providerPriceInputs[index] || formatEditableAmount(proveedor.precio)}
                             onFocus={() => setProviderPriceInputs((current) => ({
                               ...current,
                               [index]: formatEditableAmount(proveedor.precio),
