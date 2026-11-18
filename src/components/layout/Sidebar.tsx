@@ -551,7 +551,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 >
                   <div className="flex items-center gap-3">
                     <ShoppingBag size={20} />
-                    <span className="font-medium uppercase">Compras</span>
+                    <span className="font-medium uppercase">Abastecimiento</span>
                   </div>
 
                   <ChevronDown
@@ -579,7 +579,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       className={subItemClass("/compras")}
                     >
                       <ShoppingBag size={18} />
-                      Compras
+                      Órdenes a proveedores
                     </Link>
 
                     <Link
@@ -649,7 +649,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       className={subItemClass("/contabilidad/cuentas-por-pagar")}
                     >
                       <HandCoins size={18} />
-                      CxP / Pagos
+                      Compras
                     </Link>
 
                     <Link
@@ -658,7 +658,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                       className={subItemClass("/contabilidad/cuentas-por-cobrar")}
                     >
                       <Landmark size={18} />
-                      CxC / Cobros
+                      Ventas
                     </Link>
 
                     <Link

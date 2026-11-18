@@ -10,12 +10,18 @@ export interface Pagination<T> {
 
 export interface Comprobante {
   id: number;
-  tipo_operacion: "compra" | "venta";
+  tipo_operacion: "compra" | "venta" | "gasto";
+  categoria_gasto?: string | null;
+  centro_costo?: string | null;
   tipo_comprobante: string;
   serie: string;
   numero: string;
   fecha_emision?: string | null;
   fecha_vencimiento?: string | null;
+  fecha_vencimiento_origen?: string | null;
+  condicion_pago?: string | null;
+  detraccion_porcentaje?: number | string | null;
+  detraccion_monto_original?: number | string | null;
   emisor_nombre?: string | null;
   receptor_nombre?: string | null;
   total: number | string;
@@ -32,10 +38,15 @@ export interface Comprobante {
   cuenta_por_cobrar?: { id: number } | null;
   archivo_path?: string | null;
   archivo_url?: string | null;
+  notas_credito?: any[];
 }
 
 export interface CuentaPorPagar {
   id: number;
+  tipo_cuenta?: "proveedor" | "devolucion";
+  beneficiario?: string | null;
+  comision_origen?: number | string;
+  numero_cuotas?: number | null;
   comprobante_id: number | null;
   comprobante?: Comprobante | null;
   compra?: { id: number; numero?: string; proveedor?: any } | null;
@@ -45,8 +56,17 @@ export interface CuentaPorPagar {
   saldo: number | string;
   estado: string;
   fecha_vencimiento?: string | null;
+  fecha_estimada_pago?: string | null;
+  condicion_pago?: string | null;
+  dias_retraso?: number;
+  estado_operativo?: string | null;
+  detraccion_monto_original?: number | string;
+  detraccion_monto_programado?: number | string;
+  detraccion_fecha_programada?: string | null;
   fecha_vencimiento_origen?: "comprobante" | "credito_proveedor" | "contado" | "sin_fecha";
   pagos?: any[];
+  cheques?: Cheque[];
+  prorrogas?: Array<{ id: number; fecha_anterior: string; fecha_nueva: string; motivo: string; creado_por?: any }>;
   moneda?: any;
 }
 
@@ -61,6 +81,12 @@ export interface CuentaPorCobrar {
   saldo: number | string;
   estado: string;
   fecha_vencimiento?: string | null;
+  fecha_estimada_pago?: string | null;
+  dias_retraso?: number;
+  estado_operativo?: string | null;
+  detraccion_monto_original?: number | string;
+  detraccion_monto_programado?: number | string;
+  detraccion_fecha_programada?: string | null;
   cobros?: any[];
   moneda?: any;
 }
@@ -129,6 +155,13 @@ export async function anularComprobante(id: number | string) {
   return response.data as Comprobante;
 }
 
+export async function registrarNotaCredito(id: number | string, payload: FormData) {
+  const response = await api.post(`/contabilidad/comprobantes/${id}/notas-credito`, payload, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data as Comprobante;
+}
+
 export async function previewXmlComprobante(file: File) {
   const formData = new FormData();
   formData.append("xml", file);
@@ -157,6 +190,7 @@ export async function getCuentasPorPagar(filters: Record<string, any> = {}) {
       per_page: filters.perPage,
       buscar: filters.search || undefined,
       estado: filters.estado && filters.estado !== "todos" ? filters.estado : undefined,
+      tipo_operacion: filters.tipoOperacion && filters.tipoOperacion !== "todos" ? filters.tipoOperacion : undefined,
     },
   });
 
@@ -170,6 +204,16 @@ export async function getCuentaPorPagar(id: number | string) {
 
 export async function registrarPago(cuentaId: number | string, payload: any) {
   const response = await api.post(`/contabilidad/cuentas-por-pagar/${cuentaId}/pagos`, payload);
+  return response.data as CuentaPorPagar;
+}
+
+export async function actualizarSeguimientoCuentaPorPagar(cuentaId: number | string, payload: any) {
+  const response = await api.patch(`/contabilidad/cuentas-por-pagar/${cuentaId}/seguimiento`, payload);
+  return response.data as CuentaPorPagar;
+}
+
+export async function ampliarVencimientoCuentaPorPagar(cuentaId: number | string, payload: { fecha_nueva: string; motivo: string }) {
+  const response = await api.post(`/contabilidad/cuentas-por-pagar/${cuentaId}/ampliar-vencimiento`, payload);
   return response.data as CuentaPorPagar;
 }
 
@@ -193,6 +237,11 @@ export async function getCuentaPorCobrar(id: number | string) {
 
 export async function registrarCobro(cuentaId: number | string, payload: any) {
   const response = await api.post(`/contabilidad/cuentas-por-cobrar/${cuentaId}/cobros`, payload);
+  return response.data as CuentaPorCobrar;
+}
+
+export async function actualizarSeguimientoCuentaPorCobrar(cuentaId: number | string, payload: any) {
+  const response = await api.patch(`/contabilidad/cuentas-por-cobrar/${cuentaId}/seguimiento`, payload);
   return response.data as CuentaPorCobrar;
 }
 

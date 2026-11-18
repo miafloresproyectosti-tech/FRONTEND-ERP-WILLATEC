@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Ban, Eye, FileSearch, Loader2, ReceiptText, Search, Upload, XCircle } from "lucide-react";
 
 import {
-  anularComprobante,
   createComprobante,
   createManualComprobante,
   generarCuentaPorCobrar,
@@ -10,6 +9,7 @@ import {
   getComprobante,
   getComprobantes,
   previewXmlComprobante,
+  registrarNotaCredito,
   type Comprobante,
 } from "../services/contabilidad.service";
 import { getCompras, type Compra } from "../services/compra.service";
@@ -18,7 +18,9 @@ import AlertasOperativasSummary from "../components/contabilidad/AlertasOperativ
 
 const perPageOptions = [5, 10, 25, 50, 100];
 const estados = ["todos", "registrado", "anulado"];
-const operaciones = ["todos", "compra", "venta"];
+const operaciones = ["compra", "venta", "gasto"];
+const centrosCostoSugeridos = ["Administración", "Ventas", "Logística", "Almacén", "Oficina principal", "Uso general"];
+const condicionesPago = ["contado", "cheque_30_dias", "credito_15_dias", "credito_30_dias", "credito_45_dias", "credito_60_dias", "efectivo_dev", "tarjeta_dev"];
 const labelize = (value?: string | null) => (value || "-").replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 const money = (value: unknown, symbol = "S/") =>
   `${symbol} ${Number(value || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -48,7 +50,7 @@ export default function Comprobantes() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [estado, setEstado] = useState("todos");
-  const [tipoOperacion, setTipoOperacion] = useState("todos");
+  const [tipoOperacion, setTipoOperacion] = useState("compra");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const [lastPage, setLastPage] = useState(1);
@@ -60,8 +62,15 @@ export default function Comprobantes() {
   const [manualOpen, setManualOpen] = useState(false);
   const [manualLoading, setManualLoading] = useState(false);
   const [manualPurchases, setManualPurchases] = useState<Compra[]>([]);
-  const [manualForm, setManualForm] = useState({ compra_id: "", tipo_comprobante: "FACTURA", serie: "", numero: "", fecha_emision: new Date().toISOString().slice(0, 10), fecha_vencimiento: "", subtotal: "", igv: "", total: "", moneda_id: "", observacion: "" });
+  const [manualForm, setManualForm] = useState({ compra_id: "", categoria_gasto: "", centro_costo: "", emisor_ruc: "", emisor_nombre: "", receptor_ruc: "", receptor_nombre: "", descripcion: "", tipo_comprobante: "FACTURA", serie: "", numero: "", fecha_emision: new Date().toISOString().slice(0, 10), fecha_vencimiento: "", condicion_pago: "contado", subtotal: "", igv: "", total: "", moneda_id: "", detraccion_porcentaje: "", detraccion_monto_original: "", observacion: "" });
   const [manualFile, setManualFile] = useState<File | null>(null);
+  const [xmlHasDueDate, setXmlHasDueDate] = useState<boolean | null>(null);
+  const [xmlDueDate, setXmlDueDate] = useState("");
+  const [creditNoteTarget, setCreditNoteTarget] = useState<Comprobante | null>(null);
+  const [creditNoteForm, setCreditNoteForm] = useState({ tipo_anulacion: "total", monto: "", motivo: "", devolucion_fisica_confirmada: false });
+  const [creditNoteXml, setCreditNoteXml] = useState<File | null>(null);
+  const [creditNotePdf, setCreditNotePdf] = useState<File | null>(null);
+  const [creditNoteItems, setCreditNoteItems] = useState<Record<number, { cantidad: string; monto: string }>>({});
   const selectedManualPurchase = manualPurchases.find((purchase) => String(purchase.id) === manualForm.compra_id);
   const selectedProvider = selectedManualPurchase?.proveedor;
   const creditDays = Number(selectedProvider?.dias_credito || 0);
@@ -95,6 +104,8 @@ export default function Comprobantes() {
     setManualOpen(true);
     setManualLoading(true);
     setError("");
+    setManualForm((current) => ({ ...current, compra_id: "", categoria_gasto: "", moneda_id: tipoOperacion === "gasto" ? "1" : current.moneda_id }));
+    if (tipoOperacion !== "compra") { setManualLoading(false); return; }
     try {
       const response = await getCompras({ perPage: 100 });
       setManualPurchases(response.data);
@@ -106,18 +117,19 @@ export default function Comprobantes() {
   };
 
   const saveManual = async () => {
-    if (!manualForm.compra_id || !manualFile) {
-      setError("Selecciona una compra y adjunta el PDF de la factura.");
+    if ((tipoOperacion === "compra" && !manualForm.compra_id) || (tipoOperacion === "gasto" && !manualForm.categoria_gasto) || !manualForm.serie || !manualForm.numero || !manualForm.total) {
+      setError("Completa el documento, número, total y su vínculo requerido.");
       return;
     }
     setSaving(true);
     setError("");
     try {
       const payload = new FormData();
+      payload.append("tipo_operacion", tipoOperacion);
       Object.entries(manualForm).forEach(([key, value]) => {
-        if (value !== "") payload.append(key, ["subtotal", "igv", "total"].includes(key) ? amountForRequest(value) : value);
+        if (value !== "") payload.append(key, ["subtotal", "igv", "total", "detraccion_porcentaje", "detraccion_monto_original"].includes(key) ? amountForRequest(value) : value);
       });
-      payload.append("archivo", manualFile);
+      if (manualFile) payload.append("archivo", manualFile);
       await createManualComprobante(payload);
       setManualOpen(false);
       setManualFile(null);
@@ -140,6 +152,8 @@ export default function Comprobantes() {
     try {
       const preview = await previewXmlComprobante(file);
       setXmlPreview(preview);
+      setXmlDueDate(preview.fecha_vencimiento || "");
+      setXmlHasDueDate(preview.fecha_vencimiento ? true : null);
       setSelectedLinkId(preview.vinculos_sugeridos?.length === 1 ? String(preview.vinculos_sugeridos[0].id) : "");
     } catch (err: any) {
       setError(err?.response?.data?.message || "No se pudo leer el XML.");
@@ -162,7 +176,8 @@ export default function Comprobantes() {
         serie: xmlPreview.serie,
         numero: xmlPreview.numero,
         fecha_emision: xmlPreview.fecha_emision,
-        fecha_vencimiento: xmlPreview.fecha_vencimiento,
+        fecha_vencimiento: xmlHasDueDate ? xmlDueDate : xmlPreview.fecha_emision,
+        fecha_vencimiento_origen: xmlPreview.fecha_vencimiento ? "xml" : xmlHasDueDate ? "manual" : "contado",
         emisor_ruc: xmlPreview.emisor_ruc,
         emisor_nombre: xmlPreview.emisor_nombre,
         receptor_ruc: xmlPreview.receptor_ruc,
@@ -172,6 +187,11 @@ export default function Comprobantes() {
         total: xmlPreview.total,
         moneda_id: xmlPreview.moneda_id || null,
         xml_hash: xmlPreview.xml_hash,
+        xml_path: xmlPreview.xml_path,
+        detraccion_porcentaje: xmlPreview.detraccion_porcentaje,
+        detraccion_monto_original: xmlPreview.detraccion_monto_original,
+        detraccion_codigo: xmlPreview.detraccion_codigo,
+        detraccion_cuenta: xmlPreview.detraccion_cuenta,
         items: xmlPreview.items,
       });
       setXmlPreview(null);
@@ -193,18 +213,15 @@ export default function Comprobantes() {
     catch (err: any) { setError(err?.response?.data?.message || "No se pudo cargar el detalle del comprobante."); }
   };
 
-  const runAction = async (row: Comprobante, action: "anular" | "cxp" | "cxc") => {
-    const question = action === "anular"
-      ? `¿Anular el comprobante ${row.serie}-${row.numero}? Esta acción puede afectar sus cuentas asociadas.`
-      : `¿Generar la ${action === "cxp" ? "cuenta por pagar" : "cuenta por cobrar"} para ${row.serie}-${row.numero}?`;
+  const runAction = async (row: Comprobante, action: "cxp" | "cxc") => {
+    const question = `¿Generar la ${action === "cxp" ? "cuenta por pagar" : "cuenta por cobrar"} para ${row.serie}-${row.numero}?`;
     if (!window.confirm(question)) return;
     setSaving(true);
     setError("");
     try {
-      if (action === "anular") await anularComprobante(row.id);
       if (action === "cxp") await generarCuentaPorPagar(row.id);
       if (action === "cxc") await generarCuentaPorCobrar(row.id);
-      if (action !== "anular") setGeneratedIds((ids) => new Set(ids).add(row.id));
+      setGeneratedIds((ids) => new Set(ids).add(row.id));
       await fetchRows();
     } catch (err: any) {
       setError(
@@ -217,6 +234,34 @@ export default function Comprobantes() {
     }
   };
 
+  const saveCreditNote = async () => {
+    if (!creditNoteTarget || !creditNoteXml || !creditNoteForm.motivo.trim()) {
+      setError("Adjunta el XML de la nota de crédito e indica el motivo."); return;
+    }
+    setSaving(true); setError("");
+    try {
+      const payload = new FormData();
+      payload.append("tipo_anulacion", creditNoteForm.tipo_anulacion);
+      payload.append("motivo", creditNoteForm.motivo);
+      payload.append("devolucion_fisica_confirmada", creditNoteForm.devolucion_fisica_confirmada ? "1" : "0");
+      if (creditNoteForm.tipo_anulacion === "parcial") payload.append("monto", amountForRequest(creditNoteForm.monto));
+      if (creditNoteForm.tipo_anulacion === "parcial") {
+        Object.entries(creditNoteItems).filter(([, item]) => Number(item.monto) > 0).forEach(([itemId, item], index) => {
+          payload.append(`items[${index}][comprobante_item_id]`, itemId);
+          if (item.cantidad) payload.append(`items[${index}][cantidad]`, item.cantidad);
+          payload.append(`items[${index}][monto]`, amountForRequest(item.monto));
+        });
+      }
+      payload.append("xml", creditNoteXml);
+      if (creditNotePdf) payload.append("pdf", creditNotePdf);
+      await registrarNotaCredito(creditNoteTarget.id, payload);
+      setCreditNoteTarget(null); setCreditNoteXml(null); setCreditNotePdf(null);
+      await fetchRows();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || Object.values(err?.response?.data?.errors || {})?.flat()?.[0]?.toString() || "No se pudo registrar la nota de crédito.");
+    } finally { setSaving(false); }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 p-3 sm:p-6">
       <div className="mx-auto max-w-7xl space-y-5">
@@ -224,29 +269,29 @@ export default function Comprobantes() {
           <div>
             <p className="text-sm font-semibold uppercase text-blue-700">Contabilidad</p>
             <h1 className="text-2xl font-bold text-slate-900">Comprobantes y XML</h1>
-            <p className="text-sm text-slate-500">Registra documentos tributarios sin afectar stock ni cuentas hasta generarlas.</p>
+            <p className="text-sm text-slate-500">Compras, ventas y gastos con trazabilidad tributaria y financiera.</p>
           </div>
           {canWrite && <div className="flex flex-wrap justify-end gap-2">
             <button type="button" onClick={openManual} className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><Upload size={18} /> Registrar PDF/manual</button>
-            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white">
+            {tipoOperacion !== "gasto" && <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white">
               {saving ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
               Preview XML
               <input type="file" accept=".xml,text/xml" className="hidden" onChange={(e) => { handlePreviewXml(e.target.files?.[0]); e.currentTarget.value = ""; }} />
-            </label>
+            </label>}
           </div>}
+        </div>
+        <div className="flex gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+          {operaciones.map((item) => <button key={item} onClick={() => { setTipoOperacion(item); setPage(1); }} className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${tipoOperacion === item ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{item === "gasto" ? "Gastos" : labelize(item)}</button>)}
         </div>
         <AlertasOperativasSummary codes={["compra_sin_comprobante", "recepcion_sin_factura_proveedor"]} />
 
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_150px_150px_120px]">
+        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_150px_120px]">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Buscar serie, numero, RUC o razon social" className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm" />
           </div>
-          <select value={tipoOperacion} onChange={(e) => { setTipoOperacion(e.target.value); setPage(1); }} className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm">
-            {operaciones.map((item) => <option key={item} value={item}>{labelize(item)}</option>)}
-          </select>
           <select value={estado} onChange={(e) => { setEstado(e.target.value); setPage(1); }} className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm">
             {estados.map((item) => <option key={item} value={item}>{labelize(item)}</option>)}
           </select>
@@ -285,9 +330,9 @@ export default function Comprobantes() {
                     <td className="sticky right-0 bg-white px-4 py-3">
                       <div className="flex justify-end gap-2">
                         <button aria-label="Ver detalle" onClick={() => openDetail(row)} title="Ver detalle" className="rounded-lg bg-slate-100 p-2 text-slate-700"><Eye size={16} /></button>
-                        {canWrite && row.estado !== "anulado" && row.tipo_operacion === "compra" && !generatedIds.has(row.id) && !row.cuenta_por_pagar_id && !row.cuenta_por_pagar && <button disabled={saving} aria-label="Generar cuenta por pagar" onClick={() => runAction(row, "cxp")} title="Generar CxP" className="rounded-lg bg-amber-50 p-2 text-amber-700 disabled:opacity-40"><ReceiptText size={16} /></button>}
+                        {canWrite && row.estado !== "anulado" && ["compra", "gasto"].includes(row.tipo_operacion) && !generatedIds.has(row.id) && !row.cuenta_por_pagar_id && !row.cuenta_por_pagar && <button disabled={saving} aria-label="Generar cuenta por pagar" onClick={() => runAction(row, "cxp")} title="Generar CxP" className="rounded-lg bg-amber-50 p-2 text-amber-700 disabled:opacity-40"><ReceiptText size={16} /></button>}
                         {canWrite && row.estado !== "anulado" && row.tipo_operacion === "venta" && !generatedIds.has(row.id) && !row.cuenta_por_cobrar_id && !row.cuenta_por_cobrar && <button disabled={saving} aria-label="Generar cuenta por cobrar" onClick={() => runAction(row, "cxc")} title="Generar CxC" className="rounded-lg bg-emerald-50 p-2 text-emerald-700 disabled:opacity-40"><ReceiptText size={16} /></button>}
-                        {canWrite && row.estado !== "anulado" && <button disabled={saving} aria-label="Anular comprobante" onClick={() => runAction(row, "anular")} title="Anular" className="rounded-lg bg-red-50 p-2 text-red-700 disabled:opacity-40"><Ban size={16} /></button>}
+                        {canWrite && !["anulado"].includes(row.estado) && <button disabled={saving} aria-label="Registrar nota de crédito" onClick={async () => { const full = await getComprobante(row.id); setCreditNoteTarget(full); setCreditNoteItems({}); setCreditNoteForm({ tipo_anulacion: "total", monto: String(row.total), motivo: "", devolucion_fisica_confirmada: false }); }} title="Anular con nota de crédito" className="rounded-lg bg-red-50 p-2 text-red-700 disabled:opacity-40"><Ban size={16} /></button>}
                       </div>
                     </td>
                   </tr>
@@ -309,15 +354,25 @@ export default function Comprobantes() {
       {manualOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between"><div><h2 className="text-lg font-bold text-slate-900">Registrar comprobante manual</h2><p className="text-sm text-slate-500">Usa esta opción cuando el proveedor solo entrega PDF.</p></div><button type="button" onClick={() => setManualOpen(false)}><XCircle /></button></div>
+            <div className="mb-4 flex items-center justify-between"><div><h2 className="text-lg font-bold text-slate-900">Registrar {tipoOperacion === "gasto" ? "gasto" : `comprobante de ${tipoOperacion}`}</h2><p className="text-sm text-slate-500">Registro manual con PDF opcional.</p></div><button type="button" onClick={() => setManualOpen(false)}><XCircle /></button></div>
             {manualLoading ? <div className="flex items-center justify-center gap-2 py-10 text-slate-500"><Loader2 className="animate-spin" /> Cargando compras...</div> : <div className="grid gap-3 sm:grid-cols-2">
-              <label className="sm:col-span-2 text-sm font-semibold">Compra<select value={manualForm.compra_id} onChange={(e) => setManualForm((current) => ({ ...current, compra_id: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal"><option value="">Selecciona una compra...</option>{manualPurchases.filter((purchase) => !["borrador", "cancelada"].includes(purchase.estado)).map((purchase) => <option key={purchase.id} value={purchase.id}>{purchase.numero} · {purchase.proveedor?.nombre || "Sin proveedor"} · {purchase.total_estimado}</option>)}</select></label>
+              {tipoOperacion === "compra" && <label className="sm:col-span-2 text-sm font-semibold">Compra<select value={manualForm.compra_id} onChange={(e) => setManualForm((current) => ({ ...current, compra_id: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal"><option value="">Selecciona una compra...</option>{manualPurchases.filter((purchase) => !["borrador", "cancelada"].includes(purchase.estado)).map((purchase) => <option key={purchase.id} value={purchase.id}>{purchase.numero} · {purchase.proveedor?.nombre || "Sin proveedor"} · {purchase.total_estimado}</option>)}</select></label>}
+              {tipoOperacion === "gasto" && <>
+                <label className="text-sm font-semibold">Categoría<select value={manualForm.categoria_gasto} onChange={(e) => setManualForm((current) => ({ ...current, categoria_gasto: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal"><option value="">Selecciona...</option>{["combustible", "servicios", "viaticos", "limpieza", "oficina", "otros"].map((item) => <option key={item} value={item}>{labelize(item)}</option>)}</select></label>
+                <label className="text-sm font-semibold">Centro de costo <span className="font-normal text-slate-500">(opcional)</span><input list="centros-costo-sugeridos" value={manualForm.centro_costo} onChange={(e) => setManualForm((current) => ({ ...current, centro_costo: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" placeholder="Selecciona o escribe uno nuevo" /><datalist id="centros-costo-sugeridos">{centrosCostoSugeridos.map((centro) => <option key={centro} value={centro} />)}</datalist><span className="mt-1 block text-xs font-normal text-slate-500">Puedes elegir una sugerencia o escribir libremente.</span></label>
+              </>}
+              {tipoOperacion !== "compra" && <>
+                <label className="text-sm font-semibold">RUC emisor<input value={manualForm.emisor_ruc} onChange={(e) => setManualForm((current) => ({ ...current, emisor_ruc: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" /></label>
+                <label className="text-sm font-semibold">Nombre emisor<input value={manualForm.emisor_nombre} onChange={(e) => setManualForm((current) => ({ ...current, emisor_nombre: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" /></label>
+                <label className="sm:col-span-2 text-sm font-semibold">Descripción<input value={manualForm.descripcion} onChange={(e) => setManualForm((current) => ({ ...current, descripcion: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" /></label>
+              </>}
               <label className="text-sm font-semibold">Tipo<select value={manualForm.tipo_comprobante} onChange={(e) => setManualForm((current) => ({ ...current, tipo_comprobante: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal"><option>FACTURA</option><option>BOLETA</option></select></label>
-              <label className="text-sm font-semibold">Moneda<select value={manualForm.moneda_id} onChange={(e) => setManualForm((current) => ({ ...current, moneda_id: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal"><option value="">Usar moneda de la compra</option><option value="1">PEN</option><option value="2">USD</option></select></label>
+              <label className="text-sm font-semibold">Moneda<select value={manualForm.moneda_id} onChange={(e) => setManualForm((current) => ({ ...current, moneda_id: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal"><option value="">{tipoOperacion === "compra" ? "Usar moneda de la compra" : "Seleccionar moneda"}</option><option value="1">PEN</option><option value="2">USD</option></select></label>
               <label className="text-sm font-semibold">Serie<input value={manualForm.serie} onChange={(e) => setManualForm((current) => ({ ...current, serie: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" placeholder="F001" /></label>
               <label className="text-sm font-semibold">Número<input value={manualForm.numero} onChange={(e) => setManualForm((current) => ({ ...current, numero: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" placeholder="000123" /></label>
               <label className="text-sm font-semibold">Fecha emisión<input type="date" value={manualForm.fecha_emision} onChange={(e) => setManualForm((current) => ({ ...current, fecha_emision: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" /></label>
               <label className="text-sm font-semibold">Fecha vencimiento <span className="font-normal text-slate-500">(opcional)</span><input type="date" value={manualForm.fecha_vencimiento} onChange={(e) => setManualForm((current) => ({ ...current, fecha_vencimiento: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" /><span className="mt-1 block text-xs font-normal text-slate-500">Déjala vacía si el PDF no indica vencimiento.</span></label>
+              <label className="text-sm font-semibold">Condición de pago<select value={manualForm.condicion_pago} onChange={(e) => setManualForm((current) => ({ ...current, condicion_pago: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal">{condicionesPago.map((item) => <option key={item} value={item}>{labelize(item)}</option>)}</select></label>
               {selectedManualPurchase && <div className="sm:col-span-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs text-blue-900">
                 {selectedProvider?.tiene_credito
                   ? <>Este proveedor tiene crédito a <strong>{creditDays} días</strong>. Si no indicas una fecha en la factura, la CxP usará como fecha esperada el <strong>{addDays(manualForm.fecha_emision, creditDays)}</strong>.</>
@@ -327,7 +382,8 @@ export default function Comprobantes() {
               <label className="text-sm font-semibold">Subtotal<input type="text" inputMode="decimal" value={manualForm.subtotal} onChange={(e) => setManualForm((current) => ({ ...current, subtotal: formatAmountInput(e.target.value) }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" placeholder="0.00" /></label>
               <label className="text-sm font-semibold">IGV<input type="text" inputMode="decimal" value={manualForm.igv} onChange={(e) => setManualForm((current) => ({ ...current, igv: formatAmountInput(e.target.value) }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" placeholder="0.00" /></label>
               <label className="text-sm font-semibold">Total<input type="text" inputMode="decimal" value={manualForm.total} onChange={(e) => setManualForm((current) => ({ ...current, total: formatAmountInput(e.target.value) }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" placeholder="0.00" /></label>
-              <label className="text-sm font-semibold">PDF de factura<input type="file" accept="application/pdf,.pdf" onChange={(e) => setManualFile(e.target.files?.[0] || null)} className="mt-1 block w-full rounded-xl border px-3 py-2 text-sm font-normal" /></label>
+              <label className="text-sm font-semibold">PDF <span className="font-normal text-slate-500">(opcional)</span><input type="file" accept="application/pdf,.pdf" onChange={(e) => setManualFile(e.target.files?.[0] || null)} className="mt-1 block w-full rounded-xl border px-3 py-2 text-sm font-normal" /></label>
+              <label className="text-sm font-semibold">Monto detracción<input value={manualForm.detraccion_monto_original} onChange={(e) => setManualForm((current) => ({ ...current, detraccion_monto_original: formatAmountInput(e.target.value) }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" placeholder="0.00" /></label>
               <label className="sm:col-span-2 text-sm font-semibold">Observación<textarea value={manualForm.observacion} onChange={(e) => setManualForm((current) => ({ ...current, observacion: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" rows={3} /></label>
             </div>}
             <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setManualOpen(false)} disabled={saving} className="rounded-xl border px-4 py-2.5 font-semibold text-slate-700">Cancelar</button><button type="button" onClick={saveManual} disabled={saving || manualLoading} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 font-semibold text-white disabled:opacity-50">{saving && <Loader2 size={17} className="animate-spin" />}{saving ? "Registrando..." : "Guardar comprobante"}</button></div>
@@ -350,7 +406,13 @@ export default function Comprobantes() {
               <p><b>Moneda:</b> {xmlPreview.moneda_codigo || "-"}</p>
               <p><b>Total:</b> {money(xmlPreview.total, xmlPreview.moneda_codigo === "USD" ? "$" : "S/")}</p>
               <p><b>Duplicado:</b> {xmlPreview.duplicado?.existe ? "Si" : "No"}</p>
+              <p><b>Detracción:</b> {money(xmlPreview.detraccion_monto_original || 0)}</p>
             </div>
+            {!xmlPreview.fecha_vencimiento && <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+              <p className="font-semibold">El XML no informa fecha de vencimiento. ¿Existe una fecha acordada?</p>
+              <div className="mt-2 flex gap-2"><button onClick={() => setXmlHasDueDate(true)} className={`rounded-lg px-3 py-1.5 ${xmlHasDueDate === true ? "bg-blue-700 text-white" : "bg-white"}`}>Sí</button><button onClick={() => { setXmlHasDueDate(false); setXmlDueDate(""); }} className={`rounded-lg px-3 py-1.5 ${xmlHasDueDate === false ? "bg-blue-700 text-white" : "bg-white"}`}>No, al contado</button></div>
+              {xmlHasDueDate && <input type="date" value={xmlDueDate} onChange={(e) => setXmlDueDate(e.target.value)} className="mt-2 rounded-lg border px-3 py-2" />}
+            </div>}
             {xmlPreview.tipo_operacion_sugerida === "observado" && (
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 El XML no coincide con COMPANY_RUC como emisor ni receptor. Revisar configuracion antes de registrar.
@@ -366,9 +428,27 @@ export default function Comprobantes() {
                 {(xmlPreview.vinculos_sugeridos || []).length === 0 && <span className="mt-1 block font-normal text-amber-700">No se encontraron documentos compatibles con el RUC del XML.</span>}
               </label>
             )}
-            <button disabled={saving || !selectedLinkId || xmlPreview.duplicado?.existe || xmlPreview.tipo_operacion_sugerida === "observado"} onClick={saveFromPreview} className="mt-4 rounded-xl bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-              Guardar comprobante
+            <button disabled={saving || !selectedLinkId || xmlPreview.duplicado?.existe || xmlPreview.tipo_operacion_sugerida === "observado" || (!xmlPreview.fecha_vencimiento && (xmlHasDueDate === null || (xmlHasDueDate && !xmlDueDate)))} onClick={saveFromPreview} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+              {saving && <Loader2 size={16} className="animate-spin" />} Guardar comprobante
             </button>
+          </div>
+        </div>
+      )}
+
+      {creditNoteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between"><div><h2 className="text-lg font-bold">Nota de crédito</h2><p className="text-sm text-slate-500">{creditNoteTarget.serie}-{creditNoteTarget.numero}</p></div><button onClick={() => setCreditNoteTarget(null)}><XCircle /></button></div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm font-semibold">Tipo<select value={creditNoteForm.tipo_anulacion} onChange={(e) => setCreditNoteForm((f) => ({ ...f, tipo_anulacion: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal"><option value="total">Anulación total</option><option value="parcial">Anulación parcial</option></select></label>
+              {creditNoteForm.tipo_anulacion === "parcial" && <label className="text-sm font-semibold">Monto a anular<input value={creditNoteForm.monto} onChange={(e) => setCreditNoteForm((f) => ({ ...f, monto: formatAmountInput(e.target.value) }))} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" /></label>}
+              {creditNoteForm.tipo_anulacion === "parcial" && (creditNoteTarget.items || []).length > 0 && <div className="sm:col-span-2 space-y-2 rounded-xl border p-3"><p className="text-sm font-semibold">Detalle opcional por producto</p>{(creditNoteTarget.items || []).map((item: any) => <div key={item.id} className="grid grid-cols-[1fr_90px_120px] items-end gap-2 text-sm"><span>{item.descripcion}</span><label className="text-xs">Cantidad<input type="number" min="0" max={item.cantidad} step="0.01" value={creditNoteItems[item.id]?.cantidad || ""} onChange={(e) => setCreditNoteItems((v) => ({ ...v, [item.id]: { cantidad: e.target.value, monto: v[item.id]?.monto || "" } }))} className="mt-1 w-full rounded-lg border px-2 py-1.5" /></label><label className="text-xs">Monto<input type="number" min="0" step="0.01" value={creditNoteItems[item.id]?.monto || ""} onChange={(e) => setCreditNoteItems((v) => ({ ...v, [item.id]: { cantidad: v[item.id]?.cantidad || "", monto: e.target.value } }))} className="mt-1 w-full rounded-lg border px-2 py-1.5" /></label></div>)}</div>}
+              <label className="text-sm font-semibold">XML de nota de crédito<input type="file" accept=".xml,text/xml" onChange={(e) => setCreditNoteXml(e.target.files?.[0] || null)} className="mt-1 w-full rounded-xl border px-3 py-2 font-normal" /></label>
+              <label className="text-sm font-semibold">PDF <span className="font-normal text-slate-500">(opcional)</span><input type="file" accept=".pdf,application/pdf" onChange={(e) => setCreditNotePdf(e.target.files?.[0] || null)} className="mt-1 w-full rounded-xl border px-3 py-2 font-normal" /></label>
+              <label className="sm:col-span-2 text-sm font-semibold">Justificación<textarea value={creditNoteForm.motivo} onChange={(e) => setCreditNoteForm((f) => ({ ...f, motivo: e.target.value }))} rows={3} className="mt-1 w-full rounded-xl border px-3 py-2.5 font-normal" /></label>
+              {creditNoteTarget.tipo_operacion === "venta" && <label className="sm:col-span-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm"><input type="checkbox" checked={creditNoteForm.devolucion_fisica_confirmada} onChange={(e) => setCreditNoteForm((f) => ({ ...f, devolucion_fisica_confirmada: e.target.checked }))} className="mt-1" /><span>Confirmo la devolución física cuando los productos ya fueron entregados. El sistema la exigirá solo si corresponde.</span></label>}
+            </div>
+            <div className="mt-5 flex justify-end gap-2"><button onClick={() => setCreditNoteTarget(null)} className="rounded-xl border px-4 py-2.5">Cancelar</button><button onClick={saveCreditNote} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-red-700 px-4 py-2.5 font-semibold text-white disabled:opacity-50">{saving && <Loader2 size={16} className="animate-spin" />}Registrar nota</button></div>
           </div>
         </div>
       )}
