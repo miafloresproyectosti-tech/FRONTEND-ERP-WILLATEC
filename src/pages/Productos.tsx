@@ -3417,10 +3417,19 @@ export default function Productos() {
                           </p>
                           <p className="mt-1 text-xs text-gray-500">
                             Ejecutivo: {row.cotizacion?.ejecutivo || "-"} ·
-                            Fecha:{" "}
-                            {formatShortDate(
-                              row.cotizacion?.fecha || row.created_at,
-                            )}
+                            Fecha y hora:{" "}
+                            {row.cotizacion?.created_at
+                              ? new Date(row.cotizacion.created_at).toLocaleString(
+                                  "es-PE",
+                                  {
+                                    dateStyle: "short",
+                                    timeStyle: "short",
+                                    timeZone: "America/Lima",
+                                  },
+                                )
+                              : formatShortDate(
+                                  row.cotizacion?.fecha || row.created_at,
+                                )}
                           </p>
                         </div>
                         <span className="inline-flex w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">

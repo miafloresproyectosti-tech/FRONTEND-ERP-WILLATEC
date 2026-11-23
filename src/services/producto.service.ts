@@ -337,6 +337,7 @@ export interface ProductoExternoHistorialItem {
         numero?: string | null;
         titulo?: string | null;
         fecha?: string | null;
+        created_at?: string | null;
         cliente_nombre?: string | null;
         estado?: string | null;
         moneda?: string | null;

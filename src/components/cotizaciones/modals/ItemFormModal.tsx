@@ -374,6 +374,17 @@ export function ItemFormModal({
       timeZone: "America/Lima",
     });
   };
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return "Sin hora";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Sin hora";
+
+    return date.toLocaleString("es-PE", {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "America/Lima",
+    });
+  };
   const formatHistoryMoney = (
     value: number | string | null | undefined,
     fallbackSymbol = simboloMoneda,
@@ -1938,8 +1949,10 @@ export function ItemFormModal({
                             </p>
                             <p className="mt-0.5 text-xs text-gray-500">
                               Cot. {row.cotizacion?.numero || "-"} ·{" "}
-                              {formatDate(
-                                row.cotizacion?.fecha || row.created_at,
+                              {formatDateTime(
+                                row.cotizacion?.created_at ||
+                                  row.created_at ||
+                                  row.cotizacion?.fecha,
                               )}{" "}
                               · {row.cotizacion?.estado || "Sin estado"}
                             </p>

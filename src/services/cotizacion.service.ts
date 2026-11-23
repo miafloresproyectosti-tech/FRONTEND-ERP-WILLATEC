@@ -1333,6 +1333,35 @@ export async function exportarCotizacionPdf(
   }
 }
 
+export async function exportarVersionCotizacionPdf(
+  cotizacionId: number,
+  versionId: number,
+  options: { desdeOportunidad?: boolean } = {}
+): Promise<CotizacionPdfExport> {
+  try {
+    const response = await api.get(
+      `/cotizaciones/${cotizacionId}/versiones/${versionId}/exportar-pdf`,
+      {
+        responseType: "blob",
+        params: {
+          desde_oportunidad: options.desdeOportunidad ? 1 : undefined,
+        },
+      },
+    );
+
+    return {
+      blob: response.data,
+      filename:
+        getFilenameFromContentDisposition(response.headers["content-disposition"]) ||
+        decodeHeaderFilename(response.headers["x-suggested-filename"]) ||
+        null,
+    };
+  } catch (error) {
+    console.error("Error al exportar version de cotizacion:", error);
+    throw error;
+  }
+}
+
 /**
  * Descargar PDF de cotización
  */

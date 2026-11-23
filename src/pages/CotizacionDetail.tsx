@@ -44,6 +44,7 @@ import {
   reorderCotizacionItems,
   // deleteItem,
   exportarCotizacionPdf,
+  exportarVersionCotizacionPdf,
   descargarPdfCotizacion,
   type Cotizacion,
   type CotizacionItem,
@@ -281,6 +282,7 @@ export function CotizacionDetail() {
   const isEditing = !isModificationMode && id !== 'new' && id !== undefined;
   const currentCotizacionId = id && !isModificationMode ? parseInt(id) : null;
   const [exportandoPdf, setExportandoPdf] = useState(false);
+  const [exportandoVersionId, setExportandoVersionId] = useState<number | null>(null);
 
   // ====== STATE MANAGEMENT ======
   const [loading, setLoading] = useState(isEditing || isModificationMode);
@@ -2981,6 +2983,42 @@ export function CotizacionDetail() {
     }
   };
 
+  const handleExportarVersionPdf = async (version: CotizacionVersion) => {
+    if (!puedeExportar() || !cotizacion?.id) return;
+
+    setExportandoVersionId(version.id);
+
+    try {
+      const { blob, filename } = await exportarVersionCotizacionPdf(
+        cotizacion.id,
+        version.id,
+      );
+
+      const descargado = await descargarPdfCotizacion(
+        filename || `cotizacion-${cotizacion.numero}-${version.numero_version}.pdf`,
+        blob,
+      );
+
+      if (descargado) {
+        showToast({
+          title: "Versión exportada correctamente",
+          description: `Se generó el PDF de ${version.numero_version}.`,
+          type: "success",
+          duration: 3000,
+        } as any);
+      }
+    } catch (error: any) {
+      showToast({
+        title: "Error al exportar versión",
+        description: error?.response?.data?.message || "No se pudo generar el PDF de esta versión.",
+        type: "error",
+        duration: 4000,
+      } as any);
+    } finally {
+      setExportandoVersionId(null);
+    }
+  };
+
   const handleDuplicarCotizacion = async () => {
     if (!currentCotizacionId) return;
 
@@ -3403,8 +3441,19 @@ export function CotizacionDetail() {
 
             {isEditing ? 'Editar Cotización' : 'Nueva Cotización'}
           </h1>
-            <p className="mt-1 text-sm font-semibold text-gray-600">
-              Numero de cotizacion: <span className="text-gray-900">{cotizacionNumeroDisplay}</span>
+            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-gray-600">
+              <span>
+                Numero de cotizacion: <span className="text-gray-900">{cotizacionNumeroDisplay}</span>
+              </span>
+              {cotizacion?.created_at && (
+                <span className="text-xs font-medium text-gray-500">
+                  · Creada: {new Date(cotizacion.created_at).toLocaleString("es-PE", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                    timeZone: "America/Lima",
+                  })}
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -3953,6 +4002,20 @@ export function CotizacionDetail() {
                   >
                     <Eye className="mr-1 inline h-4 w-4" />
                     Ver versión
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleExportarVersionPdf(version)}
+                    disabled={exportandoVersionId !== null || !puedeExportar()}
+                    className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {exportandoVersionId === version.id ? (
+                      <Loader2 className="mr-1 inline h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="mr-1 inline h-4 w-4" />
+                    )}
+                    {exportandoVersionId === version.id ? "Exportando..." : "Exportar PDF"}
                   </button>
 
                   {Number(version.version_number) > 1 && (
