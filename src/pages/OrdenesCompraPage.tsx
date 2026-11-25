@@ -48,6 +48,7 @@ import {
   getOcRecibida,
   getOcRecibidaPreview,
   getOcRecibidas,
+  updateOcRecibidaFecha,
   updateOcRecibidaItems,
   updateOcEmitida,
   uploadOcEmitidaDocumentos,
@@ -689,6 +690,8 @@ export default function OrdenesCompraPage() {
   const [saving, setSaving] = useState(false);
   const [editingEmitidaId, setEditingEmitidaId] = useState<number | null>(null);
   const [cotizacionId, setCotizacionId] = useState("");
+  const [cotizacionSearch, setCotizacionSearch] = useState("");
+  const [cotizacionPickerOpen, setCotizacionPickerOpen] = useState(false);
   const [cotizacionOptions, setCotizacionOptions] = useState<Cotizacion[]>([]);
   const [cotizacionesLoading, setCotizacionesLoading] = useState(false);
   const [proveedor, setProveedor] = useState("");
@@ -742,6 +745,7 @@ export default function OrdenesCompraPage() {
   );
 
   const debouncedCotizacionId = useDebouncedValue(cotizacionId, 600);
+  const debouncedCotizacionSearch = useDebouncedValue(cotizacionSearch, 350);
   const debouncedProductSearch = useDebouncedValue(productSearch, 400);
 
   const currentPagination =
@@ -1299,6 +1303,7 @@ export default function OrdenesCompraPage() {
     const mode = searchParams.get("modo") === "emitir" ? "emitir" : "recibir";
     resetForm();
     setCotizacionId(queryCotizacionId);
+    setCotizacionSearch(queryCotizacionId);
     setModalMode(mode);
     setActiveTab(mode === "emitir" ? "emitidas" : "recibidas");
     setSearchParams({}, { replace: true });
@@ -1317,7 +1322,11 @@ export default function OrdenesCompraPage() {
 
     let cancelled = false;
     setCotizacionesLoading(true);
-    void getCotizacionesPaginated({ page: 1, perPage: 100, search: "" })
+    void getCotizacionesPaginated({
+      page: 1,
+      perPage: 100,
+      search: debouncedCotizacionSearch,
+    })
       .then((response) => {
         if (!cancelled) setCotizacionOptions(response.data || []);
       })
@@ -1334,7 +1343,7 @@ export default function OrdenesCompraPage() {
     return () => {
       cancelled = true;
     };
-  }, [modalMode]);
+  }, [modalMode, debouncedCotizacionSearch]);
 
   useEffect(() => {
     if (!associationTarget) return;
@@ -1431,6 +1440,8 @@ export default function OrdenesCompraPage() {
     setEmitidaBasePreview(null);
     setEditingEmitidaId(null);
     setCotizacionId("");
+    setCotizacionSearch("");
+    setCotizacionPickerOpen(false);
     setProveedor("");
     setMonedaOc("PEN");
     setFecha(today);
@@ -2217,6 +2228,36 @@ export default function OrdenesCompraPage() {
     }
   };
 
+  const handleUpdateFechaRecibida = async (
+    oc: OcRecibida,
+    fechaRecepcion: string,
+  ) => {
+    try {
+      setUpdatingItemOc(oc.id);
+      const updated = await updateOcRecibidaFecha(oc.id, fechaRecepcion);
+      setSelectedOc((current) =>
+        current && Number(current.id) === Number(oc.id)
+          ? { ...current, ...updated }
+          : current,
+      );
+      showToast({
+        title: "Fecha actualizada",
+        description: `La recepción de ${getOcLabel(oc)} quedó registrada con la nueva fecha.`,
+        type: "success",
+      });
+      void loadRecibidas(recibidasPagination.page);
+    } catch (error) {
+      showToast({
+        title: "No se pudo actualizar la fecha",
+        description: getErrorMessage(error, "Revisa la fecha e inténtalo nuevamente."),
+        type: "error",
+      });
+      throw error;
+    } finally {
+      setUpdatingItemOc(null);
+    }
+  };
+
   const openDocumentModal = (oc: OcEmitida | OcRecibida) => {
     resetDocumentFiles();
     setDocumentTarget(oc);
@@ -2499,11 +2540,54 @@ export default function OrdenesCompraPage() {
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-[1.3fr_0.9fr_0.8fr]">
-                <label className="space-y-2">
+                <label className="relative min-w-0 space-y-2">
                   <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
                     Cotizaci&oacute;n
                   </span>
-                  <select
+                  <div className="relative">
+                    <Search size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={cotizacionSearch}
+                      onFocus={() => setCotizacionPickerOpen(true)}
+                      onChange={(event) => {
+                        setCotizacionSearch(event.target.value);
+                        setCotizacionPickerOpen(true);
+                      }}
+                      placeholder="Buscar por número, cliente o título"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 pl-11 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                      disabled={cotizacionesLoading}
+                    />
+                  </div>
+                  {cotizacionPickerOpen && (
+                    <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-950">
+                    {cotizacionesLoading ? (
+                      <div className="flex items-center gap-2 px-4 py-3 text-sm text-slate-500"><Loader2 size={16} className="animate-spin" /> Buscando cotizaciones...</div>
+                    ) : cotizacionOptions.length ? (
+                      cotizacionOptions.map((cotizacion) => (
+                        <button
+                          key={cotizacion.id}
+                          type="button"
+                          onClick={() => {
+                            setCotizacionId(String(cotizacion.id));
+                            setCotizacionSearch(cotizacion.numero || "");
+                            setCotizacionPickerOpen(false);
+                          }}
+                          className={`block w-full border-b border-slate-100 px-4 py-2.5 text-left last:border-b-0 dark:border-slate-800 ${String(cotizacion.id) === cotizacionId ? "bg-blue-50 dark:bg-blue-950/40" : "hover:bg-slate-50 dark:hover:bg-slate-900"}`}
+                        >
+                          <span className="block text-sm font-semibold text-slate-900 dark:text-white">{cotizacion.numero || `Cotización #${cotizacion.id}`}</span>
+                          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{cotizacion.cliente_nombre || "Sin cliente"} · {cotizacion.titulo || "Sin título"}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-4 py-3 text-sm text-slate-500">No se encontraron cotizaciones.</div>
+                    )}
+                    </div>
+                  )}
+                  {cotizacionId && (
+                    <p className="text-xs text-blue-700 dark:text-blue-300">Seleccionada: {cotizacionOptions.find((cotizacion) => String(cotizacion.id) === cotizacionId)?.numero || `#${cotizacionId}`}</p>
+                  )}
+                  {/* Legacy select content is replaced by the searchable picker above. */}
+                  {false && <select
                     value={cotizacionId}
                     onChange={(event) => setCotizacionId(event.target.value)}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
@@ -2518,6 +2602,7 @@ export default function OrdenesCompraPage() {
                       </option>
                     ))}
                   </select>
+                  }
                 </label>
                 <label className="space-y-2">
                   <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
@@ -3091,6 +3176,7 @@ export default function OrdenesCompraPage() {
           onSelectSerie={handleSelectOcItemSeries}
           onSelectAllSeries={handleSelectAllOcItemSeries}
           onAssociateProduct={openAssociateProductModal}
+          onUpdateFecha={handleUpdateFechaRecibida}
         />
       )}
 
@@ -4493,6 +4579,7 @@ function DetailModal({
   onSelectSerie,
   onSelectAllSeries,
   onAssociateProduct,
+  onUpdateFecha,
 }: {
   oc: OcEmitida | OcRecibida;
   loading: boolean;
@@ -4510,6 +4597,7 @@ function DetailModal({
   onSelectSerie: (itemId: number, serieId: number) => void;
   onSelectAllSeries: (itemId: number, serieIds: number[]) => void;
   onAssociateProduct: (oc: OcRecibida, item: OcRecibidaItem) => void;
+  onUpdateFecha: (oc: OcRecibida, fechaRecepcion: string) => Promise<void>;
 }) {
   const isEmitida = "proveedor" in oc;
   const items = oc.items || [];
@@ -4517,6 +4605,16 @@ function DetailModal({
   const [serieSearchByItem, setSerieSearchByItem] = useState<
     Record<number, string>
   >({});
+  const [fechaRecepcion, setFechaRecepcion] = useState(
+    !isEmitida ? String((oc as OcRecibida).fecha_recepcion || "") : "",
+  );
+  const [guardandoFecha, setGuardandoFecha] = useState(false);
+
+  useEffect(() => {
+    if (!isEmitida) {
+      setFechaRecepcion(String((oc as OcRecibida).fecha_recepcion || ""));
+    }
+  }, [isEmitida, oc]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -4545,15 +4643,53 @@ function DetailModal({
               label="Titulo"
               value={getCotizacionTitulo(oc)}
             />
-            <InfoTile
-              icon={<Calendar size={18} />}
-              label={isEmitida ? "Fecha emision" : "Fecha recepcion"}
-              value={formatDate(
-                isEmitida
-                  ? (oc as OcEmitida).fecha_emision
-                  : (oc as OcRecibida).fecha_recepcion,
-              )}
-            />
+            {isEmitida ? (
+              <InfoTile
+                icon={<Calendar size={18} />}
+                label="Fecha emision"
+                value={formatDate((oc as OcEmitida).fecha_emision)}
+              />
+            ) : (
+              <div className="rounded-xl border border-gray-200 p-4 dark:border-slate-800">
+                <p className="flex items-center gap-2 text-sm text-slate-500">
+                  <Calendar size={18} /> Fecha recepcion
+                </p>
+                <div className="mt-2 space-y-2">
+                  <input
+                    type="date"
+                    value={fechaRecepcion}
+                    onChange={(event) => setFechaRecepcion(event.target.value)}
+                    disabled={!canEditOc || guardandoFecha}
+                    className="block w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  />
+                  {canEditOc && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!fechaRecepcion || fechaRecepcion === (oc as OcRecibida).fecha_recepcion) return;
+                        setGuardandoFecha(true);
+                        try {
+                          await onUpdateFecha(oc as OcRecibida, fechaRecepcion);
+                        } finally {
+                          setGuardandoFecha(false);
+                        }
+                      }}
+                      disabled={
+                        guardandoFecha ||
+                        !fechaRecepcion ||
+                        fechaRecepcion === (oc as OcRecibida).fecha_recepcion
+                      }
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Guardar fecha de recepción"
+                    >
+                      {guardandoFecha && <Loader2 size={13} className="animate-spin" />}
+                      {!guardandoFecha && <CheckCircle size={13} />}
+                      Guardar
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             <InfoTile
               icon={
                 isEmitida ? <Truck size={18} /> : <PackageCheck size={18} />

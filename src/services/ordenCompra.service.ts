@@ -463,6 +463,16 @@ export async function getOcRecibida(id: number | string) {
   return (response.data?.oc_recibida ?? response.data?.data ?? response.data) as OcRecibida;
 }
 
+export async function updateOcRecibidaFecha(
+  id: number | string,
+  fechaRecepcion: string,
+) {
+  const response = await api.patch(`/oc-recibidas/${id}/fecha-recepcion`, {
+    fecha_recepcion: fechaRecepcion,
+  });
+  return (response.data?.oc_recibida ?? response.data?.data ?? response.data) as OcRecibida;
+}
+
 export async function getOcRecibidaPreview(cotizacionId: number) {
   const response = await api.get(`/cotizaciones/${cotizacionId}/oc-recibida/preview`);
   return normalizePreview(response.data);

@@ -8,11 +8,25 @@ const notifySystemStatus = (kind: "maintenance" | "server-error", status?: numbe
     }));
 };
 
+const isMaintenanceDocument = (data: unknown, contentType: string) => {
+    if (typeof data !== "string") return false;
+
+    const isHtml = contentType.includes("text/html") || /<!doctype\s+html|<html[\s>]/i.test(data);
+    if (!isHtml) return false;
+
+    return /Estamos realizando mejoras|ERP se encuentra temporalmente en mantenimiento|<title>[^<]*mantenimiento/i.test(data);
+};
+
+const isBackgroundAlertRequest = (url?: string) =>
+    String(url || "").includes("/licitaciones/alertas-vencimiento/procesar");
+
 const api = axios.create({
     baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api",
     withCredentials: true,
     headers: {
         "Content-Type": "application/json",
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest",
     },
 });
 
@@ -33,12 +47,15 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
     (response) => {
         const contentType = String(response.headers?.["content-type"] || "").toLowerCase();
-        const looksLikeMaintenancePage = typeof response.data === "string"
+        const isHtmlResponse = typeof response.data === "string"
             && (contentType.includes("text/html") || /<!doctype\s+html|<html[\s>]/i.test(response.data));
 
-        if (looksLikeMaintenancePage) {
+        if (isMaintenanceDocument(response.data, contentType)) {
             notifySystemStatus("maintenance", response.status);
-            return Promise.reject(new Error("El sistema se encuentra en mantenimiento."));
+        }
+
+        if (isHtmlResponse) {
+            return Promise.reject(new Error("El servidor devolvió una página HTML en lugar de una respuesta API."));
         }
 
         return response;
@@ -48,12 +65,12 @@ api.interceptors.response.use(
         const status = error?.response?.status;
         const contentType = String(error?.response?.headers?.["content-type"] || "").toLowerCase();
         const responseData = error?.response?.data;
-        const looksLikeMaintenancePage = typeof responseData === "string"
-            && (contentType.includes("text/html") || /<!doctype\s+html|<html[\s>]/i.test(responseData));
+        const looksLikeMaintenancePage = isMaintenanceDocument(responseData, contentType);
+        const isBackgroundRequest = isBackgroundAlertRequest(error?.config?.url);
 
-        if (looksLikeMaintenancePage || status === 503) {
+        if (!isBackgroundRequest && (looksLikeMaintenancePage || status === 503)) {
             notifySystemStatus("maintenance", status);
-        } else if (status === 500 || status === 502 || status === 504) {
+        } else if (!isBackgroundRequest && (status === 500 || status === 502 || status === 504)) {
             notifySystemStatus("server-error", status);
         }
 
