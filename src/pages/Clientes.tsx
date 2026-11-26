@@ -37,7 +37,7 @@ const FORM_VACIO: ClienteForm = {
   correo: '',
   telefono: '',
   estado: 'activo',
-  forma_pago: 'AL CONTADO',
+  forma_pago: 'CRÉDITO 30 DÍAS',
   tipo_cliente_id: 1,
   moneda_id: 1,
 };
@@ -77,6 +77,7 @@ export default function Clientes() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState<"todos" | "activo" | "inactivo">("todos");
   const [filterTipoCliente, setFilterTipoCliente] = useState("todos");
+  const [filterFormaPago, setFilterFormaPago] = useState("todos");
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 350);
 
 
@@ -88,7 +89,7 @@ export default function Clientes() {
     estado: "activo",
     tipo_cliente_id: 1,
     moneda_id: 1,
-    forma_pago: 'AL CONTADO',
+    forma_pago: 'CRÉDITO 30 DÍAS',
   });
 
   const [clienteAEliminar, setClienteAEliminar] = useState<Cliente | null>(null);
@@ -104,8 +105,9 @@ export default function Clientes() {
       (cliente as any).tipo_cliente?.id
     );
     const matchesTipo = filterTipoCliente === "todos" || tipoId === Number(filterTipoCliente);
+    const matchesFormaPago = filterFormaPago === "todos" || (cliente.forma_pago || "CRÉDITO 30 DÍAS") === filterFormaPago;
 
-    return matchesEstado && matchesTipo;
+    return matchesEstado && matchesTipo && matchesFormaPago;
   });
 
 
@@ -122,6 +124,7 @@ export default function Clientes() {
           perPage,
           estado: filterEstado === "todos" ? undefined : filterEstado,
           tipoClienteId: filterTipoCliente === "todos" ? undefined : Number(filterTipoCliente),
+          formaPago: filterFormaPago === "todos" ? undefined : filterFormaPago,
         });
 
         if (cancelled) return;
@@ -146,7 +149,7 @@ export default function Clientes() {
     return () => {
       cancelled = true;
     };
-  }, [currentPage, debouncedSearchTerm, filterEstado, filterTipoCliente, perPage]);
+  }, [currentPage, debouncedSearchTerm, filterEstado, filterTipoCliente, filterFormaPago, perPage]);
 
   const handleNuevo = () => {
     if(!canCreateCliente) return;
@@ -223,7 +226,7 @@ export default function Clientes() {
       estado: clienteSeleccionado.estado || "activo",
       tipo_cliente_id: clienteSeleccionado.tipo_cliente_id || 1,
       moneda_id: clienteSeleccionado.moneda_id || 1,
-      forma_pago: clienteSeleccionado.forma_pago || 'AL CONTADO',
+      forma_pago: clienteSeleccionado.forma_pago || 'CRÉDITO 30 DÍAS',
     };
 
     try {
@@ -278,6 +281,11 @@ export default function Clientes() {
 
   const handleTipoClienteFilterChange = (value: string) => {
     setFilterTipoCliente(value);
+    setCurrentPage(1);
+  };
+
+  const handleFormaPagoFilterChange = (value: string) => {
+    setFilterFormaPago(value);
     setCurrentPage(1);
   };
 
@@ -386,6 +394,17 @@ export default function Clientes() {
               </option>
             ))}
           </select>
+
+          <select
+            value={filterFormaPago}
+            onChange={(event) => handleFormaPagoFilterChange(event.target.value)}
+            className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 outline-none transition hover:border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          >
+            <option value="todos">Todas las formas de pago</option>
+            <option value="AL CONTADO">Al contado</option>
+            <option value="CRÉDITO 15 DÍAS">Crédito 15 días</option>
+            <option value="CRÉDITO 30 DÍAS">Crédito 30 días</option>
+          </select>
         </>
       </div>
       </div>
@@ -436,7 +455,7 @@ export default function Clientes() {
                     </div>
                     <div>
                       <p className="font-semibold uppercase text-gray-400">Forma de pago</p>
-                      <p className="mt-1 font-medium text-blue-700">{cliente.forma_pago || "AL CONTADO"}</p>
+                      <p className="mt-1 font-medium text-blue-700">{cliente.forma_pago || "CRÉDITO 30 DÍAS"}</p>
                     </div>
                   </div>
                 </div>
@@ -469,7 +488,7 @@ export default function Clientes() {
           </div>
         ) : (
           <div className="px-6 py-12 text-center text-gray-500 lg:hidden">
-            {searchTerm || filterEstado !== "todos" || filterTipoCliente !== "todos" ? "No se encontraron clientes" : "No hay clientes"}
+            {searchTerm || filterEstado !== "todos" || filterTipoCliente !== "todos" || filterFormaPago !== "todos" ? "No se encontraron clientes" : "No hay clientes"}
           </div>
         )}
 
@@ -588,8 +607,8 @@ export default function Clientes() {
                   </td>
 
                   <td className="px-4 py-5">
-                    <span className="inline-flex max-w-full rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700" title={cliente.forma_pago || "AL CONTADO"}>
-                      <span className="truncate">{cliente.forma_pago || "AL CONTADO"}</span>
+                    <span className="inline-flex max-w-full rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700" title={cliente.forma_pago || "CRÉDITO 30 DÍAS"}>
+                      <span className="truncate">{cliente.forma_pago || "CRÉDITO 30 DÍAS"}</span>
                     </span>
                   </td>
 
@@ -624,7 +643,7 @@ export default function Clientes() {
             ) : (
               <tr>
                 <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
-                  {searchTerm || filterEstado !== "todos" || filterTipoCliente !== "todos" ? "No se encontraron clientes" : "No hay clientes"}
+                  {searchTerm || filterEstado !== "todos" || filterTipoCliente !== "todos" || filterFormaPago !== "todos" ? "No se encontraron clientes" : "No hay clientes"}
                 </td>
               </tr>
             )}
@@ -769,7 +788,7 @@ export default function Clientes() {
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700">Forma de pago predeterminada</label>
                   <select
-                    value={clienteSeleccionado.forma_pago || 'AL CONTADO'}
+                    value={clienteSeleccionado.forma_pago || 'CRÉDITO 30 DÍAS'}
                     onChange={(e) => handleInputChange('forma_pago', e.target.value)}
                     className="w-full px-4 py-4 rounded-2xl border-2 border-blue-100 bg-blue-50/40 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 transition-all duration-200 shadow-sm hover:shadow-md"
                   >

@@ -32,6 +32,7 @@ export interface GetClientesParams {
   perPage?: number;
   estado?: "activo" | "inactivo";
   tipoClienteId?: number;
+  formaPago?: string;
 }
 
 const ACTIVE_CLIENTES_CACHE_KEY = "clientes:activos:all";
@@ -60,6 +61,7 @@ export const getClientes = async (
       per_page: params.perPage ?? 10,
       estado: params.estado,
       tipo_cliente_id: params.tipoClienteId,
+      forma_pago: params.formaPago,
     },
   });
 

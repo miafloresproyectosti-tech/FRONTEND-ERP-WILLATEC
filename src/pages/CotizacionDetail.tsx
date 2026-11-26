@@ -357,7 +357,7 @@ export function CotizacionDetail() {
   const [tipoCambioDolarASoles, setTipoCambioDolarASoles] = useState<number>(3.5);
   const [modoDistribucion, setModoDistribucion] = useState<'POR_ITEM' | 'POR_CANTIDAD'>('POR_ITEM');
   const [titulo, setTitulo] = useState('');
-  const [formaPago, setFormaPago] = useState('AL CONTADO');
+  const [formaPago, setFormaPago] = useState('CRÉDITO 30 DÍAS');
   const [adelanto, setAdelanto] = useState(false);
   const [adelantoPorcentaje, setAdelantoPorcentaje] = useState('');
   const [cuotaMensual, setCuotaMensual] = useState(false);
@@ -934,7 +934,7 @@ export function CotizacionDetail() {
     setMonedaId(Number(source.moneda_id ?? baseCotizacion?.moneda_id ?? 1));
     setModoDistribucion(source.modo_distribucion || baseCotizacion?.modo_distribucion || 'POR_ITEM');
     setTitulo(source.titulo ?? baseCotizacion?.titulo ?? '');
-    setFormaPago(source.forma_pago ?? baseCotizacion?.forma_pago ?? 'AL CONTADO');
+    setFormaPago(source.forma_pago ?? baseCotizacion?.forma_pago ?? 'CRÉDITO 30 DÍAS');
     const porcentajeAdelanto = source.adelanto_porcentaje ?? baseCotizacion?.adelanto_porcentaje ?? null;
     setAdelanto(Boolean(source.adelanto ?? baseCotizacion?.adelanto ?? false));
     setAdelantoPorcentaje(porcentajeAdelanto ? String(porcentajeAdelanto) : '');
@@ -1459,7 +1459,7 @@ export function CotizacionDetail() {
       setMonedaId(Number(data.moneda_id || 1));
       setModoDistribucion(data.modo_distribucion);
       setTitulo(data.titulo);
-      setFormaPago(data.forma_pago || 'AL CONTADO');
+      setFormaPago(data.forma_pago || 'CRÉDITO 30 DÍAS');
       setAdelanto(Boolean(data.adelanto));
       setAdelantoPorcentaje(data.adelanto_porcentaje ? String(data.adelanto_porcentaje) : '');
       setCuotaMensual(Boolean(data.cuota_mensual));
