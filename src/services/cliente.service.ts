@@ -9,6 +9,7 @@ export interface Cliente {
   correo: string | null;
   telefono: string | null;
   estado: "activo" | "inactivo";
+  forma_pago?: "AL CONTADO" | "CRÉDITO 15 DÍAS" | "CRÉDITO 30 DÍAS" | string | null;
   tipo_cliente_id: number;
   moneda_id: number;
 }
@@ -20,6 +21,7 @@ export interface ClientePayload {
   correo?: string | null;
   telefono?: string | null;
   estado?: "activo" | "inactivo";
+  forma_pago?: "AL CONTADO" | "CRÉDITO 15 DÍAS" | "CRÉDITO 30 DÍAS" | string;
   tipo_cliente_id?: number;
   moneda_id?: number;
 }

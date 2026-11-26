@@ -26,6 +26,7 @@ interface ClienteForm {
   correo: string;
   telefono: string;
   estado: 'activo' | 'inactivo';
+  forma_pago: 'AL CONTADO' | 'CRÉDITO 15 DÍAS' | 'CRÉDITO 30 DÍAS';
   tipo_cliente_id?: number;
   moneda_id?: number;
 }
@@ -36,6 +37,7 @@ const FORM_VACIO: ClienteForm = {
   correo: '',
   telefono: '',
   estado: 'activo',
+  forma_pago: 'AL CONTADO',
   tipo_cliente_id: 1,
   moneda_id: 1,
 };
@@ -86,6 +88,7 @@ export default function Clientes() {
     estado: "activo",
     tipo_cliente_id: 1,
     moneda_id: 1,
+    forma_pago: 'AL CONTADO',
   });
 
   const [clienteAEliminar, setClienteAEliminar] = useState<Cliente | null>(null);
@@ -220,6 +223,7 @@ export default function Clientes() {
       estado: clienteSeleccionado.estado || "activo",
       tipo_cliente_id: clienteSeleccionado.tipo_cliente_id || 1,
       moneda_id: clienteSeleccionado.moneda_id || 1,
+      forma_pago: clienteSeleccionado.forma_pago || 'AL CONTADO',
     };
 
     try {
@@ -400,7 +404,7 @@ export default function Clientes() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="truncate font-bold text-gray-900">{cliente.nombre}</h3>
-                    <p className="mt-1 text-sm text-gray-500">RUC {cliente.ruc || "-"}</p>
+                    <p className="mt-1 text-sm text-gray-500">RUC o DNI {cliente.ruc || "-"}</p>
                   </div>
                   <span
                     className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${cliente.estado === "activo"
@@ -421,7 +425,7 @@ export default function Clientes() {
                     <Phone size={15} className="shrink-0 text-gray-400" />
                     <span>{cliente.telefono || "-"}</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 pt-1 text-xs">
+                  <div className="grid grid-cols-3 gap-3 pt-1 text-xs">
                     <div>
                       <p className="font-semibold uppercase text-gray-400">Tipo</p>
                       <p className="mt-1 font-medium text-gray-700">{getTipoClienteLabel(cliente)}</p>
@@ -429,6 +433,10 @@ export default function Clientes() {
                     <div>
                       <p className="font-semibold uppercase text-gray-400">Moneda</p>
                       <p className="mt-1 font-medium text-gray-700">{getMonedaLabel(cliente)}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold uppercase text-gray-400">Forma de pago</p>
+                      <p className="mt-1 font-medium text-blue-700">{cliente.forma_pago || "AL CONTADO"}</p>
                     </div>
                   </div>
                 </div>
@@ -468,13 +476,14 @@ export default function Clientes() {
         <div className="hidden overflow-x-auto lg:block">
         <table className="w-full min-w-[1060px] table-fixed">
           <colgroup>
+            <col className="w-[16%]" />
+            <col className="w-[10%]" />
             <col className="w-[18%]" />
-            <col className="w-[11%]" />
-            <col className="w-[20%]" />
-            <col className="w-[11%]" />
             <col className="w-[10%]" />
-            <col className="w-[12%]" />
-            <col className="w-[10%]" />
+            <col className="w-[9%]" />
+            <col className="w-[11%]" />
+            <col className="w-[9%]" />
+            <col className="w-[14%]" />
             <col className="w-[118px]" />
           </colgroup>
           <thead className="bg-gray-50 border-b border-gray-200">
@@ -483,7 +492,7 @@ export default function Clientes() {
                 Empresa
               </th>
               <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                RUC
+                RUC / DNI
               </th>
               <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                 Correo
@@ -500,6 +509,9 @@ export default function Clientes() {
               <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                 Moneda
               </th>
+              <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                Forma de pago
+              </th>
               <th className="sticky right-0 z-10 bg-gray-50 text-center px-4 py-4 text-sm font-semibold text-gray-600 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)]">
                 Acciones
               </th>
@@ -509,7 +521,7 @@ export default function Clientes() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
                   <div className="flex items-center justify-center gap-3">
                     <Loader2 className="animate-spin" size={18} />
                     Cargando clientes...
@@ -572,6 +584,12 @@ export default function Clientes() {
                   <td className="px-4 py-5 text-gray-600">
                     <span className="block truncate" title={getMonedaLabel(cliente)}>
                       {getMonedaLabel(cliente)}
+                    </span>
+                  </td>
+
+                  <td className="px-4 py-5">
+                    <span className="inline-flex max-w-full rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700" title={cliente.forma_pago || "AL CONTADO"}>
+                      <span className="truncate">{cliente.forma_pago || "AL CONTADO"}</span>
                     </span>
                   </td>
 
@@ -746,21 +764,36 @@ export default function Clientes() {
                     placeholder="Ej: Tech Solutions SAC"
                   />
                 </div>
+
+                {/* FORMA DE PAGO */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">Forma de pago predeterminada</label>
+                  <select
+                    value={clienteSeleccionado.forma_pago || 'AL CONTADO'}
+                    onChange={(e) => handleInputChange('forma_pago', e.target.value)}
+                    className="w-full px-4 py-4 rounded-2xl border-2 border-blue-100 bg-blue-50/40 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 transition-all duration-200 shadow-sm hover:shadow-md"
+                  >
+                    <option value="AL CONTADO">AL CONTADO</option>
+                    <option value="CRÉDITO 15 DÍAS">CRÉDITO 15 DÍAS</option>
+                    <option value="CRÉDITO 30 DÍAS">CRÉDITO 30 DÍAS</option>
+                  </select>
+                  <p className="text-xs text-gray-500">Se aplicará automáticamente al crear una cotización.</p>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* RUC */}
+                {/* RUC O DNI */}
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                     <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                    RUC
+                    RUC o DNI
                   </label>
                   <input
                     type="text"
                     value={clienteSeleccionado.ruc || ""}
                     onChange={(e) => handleInputChange('ruc', e.target.value)}
                     className="w-full px-4 py-4 rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/50 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm hover:shadow-md"
-                    placeholder="20123456789"
+                    placeholder="RUC: 20123456789 / DNI: 12345678"
                   />
                 </div>
 
@@ -861,6 +894,7 @@ export default function Clientes() {
                     ))}
                   </select>
                 </div>
+
               </div>
 
               {/* Botones */}

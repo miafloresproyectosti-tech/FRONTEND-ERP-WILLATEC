@@ -390,9 +390,9 @@ const getPreviewCotizacionLabel = (
   fallbackId: number | string,
 ) =>
   preview.cotizacion?.numero ||
-  (preview.cotizacion?.id
-    ? `Cotizacion #${preview.cotizacion.id}`
-    : `Cotizacion #${fallbackId}`);
+  (preview.cotizacion?.id || fallbackId
+    ? "Cotizacion seleccionada"
+    : "Cotizacion");
 
 const getOcItemsCount = (oc: OcRecibida | OcEmitida) => {
   const raw =
@@ -1499,6 +1499,12 @@ export default function OrdenesCompraPage() {
         },
       };
 
+      // El ID se conserva internamente para las llamadas API, pero la
+      // referencia visible debe ser el numero correlativo de la cotizacion.
+      if (dataWithCotizacion.cotizacion?.numero) {
+        setCotizacionSearch(dataWithCotizacion.cotizacion.numero);
+      }
+
       const currentMode = modalMode || "recibir";
 
       if (!canUsePreviewForMode(dataWithCotizacion, currentMode)) {
@@ -2584,7 +2590,9 @@ export default function OrdenesCompraPage() {
                     </div>
                   )}
                   {cotizacionId && (
-                    <p className="text-xs text-blue-700 dark:text-blue-300">Seleccionada: {cotizacionOptions.find((cotizacion) => String(cotizacion.id) === cotizacionId)?.numero || `#${cotizacionId}`}</p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                      Seleccionada: {preview?.cotizacion?.numero || cotizacionOptions.find((cotizacion) => String(cotizacion.id) === cotizacionId)?.numero || cotizacionSearch || "Cotizacion seleccionada"}
+                    </p>
                   )}
                   {/* Legacy select content is replaced by the searchable picker above. */}
                   {false && <select

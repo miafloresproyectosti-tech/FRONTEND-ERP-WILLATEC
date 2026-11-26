@@ -195,6 +195,9 @@ export function CotizacionGeneralForm({
     if (!plantillaImposesMoneda && cliente.moneda_id) {
       setMonedaId(cliente.moneda_id);
     }
+    if (cliente.forma_pago) {
+      setFormaPago(cliente.forma_pago);
+    }
   };
 
   const handlePlantillaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -235,18 +238,25 @@ export function CotizacionGeneralForm({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="relative">
                 <label className="block text-sm mb-2 text-gray-700">Cliente</label>
-                <input 
-                  disabled={disabled}
-                  type="text"
-                  value={clienteInputValue}
-                  onChange={(e) => {
-                    setSearchClienteInput(e.target.value);
-                    setShowClienteDropdown(true);
-                  }}
-                  onFocus={() => setShowClienteDropdown(true)}
-                  placeholder="Buscar cliente..."
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <input
+                    disabled={disabled}
+                    type="text"
+                    value={clienteInputValue}
+                    onChange={(e) => {
+                      setSearchClienteInput(e.target.value);
+                      setShowClienteDropdown(true);
+                    }}
+                    onFocus={() => setShowClienteDropdown(true)}
+                    placeholder="Buscar cliente..."
+                    className="min-w-0 flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  {selectedCliente && (
+                    <span className="inline-flex shrink-0 items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700" title="Forma de pago predeterminada del cliente">
+                      {selectedCliente.forma_pago || "AL CONTADO"}
+                    </span>
+                  )}
+                </div>
                 
                 {showClienteDropdown && !disabled && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
@@ -262,7 +272,12 @@ export function CotizacionGeneralForm({
                           onClick={() => handleClienteSelect(cliente)}
                           className="w-full text-left px-4 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 text-gray-800 text-sm"
                         >
-                          {cliente.nombre}
+                          <span className="flex items-center justify-between gap-3">
+                            <span className="truncate">{cliente.nombre}</span>
+                            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                              {cliente.forma_pago || "AL CONTADO"}
+                            </span>
+                          </span>
                         </button>
                       ))
                     ) : (

@@ -1604,14 +1604,14 @@ export default function Cotizaciones() {
                 />
                 <button
                   type="button"
-                  onClick={() => navigate("/seguimiento-licitaciones?accion=nueva&tipo=privado")}
+                  onClick={() => navigate("/seguimiento-licitaciones?accion=nueva&tipo=privado&continuar=cotizacion")}
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
                 >
                   <Plus size={16} /> Registrar privada
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate("/seguimiento-licitaciones?accion=nueva&tipo=wherex")}
+                  onClick={() => navigate("/seguimiento-licitaciones?accion=nueva&tipo=wherex&continuar=cotizacion")}
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-4 text-sm font-semibold text-orange-700 hover:bg-orange-100"
                 >
                   <Globe2 size={16} /> Registrar Wherex

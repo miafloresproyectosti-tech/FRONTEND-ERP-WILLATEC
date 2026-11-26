@@ -242,6 +242,7 @@ export interface Cliente {
     correo: string | null;
     telefono: string | null;
     estado: "activo" | "inactivo";
+    forma_pago?: string | null;
     tipo_cliente_id: number;
     moneda_id: number;
 }

@@ -777,6 +777,8 @@ export default function SeguimientoLicitaciones() {
   const handleSave = async (data: OportunidadFormData) => {
     const now = new Date().toISOString();
     const previous = editing;
+    const continueToCotizacion = !previous && searchParams.get("continuar") === "cotizacion";
+    const shouldAssignToCurrentUser = continueToCotizacion && Boolean(user?.id);
     const hasEstadoChange = previous && previous.estado !== data.estado;
     const estado = previous ? data.estado : "sin_atender";
     const clean = (value?: string | null) => (value || "").trim();
@@ -796,13 +798,15 @@ export default function SeguimientoLicitaciones() {
       empresa: clean(data.empresa),
       requerimiento: clean(data.requerimiento),
       vigencia: data.vigencia,
-      ejecutivo: previous?.ejecutivo || { id: 0, nombre: "Sin ejecutivo" },
-      asignadoA: previous?.asignadoA ?? null,
-      asignadoEn: previous?.asignadoEn ?? null,
-      asignadoPor: previous?.asignadoPor ?? null,
+      ejecutivo: previous?.ejecutivo || (shouldAssignToCurrentUser
+        ? { id: user!.id, nombre: userName, email: user!.email }
+        : { id: 0, nombre: "Sin ejecutivo" }),
+      asignadoA: previous?.asignadoA ?? (shouldAssignToCurrentUser ? user!.id : null),
+      asignadoEn: previous?.asignadoEn ?? (shouldAssignToCurrentUser ? now : null),
+      asignadoPor: previous?.asignadoPor ?? (shouldAssignToCurrentUser ? userName : null),
       esNueva: previous?.esNueva ?? true,
       categoria: data.categoria,
-      estado,
+      estado: shouldAssignToCurrentUser ? "en_atencion" : estado,
       observacion: clean(data.observacion),
       creadoEn: previous?.creadoEn || now,
       creadoPorId: previous?.creadoPorId ?? user?.id ?? null,
@@ -837,8 +841,12 @@ export default function SeguimientoLicitaciones() {
           id: createId("hist"),
           fecha: now,
           usuario: userName,
-          tipo: previous ? "estado" : "creacion",
-          descripcion: previous ? "Oportunidad actualizada." : "Oportunidad creada y publicada en disponibles.",
+          tipo: previous ? "estado" : shouldAssignToCurrentUser ? "responsable" : "creacion",
+          descripcion: previous
+            ? "Oportunidad actualizada."
+            : shouldAssignToCurrentUser
+              ? `Oportunidad creada y asignada a ${userName}.`
+              : "Oportunidad creada y publicada en disponibles.",
         },
         ...(previous?.historial || []),
       ],
@@ -860,6 +868,27 @@ export default function SeguimientoLicitaciones() {
       setEditing(null);
       syncSelectedOpportunity(updated);
       void refreshSelectedOpportunity(updated.id, updated);
+      if (continueToCotizacion) {
+        const params = new URLSearchParams({
+          oportunidad_id: updated.id,
+          oportunidad_tipo: updated.tipo,
+          oportunidad_empresa: updated.empresa,
+          oportunidad_requerimiento: updated.requerimiento,
+          oportunidad_vigencia: updated.vigencia,
+          oportunidad_categoria: updated.categoria || "",
+          oportunidad_forma_pago: updated.formaPago || "",
+          oportunidad_destino_entrega: updated.destinoEntrega || "",
+          oportunidad_observacion: updated.observacion || "",
+          oportunidad_comentarios: updated.comentariosGenerales || "",
+          oportunidad_wherex_id: updated.wherexId || "",
+          oportunidad_wherex_url: updated.wherexUrl || "",
+        });
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete("continuar");
+        setSearchParams(nextParams, { replace: true });
+        navigate(`/cotizaciones/new?${params.toString()}`);
+        return;
+      }
       showToast({ title: "Oportunidad guardada", description: "El seguimiento fue actualizado.", type: "success" });
     } catch (error) {
       const response = error as { response?: { data?: { message?: string } }; message?: string };
@@ -1426,7 +1455,7 @@ export default function SeguimientoLicitaciones() {
     if (!["cotizacion_generada", "vencida"].includes(item.estado)) return false;
 
     if (item.tipo === "licitacion") {
-      return currentRole === "LICITACIONES" || isOpportunityCreator(item);
+      return hasPermission("licitaciones.marcar_atendida") || currentRole === "LICITACIONES" || isOpportunityCreator(item);
     }
 
     if (item.tipo === "privado") {

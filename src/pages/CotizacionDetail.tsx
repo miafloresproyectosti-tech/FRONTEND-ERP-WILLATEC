@@ -366,12 +366,86 @@ export function CotizacionDetail() {
   const [entregaDestino, setEntregaDestino] = useState('');
   const [entregaMultidestino, setEntregaMultidestino] = useState(false);
   const [clienteContacto, setClienteContacto] = useState('');
+  const opportunityDefaultsAppliedRef = useRef(false);
   const selectedPlantilla = plantillas.find((plantilla) => Number(plantilla.id) === Number(plantillaId));
   const isAlquilerPlantilla = isPlantillaAlquiler(selectedPlantilla);
   const plantillaMonedaId = detectPlantillaMonedaId(selectedPlantilla);
   const currentMonedaId = plantillaMonedaId ?? monedaId;
   const currentIncludeIgv = plantillaIncluyeIgv(plantillaId, selectedPlantilla);
   const simboloMoneda = currentMonedaId === 2 ? '$' : 'S/';
+
+  // Las cotizaciones nuevas pueden partir de una oportunidad y recibir una
+  // configuracion inicial segun su canal. El usuario conserva la posibilidad
+  // de cambiar estos valores antes de guardar.
+  useEffect(() => {
+    if (
+      !isNewCotizacion ||
+      !hasOpportunityContext ||
+      opportunityDefaultsAppliedRef.current
+    ) {
+      return;
+    }
+
+    const tipo = (opportunityContext.tipo || linkedOpportunity?.tipo || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+
+    const defaults = tipo === 'licitacion'
+      ? {
+          validez: 30,
+          plantilla: 'WILLATEC SOLES-ESTADO',
+          modo: 'POR_CANTIDAD' as const,
+          plataforma: 'licitacion',
+        }
+      : tipo === 'wherex'
+        ? {
+            validez: 10,
+            plantilla: 'WILLATEC SOLES',
+            modo: 'POR_ITEM' as const,
+            plataforma: 'wherex',
+          }
+        : tipo === 'privado'
+          ? {
+              validez: 10,
+              plantilla: 'WILLATEC DOLARES',
+              modo: 'POR_ITEM' as const,
+              plataforma: 'correo',
+            }
+          : null;
+
+    if (!defaults) return;
+
+    const normalizeCatalogName = (value: string) => value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
+
+    const plantilla = plantillas.find((item) =>
+      normalizeCatalogName(item.nombre) === normalizeCatalogName(defaults.plantilla)
+    );
+    const plataforma = plataformas.find((item) =>
+      normalizeCatalogName(item.nombre).includes(defaults.plataforma.toUpperCase())
+    );
+
+    // Esperamos ambos catálogos para no marcar como aplicado antes de poder
+    // resolver los IDs de plantilla y plataforma del ambiente actual.
+    if (!plantilla || !plataforma) return;
+
+    setValidezDias(defaults.validez);
+    setPlantillaId(Number(plantilla.id));
+    setModoDistribucion(defaults.modo);
+    setPlataformaId(Number(plataforma.id));
+    opportunityDefaultsAppliedRef.current = true;
+  }, [
+    hasOpportunityContext,
+    isNewCotizacion,
+    linkedOpportunity?.tipo,
+    opportunityContext.tipo,
+    plantillas,
+    plataformas,
+  ]);
 
   useEffect(() => {
     if (!hasOpportunityContext || isEditing || isModificationMode || titulo.trim()) return;
