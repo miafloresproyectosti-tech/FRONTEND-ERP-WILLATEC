@@ -6,6 +6,7 @@ import {
   Bell,
   Briefcase,
   ChevronDown,
+  CheckCheck,
   ClipboardList,
   Eye,
   FileText,
@@ -18,6 +19,7 @@ import {
   ShoppingCart,
   Sun,
   X,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -337,6 +339,8 @@ export default function Topbar({
   const [notificationsError, setNotificationsError] = useState<string | null>(
     null
   );
+  const [markingAllAsRead, setMarkingAllAsRead] = useState(false);
+  const [deletingNotificationId, setDeletingNotificationId] = useState<string | null>(null);
   const [openNotificationSections, setOpenNotificationSections] = useState<Set<NotificationSectionKey>>(
     () => new Set(["cotizaciones"])
   );
@@ -599,6 +603,42 @@ export default function Topbar({
     }
   };
 
+  const handleMarkAllAsRead = async () => {
+    if (markingAllAsRead || unreadCount === 0) return;
+
+    try {
+      setMarkingAllAsRead(true);
+      await notificationService.markAllAsRead();
+      const readAt = new Date().toISOString();
+      setNotifications((current) =>
+        current.map((notification) => ({
+          ...notification,
+          read_at: notification.read_at || readAt,
+        }))
+      );
+    } catch (error) {
+      console.error("Error al marcar todas las notificaciones como leidas:", error);
+      setNotificationsError("No se pudieron marcar todas como leídas.");
+    } finally {
+      setMarkingAllAsRead(false);
+    }
+  };
+
+  const handleDeleteNotification = async (notification: DatabaseNotification) => {
+    if (deletingNotificationId) return;
+
+    try {
+      setDeletingNotificationId(notification.id);
+      await notificationService.delete(notification.id);
+      setNotifications((current) => current.filter((item) => item.id !== notification.id));
+    } catch (error) {
+      console.error("Error al eliminar la notificacion:", error);
+      setNotificationsError("No se pudo eliminar la notificación.");
+    } finally {
+      setDeletingNotificationId(null);
+    }
+  };
+
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-950 sm:px-4 lg:px-5">
       <div className="flex items-center gap-3">
@@ -687,6 +727,15 @@ export default function Topbar({
                 <p className="text-sm sm:text-base text-slate-600 font-semibold">
                   Haz clic en una notificacion para verla
                 </p>
+                <button
+                  type="button"
+                  onClick={() => void handleMarkAllAsRead()}
+                  disabled={markingAllAsRead || unreadCount === 0}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {markingAllAsRead ? <Loader2 size={16} className="animate-spin" /> : <CheckCheck size={16} />}
+                  {markingAllAsRead ? "Marcando..." : "Marcar todo como leído"}
+                </button>
               </div>
 
               <div className="max-h-[55vh] overflow-y-auto">
@@ -855,6 +904,23 @@ export default function Topbar({
                                           aria-label="Abrir esta notificacion"
                                         >
                                           <ArrowRight size={17} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            void handleDeleteNotification(notification);
+                                          }}
+                                          disabled={deletingNotificationId === notification.id}
+                                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-700 shadow-sm transition-all hover:bg-red-100 hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                          title="Eliminar notificación"
+                                          aria-label="Eliminar notificación"
+                                        >
+                                          {deletingNotificationId === notification.id ? (
+                                            <Loader2 size={17} className="animate-spin" />
+                                          ) : (
+                                            <Trash2 size={17} />
+                                          )}
                                         </button>
                                       </div>
                                     </div>

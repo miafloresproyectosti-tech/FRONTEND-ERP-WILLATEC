@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Loader, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Bell, Loader, AlertCircle, CheckCircle2, CheckCheck, Trash2 } from "lucide-react";
 import { notificationService, type DatabaseNotification } from "../services/notification.service";
 import {
   getNotificationDescription,
@@ -12,6 +12,8 @@ export default function Notificaciones() {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<DatabaseNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [markingAllAsRead, setMarkingAllAsRead] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,7 +67,10 @@ export default function Notificaciones() {
   };
 
   const handleMarkAllAsRead = async () => {
+    if (markingAllAsRead || unreadCount === 0) return;
+
     try {
+      setMarkingAllAsRead(true);
       await notificationService.markAllAsRead();
       setNotifications((prev) =>
         prev.map((n) => ({
@@ -75,6 +80,23 @@ export default function Notificaciones() {
       );
     } catch (err) {
       console.error("Error marking all as read:", err);
+    } finally {
+      setMarkingAllAsRead(false);
+    }
+  };
+
+  const handleDelete = async (notification: DatabaseNotification) => {
+    if (deletingId) return;
+
+    try {
+      setDeletingId(notification.id);
+      await notificationService.delete(notification.id);
+      setNotifications((prev) => prev.filter((item) => item.id !== notification.id));
+    } catch (err) {
+      console.error("Error deleting notification:", err);
+      setError("No se pudo eliminar la notificación.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -101,9 +123,11 @@ export default function Notificaciones() {
         {unreadCount > 0 && (
           <button
             onClick={handleMarkAllAsRead}
-            className="h-10 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+            disabled={markingAllAsRead}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            Marcar todo como leído
+            {markingAllAsRead ? <Loader className="h-4 w-4 animate-spin" /> : <CheckCheck className="h-4 w-4" />}
+            {markingAllAsRead ? "Marcando..." : "Marcar todo como leído"}
           </button>
         )}
       </div>
@@ -156,14 +180,13 @@ export default function Notificaciones() {
             return (
               <div
                 key={notification.id}
-                onClick={() => handleNotificationClick(notification)}
                 className={`cursor-pointer rounded-xl border-l-4 p-3 transition-all sm:p-4 ${
                   isRead
                     ? "bg-slate-50 dark:bg-slate-800 border-l-slate-300 dark:border-l-slate-600"
                     : unreadToneClasses
                 }`}
               >
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3" onClick={() => handleNotificationClick(notification)}>
                   {isRead ? (
                     <CheckCircle2 className="h-5 w-5 text-slate-400 dark:text-slate-500 flex-shrink-0 mt-0.5" />
                   ) : (
@@ -212,6 +235,24 @@ export default function Notificaciones() {
                       )}
                     </p>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDelete(notification);
+                    }}
+                    disabled={deletingId === notification.id}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    title="Eliminar notificación"
+                    aria-label="Eliminar notificación"
+                  >
+                    {deletingId === notification.id ? (
+                      <Loader className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </button>
                 </div>
               </div>
             );

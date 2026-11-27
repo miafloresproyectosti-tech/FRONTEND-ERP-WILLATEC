@@ -143,15 +143,14 @@ export const notificationService = {
 
   // Marcar todas como leídas
   markAllAsRead: async (): Promise<void> => {
-    const notifications = await notificationService.getNotifications();
-    const unreadIds = notifications
-      .filter((n) => !n.read_at)
-      .map((n) => n.id);
+    await api.patch("/notifications/read-all");
 
-    for (const id of unreadIds) {
-      await notificationService.markAsRead(id);
-    }
+    clearCache(NOTIFICATIONS_CACHE_KEY);
+    notifyNotificationsUpdated();
+  },
 
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/notifications/${id}`);
     clearCache(NOTIFICATIONS_CACHE_KEY);
     notifyNotificationsUpdated();
   },

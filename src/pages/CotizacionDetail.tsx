@@ -3662,12 +3662,18 @@ export function CotizacionDetail() {
               <div className="rounded-xl bg-white/80 px-3 py-2">
                 <span className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500">
                   <Building2 className="h-3.5 w-3.5" />
-                  Entrega / pago
+                  Forma de pago
                 </span>
                 <p className="mt-1 font-semibold text-slate-800">
-                  {[OPORTUNIDAD_FORMA_PAGO_LABELS[opportunitySummary.formaPago] || '', opportunitySummary.destinoEntrega].filter(Boolean).join(' - ') || 'No definido'}
+                  {OPORTUNIDAD_FORMA_PAGO_LABELS[opportunitySummary.formaPago] || 'No definido'}
                 </p>
               </div>
+              {opportunitySummary.destinoEntrega && (
+                <div className="rounded-xl bg-white/80 px-3 py-2">
+                  <span className="text-xs font-bold uppercase text-slate-500">Lugar de entrega</span>
+                  <p className="mt-1 font-semibold text-slate-800">{opportunitySummary.destinoEntrega}</p>
+                </div>
+              )}
               {(opportunitySummary.garantia || opportunitySummary.plazo) && (
                 <div className="rounded-xl bg-white/80 px-3 py-2">
                   <span className="text-xs font-bold uppercase text-slate-500">Garantia / plazo</span>
@@ -3694,7 +3700,7 @@ export function CotizacionDetail() {
           </div>
           {(opportunitySummary.observacion || opportunitySummary.comentarios) && (
             <div className="mt-3 rounded-xl border border-blue-100 bg-white/80 px-3 py-2 text-sm text-slate-700">
-              <span className="font-bold text-slate-900">Notas de oportunidad: </span>
+              <span className="font-bold text-slate-900">Observaciones: </span>
               {[opportunitySummary.observacion, opportunitySummary.comentarios].filter(Boolean).join(' | ')}
             </div>
           )}

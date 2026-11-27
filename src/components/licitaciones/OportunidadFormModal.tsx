@@ -706,7 +706,7 @@ export function OportunidadFormModal({
               </Field>
             )}
 
-            {selectedTipo === "privado" && (
+            {(selectedTipo === "privado" || selectedTipo === "licitacion") && (
               <Field label="Destino de entrega">
                 <input
                   className={inputClass("destinoEntrega")}

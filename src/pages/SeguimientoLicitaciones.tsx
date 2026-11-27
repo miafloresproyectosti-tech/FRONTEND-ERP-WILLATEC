@@ -818,7 +818,9 @@ export default function SeguimientoLicitaciones() {
       carpetaServidor: data.tipo === "licitacion" ? clean(data.carpetaServidor) : undefined,
       tdr: data.tdr,
       formaPago: data.tipo !== "licitacion" && data.formaPago ? data.formaPago : undefined,
-      destinoEntrega: data.tipo === "privado" ? clean(data.destinoEntrega) : undefined,
+      destinoEntrega: ["privado", "licitacion"].includes(data.tipo)
+        ? clean(data.destinoEntrega)
+        : undefined,
       wherexId: data.tipo === "wherex" ? clean(data.wherexId) : undefined,
       wherexUrl: data.tipo === "wherex" ? clean(data.wherexUrl) : undefined,
       comentariosGenerales: data.tipo === "wherex" ? clean(data.comentariosGenerales) : undefined,
